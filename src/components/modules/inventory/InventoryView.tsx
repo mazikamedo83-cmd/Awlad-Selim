@@ -11,6 +11,7 @@ import { Product, ProductUnit, UnitCatalogItem, Warehouse } from '../../../types
 import { Modal } from '../../common/Modal';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { ProductSearchSelect } from '../../common/ProductSearchSelect';
+import { SearchableFilterSelect } from '../../common/SearchableFilterSelect';
 import { exportToExcel } from '../../common/ExcelExporter';
 import { compressImageFileToDataUrl } from '../../../utils/image';
 import { StockCountView } from './StockCountView';
@@ -758,26 +759,33 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
             />
             <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
           </div>
-          <select
+          <SearchableFilterSelect
+            id="inv-mov-type"
             value={movementTypeFilter}
-            onChange={(e) => setMovementTypeFilter(e.target.value)}
-            className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold"
-          >
-            <option value="all">-- جميع أنواع الحركات --</option>
-            {Object.entries(MOVEMENT_LABELS).map(([k, v]) => (
-              <option key={k} value={k}>{v.label}</option>
-            ))}
-          </select>
-          <select
+            onChange={setMovementTypeFilter}
+            options={Object.entries(MOVEMENT_LABELS).map(([k, v]) => ({
+              value: k,
+              label: v.label,
+            }))}
+            allOptionLabel="جميع أنواع الحركات"
+            allOptionValue="all"
+            allowClear
+            buttonClassName="rounded-xl min-h-[38px]"
+          />
+          <SearchableFilterSelect
+            id="inv-mov-wh"
             value={movementWhFilter}
-            onChange={(e) => setMovementWhFilter(e.target.value)}
-            className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 font-bold"
-          >
-            <option value="all">-- جميع المستودعات --</option>
-            {warehouses.map((w) => (
-              <option key={w.id} value={w.id}>{w.name}</option>
-            ))}
-          </select>
+            onChange={setMovementWhFilter}
+            options={warehouses.map((w) => ({
+              value: w.id,
+              label: w.name,
+              subtitle: w.code,
+            }))}
+            allOptionLabel="جميع المستودعات"
+            allOptionValue="all"
+            allowClear
+            buttonClassName="rounded-xl min-h-[38px]"
+          />
         </div>
 
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
@@ -1233,29 +1241,35 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
         </div>
 
         <div>
-          <select
+          <SearchableFilterSelect
+            id="inv-prod-cat"
             value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold focus:bg-white focus:border-blue-600 outline-hidden"
-          >
-            <option value="all">-- جميع التصنيفات الغذائية --</option>
-            {categories.filter(c => c !== 'all').map(c => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
+            onChange={setCategoryFilter}
+            options={categories
+              .filter((c) => c !== 'all')
+              .map((c) => ({ value: c, label: c }))}
+            allOptionLabel="جميع التصنيفات الغذائية"
+            allOptionValue="all"
+            allowClear
+            buttonClassName="rounded-xl min-h-[38px]"
+          />
         </div>
 
         <div>
-          <select
+          <SearchableFilterSelect
+            id="inv-prod-wh"
             value={warehouseFilter}
-            onChange={(e) => setWarehouseFilter(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold focus:bg-white focus:border-blue-600 outline-hidden"
-          >
-            <option value="all">-- جميع المستودعات --</option>
-            {warehouses.map(w => (
-              <option key={w.id} value={w.id}>{w.name}</option>
-            ))}
-          </select>
+            onChange={setWarehouseFilter}
+            options={warehouses.map((w) => ({
+              value: w.id,
+              label: w.name,
+              subtitle: w.code,
+            }))}
+            allOptionLabel="جميع المستودعات"
+            allOptionValue="all"
+            allowClear
+            buttonClassName="rounded-xl min-h-[38px]"
+          />
         </div>
 
         <div className="flex items-center justify-end text-xs text-slate-600 font-bold">

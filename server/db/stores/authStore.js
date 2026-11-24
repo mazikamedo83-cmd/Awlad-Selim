@@ -98,6 +98,20 @@ export async function recordAuditLog({
     const executor = client || getPool();
     if (executor) {
       try {
+        let resolvedIdentityId = actorIdentityId || null;
+        let resolvedEmployeeId = actorEmployeeId || null;
+        let resolvedActingRole = actingRole || null;
+        if (userId && (!resolvedIdentityId || !resolvedEmployeeId || !resolvedActingRole)) {
+          const uRes = await executor.query(
+            `SELECT role, identity_id, employee_id FROM users WHERE id = $1 LIMIT 1`,
+            [userId]
+          );
+          if (uRes.rows[0]) {
+            resolvedIdentityId = resolvedIdentityId || uRes.rows[0].identity_id || null;
+            resolvedEmployeeId = resolvedEmployeeId || uRes.rows[0].employee_id || null;
+            resolvedActingRole = resolvedActingRole || uRes.rows[0].role || null;
+          }
+        }
         await executor.query(
           `INSERT INTO audit_logs (id, timestamp, user_id, user_name, actor_identity_id, actor_employee_id, acting_role, action, module, record_id, old_values, new_values, ip_address, device_info, notes)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
@@ -106,9 +120,9 @@ export async function recordAuditLog({
             timestamp,
             userId,
             userName,
-            actorIdentityId || null,
-            actorEmployeeId || null,
-            actingRole || null,
+            resolvedIdentityId,
+            resolvedEmployeeId,
+            resolvedActingRole,
             action,
             module,
             recordId,
@@ -129,14 +143,30 @@ export async function recordAuditLog({
       }
     }
   } else {
+    let resolvedIdentityId = actorIdentityId || undefined;
+    let resolvedEmployeeId = actorEmployeeId || undefined;
+    let resolvedActingRole = actingRole || undefined;
+    if (userId && userId !== 'system' && (!resolvedIdentityId || !resolvedEmployeeId || !resolvedActingRole)) {
+      try {
+        const db = readJsonDatabase();
+        const u = (db.users || []).find((x) => x.id === userId);
+        if (u) {
+          resolvedIdentityId = resolvedIdentityId || u.identityId || undefined;
+          resolvedEmployeeId = resolvedEmployeeId || u.employeeId || undefined;
+          resolvedActingRole = resolvedActingRole || u.role || undefined;
+        }
+      } catch {
+        // ignore
+      }
+    }
     await appendJsonAuditLog({
       id,
       timestamp,
       userId: userId || 'system',
       userName,
-      actorIdentityId: actorIdentityId || undefined,
-      actorEmployeeId: actorEmployeeId || undefined,
-      actingRole: actingRole || undefined,
+      actorIdentityId: resolvedIdentityId,
+      actorEmployeeId: resolvedEmployeeId,
+      actingRole: resolvedActingRole,
       action,
       module,
       recordId: recordId || undefined,
@@ -170,7 +200,7 @@ export async function listAuditLogs(limit = 300) {
   if (await isPgMode()) {
     const pool = getPool();
     const res = await pool.query(
-      `SELECT id, timestamp, user_id, user_name, action, module, record_id, old_values, new_values, notes
+      `SELECT id, timestamp, user_id, user_name, actor_identity_id, actor_employee_id, acting_role, action, module, record_id, old_values, new_values, notes
        FROM audit_logs ORDER BY timestamp DESC LIMIT $1`,
       [safeLimit]
     );
@@ -179,6 +209,9 @@ export async function listAuditLogs(limit = 300) {
       timestamp: isoTimestamp(r.timestamp),
       userId: r.user_id || 'system',
       userName: r.user_name || 'النظام',
+      actorIdentityId: r.actor_identity_id || undefined,
+      actorEmployeeId: r.actor_employee_id || undefined,
+      actingRole: r.acting_role || undefined,
       action: r.action,
       module: r.module,
       recordId: r.record_id || undefined,

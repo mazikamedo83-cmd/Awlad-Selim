@@ -14,6 +14,7 @@ import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { exportToExcel } from '../../common/ExcelExporter';
 import { QuantityInput } from '../../common/QuantityInput';
 import { ProductSearchSelect } from '../../common/ProductSearchSelect';
+import { SearchableFilterSelect } from '../../common/SearchableFilterSelect';
 import { computeLineTotal } from '../../../utils/quantity';
 
 export interface SalesInvoicesViewProps {
@@ -603,46 +604,60 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
 
         {/* Customer Filter */}
         <div>
-          <select
+          <SearchableFilterSelect
+            id="sales-filter-customer"
             value={selectedCustomerFilter}
-            onChange={(e) => setSelectedCustomerFilter(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold focus:bg-white focus:border-blue-600 outline-hidden"
-          >
-            <option value="">-- جميع العملاء --</option>
-            {customers.map(c => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
+            onChange={setSelectedCustomerFilter}
+            options={customers.map((c) => ({
+              value: c.id,
+              label: c.shopName || c.name,
+              subtitle: c.phone || c.name,
+              searchText: `${c.name} ${c.shopName || ''} ${c.phone || ''} ${c.code || ''}`,
+            }))}
+            allOptionLabel="جميع العملاء"
+            allOptionValue=""
+            searchPlaceholder="ابحث باسم العميل أو المحل أو الهاتف..."
+            allowClear
+            buttonClassName="rounded-xl min-h-[38px]"
+          />
         </div>
 
         {/* Status Filter */}
         {activeTab === 'invoices' && (
           <div>
-            <select
+            <SearchableFilterSelect
+              id="sales-filter-status"
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as any)}
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold focus:bg-white focus:border-blue-600 outline-hidden"
-            >
-              <option value="all">-- جميع الحالات --</option>
-              <option value="confirmed">فواتير مؤكدة</option>
-              <option value="draft">مسودات</option>
-              <option value="cancelled">فواتير ملغاة / محذوفة</option>
-            </select>
+              onChange={(val) => setStatusFilter((val as any) || 'all')}
+              options={[
+                { value: 'confirmed', label: 'فواتير مؤكدة' },
+                { value: 'draft', label: 'مسودات' },
+                { value: 'cancelled', label: 'فواتير ملغاة / محذوفة' },
+              ]}
+              allOptionLabel="جميع الحالات"
+              allOptionValue="all"
+              allowClear
+              buttonClassName="rounded-xl min-h-[38px]"
+            />
           </div>
         )}
 
         {/* Review Status Filter */}
         {activeTab === 'invoices' && (
           <div>
-            <select
+            <SearchableFilterSelect
+              id="sales-filter-review"
               value={reviewFilter}
-              onChange={(e) => setReviewFilter(e.target.value as any)}
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold focus:bg-white focus:border-blue-600 outline-hidden"
-            >
-              <option value="all">-- حالة المراجعة --</option>
-              <option value="needs_review">تحتاج مراجعة الإدارة</option>
-              <option value="reviewed">تمت المراجعة</option>
-            </select>
+              onChange={(val) => setReviewFilter((val as any) || 'all')}
+              options={[
+                { value: 'needs_review', label: 'تحتاج مراجعة الإدارة' },
+                { value: 'reviewed', label: 'تمت المراجعة' },
+              ]}
+              allOptionLabel="حالة المراجعة"
+              allOptionValue="all"
+              allowClear
+              buttonClassName="rounded-xl min-h-[38px]"
+            />
           </div>
         )}
 

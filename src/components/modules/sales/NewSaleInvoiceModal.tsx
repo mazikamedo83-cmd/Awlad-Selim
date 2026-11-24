@@ -8,6 +8,7 @@ import { useShortcuts } from '../../../context/ShortcutsContext';
 import { CustomerItemOrderRequest } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { ProductSearchSelect } from '../../common/ProductSearchSelect';
+import { SearchableFilterSelect } from '../../common/SearchableFilterSelect';
 import { QuantityInput } from '../../common/QuantityInput';
 import { computeLineTotal } from '../../../utils/quantity';
 
@@ -523,20 +524,26 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
         {/* Top Controls: Customer, Warehouse, Rep, Date */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-200 text-xs">
           <div>
-            <label className="block font-bold text-slate-700 mb-1">العميل:</label>
-            <select
-              value={selectedCustomerId}
+            <SearchableFilterSelect
+              id="sale-modal-customer"
+              label="العميل"
               disabled={Boolean(sourceOrder)}
-              onChange={(e) => setSelectedCustomerId(e.target.value)}
-              className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold focus:border-blue-600 outline-hidden disabled:bg-slate-100"
-            >
-              <option value="">-- عميل نقدي عام --</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} ({c.currentBalance > 0 ? `عليه: ${c.currentBalance}` : `رصيد: ${c.currentBalance}`})
-                </option>
-              ))}
-            </select>
+              value={selectedCustomerId}
+              onChange={setSelectedCustomerId}
+              options={customers.map((c) => ({
+                value: c.id,
+                label: c.shopName ? `${c.shopName} (${c.name})` : c.name,
+                subtitle: c.phone || undefined,
+                badge: c.currentBalance > 0 ? `عليه: ${c.currentBalance}` : `رصيد: ${c.currentBalance}`,
+                searchText: `${c.name} ${c.shopName || ''} ${c.phone || ''} ${c.code || ''}`,
+              }))}
+              allOptionLabel="-- عميل نقدي عام --"
+              allOptionValue=""
+              searchPlaceholder="ابحث باسم العميل أو المحل أو الهاتف..."
+              allowClear={!sourceOrder}
+              minPanelWidth={270}
+              buttonClassName="rounded-xl"
+            />
           </div>
 
           <div>
@@ -553,17 +560,23 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
           </div>
 
           <div>
-            <label className="block font-bold text-slate-700 mb-1">المندوب المسؤول:</label>
-            <select
+            <SearchableFilterSelect
+              id="sale-modal-rep"
+              label="المندوب المسؤول"
               value={selectedRepId}
-              onChange={(e) => setSelectedRepId(e.target.value)}
-              className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold focus:border-blue-600 outline-hidden"
-            >
-              <option value="">-- بيع مباشر من المركز --</option>
-              {representatives.map((r) => (
-                <option key={r.id} value={r.id}>{r.name}</option>
-              ))}
-            </select>
+              onChange={setSelectedRepId}
+              options={representatives.map((r) => ({
+                value: r.id,
+                label: r.name,
+                subtitle: r.phone || undefined,
+                searchText: `${r.name} ${r.phone || ''}`,
+              }))}
+              allOptionLabel="-- بيع مباشر من المركز --"
+              allOptionValue=""
+              searchPlaceholder="ابحث باسم المندوب..."
+              allowClear
+              buttonClassName="rounded-xl"
+            />
           </div>
 
           <div>

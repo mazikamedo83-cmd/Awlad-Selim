@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 import { Search, X, Package, ChevronDown } from 'lucide-react';
 import { Product, Warehouse } from '../../types';
 
@@ -68,6 +69,58 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [highlightedIdx, setHighlightedIdx] = useState(0);
+  const [panelStyle, setPanelStyle] = useState<{
+    top?: number;
+    bottom?: number;
+    left: number;
+    width: number;
+    maxHeight: number;
+  }>({
+    top: 0,
+    left: 0,
+    width: 320,
+    maxHeight: 288,
+  });
+
+  const updatePosition = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const margin = 8;
+    const desiredWidth = Math.min(Math.max(rect.width, 300), vw - margin * 2);
+
+    let left = rect.right - desiredWidth;
+    if (left + desiredWidth > vw - margin) {
+      left = vw - desiredWidth - margin;
+    }
+    if (left < margin) {
+      left = margin;
+    }
+
+    const spaceBelow = vh - rect.bottom - margin;
+    const spaceAbove = rect.top - margin;
+    const preferTop = spaceBelow < 220 && spaceAbove > spaceBelow;
+    const availableSpace = preferTop ? spaceAbove : spaceBelow;
+    const maxHeight = Math.max(150, Math.min(288, availableSpace - 8));
+
+    if (preferTop) {
+      setPanelStyle({
+        bottom: vh - rect.top + 6,
+        left,
+        width: desiredWidth,
+        maxHeight,
+      });
+    } else {
+      setPanelStyle({
+        top: rect.bottom + 6,
+        left,
+        width: desiredWidth,
+        maxHeight,
+      });
+    }
+  }, []);
 
   // Sync display text when closed or when selectedProductId changes externally
   useEffect(() => {
@@ -80,16 +133,30 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
     }
   }, [selectedProduct, isOpen, clearOnSelect]);
 
-  // Close on outside click
+  // Reposition portal on open / scroll / resize and close on outside pointer down
   useEffect(() => {
-    const handleOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
+    if (!isOpen) return;
+    updatePosition();
+    const handleReposition = () => updatePosition();
+    const handleOutside = (e: PointerEvent) => {
+      const target = e.target as Node;
+      if (
+        containerRef.current?.contains(target) ||
+        listRef.current?.contains(target)
+      ) {
+        return;
       }
+      setIsOpen(false);
     };
-    document.addEventListener('mousedown', handleOutside);
-    return () => document.removeEventListener('mousedown', handleOutside);
-  }, []);
+    window.addEventListener('resize', handleReposition);
+    window.addEventListener('scroll', handleReposition, true);
+    document.addEventListener('pointerdown', handleOutside);
+    return () => {
+      window.removeEventListener('resize', handleReposition);
+      window.removeEventListener('scroll', handleReposition, true);
+      document.removeEventListener('pointerdown', handleOutside);
+    };
+  }, [isOpen, updatePosition]);
 
   const getProductStock = (p: Product): number => {
     if (warehouseId) {
@@ -280,11 +347,23 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
         </div>
       </div>
 
-      {isOpen && (
-        <div
-          ref={listRef}
-          className="absolute z-50 left-0 right-0 mt-1.5 max-h-72 overflow-y-auto bg-white border border-slate-200 rounded-2xl shadow-2xl divide-y divide-slate-100"
-        >
+      {isOpen &&
+        typeof document !== 'undefined' &&
+        ReactDOM.createPortal(
+          <div
+            ref={listRef}
+            dir="rtl"
+            style={{
+              position: 'fixed',
+              top: panelStyle.top,
+              bottom: panelStyle.bottom,
+              left: panelStyle.left,
+              width: panelStyle.width,
+              maxHeight: panelStyle.maxHeight,
+              zIndex: 100,
+            }}
+            className="overflow-y-auto bg-white border border-slate-200 rounded-2xl shadow-2xl divide-y divide-slate-100"
+          >
           {filteredProducts.length === 0 ? (
             <div className="p-4 text-center text-xs text-slate-500">
               <Package className="w-6 h-6 text-slate-300 mx-auto mb-1" />
@@ -354,8 +433,9 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
               );
             })
           )}
-        </div>
-      )}
+        </div>,
+          document.body
+        )}
     </div>
   );
 };

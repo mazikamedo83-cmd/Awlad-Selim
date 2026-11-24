@@ -9,10 +9,11 @@ const tempDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'awlad_selim_identity_
 process.env.AWLAD_DATA_DIR = tempDataDir;
 process.env.JWT_SECRET = 'test_jwt_secret_key_for_identity_and_filters_suite_2026_secure';
 
-const { createApiApp } = await import('../app.js');
+const { createApiApp, initializeServerRuntime } = await import('../app.js');
 const { setInjectedPool, initializeSchema } = await import('../db/postgres.js');
 const { resetPgModeCache } = await import('../db/stores/mode.js');
 const { runSafeIdentityAuditAndBackfill } = await import('../db/identityManager.js');
+const { readJsonDatabase, writeJsonDatabase } = await import('../db/jsonLedger.js');
 
 let passed = 0;
 async function test(name, fn) {
@@ -63,7 +64,7 @@ function createPgMemPool() {
   };
 }
 
-async function runSuite(modeLabel) {
+async function runSuite(modeLabel, pgPool = null) {
   console.log(`\n=== Unified Identity & Report Filters Test Suite (${modeLabel}) ===`);
   const app = createApiApp();
   const server = http.createServer(app);
@@ -480,6 +481,156 @@ async function runSuite(modeLabel) {
       const directRes = await runSafeIdentityAuditAndBackfill({ executedBy: 'test_suite', createBackup: false });
       assert.equal(directRes.ok, true);
     });
+
+    await test(`[${modeLabel}] 7. Operational actor attribution (actorIdentityId, actorEmployeeId, actingRole) across stores & startup backfill`, async () => {
+      // Create linked HR employee + system user acting as sales/inventory operator
+      const opEmpRes = await req(baseUrl, 'POST', '/api/admin/employees', {
+        token: adminToken,
+        body: { code: 'EMP-ACTOR-1', name: 'أحمد أمين المخزن', phone: '01088811199', jobTitle: 'أمين مخزن', department: 'المخازن', basicSalary: 5000 },
+      });
+      assert.equal(opEmpRes.status, 201);
+      const opEmpId = opEmpRes.json.employee.id;
+      const opIdentityId = opEmpRes.json.employee.identityId;
+      assert.ok(opIdentityId);
+
+      const opUserRes = await req(baseUrl, 'POST', '/api/admin/users', {
+        token: adminToken,
+        body: {
+          fullName: 'أحمد أمين المخزن',
+          username: 'actor_wh_user',
+          password: 'Password123!',
+          role: 'warehouse',
+          phone: '01088811199',
+          linkedEmployeeId: opEmpId,
+          permissions: {
+            canManageInventory: true,
+            canManageCashboxes: true,
+            canManageAccounts: true,
+            canAdd: true,
+            canEdit: true,
+          },
+        },
+      });
+      assert.equal(opUserRes.status, 201);
+      assert.equal(opUserRes.json.user.identityId, opIdentityId);
+      assert.equal(opUserRes.json.user.employeeId, opEmpId);
+
+      const loginOp = await req(baseUrl, 'POST', '/api/auth/login', {
+        body: { username: 'actor_wh_user', password: 'Password123!' },
+      });
+      assert.equal(loginOp.status, 200);
+      const opToken = loginOp.json.accessToken;
+
+      // 1) Create product with opening balance -> stock_movements stamped with actor identity
+      const prodOpRes = await req(baseUrl, 'POST', '/api/products', {
+        token: opToken,
+        body: {
+          code: 'PRD-ACT-1',
+          barcode: '622000111222',
+          name: 'صنف اختبار الهوية',
+          category: 'عام',
+          baseUnit: 'قطعة',
+          purchasePrice: 50,
+          sellingPrice: 70,
+          stockPerWarehouse: { [whId]: 25 },
+        },
+      });
+      assert.equal(prodOpRes.status, 201);
+
+      // 2) Record damaged stock -> stock_movements stamped with actor identity
+      const dmgRes = await req(baseUrl, 'POST', '/api/inventory/damaged', {
+        token: opToken,
+        body: { productId: prodOpRes.json.product.id, warehouseId: whId, quantity: 2, reason: 'اختبار تالف' },
+      });
+      assert.equal(dmgRes.status, 200);
+
+      // 3) Record expense -> expenses_incomes & financial_transactions stamped with actor identity
+      const cashOpRes = await req(baseUrl, 'POST', '/api/admin/expenses', {
+        token: opToken,
+        body: {
+          type: 'expense',
+          category: 'مصروفات تشغيل',
+          amount: 125,
+          cashboxId: cbId,
+          description: 'اختبار مصروف بهوية',
+        },
+      });
+      assert.equal(cashOpRes.status, 201);
+
+      // Verify actor attribution directly in underlying store (PG or JSON)
+      if (pgPool) {
+        const movs = await pgPool.query(
+          `SELECT actor_identity_id, actor_employee_id, acting_role FROM stock_movements WHERE product_id = $1`,
+          [prodOpRes.json.product.id]
+        );
+        assert.ok(movs.rows.length >= 2);
+        for (const r of movs.rows) {
+          assert.equal(r.actor_identity_id, opIdentityId);
+          assert.equal(r.actor_employee_id, opEmpId);
+          assert.equal(r.acting_role, 'warehouse');
+        }
+
+        const expRows = await pgPool.query(
+          `SELECT actor_identity_id, actor_employee_id, acting_role FROM expenses_incomes WHERE id = $1`,
+          [cashOpRes.json.record.id]
+        );
+        assert.equal(expRows.rows.length, 1);
+        assert.equal(expRows.rows[0].actor_identity_id, opIdentityId);
+        assert.equal(expRows.rows[0].actor_employee_id, opEmpId);
+        assert.equal(expRows.rows[0].acting_role, 'warehouse');
+
+        const ftRows = await pgPool.query(
+          `SELECT actor_identity_id, actor_employee_id, acting_role FROM financial_transactions WHERE amount = 125 AND type = 'expense'`
+        );
+        assert.equal(ftRows.rows.length, 1);
+        assert.equal(ftRows.rows[0].actor_identity_id, opIdentityId);
+        assert.equal(ftRows.rows[0].actor_employee_id, opEmpId);
+        assert.equal(ftRows.rows[0].acting_role, 'warehouse');
+
+        const auditRows = await pgPool.query(
+          `SELECT actor_identity_id, actor_employee_id, acting_role FROM audit_logs WHERE user_id = $1`,
+          [opUserRes.json.user.id]
+        );
+        assert.ok(auditRows.rows.length >= 1);
+        assert.ok(auditRows.rows.every((r) => r.actor_identity_id === opIdentityId && r.actor_employee_id === opEmpId && r.acting_role === 'warehouse'));
+
+        // Simulate legacy row without identity_id and verify startup backfill fixes it safely
+        await pgPool.query(`UPDATE employees SET identity_id = NULL WHERE id = $1`, [opEmpId]);
+        await initializeServerRuntime();
+        const afterBoot = await pgPool.query(`SELECT identity_id FROM employees WHERE id = $1`, [opEmpId]);
+        assert.equal(afterBoot.rows[0].identity_id, opIdentityId);
+      } else {
+        const db = readJsonDatabase();
+        const movs = (db.stockMovements || []).filter((m) => m.productId === prodOpRes.json.product.id);
+        assert.ok(movs.length >= 2);
+        for (const m of movs) {
+          assert.equal(m.actorIdentityId, opIdentityId);
+          assert.equal(m.actorEmployeeId, opEmpId);
+          assert.equal(m.actingRole, 'warehouse');
+        }
+        const expRow = (db.expenseIncomes || []).find((e) => e.description === 'اختبار مصروف بهوية');
+        assert.ok(expRow);
+        assert.equal(expRow.actorIdentityId, opIdentityId);
+        assert.equal(expRow.actorEmployeeId, opEmpId);
+        assert.equal(expRow.actingRole, 'warehouse');
+
+        const ftRow = (db.financialTransactions || []).find((f) => f.amount === 125 && f.type === 'expense');
+        assert.ok(ftRow);
+        assert.equal(ftRow.actorIdentityId, opIdentityId);
+        assert.equal(ftRow.actorEmployeeId, opEmpId);
+        assert.equal(ftRow.actingRole, 'warehouse');
+
+        // Simulate legacy JSON record without identityId and verify startup backfill fixes it safely
+        const empRec = (db.employees || []).find((e) => e.id === opEmpId);
+        assert.ok(empRec);
+        delete empRec.identityId;
+        writeJsonDatabase(db);
+        await initializeServerRuntime();
+        const dbAfterBoot = readJsonDatabase();
+        const repairedEmp = (dbAfterBoot.employees || []).find((e) => e.id === opEmpId);
+        assert.equal(repairedEmp.identityId, opIdentityId);
+      }
+    });
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -488,13 +639,13 @@ async function runSuite(modeLabel) {
 try {
   setInjectedPool(null);
   resetPgModeCache();
-  await runSuite('JSON Ledger');
+  await runSuite('JSON Ledger', null);
 
   const memPool = createPgMemPool();
   setInjectedPool(memPool);
   resetPgModeCache();
   await initializeSchema();
-  await runSuite('PostgreSQL pg-mem');
+  await runSuite('PostgreSQL pg-mem', memPool);
 
   console.log(`\nALL IDENTITY & FILTERS TESTS PASSED (${passed} assertion groups)!`);
 } finally {

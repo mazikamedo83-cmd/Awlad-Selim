@@ -13,8 +13,6 @@ import {
   TrendingUp,
   ArrowDownLeft,
   ArrowUpRight,
-  ChevronDown,
-  X,
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { ItemMovementReportResponse, ItemMovementRow } from '../../../types';
@@ -22,6 +20,7 @@ import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { exportToExcel } from '../../common/ExcelExporter';
 import { exportTableToPdf } from '../../common/PdfExporter';
 import { Modal } from '../../common/Modal';
+import { SearchableFilterSelect, type SearchableFilterOption } from '../../common/SearchableFilterSelect';
 
 export interface ItemMovementReportProps {
   initialProductId?: string | null;
@@ -116,8 +115,6 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
   } = useData();
 
   const [productId, setProductId] = useState<string>(initialProductId || 'all');
-  const [productSearchQuery, setProductSearchQuery] = useState<string>('');
-  const [isProductDropdownOpen, setIsProductDropdownOpen] = useState<boolean>(false);
   const [warehouseId, setWarehouseId] = useState<string>('all');
   const [representativeId, setRepresentativeId] = useState<string>('all');
   const [movementType, setMovementType] = useState<string>('all');
@@ -133,30 +130,55 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
   const [printData, setPrintData] = useState<PrintData | null>(null);
   const [isPrintOpen, setIsPrintOpen] = useState(false);
 
-  const normalizeSearch = (val: string) =>
-    String(val || '')
-      .toLowerCase()
-      .replace(/[أإآ]/g, 'ا')
-      .replace(/ى/g, 'ي')
-      .replace(/ة/g, 'ه')
-      .replace(/[\u064B-\u065F]/g, '')
-      .trim();
-
-  const selectedFilterProduct = useMemo(
-    () => (productId && productId !== 'all' ? products.find((p) => p.id === productId) || null : null),
-    [products, productId]
+  const productFilterOptions = useMemo<SearchableFilterOption[]>(
+    () =>
+      products.map((p) => {
+        const stockQty =
+          warehouseId !== 'all'
+            ? Number(p.stockPerWarehouse?.[warehouseId] || 0)
+            : Object.values(p.stockPerWarehouse || {}).reduce((s, v) => s + Number(v || 0), 0);
+        return {
+          value: p.id,
+          label: p.name,
+          subtitle: `${p.code}${p.barcode ? ` • ${p.barcode}` : ''} • الرصيد: ${stockQty} ${p.baseUnit}`,
+          badge: p.code,
+          searchText: `${p.code} ${p.barcode || ''} ${p.category || ''}`,
+        };
+      }),
+    [products, warehouseId]
   );
 
-  const filteredProductsForSelector = useMemo(() => {
-    const q = normalizeSearch(productSearchQuery);
-    if (!q) return products.slice(0, 80);
-    return products
-      .filter((p) => {
-        const hay = normalizeSearch(`${p.name} ${p.code} ${p.barcode || ''} ${p.category || ''}`);
-        return hay.includes(q);
-      })
-      .slice(0, 80);
-  }, [products, productSearchQuery]);
+  const warehouseFilterOptions = useMemo<SearchableFilterOption[]>(
+    () =>
+      warehouses.map((w) => ({
+        value: w.id,
+        label: w.name,
+        subtitle: w.code,
+        searchText: w.code || '',
+      })),
+    [warehouses]
+  );
+
+  const representativeFilterOptions = useMemo<SearchableFilterOption[]>(
+    () =>
+      representatives.map((r) => ({
+        value: r.id,
+        label: r.name,
+        subtitle: r.phone || undefined,
+        searchText: r.phone || '',
+      })),
+    [representatives]
+  );
+
+  const movementSectionFilterOptions = useMemo<SearchableFilterOption[]>(
+    () =>
+      SECTION_META.map((sec) => ({
+        value: sec.key,
+        label: sec.title,
+        subtitle: sec.subtitle,
+      })),
+    []
+  );
 
   useEffect(() => {
     if (initialProductId) {
@@ -193,8 +215,6 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
 
   const handleResetFilters = () => {
     setProductId('all');
-    setProductSearchQuery('');
-    setIsProductDropdownOpen(false);
     setWarehouseId('all');
     setRepresentativeId('all');
     setMovementType('all');
@@ -499,131 +519,57 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
 
       {/* Multi-Filter Toolbar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3 text-xs">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <div className="relative">
-            <label className="block font-bold text-slate-600 mb-1">الصنف (بحث بالاسم / الكود / الباركود):</label>
-            <div className="relative">
-              <input
-                type="text"
-                value={
-                  isProductDropdownOpen
-                    ? productSearchQuery
-                    : selectedFilterProduct
-                    ? `${selectedFilterProduct.name} (${selectedFilterProduct.code})`
-                    : ''
-                }
-                onFocus={() => {
-                  setProductSearchQuery('');
-                  setIsProductDropdownOpen(true);
-                }}
-                onChange={(e) => {
-                  setProductSearchQuery(e.target.value);
-                  setIsProductDropdownOpen(true);
-                }}
-                placeholder="-- جميع الأصناف (ابحث هنا) --"
-                className="w-full p-2 pl-12 pr-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white font-bold text-slate-800"
-              />
-              {productId !== 'all' ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setProductId('all');
-                    setProductSearchQuery('');
-                    setIsProductDropdownOpen(false);
-                  }}
-                  className="absolute left-2 top-1.5 p-1 rounded-lg hover:bg-slate-200 text-slate-500 cursor-pointer"
-                  title="عرض كل الأصناف"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              ) : (
-                <ChevronDown className="w-4 h-4 text-slate-400 absolute left-2.5 top-2.5 pointer-events-none" />
-              )}
-            </div>
-            {isProductDropdownOpen && (
-              <>
-                <div
-                  className="fixed inset-0 z-20"
-                  onClick={() => setIsProductDropdownOpen(false)}
-                />
-                <div className="absolute right-0 left-0 top-full mt-1 z-30 bg-white border border-slate-300 rounded-xl shadow-xl max-h-64 overflow-y-auto divide-y divide-slate-100">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setProductId('all');
-                      setProductSearchQuery('');
-                      setIsProductDropdownOpen(false);
-                    }}
-                    className={`w-full text-right px-3 py-2 font-black hover:bg-blue-50 cursor-pointer ${
-                      productId === 'all' ? 'bg-blue-50 text-blue-900' : 'text-slate-700'
-                    }`}
-                  >
-                    -- جميع الأصناف --
-                  </button>
-                  {filteredProductsForSelector.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => {
-                        setProductId(p.id);
-                        setProductSearchQuery('');
-                        setIsProductDropdownOpen(false);
-                      }}
-                      className={`w-full text-right px-3 py-2 hover:bg-blue-50 cursor-pointer flex items-center justify-between gap-2 ${
-                        productId === p.id ? 'bg-blue-50 text-blue-900 font-black' : 'text-slate-800 font-bold'
-                      }`}
-                    >
-                      <span className="truncate">{p.name}</span>
-                      <span className="font-mono text-[10px] text-slate-500 shrink-0">{p.code}</span>
-                    </button>
-                  ))}
-                  {filteredProductsForSelector.length === 0 && (
-                    <div className="px-3 py-4 text-center text-slate-400 font-bold">
-                      لا توجد أصناف مطابقة للبحث
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
+          <div>
+            <SearchableFilterSelect
+              id="imr-filter-product"
+              label="الصنف (بحث بالاسم / الكود / الباركود)"
+              value={productId}
+              onChange={setProductId}
+              options={productFilterOptions}
+              allOptionLabel="جميع الأصناف"
+              allOptionValue="all"
+              searchPlaceholder="ابحث باسم الصنف أو الكود أو الباركود..."
+              allowClear
+              minPanelWidth={280}
+            />
           </div>
           <div>
-            <label className="block font-bold text-slate-600 mb-1">المستودع:</label>
-            <select
+            <SearchableFilterSelect
+              id="imr-filter-warehouse"
+              label="المستودع"
               value={warehouseId}
-              onChange={(e) => setWarehouseId(e.target.value)}
-              className="w-full p-2 rounded-xl border border-slate-300 bg-slate-50 font-bold"
-            >
-              <option value="all">-- جميع المستودعات --</option>
-              {warehouses.map((w) => (
-                <option key={w.id} value={w.id}>{w.name}</option>
-              ))}
-            </select>
+              onChange={setWarehouseId}
+              options={warehouseFilterOptions}
+              allOptionLabel="جميع المستودعات"
+              allOptionValue="all"
+              allowClear
+            />
           </div>
           <div>
-            <label className="block font-bold text-slate-600 mb-1">المندوب:</label>
-            <select
+            <SearchableFilterSelect
+              id="imr-filter-rep"
+              label="المندوب"
               value={representativeId}
-              onChange={(e) => setRepresentativeId(e.target.value)}
-              className="w-full p-2 rounded-xl border border-slate-300 bg-slate-50 font-bold"
-            >
-              <option value="all">-- جميع المناديب --</option>
-              {representatives.map((r) => (
-                <option key={r.id} value={r.id}>{r.name}</option>
-              ))}
-            </select>
+              onChange={setRepresentativeId}
+              options={representativeFilterOptions}
+              allOptionLabel="جميع المناديب"
+              allOptionValue="all"
+              allowClear
+            />
           </div>
           <div>
-            <label className="block font-bold text-slate-600 mb-1">نوع الحركة / القسم:</label>
-            <select
+            <SearchableFilterSelect
+              id="imr-filter-movement-type"
+              label="نوع الحركة / القسم"
               value={movementType}
-              onChange={(e) => setMovementType(e.target.value)}
-              className="w-full p-2 rounded-xl border border-slate-300 bg-slate-50 font-bold"
-            >
-              <option value="all">-- كافة أقسام الحركة --</option>
-              {SECTION_META.map((sec) => (
-                <option key={sec.key} value={sec.key}>{sec.title}</option>
-              ))}
-            </select>
+              onChange={setMovementType}
+              options={movementSectionFilterOptions}
+              allOptionLabel="كافة أقسام الحركة"
+              allOptionValue="all"
+              allowClear
+              minPanelWidth={270}
+            />
           </div>
         </div>
 

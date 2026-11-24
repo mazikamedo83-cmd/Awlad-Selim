@@ -220,7 +220,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [invCustomerId, setInvCustomerId] = useState<string>('');
   const [invWarehouseId, setInvWarehouseId] = useState<string>('');
   const [invProductId, setInvProductId] = useState<string>('');
-  const [invProdQuery, setInvProdQuery] = useState<string>('');
   const [invOnlyVanStock, setInvOnlyVanStock] = useState<boolean>(false);
   const [invUnitName, setInvUnitName] = useState<string>('');
   const [invQty, setInvQty] = useState<number>(1);
@@ -1129,23 +1128,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
   const effectiveVanId = invWarehouseId || vanWarehouse?.id || '';
 
-  const normalizeSearch = (val: string) =>
-    String(val || '')
-      .toLowerCase()
-      .replace(/[أإآ]/g, 'ا')
-      .replace(/ى/g, 'ي')
-      .replace(/ة/g, 'ه')
-      .replace(/[\u064B-\u065F]/g, '')
-      .trim();
-
   const filteredInvoiceProducts = useMemo(() => {
-    const q = normalizeSearch(invProdQuery);
     return activeProducts.filter((p) => {
       if (invOnlyVanStock && (p.stockPerWarehouse?.[effectiveVanId] || 0) <= 0) return false;
-      if (!q) return true;
-      return normalizeSearch(`${p.name} ${p.code} ${p.barcode || ''} ${p.category || ''}`).includes(q);
+      return true;
     });
-  }, [activeProducts, invProdQuery, invOnlyVanStock, effectiveVanId]);
+  }, [activeProducts, invOnlyVanStock, effectiveVanId]);
 
   const handleSelectProduct = (prodId: string) => {
     setInvProductId(prodId);
@@ -1160,27 +1148,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     }
     setInvQty(1);
     setInvLineDiscount(0);
-  };
-
-  const handleInvoiceSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key !== 'Enter') return;
-    e.preventDefault();
-    const raw = invProdQuery.trim();
-    if (!raw) return;
-    const exactMatch = activeProducts.find(
-      (p) =>
-        p.barcode === raw ||
-        p.code.toLowerCase() === raw.toLowerCase()
-    );
-    if (exactMatch) {
-      handleSelectProduct(exactMatch.id);
-      setInvProdQuery('');
-      return;
-    }
-    if (filteredInvoiceProducts.length === 1) {
-      handleSelectProduct(filteredInvoiceProducts[0].id);
-      setInvProdQuery('');
-    }
   };
 
   const handleUnitChange = (unitName: string) => {
@@ -1223,7 +1190,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       },
     ]);
     setInvProductId('');
-    setInvProdQuery('');
     setInvQty(1);
     setInvPrice(0);
     setInvLineDiscount(0);
@@ -4242,19 +4208,24 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">العميل المسموح:</label>
-                <select
+                <SearchableFilterSelect
+                  id="rep-sale-customer"
+                  label="العميل"
                   value={invCustomerId}
-                  onChange={(e) => setInvCustomerId(e.target.value)}
-                  className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
-                >
-                  <option value="">-- اختر العميل --</option>
-                  {data.customers.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.shopName ? `${c.shopName} (${c.name})` : c.name} — رصيد: {c.currentBalance}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setInvCustomerId}
+                  options={data.customers.map((c) => ({
+                    value: c.id,
+                    label: c.shopName ? `${c.shopName} (${c.name})` : c.name,
+                    subtitle: c.phone || c.address,
+                    badge: `رصيد: ${c.currentBalance}`,
+                    searchText: `${c.name} ${c.shopName || ''} ${c.phone || ''} ${c.code || ''}`,
+                  }))}
+                  allOptionLabel="-- اختر العميل --"
+                  allOptionValue=""
+                  searchPlaceholder="ابحث باسم العميل أو المحل أو الهاتف..."
+                  allowClear
+                  buttonClassName="min-h-[44px] rounded-xl"
+                />
               </div>
               <div>
                 <label className="block font-bold text-slate-700 mb-1">مستودع الصرف (السيارة):</label>
@@ -4274,7 +4245,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
             <div className="p-3 rounded-2xl bg-blue-50/60 border border-blue-200 space-y-2.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <label className="font-bold text-slate-800">بحث / باركود وإضافة صنف:</label>
+                <label className="font-bold text-slate-800">بحث / باركود وإضافة صنف ({filteredInvoiceProducts.length}):</label>
                 <button
                   type="button"
                   onClick={() => setInvOnlyVanStock((prev) => !prev)}
@@ -4288,73 +4259,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 </button>
               </div>
 
-              <div className="relative">
-                <Barcode className="w-4 h-4 text-blue-800 absolute right-3 top-3 pointer-events-none" />
-                <input
-                  type="text"
-                  value={invProdQuery}
-                  onChange={(e) => setInvProdQuery(e.target.value)}
-                  onKeyDown={handleInvoiceSearchKeyDown}
-                  placeholder="ابحث بالاسم أو الكود أو امسح الباركود واضغط Enter..."
-                  className="w-full min-h-[42px] rounded-xl border border-blue-300 pr-9 pl-8 bg-white font-semibold"
-                />
-                {invProdQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setInvProdQuery('')}
-                    className="absolute left-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-
-              {invProdQuery.trim() && filteredInvoiceProducts.length > 0 && (
-                <div className="max-h-44 overflow-y-auto bg-white rounded-xl border border-blue-200 divide-y divide-slate-100">
-                  {filteredInvoiceProducts.slice(0, 20).map((p) => {
-                    const vanQty = p.stockPerWarehouse?.[effectiveVanId] || 0;
-                    const mainQty = mainWarehouse ? p.stockPerWarehouse?.[mainWarehouse.id] || 0 : 0;
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => {
-                          handleSelectProduct(p.id);
-                          setInvProdQuery('');
-                        }}
-                        className="w-full text-right px-3 py-2 hover:bg-blue-50 flex items-center justify-between gap-2 cursor-pointer"
-                      >
-                        <div className="min-w-0">
-                          <span className="font-bold text-slate-900 block truncate">{p.name}</span>
-                          <span className="text-[10px] font-mono text-slate-500">
-                            {p.code} {p.barcode ? `| ${p.barcode}` : ''}
-                          </span>
-                        </div>
-                        <span className="font-mono text-[11px] font-bold text-blue-900 shrink-0">
-                          سيارة: {vanQty} | رئيسي: {mainQty} {p.baseUnit}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-              <select
-                value={invProductId}
-                onChange={(e) => handleSelectProduct(e.target.value)}
-                className="w-full min-h-[44px] rounded-xl border border-blue-300 px-3 font-bold bg-white"
-              >
-                <option value="">-- أو اختر الصنف من القائمة ({filteredInvoiceProducts.length}) --</option>
-                {filteredInvoiceProducts.map((p) => {
-                  const vanQty = p.stockPerWarehouse?.[effectiveVanId] || 0;
-                  const mainQty = mainWarehouse ? p.stockPerWarehouse?.[mainWarehouse.id] || 0 : 0;
-                  return (
-                    <option key={p.id} value={p.id}>
-                      {p.name} (سيارتي: {vanQty} | الرئيسي: {mainQty} {p.baseUnit})
-                    </option>
-                  );
-                })}
-              </select>
+              <ProductSearchSelect
+                products={filteredInvoiceProducts}
+                selectedProductId={invProductId}
+                warehouseId={effectiveVanId}
+                warehouses={data.warehouses}
+                priceMode="selling"
+                currency={data.settings.currency}
+                placeholder="ابحث بالاسم أو الكود أو امسح الباركود..."
+                onSelect={(prod) => handleSelectProduct(prod.id)}
+              />
 
               {selectedProduct && invCustomerId && (
                 <div className="p-2.5 rounded-xl bg-white border border-blue-200 space-y-1.5">
@@ -4717,18 +4631,22 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block font-bold text-slate-700 mb-1">المورد:</label>
-              <select
+              <SearchableFilterSelect
+                id="rep-purchase-supplier"
                 value={purSupplierId}
-                onChange={(e) => setPurSupplierId(e.target.value)}
-                className="w-full min-h-[44px] rounded-xl border border-slate-300 px-3 font-bold bg-white"
-              >
-                <option value="">-- اختر المورد --</option>
-                {data.suppliers.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setPurSupplierId}
+                options={data.suppliers.map((s) => ({
+                  value: s.id,
+                  label: s.name,
+                  subtitle: s.phone || s.companyName,
+                  searchText: `${s.name} ${s.phone || ''} ${s.companyName || ''}`,
+                }))}
+                allOptionLabel="-- اختر المورد --"
+                allOptionValue=""
+                searchPlaceholder="ابحث باسم المورد أو الهاتف..."
+                allowClear
+                buttonClassName="min-h-[44px] rounded-xl"
+              />
             </div>
             <div>
               <label className="block font-bold text-slate-700 mb-1">مخزن الاستلام:</label>

@@ -10,6 +10,7 @@ import { generateServerId } from '../../utils/crypto.js';
 import { AppError, nowIso, todayIso, round2 } from '../../utils/errors.js';
 import { isPgMode, isoDateOnly, isoTimestamp } from './mode.js';
 import { recordAuditLog } from './authStore.js';
+import { resolveActorIdentityPgTx, resolveActorIdentityJsonTx } from '../identityManager.js';
 
 function mapPgAccount(r) {
   return {
@@ -290,9 +291,10 @@ export async function createPersonalTransaction(accountId, payload, actor, idemp
         }
         const cbNext = round2(cbCur + delta);
         await client.query('UPDATE cashboxes SET current_balance = $1 WHERE id = $2', [cbNext, cashboxId]);
+        const actorCtx = await resolveActorIdentityPgTx(client, actor);
         await client.query(
-          `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_type, related_entity_id, related_entity_name, related_doc_type, related_doc_id, description, notes, created_by_user_id, created_by, created_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'owner_account',$10,$11,'manual',$12,$13,$14,$15,$16,$17)`,
+          `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_type, related_entity_id, related_entity_name, related_doc_type, related_doc_id, description, notes, created_by_user_id, created_by, actor_identity_id, actor_employee_id, acting_role, created_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'owner_account',$10,$11,'manual',$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
           [
             generateServerId('FT'),
             `OWN-${Date.now().toString().slice(-6)}`,
@@ -310,6 +312,9 @@ export async function createPersonalTransaction(accountId, payload, actor, idemp
             notes,
             actor.id,
             actor.fullName,
+            actorCtx.actorIdentityId || null,
+            actorCtx.actorEmployeeId || null,
+            actorCtx.actingRole || actor.role || null,
             now,
           ]
         );
@@ -381,6 +386,7 @@ export async function createPersonalTransaction(accountId, payload, actor, idemp
         throw new AppError(409, `رصيد الخزينة (${cb.name}) غير كافٍ للسحب الشخصي`, 'INSUFFICIENT_CASHBOX');
       }
       cb.currentBalance = round2(Number(cb.currentBalance || 0) + delta);
+      const actorCtxJson = resolveActorIdentityJsonTx(db, actor);
       db.financialTransactions.unshift({
         id: generateServerId('FT'),
         transactionNumber: `OWN-${Date.now().toString().slice(-6)}`,
@@ -399,6 +405,9 @@ export async function createPersonalTransaction(accountId, payload, actor, idemp
         notes,
         createdByUserId: actor.id,
         createdBy: actor.fullName,
+        actorIdentityId: actorCtxJson.actorIdentityId,
+        actorEmployeeId: actorCtxJson.actorEmployeeId,
+        actingRole: actorCtxJson.actingRole,
         createdAt: now,
       });
     }

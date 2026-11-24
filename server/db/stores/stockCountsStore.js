@@ -8,6 +8,7 @@ import { generateServerId } from '../../utils/crypto.js';
 import { AppError, nowIso, todayIso, round3 } from '../../utils/errors.js';
 import { isPgMode, isoDateOnly, isoTimestamp } from './mode.js';
 import { recordAuditLog } from './authStore.js';
+import { resolveActorIdentityPgTx, resolveActorIdentityJsonTx } from '../identityManager.js';
 
 function classifyVariance(varianceQty) {
   if (Math.abs(varianceQty) < 0.0001) return 'matched';
@@ -363,6 +364,7 @@ export async function approveStockCount(id, { reconcileMode = null, notes = '' }
         );
       }
 
+      const actorCtx = await resolveActorIdentityPgTx(client, actor);
       for (const it of items) {
         const { prod, stockMap, liveQty } = productSnapshots.get(it.product_id);
         const varianceQty = round3(Number(it.variance_qty || 0));
@@ -386,8 +388,8 @@ export async function approveStockCount(id, { reconcileMode = null, notes = '' }
             prod.id,
           ]);
           await client.query(
-            `INSERT INTO stock_movements (id, date, movement_type, product_id, product_name, warehouse_id, warehouse_name, quantity, unit_cost, related_doc_id, related_doc_number, notes, created_by_user_id, created_by, created_at)
-             VALUES ($1,$2,'adjustment',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+            `INSERT INTO stock_movements (id, date, movement_type, product_id, product_name, warehouse_id, warehouse_name, quantity, unit_cost, related_doc_id, related_doc_number, notes, created_by_user_id, created_by, actor_identity_id, actor_employee_id, acting_role, created_at)
+             VALUES ($1,$2,'adjustment',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
             [
               generateServerId('SM'),
               dateStr,
@@ -402,6 +404,9 @@ export async function approveStockCount(id, { reconcileMode = null, notes = '' }
               `تسوية جرد مخزن (${cur.count_number}): الرصيد ${liveQty} ← ${targetQty} ${it.reason ? `| ${it.reason}` : ''}`,
               actor.id,
               actor.fullName,
+              actorCtx.actorIdentityId || null,
+              actorCtx.actorEmployeeId || null,
+              actorCtx.actingRole || actor.role || null,
               now,
             ]
           );
@@ -467,6 +472,7 @@ export async function approveStockCount(id, { reconcileMode = null, notes = '' }
       );
     }
 
+    const actorCtxJson = resolveActorIdentityJsonTx(db, actor);
     for (const it of cur.items) {
       const { prod, liveQty } = liveMap.get(it.productId);
       const targetQty =
@@ -496,6 +502,9 @@ export async function approveStockCount(id, { reconcileMode = null, notes = '' }
           notes: `تسوية جرد مخزن (${cur.countNumber}): الرصيد ${liveQty} ← ${targetQty} ${it.reason ? `| ${it.reason}` : ''}`,
           createdByUserId: actor.id,
           createdBy: actor.fullName,
+          actorIdentityId: actorCtxJson.actorIdentityId,
+          actorEmployeeId: actorCtxJson.actorEmployeeId,
+          actingRole: actorCtxJson.actingRole,
           createdAt: now,
         });
       }

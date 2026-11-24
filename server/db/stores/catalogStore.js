@@ -1786,14 +1786,17 @@ export async function createProduct(payload, actor) {
 
       // Opening stock movements if initial stockPerWarehouse > 0
       const stockMap = payload.stockPerWarehouse || {};
+      const actorCtx = Object.values(stockMap).some((q) => Number(q || 0) > 0)
+        ? await resolveActorIdentityPgTx(client, actor)
+        : null;
       for (const [whId, qty] of Object.entries(stockMap)) {
         const numQty = Number(qty || 0);
         if (numQty > 0) {
           const whRes = await client.query('SELECT name FROM warehouses WHERE id = $1 LIMIT 1', [whId]);
           if (whRes.rows[0]) {
             await client.query(
-              `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_after, related_doc_type, notes, created_by_user_id, created_by, created_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, 'opening', $8, $9, 1, $10, $8, 'opening', 'رصيد افتتاحي', $11, $12, $13)`,
+              `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_after, related_doc_type, notes, created_by_user_id, created_by, actor_identity_id, actor_employee_id, acting_role, created_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, 'opening', $8, $9, 1, $10, $8, 'opening', 'رصيد افتتاحي', $11, $12, $13, $14, $15, $16)`,
               [
                 generateServerId('STK'),
                 `OPEN-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 100)}`,
@@ -1807,6 +1810,9 @@ export async function createProduct(payload, actor) {
                 round2(payload.purchasePrice || 0),
                 actor.id,
                 actor.fullName,
+                actorCtx?.actorIdentityId || null,
+                actorCtx?.actorEmployeeId || null,
+                actorCtx?.actingRole || actor.role || null,
                 now,
               ]
             );
@@ -1857,6 +1863,9 @@ export async function createProduct(payload, actor) {
       createdAt: now,
     };
     db.products.unshift(prod);
+    const actorCtxJson = Object.values(prod.stockPerWarehouse).some((q) => Number(q || 0) > 0)
+      ? resolveActorIdentityJsonTx(db, actor)
+      : null;
     for (const [whId, qty] of Object.entries(prod.stockPerWarehouse)) {
       const n = Number(qty || 0);
       if (n > 0) {
@@ -1875,6 +1884,9 @@ export async function createProduct(payload, actor) {
             notes: 'رصيد افتتاحي',
             createdByUserId: actor.id,
             createdBy: actor.fullName,
+            actorIdentityId: actorCtxJson?.actorIdentityId,
+            actorEmployeeId: actorCtxJson?.actorEmployeeId,
+            actingRole: actorCtxJson?.actingRole,
             createdAt: now,
           });
         }

@@ -11,6 +11,7 @@ import { Invoice, InvoiceItem, InlinePurchaseNewProduct, Product } from '../../.
 import { Modal } from '../../common/Modal';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { ProductSearchSelect } from '../../common/ProductSearchSelect';
+import { SearchableFilterSelect } from '../../common/SearchableFilterSelect';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { QuantityInput } from '../../common/QuantityInput';
 import { computeLineTotal } from '../../../utils/quantity';
@@ -119,6 +120,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'rep_incoming' | 'confirmed' | 'draft' | 'cancelled'>(initialStatusFilter);
+  const [supplierFilter, setSupplierFilter] = useState<string>('all');
   const [isNewModalOpen, setIsNewModalOpen] = useState(initialOpenNew);
   const [printData, setPrintData] = useState<PrintData | null>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
@@ -338,15 +340,16 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
         (inv.supplierName && inv.supplierName.toLowerCase().includes(q)) ||
         (inv.representativeName && inv.representativeName.toLowerCase().includes(q)) ||
         (inv.sentBy && inv.sentBy.toLowerCase().includes(q));
+      const matchSupplier = supplierFilter === 'all' ? true : inv.supplierId === supplierFilter;
       const matchStatus =
         statusFilter === 'all'
           ? true
           : statusFilter === 'rep_incoming'
           ? Boolean(inv.isRepPurchase || inv.representativeId || inv.sentByUserId || (inv.dispatchStatus && inv.dispatchStatus !== 'draft'))
           : inv.status === statusFilter;
-      return matchSearch && matchStatus;
+      return matchSearch && matchSupplier && matchStatus;
     });
-  }, [purchaseInvoices, searchTerm, statusFilter]);
+  }, [purchaseInvoices, searchTerm, supplierFilter, statusFilter]);
 
   const handleProductPick = (prodId: string) => {
     setItemProdId(prodId);
@@ -795,25 +798,45 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
 
       {/* Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="p-3 border-b flex flex-wrap items-center gap-3">
+        <div className="p-3 border-b grid grid-cols-1 sm:grid-cols-3 gap-3 items-center">
           <input
             type="text"
             placeholder="بحث برقم الفاتورة أو المورد أو المندوب..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full max-w-sm bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs focus:border-blue-600 outline-hidden"
+            className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs focus:border-blue-600 outline-hidden"
           />
-          <select
+          <SearchableFilterSelect
+            id="purchase-filter-supplier"
+            value={supplierFilter}
+            onChange={setSupplierFilter}
+            options={suppliers.map((s) => ({
+              value: s.id,
+              label: s.name,
+              subtitle: s.phone || s.companyName,
+              searchText: `${s.name} ${s.phone || ''} ${s.companyName || ''}`,
+            }))}
+            allOptionLabel="جميع الموردين"
+            allOptionValue="all"
+            searchPlaceholder="ابحث باسم المورد أو الهاتف..."
+            allowClear
+            buttonClassName="rounded-xl min-h-[38px]"
+          />
+          <SearchableFilterSelect
+            id="purchase-filter-status"
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as any)}
-            className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold focus:border-blue-600 outline-hidden"
-          >
-            <option value="all">-- جميع الحالات --</option>
-            <option value="rep_incoming">فواتير شراء المناديب (الواردة)</option>
-            <option value="confirmed">فواتير مؤكدة ومعتمدة</option>
-            <option value="draft">مسودات وبانتظار الاعتماد</option>
-            <option value="cancelled">ملغاة / محذوفة</option>
-          </select>
+            onChange={(val) => setStatusFilter((val as any) || 'all')}
+            options={[
+              { value: 'rep_incoming', label: 'فواتير شراء المناديب (الواردة)' },
+              { value: 'confirmed', label: 'فواتير مؤكدة ومعتمدة' },
+              { value: 'draft', label: 'مسودات وبانتظار الاعتماد' },
+              { value: 'cancelled', label: 'ملغاة / محذوفة' },
+            ]}
+            allOptionLabel="جميع الحالات"
+            allOptionValue="all"
+            allowClear
+            buttonClassName="rounded-xl min-h-[38px]"
+          />
         </div>
 
         <div className="overflow-x-auto">

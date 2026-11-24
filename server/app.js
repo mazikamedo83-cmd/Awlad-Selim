@@ -1,4 +1,7 @@
+import fs from 'node:fs';
 import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import express from 'express';
 import cors from 'cors';
 import authRoutes from './routes/auth.js';
@@ -19,11 +22,13 @@ import { getTunnelRuntimeStatus } from './db/stores/connectionPairingStore.js';
 import { getSystemSettingsSafe } from './db/stores/catalogStore.js';
 import {
   checkPostgresHealth,
+  getPool,
   initializeSchema,
   isPgConnectionError,
   isStrictPostgresMode,
   sanitizePgErrorMessage,
 } from './db/postgres.js';
+import { runSafeIdentityAuditAndBackfill } from './db/identityManager.js';
 import { getAuthStatus, bootstrapAdmin } from './db/stores/authStore.js';
 import { exportFullBackup, restoreFullBackup } from './db/stores/inventoryAdminStore.js';
 import { requireAuth, requireAdmin, asyncHandler, errorMiddleware } from './middleware/auth.js';
@@ -37,6 +42,57 @@ import {
   DATABASE_UNAVAILABLE_CODE,
   DATABASE_UNAVAILABLE_MESSAGE,
 } from './db/stores/mode.js';
+
+const __appDirname = path.dirname(fileURLToPath(import.meta.url));
+
+async function ensureStartupIdentitiesBackfilled() {
+  if (await isPgMode()) {
+    const pool = getPool();
+    const check = await pool.query(`
+      SELECT 1 FROM (
+        SELECT id FROM users WHERE identity_id IS NULL LIMIT 1
+      ) u
+      UNION ALL
+      SELECT 1 FROM (
+        SELECT id FROM employees WHERE identity_id IS NULL LIMIT 1
+      ) e
+      UNION ALL
+      SELECT 1 FROM (
+        SELECT id FROM customers WHERE identity_id IS NULL LIMIT 1
+      ) c
+      UNION ALL
+      SELECT 1 FROM (
+        SELECT id FROM representatives WHERE identity_id IS NULL LIMIT 1
+      ) r
+      UNION ALL
+      SELECT 1 FROM (
+        SELECT id FROM suppliers WHERE identity_id IS NULL LIMIT 1
+      ) s
+      LIMIT 1
+    `);
+    if (check.rows.length > 0) {
+      await runSafeIdentityAuditAndBackfill({ executedBy: 'system_startup', createBackup: false });
+    }
+    return;
+  }
+
+  const dataDir = process.env.AWLAD_DATA_DIR
+    ? path.resolve(process.env.AWLAD_DATA_DIR)
+    : path.join(__appDirname, 'data');
+  const dbFile = path.join(dataDir, 'database.json');
+  if (!fs.existsSync(dbFile)) return;
+  try {
+    const raw = JSON.parse(fs.readFileSync(dbFile, 'utf8'));
+    const needsBackfill = ['users', 'employees', 'customers', 'representatives', 'suppliers'].some(
+      (key) => Array.isArray(raw?.[key]) && raw[key].some((rec) => rec && !rec.identityId)
+    );
+    if (needsBackfill) {
+      await runSafeIdentityAuditAndBackfill({ executedBy: 'system_startup', createBackup: false });
+    }
+  } catch {
+    // Non-fatal on unreadable legacy file
+  }
+}
 
 export async function initializeServerRuntime() {
   resetPgModeCache();
@@ -101,6 +157,12 @@ export async function initializeServerRuntime() {
       }
       console.error('[Bootstrap Warning]:', sanitizePgErrorMessage(err?.message));
     }
+  }
+
+  try {
+    await ensureStartupIdentitiesBackfilled();
+  } catch (err) {
+    console.warn('[Identity Startup Backfill Warning]:', sanitizePgErrorMessage(err?.message));
   }
 }
 

@@ -127,6 +127,7 @@ export async function applyConfirmedEffectsPgTx(client, invoice, actor, options 
   if (!whRes.rows[0]) throw new AppError(404, 'المستودع غير موجود', 'WAREHOUSE_NOT_FOUND');
   const warehouseName = whRes.rows[0].name;
 
+  const effActorCtx = await resolveActorIdentityPgTx(client, actor);
   if (invoice.type === 'quote') {
     return;
   }
@@ -157,8 +158,8 @@ export async function applyConfirmedEffectsPgTx(client, invoice, actor, options 
 
       const mvId = generateServerId('SM');
       await client.query(
-        `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_by_user_id, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'sale', $8, $9, $10, $11, $12, $13, 'sales', $14, $15, $16, $17, $18, $19)`,
+        `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_by_user_id, actor_identity_id, actor_employee_id, acting_role, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'sale', $8, $9, $10, $11, $12, $13, 'sales', $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
         [
           mvId,
           mvId,
@@ -178,6 +179,9 @@ export async function applyConfirmedEffectsPgTx(client, invoice, actor, options 
           `فاتورة مبيعات رقم ${invoice.invoiceNumber}`,
           actor.fullName,
           actor.id || null,
+          effActorCtx.actorIdentityId || null,
+          effActorCtx.actorEmployeeId || null,
+          effActorCtx.actingRole || actor.role || null,
           now,
         ]
       );
@@ -224,8 +228,8 @@ export async function applyConfirmedEffectsPgTx(client, invoice, actor, options 
       const txId = generateServerId('FT');
       const txNo = `TRX-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`;
       await client.query(
-        `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, created_by, created_by_user_id, created_at)
-         VALUES ($1, $2, $3, 'customer_payment', $4, $5, $6, $7, 'مبيعات نقدية', $8, $9, 'sales', $10, $11, $12, $13, $14, $15)`,
+        `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, created_by, created_by_user_id, actor_identity_id, actor_employee_id, acting_role, created_at)
+         VALUES ($1, $2, $3, 'customer_payment', $4, $5, $6, $7, 'مبيعات نقدية', $8, $9, 'sales', $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
         [
           txId,
           txNo,
@@ -241,6 +245,9 @@ export async function applyConfirmedEffectsPgTx(client, invoice, actor, options 
           `تحصيل دفعة مبيعات فاتورة رقم ${invoice.invoiceNumber}`,
           actor.fullName,
           actor.id || null,
+          effActorCtx.actorIdentityId || null,
+          effActorCtx.actorEmployeeId || null,
+          effActorCtx.actingRole || actor.role || null,
           now,
         ]
       );
@@ -280,8 +287,8 @@ export async function applyConfirmedEffectsPgTx(client, invoice, actor, options 
 
       const mvId = generateServerId('SM');
       await client.query(
-        `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_by_user_id, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'purchase', $8, $9, $10, $11, $12, $13, 'purchase', $14, $15, $16, $17, $18, $19)`,
+        `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_by_user_id, actor_identity_id, actor_employee_id, acting_role, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'purchase', $8, $9, $10, $11, $12, $13, 'purchase', $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
         [
           mvId,
           mvId,
@@ -301,6 +308,9 @@ export async function applyConfirmedEffectsPgTx(client, invoice, actor, options 
           `فاتورة مشتريات رقم ${invoice.invoiceNumber}`,
           actor.fullName,
           actor.id || null,
+          effActorCtx.actorIdentityId || null,
+          effActorCtx.actorEmployeeId || null,
+          effActorCtx.actingRole || actor.role || null,
           now,
         ]
       );
@@ -323,8 +333,8 @@ export async function applyConfirmedEffectsPgTx(client, invoice, actor, options 
       const txId = generateServerId('FT');
       const txNo = `TRX-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`;
       await client.query(
-        `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, created_by, created_by_user_id, created_at)
-         VALUES ($1, $2, $3, 'supplier_payment', $4, $5, $6, $7, 'مشتريات نقدية', $8, $9, 'purchase', $10, $11, $12, $13, $14, $15)`,
+        `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, created_by, created_by_user_id, actor_identity_id, actor_employee_id, acting_role, created_at)
+         VALUES ($1, $2, $3, 'supplier_payment', $4, $5, $6, $7, 'مشتريات نقدية', $8, $9, 'purchase', $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
         [
           txId,
           txNo,
@@ -340,6 +350,9 @@ export async function applyConfirmedEffectsPgTx(client, invoice, actor, options 
           `سداد دفعة مشتريات فاتورة رقم ${invoice.invoiceNumber}`,
           actor.fullName,
           actor.id || null,
+          effActorCtx.actorIdentityId || null,
+          effActorCtx.actorEmployeeId || null,
+          effActorCtx.actingRole || actor.role || null,
           now,
         ]
       );
@@ -353,6 +366,7 @@ export function applyConfirmedEffectsJsonTx(db, invoice, actor) {
   const wh = db.warehouses.find((w) => w.id === invoice.warehouseId);
   if (!wh) throw new AppError(404, 'المستودع غير موجود', 'WAREHOUSE_NOT_FOUND');
 
+  const effActorCtxJson = resolveActorIdentityJsonTx(db, actor);
   if (invoice.type === 'quote') {
     return;
   }
@@ -403,6 +417,9 @@ export function applyConfirmedEffectsJsonTx(db, invoice, actor) {
         notes: `فاتورة مبيعات رقم ${invoice.invoiceNumber}`,
         createdBy: actor.fullName,
         createdByUserId: actor.id,
+        actorIdentityId: effActorCtxJson.actorIdentityId || undefined,
+        actorEmployeeId: effActorCtxJson.actorEmployeeId || undefined,
+        actingRole: effActorCtxJson.actingRole || actor.role || undefined,
         createdAt: now,
       });
     }
@@ -456,6 +473,9 @@ export function applyConfirmedEffectsJsonTx(db, invoice, actor) {
         description: `تحصيل دفعة مبيعات فاتورة رقم ${invoice.invoiceNumber}`,
         createdBy: actor.fullName,
         createdByUserId: actor.id,
+        actorIdentityId: effActorCtxJson.actorIdentityId || undefined,
+        actorEmployeeId: effActorCtxJson.actorEmployeeId || undefined,
+        actingRole: effActorCtxJson.actingRole || actor.role || undefined,
         createdAt: now,
       });
     }
@@ -505,6 +525,9 @@ export function applyConfirmedEffectsJsonTx(db, invoice, actor) {
         notes: `فاتورة مشتريات رقم ${invoice.invoiceNumber}`,
         createdBy: actor.fullName,
         createdByUserId: actor.id,
+        actorIdentityId: effActorCtxJson.actorIdentityId || undefined,
+        actorEmployeeId: effActorCtxJson.actorEmployeeId || undefined,
+        actingRole: effActorCtxJson.actingRole || actor.role || undefined,
         createdAt: now,
       });
     }
@@ -536,6 +559,9 @@ export function applyConfirmedEffectsJsonTx(db, invoice, actor) {
         description: `سداد دفعة مشتريات فاتورة رقم ${invoice.invoiceNumber}`,
         createdBy: actor.fullName,
         createdByUserId: actor.id,
+        actorIdentityId: effActorCtxJson.actorIdentityId || undefined,
+        actorEmployeeId: effActorCtxJson.actorEmployeeId || undefined,
+        actingRole: effActorCtxJson.actingRole || actor.role || undefined,
         createdAt: now,
       });
     }
@@ -2429,9 +2455,10 @@ export async function editSalesInvoice(invoiceId, updates, actor) {
 
           const mvId = generateServerId('SM');
           const refItem = metaByProd.get(pid);
+          const editSaleActorCtx = await resolveActorIdentityPgTx(client, actor);
           await client.query(
-            `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_by_user_id, created_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,'sale_edit',$8,$9,1,$10,$11,$12,'sales',$13,$14,$15,$16,$17,$18)`,
+            `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_by_user_id, actor_identity_id, actor_employee_id, acting_role, created_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,'sale_edit',$8,$9,1,$10,$11,$12,'sales',$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
             [
               mvId,
               mvId,
@@ -2450,6 +2477,9 @@ export async function editSalesInvoice(invoiceId, updates, actor) {
               `تعديل فاتورة مبيعات رقم ${inv.invoiceNumber} (${deltaOut > 0 ? 'خصم فرق ' : 'رد فرق '}${Math.abs(deltaOut)})${cleanReason ? ` - السبب: ${cleanReason}` : ''}`,
               actor.fullName,
               actor.id || null,
+              editSaleActorCtx.actorIdentityId || null,
+              editSaleActorCtx.actorEmployeeId || null,
+              editSaleActorCtx.actingRole || actor.role || null,
               now,
             ]
           );
@@ -2668,6 +2698,7 @@ export async function editSalesInvoice(invoiceId, updates, actor) {
 
         const mvId = generateServerId('SM');
         const refItem = metaByProd.get(pid);
+        const editSaleActorCtxJson = resolveActorIdentityJsonTx(db, actor);
         db.stockMovements.unshift({
           id: mvId,
           movementNumber: mvId,
@@ -2689,6 +2720,9 @@ export async function editSalesInvoice(invoiceId, updates, actor) {
           notes: `تعديل فاتورة مبيعات رقم ${inv.invoiceNumber} (${deltaOut > 0 ? 'خصم فرق ' : 'رد فرق '}${Math.abs(deltaOut)})${cleanReason ? ` - السبب: ${cleanReason}` : ''}`,
           createdBy: actor.fullName,
           createdByUserId: actor.id,
+          actorIdentityId: editSaleActorCtxJson.actorIdentityId || undefined,
+          actorEmployeeId: editSaleActorCtxJson.actorEmployeeId || undefined,
+          actingRole: editSaleActorCtxJson.actingRole || actor.role || undefined,
           createdAt: now,
         });
       }
@@ -2959,9 +2993,10 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
               ]);
 
               const mvId = generateServerId('SM');
+              const editPurActorCtx = await resolveActorIdentityPgTx(client, actor);
               await client.query(
-                `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_by_user_id, created_at)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,'purchase_edit',$8,$9,1,$10,$11,$12,'purchase',$13,$14,$15,$16,$17,$18)`,
+                `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_by_user_id, actor_identity_id, actor_employee_id, acting_role, created_at)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,'purchase_edit',$8,$9,1,$10,$11,$12,'purchase',$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
                 [
                   mvId,
                   mvId,
@@ -2980,6 +3015,9 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
                   `تعديل فاتورة مشتريات رقم ${inv.invoiceNumber} (${deltaIn > 0 ? 'إضافة فرق ' : 'خصم فرق '}${Math.abs(deltaIn)})${cleanReason ? ` - السبب: ${cleanReason}` : ''}`,
                   actor.fullName,
                   actor.id || null,
+                  editPurActorCtx.actorIdentityId || null,
+                  editPurActorCtx.actorEmployeeId || null,
+                  editPurActorCtx.actingRole || actor.role || null,
                   now,
                 ]
               );
@@ -2987,6 +3025,7 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
               await client.query(`UPDATE products SET purchase_price = $1, updated_at = $2 WHERE id = $3`, [newCostPrice, now, prod.id]);
             }
           } else {
+            const editPurActorCtx = await resolveActorIdentityPgTx(client, actor);
             if (oldBase > 0) {
               const curOldQty = Number(stockMap[inv.warehouseId] || 0);
               const nextOldQty = round3(curOldQty - oldBase);
@@ -3000,8 +3039,8 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
               stockMap[inv.warehouseId] = nextOldQty;
               const mvOutId = generateServerId('SM');
               await client.query(
-                `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_by_user_id, created_at)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,'purchase_edit',$8,$9,1,$10,$11,$12,'purchase',$13,$14,$15,$16,$17,$18)`,
+                `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_by_user_id, actor_identity_id, actor_employee_id, acting_role, created_at)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,'purchase_edit',$8,$9,1,$10,$11,$12,'purchase',$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
                 [
                   mvOutId,
                   mvOutId,
@@ -3020,6 +3059,9 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
                   `نقل مخزون فاتورة مشتريات رقم ${inv.invoiceNumber} من (${oldWarehouseName}) إلى (${nextWarehouseName})${cleanReason ? ` - السبب: ${cleanReason}` : ''}`,
                   actor.fullName,
                   actor.id || null,
+                  editPurActorCtx.actorIdentityId || null,
+                  editPurActorCtx.actorEmployeeId || null,
+                  editPurActorCtx.actingRole || actor.role || null,
                   now,
                 ]
               );
@@ -3030,8 +3072,8 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
               stockMap[nextWarehouseId] = nextNewQty;
               const mvInId = generateServerId('SM');
               await client.query(
-                `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_by_user_id, created_at)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,'purchase_edit',$8,$9,1,$10,$11,$12,'purchase',$13,$14,$15,$16,$17,$18)`,
+                `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_by_user_id, actor_identity_id, actor_employee_id, acting_role, created_at)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,'purchase_edit',$8,$9,1,$10,$11,$12,'purchase',$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
                 [
                   mvInId,
                   mvInId,
@@ -3050,6 +3092,9 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
                   `إضافة مخزون فاتورة مشتريات معدلة رقم ${inv.invoiceNumber} إلى (${nextWarehouseName})${cleanReason ? ` - السبب: ${cleanReason}` : ''}`,
                   actor.fullName,
                   actor.id || null,
+                  editPurActorCtx.actorIdentityId || null,
+                  editPurActorCtx.actorEmployeeId || null,
+                  editPurActorCtx.actingRole || actor.role || null,
                   now,
                 ]
               );
@@ -3344,6 +3389,7 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
           ? round2(Number(refItem.unitPrice) / Math.max(0.001, Number(refItem.unitFactor || 1)))
           : Number(prod.purchasePrice || 0);
 
+        const editPurActorCtxJson = resolveActorIdentityJsonTx(db, actor);
         if (sameWarehouse) {
           const deltaIn = round3(newBase - oldBase);
           if (deltaIn !== 0) {
@@ -3380,6 +3426,9 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
               notes: `تعديل فاتورة مشتريات رقم ${inv.invoiceNumber} (${deltaIn > 0 ? 'إضافة فرق ' : 'خصم فرق '}${Math.abs(deltaIn)})${cleanReason ? ` - السبب: ${cleanReason}` : ''}`,
               createdBy: actor.fullName,
               createdByUserId: actor.id,
+              actorIdentityId: editPurActorCtxJson.actorIdentityId || undefined,
+              actorEmployeeId: editPurActorCtxJson.actorEmployeeId || undefined,
+              actingRole: editPurActorCtxJson.actingRole || actor.role || undefined,
               createdAt: now,
             });
           } else {
@@ -3419,6 +3468,9 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
               notes: `نقل مخزون فاتورة مشتريات رقم ${inv.invoiceNumber} من (${oldWarehouseName}) إلى (${nextWarehouseName})${cleanReason ? ` - السبب: ${cleanReason}` : ''}`,
               createdBy: actor.fullName,
               createdByUserId: actor.id,
+              actorIdentityId: editPurActorCtxJson.actorIdentityId || undefined,
+              actorEmployeeId: editPurActorCtxJson.actorEmployeeId || undefined,
+              actingRole: editPurActorCtxJson.actingRole || actor.role || undefined,
               createdAt: now,
             });
           }
@@ -3448,6 +3500,9 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
               notes: `إضافة مخزون فاتورة مشتريات معدلة رقم ${inv.invoiceNumber} إلى (${nextWarehouseName})${cleanReason ? ` - السبب: ${cleanReason}` : ''}`,
               createdBy: actor.fullName,
               createdByUserId: actor.id,
+              actorIdentityId: editPurActorCtxJson.actorIdentityId || undefined,
+              actorEmployeeId: editPurActorCtxJson.actorEmployeeId || undefined,
+              actingRole: editPurActorCtxJson.actingRole || actor.role || undefined,
               createdAt: now,
             });
           }
@@ -3690,6 +3745,7 @@ export async function cancelInvoice(invoiceId, reason = '', actor) {
       };
 
       if (cur.status === 'confirmed' && cur.type !== 'quote') {
+        const cancelActorCtx = await resolveActorIdentityPgTx(client, actor);
         const whRes = await client.query(`SELECT name FROM warehouses WHERE id = $1 LIMIT 1`, [cur.warehouseId]);
         const warehouseName = whRes.rows[0]?.name || cur.warehouseName || '';
         const retLeft = { ...(cur.returnedQuantityByItem || {}) };
@@ -3714,8 +3770,8 @@ export async function cancelInvoice(invoiceId, reason = '', actor) {
 
             const mvId = generateServerId('SM');
             await client.query(
-              `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_by_user_id, created_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+              `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_by_user_id, actor_identity_id, actor_employee_id, acting_role, created_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
               [
                 mvId,
                 mvId,
@@ -3737,6 +3793,9 @@ export async function cancelInvoice(invoiceId, reason = '', actor) {
                 `عكس مخزون إلغاء فاتورة رقم ${cur.invoiceNumber} - ${cleanReason}`,
                 actor.fullName,
                 actor.id || null,
+                cancelActorCtx.actorIdentityId || null,
+                cancelActorCtx.actorEmployeeId || null,
+                cancelActorCtx.actingRole || actor.role || null,
                 now,
               ]
             );
@@ -3777,8 +3836,8 @@ export async function cancelInvoice(invoiceId, reason = '', actor) {
             const txId = generateServerId('FT');
             const txNo = `TRX-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`;
             await client.query(
-              `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_type, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, notes, created_by, created_by_user_id, created_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+              `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_type, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, notes, created_by, created_by_user_id, actor_identity_id, actor_employee_id, acting_role, created_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
               [
                 txId,
                 txNo,
@@ -3799,6 +3858,9 @@ export async function cancelInvoice(invoiceId, reason = '', actor) {
                 cleanReason,
                 actor.fullName,
                 actor.id || null,
+                cancelActorCtx.actorIdentityId || null,
+                cancelActorCtx.actorEmployeeId || null,
+                cancelActorCtx.actingRole || actor.role || null,
                 now,
               ]
             );
@@ -3888,6 +3950,7 @@ export async function cancelInvoice(invoiceId, reason = '', actor) {
     };
 
     if (cur.status === 'confirmed' && cur.type !== 'quote') {
+      const cancelActorCtxJson = resolveActorIdentityJsonTx(db, actor);
       const whName = db.warehouses.find((w) => w.id === cur.warehouseId)?.name || cur.warehouseName || '';
       const retLeft = { ...(cur.returnedQuantityByItem || {}) };
       const movementType = cur.type === 'sales' ? 'sale_cancel' : 'purchase_cancel';
@@ -3928,6 +3991,9 @@ export async function cancelInvoice(invoiceId, reason = '', actor) {
             notes: `عكس مخزون إلغاء فاتورة رقم ${cur.invoiceNumber} - ${cleanReason}`,
             createdBy: actor.fullName,
             createdByUserId: actor.id,
+            actorIdentityId: cancelActorCtxJson.actorIdentityId || undefined,
+            actorEmployeeId: cancelActorCtxJson.actorEmployeeId || undefined,
+            actingRole: cancelActorCtxJson.actingRole || actor.role || undefined,
             createdAt: now,
           });
         }
@@ -3974,6 +4040,9 @@ export async function cancelInvoice(invoiceId, reason = '', actor) {
             notes: cleanReason,
             createdBy: actor.fullName,
             createdByUserId: actor.id,
+            actorIdentityId: cancelActorCtxJson.actorIdentityId || undefined,
+            actorEmployeeId: cancelActorCtxJson.actorEmployeeId || undefined,
+            actingRole: cancelActorCtxJson.actingRole || actor.role || undefined,
             createdAt: now,
           });
         }
@@ -4677,8 +4746,8 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
 
           const mvId = generateServerId('SM');
           await client.query(
-            `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_by_user_id, created_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+            `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_by_user_id, actor_identity_id, actor_employee_id, acting_role, created_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
             [
               mvId,
               mvId,
@@ -4700,6 +4769,9 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
               `سند مرتجع رقم ${returnNumber} - السبب: ${returnData.reason || ''}`,
               actor.fullName,
               actor.id || null,
+              retActorCtx.actorIdentityId || null,
+              retActorCtx.actorEmployeeId || null,
+              retActorCtx.actingRole || actor.role || null,
               now,
             ]
           );
@@ -4932,6 +5004,7 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
     const returnNumber = `${isSalesReturn ? 'RET-SAL' : 'RET-PUR'}-${new Date().getFullYear()}-${String(seqNum).padStart(4, '0')}`;
 
     const allowNeg = Boolean(db.settings?.allowNegativeStock) && Boolean(actor?.permissions?.canAllowNegativeInventory);
+    const retJsonActorCtx = resolveActorIdentityJsonTx(db, actor);
     for (const it of normalizedItems) {
       const prod = db.products.find((p) => p.id === it.productId);
       if (prod) {
@@ -4968,12 +5041,14 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
           notes: `سند مرتجع رقم ${returnNumber} - السبب: ${returnData.reason || ''}`,
           createdBy: actor.fullName,
           createdByUserId: actor.id,
+          actorIdentityId: retJsonActorCtx.actorIdentityId || undefined,
+          actorEmployeeId: retJsonActorCtx.actorEmployeeId || undefined,
+          actingRole: retJsonActorCtx.actingRole || actor.role || undefined,
           createdAt: now,
         });
       }
     }
 
-    const retJsonActorCtx = resolveActorIdentityJsonTx(db, actor);
     if (refundType === 'balance') {
       if (isSalesReturn && authoritativePartyId) {
         const cust = db.customers.find((c) => c.id === authoritativePartyId);
@@ -5565,9 +5640,10 @@ export async function approvePurchaseReturnRequest(requestId, payload = {}, acto
         const whRow = (await client.query(`SELECT id, name FROM warehouses WHERE id = $1 LIMIT 1`, [whId])).rows[0];
         const whName = whRow?.name || orig.warehouseName;
 
+        const prActorCtx = await resolveActorIdentityPgTx(client, actor);
         await client.query(
-          `INSERT INTO invoice_returns (id, return_number, type, original_invoice_id, original_invoice_number, date, party_id, party_name, warehouse_id, warehouse_name, grand_total, refund_type, cashbox_id, reason, notes, created_by, created_by_user_id, created_at)
-           VALUES ($1,$2,'purchase_return',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+          `INSERT INTO invoice_returns (id, return_number, type, original_invoice_id, original_invoice_number, date, party_id, party_name, warehouse_id, warehouse_name, grand_total, refund_type, cashbox_id, reason, notes, created_by, created_by_user_id, actor_identity_id, actor_employee_id, acting_role, created_at)
+           VALUES ($1,$2,'purchase_return',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
           [
             retId,
             returnNumber,
@@ -5585,6 +5661,9 @@ export async function approvePurchaseReturnRequest(requestId, payload = {}, acto
             approveNotes ? `${reqObj.notes ? reqObj.notes + ' | ' : ''}اعتماد: ${approveNotes}` : (reqObj.notes || `معتمد من طلب ${reqObj.requestNumber}`),
             actor.fullName,
             actor.id || null,
+            prActorCtx.actorIdentityId || null,
+            prActorCtx.actorEmployeeId || null,
+            prActorCtx.actingRole || actor.role || null,
             now,
           ]
         );
@@ -5615,8 +5694,8 @@ export async function approvePurchaseReturnRequest(requestId, payload = {}, acto
 
             const mvId = generateServerId('SM');
             await client.query(
-              `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_by_user_id, created_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,'purchase_return',$8,$9,$10,$11,$12,$13,'purchase_return',$14,$15,$16,$17,$18,$19)`,
+              `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_by_user_id, actor_identity_id, actor_employee_id, acting_role, created_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,'purchase_return',$8,$9,$10,$11,$12,$13,'purchase_return',$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
               [
                 mvId,
                 mvId,
@@ -5636,6 +5715,9 @@ export async function approvePurchaseReturnRequest(requestId, payload = {}, acto
                 `اعتماد طلب مرتجع مشتريات ${reqObj.requestNumber} (${returnNumber}) - السبب: ${reqObj.reason}`,
                 actor.fullName,
                 actor.id || null,
+                prActorCtx.actorIdentityId || null,
+                prActorCtx.actorEmployeeId || null,
+                prActorCtx.actingRole || actor.role || null,
                 now,
               ]
             );
@@ -5657,8 +5739,8 @@ export async function approvePurchaseReturnRequest(requestId, payload = {}, acto
           await client.query(`UPDATE cashboxes SET current_balance = $1 WHERE id = $2`, [nextCb, lockedCbRow.id]);
           const txId = generateServerId('FT');
           await client.query(
-            `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, created_by, created_by_user_id, created_at)
-             VALUES ($1,$2,$3,'income',$4,$5,$6,$7,'استرداد قيمة مرتجع مشتريات نقدي',$8,$9,'purchase_return',$10,$11,$12,$13,$14,$15)`,
+            `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, created_by, created_by_user_id, actor_identity_id, actor_employee_id, acting_role, created_at)
+             VALUES ($1,$2,$3,'income',$4,$5,$6,$7,'استرداد قيمة مرتجع مشتريات نقدي',$8,$9,'purchase_return',$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
             [
               txId,
               `TRX-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`,
@@ -5674,6 +5756,9 @@ export async function approvePurchaseReturnRequest(requestId, payload = {}, acto
               `تسوية نقدية لاعتماد طلب مرتجع مشتريات ${reqObj.requestNumber} (${returnNumber})`,
               actor.fullName,
               actor.id || null,
+              prActorCtx.actorIdentityId || null,
+              prActorCtx.actorEmployeeId || null,
+              prActorCtx.actingRole || actor.role || null,
               now,
             ]
           );
@@ -5807,6 +5892,7 @@ export async function approvePurchaseReturnRequest(requestId, payload = {}, acto
         const seqNum = nextJsonSequence(db, 'purchaseReturnNo', db.invoiceReturns.filter((r) => r.type === 'purchase_return'), 'returnNumber', /(\d+)$/);
         const returnNumber = `RET-PUR-${new Date().getFullYear()}-${String(seqNum).padStart(4, '0')}`;
 
+        const prActorCtxJson = resolveActorIdentityJsonTx(db, actor);
         for (const it of normalizedItems) {
           const prod = db.products.find((p) => p.id === it.productId);
           if (prod) {
@@ -5843,6 +5929,9 @@ export async function approvePurchaseReturnRequest(requestId, payload = {}, acto
               notes: `اعتماد طلب مرتجع مشتريات ${reqObj.requestNumber} (${returnNumber}) - السبب: ${reqObj.reason}`,
               createdBy: actor.fullName,
               createdByUserId: actor.id,
+              actorIdentityId: prActorCtxJson.actorIdentityId || undefined,
+              actorEmployeeId: prActorCtxJson.actorEmployeeId || undefined,
+              actingRole: prActorCtxJson.actingRole || actor.role || undefined,
               createdAt: now,
             });
           }
@@ -5873,6 +5962,9 @@ export async function approvePurchaseReturnRequest(requestId, payload = {}, acto
             description: `تسوية نقدية لاعتماد طلب مرتجع مشتريات ${reqObj.requestNumber} (${returnNumber})`,
             createdBy: actor.fullName,
             createdByUserId: actor.id,
+            actorIdentityId: prActorCtxJson.actorIdentityId || undefined,
+            actorEmployeeId: prActorCtxJson.actorEmployeeId || undefined,
+            actingRole: prActorCtxJson.actingRole || actor.role || undefined,
             createdAt: now,
           });
         }
@@ -5902,6 +5994,9 @@ export async function approvePurchaseReturnRequest(requestId, payload = {}, acto
           notes: approveNotes || reqObj.notes || '',
           createdBy: actor.fullName,
           createdByUserId: actor.id,
+          actorIdentityId: prActorCtxJson.actorIdentityId || undefined,
+          actorEmployeeId: prActorCtxJson.actorEmployeeId || undefined,
+          actingRole: prActorCtxJson.actingRole || actor.role || undefined,
           createdAt: now,
         };
         db.invoiceReturns.unshift(createdReturn);
@@ -6520,9 +6615,10 @@ export async function approveSalesReturnRequest(requestId, payload = {}, actor, 
         const whRow = (await client.query(`SELECT id, name FROM warehouses WHERE id = $1 LIMIT 1`, [whId])).rows[0];
         const whName = whRow?.name || orig.warehouseName;
 
+        const srActorCtx = await resolveActorIdentityPgTx(client, actor);
         await client.query(
-          `INSERT INTO invoice_returns (id, return_number, type, original_invoice_id, original_invoice_number, date, party_id, party_name, warehouse_id, warehouse_name, grand_total, refund_type, cashbox_id, reason, notes, created_by, created_by_user_id, created_at)
-           VALUES ($1,$2,'sales_return',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+          `INSERT INTO invoice_returns (id, return_number, type, original_invoice_id, original_invoice_number, date, party_id, party_name, warehouse_id, warehouse_name, grand_total, refund_type, cashbox_id, reason, notes, created_by, created_by_user_id, actor_identity_id, actor_employee_id, acting_role, created_at)
+           VALUES ($1,$2,'sales_return',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
           [
             retId,
             returnNumber,
@@ -6540,6 +6636,9 @@ export async function approveSalesReturnRequest(requestId, payload = {}, actor, 
             approveNotes ? `${reqObj.notes ? reqObj.notes + ' | ' : ''}اعتماد: ${approveNotes}` : (reqObj.notes || `معتمد من طلب ${reqObj.requestNumber}`),
             actor.fullName,
             actor.id || null,
+            srActorCtx.actorIdentityId || null,
+            srActorCtx.actorEmployeeId || null,
+            srActorCtx.actingRole || actor.role || null,
             now,
           ]
         );
@@ -6563,8 +6662,8 @@ export async function approveSalesReturnRequest(requestId, payload = {}, actor, 
 
             const mvId = generateServerId('SM');
             await client.query(
-              `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_by_user_id, created_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,'sale_return',$8,$9,$10,$11,$12,$13,'sales_return',$14,$15,$16,$17,$18,$19)`,
+              `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_before, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by, created_by_user_id, actor_identity_id, actor_employee_id, acting_role, created_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,'sale_return',$8,$9,$10,$11,$12,$13,'sales_return',$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
               [
                 mvId,
                 mvId,
@@ -6584,6 +6683,9 @@ export async function approveSalesReturnRequest(requestId, payload = {}, actor, 
                 `اعتماد طلب مرتجع مبيعات ${reqObj.requestNumber} (${returnNumber}) - السبب: ${reqObj.reason}`,
                 actor.fullName,
                 actor.id || null,
+                srActorCtx.actorIdentityId || null,
+                srActorCtx.actorEmployeeId || null,
+                srActorCtx.actingRole || actor.role || null,
                 now,
               ]
             );
@@ -6605,8 +6707,8 @@ export async function approveSalesReturnRequest(requestId, payload = {}, actor, 
           await client.query(`UPDATE cashboxes SET current_balance = $1 WHERE id = $2`, [nextCb, cbRow.id]);
           const txId = generateServerId('FT');
           await client.query(
-            `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, created_by, created_by_user_id, created_at)
-             VALUES ($1,$2,$3,'expense',$4,$5,$6,$7,'رد قيمة مرتجع مبيعات نقدي',$8,$9,'sales_return',$10,$11,$12,$13,$14,$15)`,
+            `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, created_by, created_by_user_id, actor_identity_id, actor_employee_id, acting_role, created_at)
+             VALUES ($1,$2,$3,'expense',$4,$5,$6,$7,'رد قيمة مرتجع مبيعات نقدي',$8,$9,'sales_return',$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
             [
               txId,
               `TRX-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`,
@@ -6622,6 +6724,9 @@ export async function approveSalesReturnRequest(requestId, payload = {}, actor, 
               `تسوية نقدية لاعتماد طلب مرتجع مبيعات ${reqObj.requestNumber} (${returnNumber})`,
               actor.fullName,
               actor.id || null,
+              srActorCtx.actorIdentityId || null,
+              srActorCtx.actorEmployeeId || null,
+              srActorCtx.actingRole || actor.role || null,
               now,
             ]
           );
@@ -6754,6 +6859,7 @@ export async function approveSalesReturnRequest(requestId, payload = {}, actor, 
         const seqNum = nextJsonSequence(db, 'salesReturnNo', db.invoiceReturns.filter((r) => r.type === 'sales_return'), 'returnNumber', /(\d+)$/);
         const returnNumber = `RET-SAL-${new Date().getFullYear()}-${String(seqNum).padStart(4, '0')}`;
 
+        const srActorCtxJson = resolveActorIdentityJsonTx(db, actor);
         for (const it of normalizedItems) {
           const prod = db.products.find((p) => p.id === it.productId);
           if (prod) {
@@ -6783,6 +6889,9 @@ export async function approveSalesReturnRequest(requestId, payload = {}, actor, 
               notes: `اعتماد طلب مرتجع مبيعات ${reqObj.requestNumber} (${returnNumber}) - السبب: ${reqObj.reason}`,
               createdBy: actor.fullName,
               createdByUserId: actor.id,
+              actorIdentityId: srActorCtxJson.actorIdentityId || undefined,
+              actorEmployeeId: srActorCtxJson.actorEmployeeId || undefined,
+              actingRole: srActorCtxJson.actingRole || actor.role || undefined,
               createdAt: now,
             });
           }
@@ -6813,6 +6922,9 @@ export async function approveSalesReturnRequest(requestId, payload = {}, actor, 
             description: `تسوية نقدية لاعتماد طلب مرتجع مبيعات ${reqObj.requestNumber} (${returnNumber})`,
             createdBy: actor.fullName,
             createdByUserId: actor.id,
+            actorIdentityId: srActorCtxJson.actorIdentityId || undefined,
+            actorEmployeeId: srActorCtxJson.actorEmployeeId || undefined,
+            actingRole: srActorCtxJson.actingRole || actor.role || undefined,
             createdAt: now,
           });
         }
@@ -6842,6 +6954,9 @@ export async function approveSalesReturnRequest(requestId, payload = {}, actor, 
           notes: approveNotes || reqObj.notes || '',
           createdBy: actor.fullName,
           createdByUserId: actor.id,
+          actorIdentityId: srActorCtxJson.actorIdentityId || undefined,
+          actorEmployeeId: srActorCtxJson.actorEmployeeId || undefined,
+          actingRole: srActorCtxJson.actingRole || actor.role || undefined,
           createdAt: now,
         };
         db.invoiceReturns.unshift(createdReturn);
