@@ -80,9 +80,6 @@ export type NavItemKey =
   | 'rep-item-transfers'
   | 'refresh-sync'
   | 'employees'
-  | 'attendance'
-  | 'advances'
-  | 'payroll'
   | 'reports'
   | 'users'
   | 'audit-log'
@@ -297,16 +294,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       },
       {
         id: 'employees',
-        title: 'الموظفون والرواتب',
+        title: 'الموظفون',
         icon: EmployeesHrIcon,
         headerGradient: 'bg-[var(--awlad-blue-tint-50)] dark:bg-[#132544] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] border-[var(--awlad-blue-tint-100)] dark:border-[#21375C]',
         iconAccent: 'bg-white dark:bg-[#172E56] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E]',
         permission: 'canManageEmployees',
         items: [
           { key: 'employees', label: 'شؤون الموظفين' },
-          { key: 'attendance', label: 'الحضور والغياب' },
-          { key: 'advances', label: 'السلف والخصومات والمكافآت', permission: 'canManageSalaries' },
-          { key: 'payroll', label: 'مسير صرف الرواتب', permission: 'canManageSalaries' },
         ],
       },
       {

@@ -12,7 +12,7 @@ function sanitizeSafeStorefrontImage(raw) {
   if (/^data:image\/(jpeg|jpg|png|webp|gif);base64,[A-Za-z0-9+/=\s]+$/i.test(trimmed)) {
     return trimmed;
   }
-  if (/^\/[A-Za-z0-9_./-]+$/.test(trimmed) || /^https:\/\/[^\s"'<>]+$/i.test(trimmed)) {
+  if ((/^\/[A-Za-z0-9_./-]+$/.test(trimmed) && !trimmed.startsWith('/product-images/')) || /^https:\/\/[^\s"'<>]+$/i.test(trimmed)) {
     return trimmed;
   }
   throw new AppError(

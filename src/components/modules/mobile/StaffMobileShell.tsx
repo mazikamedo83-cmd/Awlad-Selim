@@ -274,15 +274,12 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
       },
       {
         id: 'hr',
-        title: 'الموظفون والرواتب',
+        title: 'الموظفون',
         icon: Users,
         colorClass: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
         permission: 'canManageEmployees',
         items: [
           { key: 'employees', label: 'شؤون الموظفين' },
-          { key: 'attendance', label: 'الحضور والغياب' },
-          { key: 'advances', label: 'السلف والخصومات والمكافآت', permission: 'canManageSalaries' },
-          { key: 'payroll', label: 'مسير صرف الرواتب', permission: 'canManageSalaries' },
         ],
       },
       {

@@ -567,37 +567,34 @@ await (async () => {
       assert.equal(Number(linkedInv.paidAmount), 150, 'Collected amount must apply once without duplicate payment');
     });
 
-    await test('9. Reports RBAC denies inventory-only & unpermitted rep, strips employee salaries without salary permission, scopes permitted rep', async () => {
-      // Seed an employee salary payout row so redaction is actually exercised
+    await test('9. Reports RBAC denies inventory-only & unpermitted rep, strips employee cash rows without employee permission, scopes permitted rep', async () => {
+      // Seed an employee + a confirmed rep_transfer (توريد) cash_payment_employee row so redaction is actually exercised
       const empRes = await req(baseUrl, 'POST', '/api/admin/employees', {
         token: adminToken,
-        body: { name: 'موظف سري', jobTitle: 'أمين مخزن', basicSalary: 5000, phone: '01099990001' },
+        body: { name: 'موظف سري', jobTitle: 'أمين مخزن', basicSalary: 0, phone: '01099990001' },
       });
       assert.equal(empRes.status, 201);
-      const empId = empRes.json.employee.id;
 
-      const paySalaryRes = await req(baseUrl, 'POST', '/api/admin/advances', {
-        token: adminToken,
-        body: {
-          employeeId: empId,
-          type: 'advance',
-          amount: 2000,
-          cashboxId,
-          date: '2026-11-20',
-          reason: 'سلفة راتب سري',
-        },
+      const repHandoverCreate = await req(baseUrl, 'POST', '/api/inventory/rep-transfers', {
+        token: repToken,
+        body: { direction: 'rep_to_owner', amount: 2000, cashboxId, notes: 'توريد سري من المندوب' },
       });
-      assert.equal(paySalaryRes.status, 201);
+      assert.equal(repHandoverCreate.status, 201);
+      const repHandoverConfirm = await req(baseUrl, 'POST', `/api/inventory/rep-transfers/${repHandoverCreate.json.transfer.id}/confirm`, {
+        token: adminToken,
+        body: { note: 'تأكيد استلام التوريد' },
+      });
+      assert.equal(repHandoverConfirm.status, 200);
 
       const adminEmpRpt = await req(
         baseUrl,
         'GET',
-        '/api/reports/comprehensive?reportType=cash_payment_employee&dateFrom=2026-11-20&dateTo=2026-11-20',
+        '/api/reports/comprehensive?reportType=cash_payment_employee',
         { token: adminToken }
       );
       assert.equal(adminEmpRpt.status, 200);
       const adminSalSec = (adminEmpRpt.json.report.sections || []).find((s) => s.key === 'cash_payment_employee');
-      assert.equal((adminSalSec?.rows || []).length, 1, 'Admin must see the seeded employee salary disbursement row');
+      assert.equal((adminSalSec?.rows || []).length, 1, 'Admin must see the seeded employee/rep cash delivery row');
 
       // Inventory-only user (canManageInventory=true, canViewReports=false) -> 403
       const invStaffCreate = await req(baseUrl, 'POST', '/api/admin/users', {
@@ -623,7 +620,7 @@ await (async () => {
       const repDenied = await req(baseUrl, 'GET', '/api/reports/comprehensive', { token: repToken });
       assert.equal(repDenied.status, 403);
 
-      // Staff with canViewReports=true, WITHOUT canManageSalaries/canManageEmployees -> no salary rows/employees leaked
+      // Staff with canViewReports=true, WITHOUT canManageEmployees -> no employee cash rows/employees leaked
       const noSalCreate = await req(baseUrl, 'POST', '/api/admin/users', {
         token: adminToken,
         body: {
@@ -631,7 +628,7 @@ await (async () => {
           username: 'no_salary_reports',
           password: 'StaffPassword!2026',
           role: 'sales',
-          permissions: { canViewReports: true, canManageSalaries: false, canManageEmployees: false },
+          permissions: { canViewReports: true, canManageEmployees: false },
         },
       });
       assert.equal(noSalCreate.status, 201);
@@ -643,7 +640,7 @@ await (async () => {
       const noSalReport = await req(
         baseUrl,
         'GET',
-        '/api/reports/comprehensive?reportType=cash_payment_employee&dateFrom=2026-11-20&dateTo=2026-11-20',
+        '/api/reports/comprehensive?reportType=cash_payment_employee',
         { token: noSalaryStaffToken }
       );
       assert.equal(noSalReport.status, 200);
@@ -652,7 +649,7 @@ await (async () => {
       assert.equal(
         (salarySec?.rows || []).length,
         0,
-        'Salary disbursement rows must be redacted when user lacks salary permission'
+        'Employee cash rows must be redacted when user lacks canManageEmployees permission'
       );
 
       // Explicitly grant canViewReports=true to Rep -> company drawerBalance & profit must be zeroed

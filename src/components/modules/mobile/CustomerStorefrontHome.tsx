@@ -40,7 +40,6 @@ interface CustomerStorefrontHomeProps {
   storefront: StorefrontConfig;
   products: Product[];
   categories: ProductCategory[];
-  cachedMediaMap: Record<string, string>;
   currency: string;
   allowPriceView: boolean;
   favoriteIds: string[];
@@ -77,7 +76,6 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
   storefront,
   products,
   categories,
-  cachedMediaMap,
   currency,
   allowPriceView,
   favoriteIds,
@@ -279,7 +277,6 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
     const available = isProductInStock(prod);
     const isFav = favoriteIds.includes(prod.id);
     const cartEntry = cartItems.find((c) => c.product.id === prod.id && c.unitName === activeUnit);
-    const thumb = cachedMediaMap?.[prod.id] || prod.image;
 
     return (
       <div
@@ -307,20 +304,16 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
           <Heart className={`w-3.5 h-3.5 ${isFav ? 'fill-current' : ''}`} />
         </button>
 
-        {/* Square Product Image */}
+        {/* Product Icon Placeholder */}
         <button
           type="button"
           onClick={() => {
             setQuickQty(1);
             setQuickProduct(prod);
           }}
-          className="w-full aspect-square rounded-lg overflow-hidden bg-slate-50 dark:bg-[#132544] border border-slate-100 dark:border-[#21375C] flex items-center justify-center cursor-pointer"
+          className="w-full py-3 rounded-lg bg-slate-50 dark:bg-[#132544] border border-slate-100 dark:border-[#21375C] flex items-center justify-center cursor-pointer"
         >
-          {thumb ? (
-            <img src={thumb} alt={prod.name} className="w-full h-full object-contain p-1" loading="lazy" />
-          ) : (
-            <Package className="w-8 h-8 text-slate-300 dark:text-[#6E89B2]" />
-          )}
+          <Package className="w-7 h-7 text-slate-300 dark:text-[#6E89B2]" />
         </button>
 
         {/* Product Meta */}
@@ -658,16 +651,8 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
               </button>
             </div>
 
-            <div className="w-full h-36 rounded-lg bg-slate-50 dark:bg-[#132544] border border-slate-100 dark:border-[#21375C] flex items-center justify-center overflow-hidden">
-              {cachedMediaMap?.[quickProduct.id] || quickProduct.image ? (
-                <img
-                  src={cachedMediaMap?.[quickProduct.id] || quickProduct.image}
-                  alt={quickProduct.name}
-                  className="h-full object-contain p-2"
-                />
-              ) : (
-                <Package className="w-10 h-10 text-slate-300 dark:text-[#6E89B2]" />
-              )}
+            <div className="w-full py-5 rounded-lg bg-slate-50 dark:bg-[#132544] border border-slate-100 dark:border-[#21375C] flex items-center justify-center">
+              <Package className="w-10 h-10 text-slate-300 dark:text-[#6E89B2]" />
             </div>
 
             {(() => {

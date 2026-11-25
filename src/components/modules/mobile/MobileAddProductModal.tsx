@@ -2,16 +2,13 @@ import React, { useMemo, useState } from 'react';
 import {
   ArrowRight,
   Barcode,
-  Camera,
   ChevronDown,
   ChevronUp,
   Printer,
   RefreshCw,
-  X,
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { ProductUnit } from '../../../types';
-import { compressImageFileToDataUrl } from '../../../utils/image';
 import { exportHtmlToPdf } from '../../common/PdfExporter';
 
 interface MobileAddProductModalProps {
@@ -34,7 +31,6 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
   const [selectedWarehouseId, setSelectedWarehouseId] = useState(
     warehouses.find((w) => w.isDefault)?.id || warehouses[0]?.id || ''
   );
-  const [image, setImage] = useState('');
 
   // Unit 1 (Base Unit - expanded by default)
   const [unit1Open, setUnit1Open] = useState(true);
@@ -92,19 +88,6 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
   const generateBarcode = () =>
     `622${Date.now().toString().slice(-7)}${Math.floor(10 + Math.random() * 89)}`;
 
-  const handleImagePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const compressed = await compressImageFileToDataUrl(file, 720, 0.8);
-      setImage(compressed);
-    } catch {
-      setError('تعذر قراءة الصورة المختارة.');
-    } finally {
-      e.target.value = '';
-    }
-  };
-
   const handlePrintBarcode = (codeValue: string, unitLabel: string, priceVal: number | '') => {
     const bc = codeValue.trim() || generateBarcode();
     exportHtmlToPdf({
@@ -129,7 +112,6 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
     setNotes('');
     setCategory('');
     setAvailableQty('');
-    setImage('');
     setBaseUnit('');
     setBarcode1('');
     setPurchasePrice1('');
@@ -222,7 +204,6 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
         purchasePrice: p1,
         sellingPrice: s1,
         minStockLevel: 0,
-        image: image || undefined,
         stockPerWarehouse: stockMap,
         status: 'active',
         notes: notes.trim(),
@@ -259,41 +240,6 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
             {error}
           </div>
         )}
-
-        {/* Compact Photo Picker */}
-        <div className="bg-white rounded-lg border border-slate-200 p-2 flex items-center justify-center gap-2">
-          <div className="relative">
-            {image ? (
-              <>
-                <img
-                  src={image}
-                  alt="صورة الصنف"
-                  className="w-12 h-12 rounded-full object-cover border-2 border-[#003589]/30"
-                />
-                <button
-                  type="button"
-                  onClick={() => setImage('')}
-                  className="absolute -top-1 -left-1 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center shadow cursor-pointer"
-                  aria-label="إزالة الصورة"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </>
-            ) : (
-              <label className="w-12 h-12 rounded-full bg-[#EEF3FA] border-2 border-dashed border-[#003589]/40 flex flex-col items-center justify-center text-[#003589] cursor-pointer active:scale-95 transition-transform">
-                <Camera className="w-4 h-4" />
-                <span className="text-[9px] font-bold mt-0.5">صورة</span>
-                <input type="file" accept="image/*" onChange={handleImagePick} className="hidden" />
-              </label>
-            )}
-          </div>
-          {image && (
-            <label className="text-[11px] font-bold text-[#003589] underline cursor-pointer">
-              تغيير الصورة
-              <input type="file" accept="image/*" onChange={handleImagePick} className="hidden" />
-            </label>
-          )}
-        </div>
 
         {/* Core Product Fields */}
         <div className="bg-white rounded-lg border border-slate-200 p-2 space-y-1.5">

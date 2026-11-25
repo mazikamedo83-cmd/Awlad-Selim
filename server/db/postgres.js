@@ -27,7 +27,6 @@ function notifyPgConnectionFailure(reason) {
 
 export function isStrictPostgresMode() {
   if (process.env.AWLAD_REQUIRE_POSTGRES === 'true') return true;
-  if (process.env.AWLAD_ELECTRON === 'true') return false;
   return process.env.NODE_ENV === 'production';
 }
 
@@ -1217,6 +1216,10 @@ export async function initializeSchema(customPool = null) {
       for (const stmt of v14Statements) {
         await txClient.query(stmt);
       }
+
+      // Safe non-destructive cleanup of removed product image references without deleting product/order records
+      await txClient.query('UPDATE products SET image = NULL WHERE image IS NOT NULL');
+      await txClient.query('UPDATE customer_item_order_items SET product_image = NULL WHERE product_image IS NOT NULL');
     }, currentPool);
 
     return { success: true, message: 'تم تطبيق هيكل الجداول والفهارس والتسلسلات في PostgreSQL بنجاح.' };

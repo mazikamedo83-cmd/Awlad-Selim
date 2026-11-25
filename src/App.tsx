@@ -96,9 +96,6 @@ const PAGE_PERMISSIONS: Partial<Record<NavItemKey, keyof UserPermissions | Array
   'rep-item-transfers': 'canManageTransfers',
   'refresh-sync': ['canManageReps', 'canManageTransfers', 'canManageSales', 'canManageAccounts', 'canApprove'],
   'employees': 'canManageEmployees',
-  'attendance': 'canManageEmployees',
-  'advances': 'canManageSalaries',
-  'payroll': 'canManageSalaries',
   'reports': 'canViewReports',
   'users': 'canManageUsers',
   'audit-log': 'canManageUsers',
@@ -579,13 +576,7 @@ const MainAppContent: React.FC = () => {
         return <RefreshSyncScreen />;
 
       case 'employees':
-        return <EmployeesView initialTab="employees" />;
-      case 'attendance':
-        return <EmployeesView initialTab="attendance" />;
-      case 'advances':
-        return <EmployeesView initialTab="advances" />;
-      case 'payroll':
-        return <EmployeesView initialTab="payrolls" />;
+        return <EmployeesView />;
 
       case 'reports':
         return <ReportsView />;

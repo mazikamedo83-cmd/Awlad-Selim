@@ -78,7 +78,6 @@ const PERMISSION_LABELS_AR: Record<string, string> = {
   canSend: 'إرسال المزامنة',
   canReceive: 'استلام المزامنة',
   canManageEmployees: 'شؤون الموظفين',
-  canManageSalaries: 'صرف الرواتب',
   canManageUsers: 'إدارة المستخدمين',
   canManageSettings: 'إعدادات النظام',
   canCreateStockCount: 'إنشاء جرد مخزن',
@@ -640,12 +639,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
       const seenFileCodes = new Set<string>();
       const seenFileNames = new Set<string>();
 
-      // Supports the supplied MySQL INSERT catalog as well as simple CSV/TXT lists.
-      const sqlRows = [...rawText.matchAll(/INSERT\s+INTO\s+`?products`?\s*\([^)]*\)\s*VALUES\s*\(\s*'((?:\\'|[^'])*)'\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*'([^']*)'\s*,\s*'((?:\\'|[^'])*)'\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/gim)];
+      // Supports the supplied MySQL INSERT catalog (8-col or legacy 9-col with ignored img) as well as simple CSV/TXT lists.
+      const sqlRows = [...rawText.matchAll(/INSERT\s+INTO\s+`?products`?\s*\([^)]*\)\s*VALUES\s*\(\s*'((?:\\'|[^'])*)'\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*(?:'[^']*'\s*,\s*)?'((?:\\'|[^'])*)'\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/gim)];
 
       if (sqlRows.length > 0) {
         sqlRows.forEach((match, index) => {
-          const [, rawName, price, oldPrice, imageFile, rawDescription, stock, , categoryId] = match;
+          const [, rawName, price, oldPrice, rawDescription, stock, , categoryId] = match;
           const name = rawName.replace(/\\'/g, "'");
           const description = rawDescription.replace(/\\'/g, "'");
           const code = `AS-${String(index + 1).padStart(4, '0')}`;
@@ -659,7 +658,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             sourceFile: file.name, isDuplicateCode, isDuplicateName,
             isValid: name.trim().length > 1 && !isDuplicateCode, status: 'pending',
             sellingPrice: Number(price), oldPrice: Number(oldPrice),
-            image: `/product-images/${imageFile}`, description: `${description} | رصيد المصدر: ${stock}`,
+            description: `${description} | رصيد المصدر: ${stock}`,
           });
         });
       } else {
@@ -762,7 +761,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
           minStockLevel: 20,
           stockPerWarehouse: { [defaultWarehouseId]: 0 },
           status: 'active',
-          image: item.image,
           importBatchId,
           importedFromFile: true,
           sourceFileName: item.sourceFile || importFileName,

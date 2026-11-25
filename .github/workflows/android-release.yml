@@ -2,6 +2,9 @@ name: Build AWLAD SELIM Android Production Release
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
@@ -84,6 +87,8 @@ jobs:
       - name: Build production web bundle
         run: |
           bun run build
+          test -f dist/awlad-selim-logo.png
+          test ! -e dist/product-images
           test ! -e dist/assets/aistudio
 
       - name: Run Electron bootstrap and offline dist verification
@@ -92,6 +97,8 @@ jobs:
       - name: Sync Capacitor Android project
         run: |
           npx cap sync android
+          test -f android/app/src/main/assets/public/awlad-selim-logo.png
+          test ! -e android/app/src/main/assets/public/product-images
           test ! -e android/app/src/main/assets/public/assets/aistudio
 
       - name: Validate Production Signing Secrets & Decode Keystore
@@ -171,12 +178,12 @@ jobs:
             exit 1
           fi
 
-          if unzip -l "$APK_PATH" | grep -iE "\.jks$|\.keystore$|keystore\.properties$|\.env$|\.jwt_secret$|database\.json$"; then
-            echo "ERROR: Secret or database file leaked inside APK!"
+          if unzip -l "$APK_PATH" | grep -iE "\.jks$|\.keystore$|keystore\.properties$|\.env$|\.jwt_secret$|database\.json$|product-images/|assets/aistudio/"; then
+            echo "ERROR: Secret, deleted asset, or database file leaked inside APK!"
             exit 1
           fi
-          if unzip -l "$AAB_PATH" | grep -iE "\.jks$|\.keystore$|keystore\.properties$|\.env$|\.jwt_secret$|database\.json$"; then
-            echo "ERROR: Secret or database file leaked inside AAB!"
+          if unzip -l "$AAB_PATH" | grep -iE "\.jks$|\.keystore$|keystore\.properties$|\.env$|\.jwt_secret$|database\.json$|product-images/|assets/aistudio/"; then
+            echo "ERROR: Secret, deleted asset, or database file leaked inside AAB!"
             exit 1
           fi
 

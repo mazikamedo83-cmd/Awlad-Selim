@@ -64,9 +64,6 @@ export const SHORTCUT_CATALOG: ShortcutDefinition[] = [
 
   // عام والموظفين والإعدادات
   { actionId: 'nav:employees', label: 'شئون الموظفين', category: 'عام', defaultCombo: 'Alt+E', permission: 'canManageEmployees', navigateTo: 'employees' },
-  { actionId: 'nav:attendance', label: 'الحضور والغياب', category: 'عام', defaultCombo: '', permission: 'canManageEmployees', navigateTo: 'attendance' },
-  { actionId: 'nav:advances', label: 'السلف والخصومات والمكافآت', category: 'عام', defaultCombo: '', permission: 'canManageSalaries', navigateTo: 'advances' },
-  { actionId: 'nav:payroll', label: 'مسير صرف الرواتب', category: 'عام', defaultCombo: '', permission: 'canManageSalaries', navigateTo: 'payroll' },
   { actionId: 'nav:reports', label: 'التقارير والتحليلات المالية', category: 'عام', defaultCombo: 'F9', permission: 'canViewReports', allowInInputs: true, navigateTo: 'reports' },
   { actionId: 'nav:users', label: 'إدارة المستخدمين والصلاحيات', category: 'عام', defaultCombo: '', permission: 'canManageUsers', navigateTo: 'users' },
   { actionId: 'nav:audit-log', label: 'سجل العمليات (Audit)', category: 'عام', defaultCombo: '', permission: 'canManageUsers', navigateTo: 'audit-log' },

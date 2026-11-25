@@ -13,9 +13,6 @@ import {
   Representative,
   RepTransfer,
   Employee,
-  EmployeeAdvanceDeduction,
-  AttendanceRecord,
-  SalaryPayroll,
   ExpenseIncomeRecord,
   StockMovement,
   AuditLogItem,
@@ -64,9 +61,6 @@ export interface DatabaseState {
   orderAdvancePayments?: OrderAdvancePayment[];
   syncConflicts?: SyncConflictRecord[];
   employees: Employee[];
-  advancesDeductions: EmployeeAdvanceDeduction[];
-  attendance: AttendanceRecord[];
-  payrolls: SalaryPayroll[];
   expenseIncomes: ExpenseIncomeRecord[];
   stockMovements: StockMovement[];
   categories?: ProductCategory[];
@@ -113,9 +107,6 @@ export function getEmptyClientDatabaseState(): DatabaseState {
     orderAdvancePayments: [],
     syncConflicts: [],
     employees: [],
-    advancesDeductions: [],
-    attendance: [],
-    payrolls: [],
     expenseIncomes: [],
     stockMovements: [],
     categories: [],

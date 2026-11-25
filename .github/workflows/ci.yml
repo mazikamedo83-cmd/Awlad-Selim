@@ -56,6 +56,8 @@ jobs:
         run: |
           bun run build
           test -s dist/index.html
+          test -f dist/awlad-selim-logo.png
+          test ! -e dist/product-images
           test ! -e dist/assets/aistudio
 
       - name: Run full backend, reports, audit, pairing & client verification suites

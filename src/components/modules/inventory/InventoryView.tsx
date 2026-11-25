@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Boxes, Plus, ArrowLeftRight,
   Trash2, Edit, Download, RefreshCw,
-  Tag, Ruler, Warehouse as WarehouseIcon, History, Image as ImageIcon, Power, X
+  Tag, Ruler, Warehouse as WarehouseIcon, History, Package, Power
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -14,7 +14,6 @@ import { ProductSearchSelect } from '../../common/ProductSearchSelect';
 import { SearchableFilterSelect } from '../../common/SearchableFilterSelect';
 import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 import { exportToExcel } from '../../common/ExcelExporter';
-import { compressImageFileToDataUrl } from '../../../utils/image';
 import { StockCountView } from './StockCountView';
 import { StockTransfersView } from './StockTransfersView';
 
@@ -131,7 +130,6 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
     purchasePrice: number | '';
     sellingPrice: number | '';
     minStockLevel: number | '';
-    image?: string;
     notes: string;
     initialStockPerWarehouse: Record<string, number>;
   }>({
@@ -146,7 +144,6 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
     purchasePrice: '',
     sellingPrice: '',
     minStockLevel: '',
-    image: '',
     notes: '',
     initialStockPerWarehouse: {},
   });
@@ -229,18 +226,6 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
     if (isDamageModalOpen && !damageProdId && products[0]?.id) setDamageProdId(products[0].id);
   }, [isTransferModalOpen, isAdjustModalOpen, isDamageModalOpen, transferProdId, adjustProdId, damageProdId, products]);
 
-  const handleProductImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    try {
-      const dataUrl = await compressImageFileToDataUrl(file);
-      setFormData((prev) => ({ ...prev, image: dataUrl }));
-    } catch (err: any) {
-      setProductModalError(err?.message || 'تعذر قراءة أو ضغط صورة الصنف');
-    }
-  };
-
   const handleOpenAdd = () => {
     const nextCode = `FOOD-${(products.length + 101)}`;
     const nextBarcode = `622100100${(products.length + 1).toString().padStart(2, '0')}`;
@@ -257,7 +242,6 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
       purchasePrice: '',
       sellingPrice: '',
       minStockLevel: '',
-      image: '',
       notes: '',
       initialStockPerWarehouse: {},
     });
@@ -279,7 +263,6 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
       purchasePrice: p.purchasePrice,
       sellingPrice: p.sellingPrice,
       minStockLevel: p.minStockLevel,
-      image: p.image || '',
       notes: p.notes || '',
       initialStockPerWarehouse: p.stockPerWarehouse,
     });
@@ -333,7 +316,6 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
           purchasePrice: purchasePriceVal,
           sellingPrice: sellingPriceVal,
           minStockLevel: minStockVal,
-          image: formData.image || '',
           notes: formData.notes.trim(),
         });
       } else {
@@ -349,7 +331,6 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
           purchasePrice: purchasePriceVal,
           sellingPrice: sellingPriceVal,
           minStockLevel: minStockVal,
-          image: formData.image || undefined,
           stockPerWarehouse: formData.initialStockPerWarehouse,
           status: 'active',
           notes: formData.notes.trim(),
@@ -1519,19 +1500,15 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
         columns={[
           {
             key: 'code',
-            header: 'الصورة / الكود',
+            header: 'الكود / الباركود',
             sortable: true,
             sortValue: (prod) => prod.code,
             exportValue: (prod) => `${prod.code} ${prod.barcode || ''}`.trim(),
             render: (prod) => (
               <div className="flex items-center gap-2.5 font-mono">
-                {prod.image ? (
-                  <img src={prod.image} alt={prod.name} className="w-10 h-10 rounded-lg object-cover border border-slate-200 shrink-0" />
-                ) : (
-                  <div className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
-                    <ImageIcon className="w-4 h-4" />
-                  </div>
-                )}
+                <div className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
+                  <Package className="w-4 h-4" />
+                </div>
                 <div>
                   <div className="font-bold text-blue-950">{prod.code}</div>
                   <div className="text-[10px] text-slate-400">{prod.barcode || '-'}</div>
@@ -1770,89 +1747,56 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
             </div>
           )}
 
-          {/* Product Name + Image Upload */}
-          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-start">
-            <div className="sm:col-span-8 space-y-2.5">
+          <div className="space-y-2.5">
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">اسم الصنف الغذائي: *</label>
+              <input
+                type="text"
+                required
+                placeholder="مثال: زيت عباد الشمس عافية 1 لتر"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold text-slate-900 focus:border-blue-700 outline-hidden"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">اسم الصنف الغذائي: *</label>
+                <label className="block font-bold text-slate-700 mb-1">كود الصنف: *</label>
                 <input
                   type="text"
                   required
-                  placeholder="مثال: زيت عباد الشمس عافية 1 لتر"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold text-slate-900 focus:border-blue-700 outline-hidden"
+                  value={formData.code}
+                  onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-bold"
                 />
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">كود الصنف: *</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.code}
-                    onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">الباركود (اختياري):</label>
-                  <input
-                    type="text"
-                    value={formData.barcode}
-                    onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
-                    placeholder="اتركه فارغاً أو أدخل الباركود"
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">التصنيف: *</label>
-                  <input
-                    type="text"
-                    required
-                    list="inventory-categories-datalist"
-                    value={formData.category}
-                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                    className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold"
-                  />
-                  <datalist id="inventory-categories-datalist">
-                    {categories.filter((c) => c !== 'all').map((c) => (
-                      <option key={c} value={c} />
-                    ))}
-                  </datalist>
-                </div>
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">الباركود (اختياري):</label>
+                <input
+                  type="text"
+                  value={formData.barcode}
+                  onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
+                  placeholder="اتركه فارغاً أو أدخل الباركود"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-bold"
+                />
               </div>
-            </div>
-
-            <div className="sm:col-span-4 bg-slate-50 border border-slate-200 rounded-lg p-2.5 space-y-1.5 text-center">
-              <label className="block font-bold text-slate-700 text-[11px]">صورة الصنف (اختياري):</label>
-              {formData.image ? (
-                <div className="relative inline-block">
-                  <img
-                    src={formData.image}
-                    alt="صورة الصنف"
-                    className="w-20 h-20 rounded-lg object-cover border border-slate-300 mx-auto"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setFormData((prev) => ({ ...prev, image: '' }))}
-                    className="absolute -top-2 -left-2 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center shadow cursor-pointer"
-                    title="إزالة الصورة"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              ) : (
-                <div className="w-20 h-20 rounded-lg border border-dashed border-slate-300 bg-white flex flex-col items-center justify-center text-slate-400 mx-auto">
-                  <ImageIcon className="w-5 h-5 mb-0.5" />
-                  <span className="text-[10px]">بدون صورة</span>
-                </div>
-              )}
-              <label className="inline-block px-2.5 py-1 bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] border border-[#DCE6F5] rounded-md font-bold cursor-pointer text-[11px]">
-                اختيار صورة الصنف
-                <input type="file" accept="image/*" onChange={handleProductImageUpload} className="hidden" />
-              </label>
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">التصنيف: *</label>
+                <input
+                  type="text"
+                  required
+                  list="inventory-categories-datalist"
+                  value={formData.category}
+                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                  className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold"
+                />
+                <datalist id="inventory-categories-datalist">
+                  {categories.filter((c) => c !== 'all').map((c) => (
+                    <option key={c} value={c} />
+                  ))}
+                </datalist>
+              </div>
             </div>
           </div>
 
@@ -2393,17 +2337,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
         {previewProduct && (
           <div className="space-y-3 text-xs">
             <div className="flex flex-col sm:flex-row gap-3 p-2.5 rounded-lg bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C]">
-              {previewProduct.image ? (
-                <img
-                  src={previewProduct.image}
-                  alt={previewProduct.name}
-                  className="w-20 h-20 rounded-lg object-cover border border-slate-200 dark:border-[#21375C] shrink-0"
-                />
-              ) : (
-                <div className="w-20 h-20 rounded-lg bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#21375C] flex items-center justify-center text-slate-400 shrink-0">
-                  <ImageIcon className="w-7 h-7" />
-                </div>
-              )}
+              <div className="w-16 h-16 rounded-lg bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#21375C] flex items-center justify-center text-slate-400 shrink-0">
+                <Package className="w-7 h-7" />
+              </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 flex-1">
                 <div>
                   <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">التصنيف</span>

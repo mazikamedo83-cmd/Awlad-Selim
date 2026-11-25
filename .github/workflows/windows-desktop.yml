@@ -107,6 +107,17 @@ jobs:
           }
           node server/tests/verifyElectronBootstrap.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $unpackedApp = "dist-electron/win-unpacked/resources/app"
+          if (-not (Test-Path "$unpackedApp/dist/awlad-selim-logo.png")) {
+            Write-Error "Missing official logo in $unpackedApp/dist/awlad-selim-logo.png"
+            exit 1
+          }
+          foreach ($forbidden in @("$unpackedApp/dist/product-images", "$unpackedApp/dist/assets/aistudio", "$unpackedApp/server/data", "$unpackedApp/server/tests", "$unpackedApp/.env")) {
+            if (Test-Path $forbidden) {
+              Write-Error "Forbidden file or folder leaked into packaged Windows app: $forbidden"
+              exit 1
+            }
+          }
           bun run windows:customer-zip
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/package-windows-customer-zip.mjs --verify-only --dist-dir=dist-electron

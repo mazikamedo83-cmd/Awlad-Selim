@@ -149,7 +149,6 @@ export const StorefrontManagerView: React.FC = () => {
   const {
     products,
     categories,
-    cachedMediaMap,
     settings,
     publishedStorefront,
     storefrontDraft,
@@ -1523,16 +1522,12 @@ export const StorefrontManagerView: React.FC = () => {
                 defaultPageSize={15}
                 columns={[
                   {
-                    key: 'image',
-                    header: 'الصورة',
-                    width: '50px',
-                    render: (p) => (
-                      <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 overflow-hidden flex items-center justify-center">
-                        {cachedMediaMap?.[p.id] || p.image ? (
-                          <img src={cachedMediaMap?.[p.id] || p.image} alt={p.name} className="w-full h-full object-contain p-0.5" />
-                        ) : (
-                          <Package className="w-4 h-4 text-slate-300" />
-                        )}
+                    key: 'code',
+                    header: 'الرمز',
+                    width: '64px',
+                    render: () => (
+                      <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center">
+                        <Package className="w-4 h-4 text-slate-300" />
                       </div>
                     ),
                   },
@@ -1615,7 +1610,6 @@ export const StorefrontManagerView: React.FC = () => {
                   storefront={draft}
                   products={activeProducts}
                   categories={categories}
-                  cachedMediaMap={cachedMediaMap}
                   currency={settings.currency || 'ج.م'}
                   allowPriceView={true}
                   favoriteIds={[]}

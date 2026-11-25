@@ -48,12 +48,11 @@ function sanitizeAdvancePaymentForViewer(adv, viewer = null) {
   return safe;
 }
 
-function enrichOrderCollection(orders, productImageMap, invoiceMap = new Map(), advPaymentsMap = new Map(), viewer = null) {
+function enrichOrderCollection(orders, invoiceMap = new Map(), advPaymentsMap = new Map(), viewer = null) {
   const hideCashboxMeta = Boolean(viewer && !canViewCashboxBalances(viewer));
   return (orders || []).map((ord) => {
-    const items = (ord.items || []).map((it) => ({
+    const items = (ord.items || []).map(({ productImage: _ignoredImg, ...it }) => ({
       ...it,
-      productImage: it.productImage || productImageMap.get(it.productId) || undefined,
     }));
     const computedTotal = items.reduce(
       (sum, it) => sum + Number(it.unitPrice || 0) * Number(it.quantity || 0),
@@ -231,7 +230,7 @@ export async function listOrders(authContext, filters = {}) {
         `SELECT * FROM order_status_history WHERE ${ordHistPred} ORDER BY changed_at ASC`,
         ordHistParams
       ),
-      pool.query(`SELECT id, image FROM products WHERE image IS NOT NULL AND image <> ''`),
+      Promise.resolve({ rows: [] }),
       pool.query(`SELECT * FROM order_advance_payments WHERE ${ordAdvPred} ORDER BY created_at ASC`, ordAdvParams),
       invIds.length
         ? pool.query(`SELECT id, invoice_number, grand_total, paid_amount, remaining_amount FROM invoices WHERE ${invPred}`, invParams)
@@ -240,11 +239,6 @@ export async function listOrders(authContext, filters = {}) {
         ? pool.query(`SELECT * FROM invoice_payments WHERE ${invPayPred} ORDER BY created_at ASC`, invPayParams)
         : Promise.resolve({ rows: [] }),
     ]);
-
-    const productImageMap = new Map();
-    for (const p of prodImgRes.rows) {
-      if (p.image) productImageMap.set(p.id, p.image);
-    }
 
     const invPaymentsMap = new Map();
     for (const p of invPayRes.rows) {
@@ -301,7 +295,6 @@ export async function listOrders(authContext, filters = {}) {
 
     const list = enrichOrderCollection(
       ordRes.rows.map((r) => mapPgOrderRow(r, itemsMap.get(r.id) || [], histMap.get(r.id) || [])),
-      productImageMap,
       invoiceMap,
       advPaymentsMap,
       actor
@@ -310,10 +303,6 @@ export async function listOrders(authContext, filters = {}) {
   }
 
   const db = readJsonDatabase();
-  const productImageMap = new Map();
-  for (const p of db.products || []) {
-    if (p.image) productImageMap.set(p.id, p.image);
-  }
   const invoiceMap = new Map((db.invoices || []).map((inv) => [inv.id, inv]));
   const advPaymentsMap = new Map();
   for (const a of db.orderAdvancePayments || []) {
@@ -335,7 +324,7 @@ export async function listOrders(authContext, filters = {}) {
     })
     .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
 
-  return enrichOrderCollection(scoped, productImageMap, invoiceMap, advPaymentsMap, actor).filter((o) =>
+  return enrichOrderCollection(scoped, invoiceMap, advPaymentsMap, actor).filter((o) =>
     matchesOrderFilters(o, filters)
   );
 }
@@ -369,10 +358,10 @@ export async function getOrderById(orderId, authContext) {
       }
     }
 
-    const [itemsRes, histRes, prodImgRes, advPayRes, invRes, invPayRes] = await Promise.all([
+    const [itemsRes, histRes, _prodImgUnused, advPayRes, invRes, invPayRes] = await Promise.all([
       pool.query(`SELECT * FROM customer_item_order_items WHERE order_id = $1`, [orderId]),
       pool.query(`SELECT * FROM order_status_history WHERE order_id = $1 ORDER BY changed_at ASC`, [orderId]),
-      pool.query(`SELECT id, image FROM products WHERE image IS NOT NULL AND image <> ''`),
+      Promise.resolve({ rows: [] }),
       pool.query(`SELECT * FROM order_advance_payments WHERE order_id = $1 ORDER BY created_at ASC`, [orderId]),
       row.invoice_id
         ? pool.query(`SELECT id, invoice_number, grand_total, paid_amount, remaining_amount FROM invoices WHERE id = $1`, [row.invoice_id])
@@ -381,7 +370,6 @@ export async function getOrderById(orderId, authContext) {
         ? pool.query(`SELECT * FROM invoice_payments WHERE invoice_id = $1 ORDER BY created_at ASC`, [row.invoice_id])
         : Promise.resolve({ rows: [] }),
     ]);
-    const productImageMap = new Map(prodImgRes.rows.map((p) => [p.id, p.image]));
     const invoiceMap = new Map();
     if (invRes.rows[0]) {
       const inv = invRes.rows[0];
@@ -411,7 +399,6 @@ export async function getOrderById(orderId, authContext) {
     );
     return enrichOrderCollection(
       [mapPgOrderRow(row, itemsRes.rows, histRes.rows)],
-      productImageMap,
       invoiceMap,
       advPaymentsMap,
       actor
@@ -433,14 +420,11 @@ export async function getOrderById(orderId, authContext) {
       throw new AppError(403, 'غير مصرح لك بعرض طلبات غير مخصصة لك', 'FORBIDDEN_ORDER_ACCESS');
     }
   }
-  const productImageMap = new Map(
-    (db.products || []).filter((p) => p.image).map((p) => [p.id, p.image])
-  );
   const invoiceMap = new Map((db.invoices || []).map((inv) => [inv.id, inv]));
   const advPaymentsMap = new Map([
     [orderId, (db.orderAdvancePayments || []).filter((a) => a.orderId === orderId)],
   ]);
-  return enrichOrderCollection([order], productImageMap, invoiceMap, advPaymentsMap, actor)[0];
+  return enrichOrderCollection([order], invoiceMap, advPaymentsMap, actor)[0];
 }
 
 export async function createCustomerOrder(payload, authContext) {
@@ -538,7 +522,6 @@ export async function createCustomerOrder(payload, authContext) {
           productId: prod.id,
           productCode: prod.code,
           productName: prod.name,
-          productImage: prod.image || undefined,
           unit: unitName,
           unitFactor,
           quantity: qty,
@@ -601,7 +584,7 @@ export async function createCustomerOrder(payload, authContext) {
             it.productId,
             it.productCode,
             it.productName,
-            it.productImage || null,
+            null,
             it.unit,
             it.unitFactor,
             it.quantity,
@@ -683,7 +666,6 @@ export async function createCustomerOrder(payload, authContext) {
         productId: prod.id,
         productCode: prod.code,
         productName: prod.name,
-        productImage: prod.image || undefined,
         unit: unitName,
         unitFactor: getUnitFactor(prod, unitName),
         quantity: qty,
@@ -836,7 +818,6 @@ export async function updateOwnPendingOrder(orderId, payload = {}, authContext) 
             productId: prod.id,
             productCode: prod.code,
             productName: prod.name,
-            productImage: prod.image || undefined,
             unit: unitName,
             unitFactor,
             quantity: qty,
@@ -851,7 +832,7 @@ export async function updateOwnPendingOrder(orderId, payload = {}, authContext) 
           await client.query(
             `INSERT INTO customer_item_order_items (id, order_id, product_id, product_code, product_name, product_image, unit, unit_factor, quantity, reference_unit_price)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-            [it.id, orderId, it.productId, it.productCode, it.productName, it.productImage || null, it.unit, it.unitFactor, it.quantity, it.unitPrice]
+            [it.id, orderId, it.productId, it.productCode, it.productName, null, it.unit, it.unitFactor, it.quantity, it.unitPrice]
           );
         }
       }
@@ -924,7 +905,6 @@ export async function updateOwnPendingOrder(orderId, payload = {}, authContext) 
           productId: prod.id,
           productCode: prod.code,
           productName: prod.name,
-          productImage: prod.image || undefined,
           unit: unitName,
           unitFactor: getUnitFactor(prod, unitName),
           quantity: qty,
@@ -1763,8 +1743,7 @@ export async function updateOrderDeliveryStatus(orderId, payload, authContext) {
   if (rawProof) {
     const isValidImageRef =
       /^data:image\/(png|jpe?g|webp|gif);base64,[a-z0-9+/=\s]+$/i.test(rawProof) ||
-      /^https?:\/\/\S+$/i.test(rawProof) ||
-      rawProof.startsWith('/product-images/');
+      /^https?:\/\/\S+$/i.test(rawProof);
     if (isValidImageRef && rawProof.length <= 2_500_000) {
       deliveryProof = rawProof;
     } else {
@@ -2616,11 +2595,11 @@ export async function advanceOrderStage(orderId, payload, authContext) {
         client,
       });
 
-      const [updatedOrd, itemsRes, histRes, prodImgRes, advPayRes, invRes, invPayRes] = await Promise.all([
+      const [updatedOrd, itemsRes, histRes, _prodImgUnused, advPayRes, invRes, invPayRes] = await Promise.all([
         client.query(`SELECT * FROM customer_item_orders WHERE id = $1`, [orderId]),
         client.query(`SELECT * FROM customer_item_order_items WHERE order_id = $1`, [orderId]),
         client.query(`SELECT * FROM order_status_history WHERE order_id = $1 ORDER BY changed_at ASC`, [orderId]),
-        client.query(`SELECT id, image FROM products WHERE image IS NOT NULL AND image <> ''`),
+        Promise.resolve({ rows: [] }),
         client.query(`SELECT * FROM order_advance_payments WHERE order_id = $1 ORDER BY created_at ASC`, [orderId]),
         row.invoice_id
           ? client.query(`SELECT id, invoice_number, grand_total, paid_amount, remaining_amount FROM invoices WHERE id = $1`, [row.invoice_id])
@@ -2629,7 +2608,6 @@ export async function advanceOrderStage(orderId, payload, authContext) {
           ? client.query(`SELECT * FROM invoice_payments WHERE invoice_id = $1 ORDER BY created_at ASC`, [row.invoice_id])
           : Promise.resolve({ rows: [] }),
       ]);
-      const productImageMap = new Map(prodImgRes.rows.map((p) => [p.id, p.image]));
       const invoiceMap = new Map();
       if (invRes.rows[0]) {
         const invRow = invRes.rows[0];
@@ -2659,7 +2637,6 @@ export async function advanceOrderStage(orderId, payload, authContext) {
       );
       const enrichedOrder = enrichOrderCollection(
         [mapPgOrderRow(updatedOrd.rows[0], itemsRes.rows, histRes.rows)],
-        productImageMap,
         invoiceMap,
         advPaymentsMap,
         actor
@@ -2795,14 +2772,13 @@ export async function advanceOrderStage(orderId, payload, authContext) {
       changedAt: now,
     });
 
-    const productImageMap = new Map((db.products || []).filter((p) => p.image).map((p) => [p.id, p.image]));
     const invoiceMap = new Map((db.invoices || []).map((inv) => [inv.id, inv]));
     const advPaymentsMap = new Map();
     advPaymentsMap.set(
       orderId,
       (db.orderAdvancePayments || []).filter((a) => a.orderId === orderId)
     );
-    const enrichedOrder = enrichOrderCollection([ord], productImageMap, invoiceMap, advPaymentsMap, actor)[0];
+    const enrichedOrder = enrichOrderCollection([ord], invoiceMap, advPaymentsMap, actor)[0];
 
     const payloadOut = { order: enrichedOrder, invoice: updatedInvoice, advancePayment };
     if (scopedIdem) {

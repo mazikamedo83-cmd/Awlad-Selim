@@ -84,9 +84,6 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
     repItemTransfers: 0,
     customerItemOrders: 0,
     employees: 0,
-    advancesDeductions: 0,
-    attendance: 0,
-    payrolls: 0,
     expenseIncomes: 0,
     stockMovements: 0,
     ownerAccounts: 0,
@@ -160,9 +157,6 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
     const repItemTransfers = Array.isArray(sourceData.repItemTransfers) ? sourceData.repItemTransfers : [];
     const customerItemOrders = Array.isArray(sourceData.customerItemOrders) ? sourceData.customerItemOrders : [];
     const employees = Array.isArray(sourceData.employees) ? sourceData.employees : [];
-    const advancesDeductions = Array.isArray(sourceData.advancesDeductions) ? sourceData.advancesDeductions : [];
-    const attendance = Array.isArray(sourceData.attendance) ? sourceData.attendance : [];
-    const payrolls = Array.isArray(sourceData.payrolls) ? sourceData.payrolls : [];
     const expenseIncomes = Array.isArray(sourceData.expenseIncomes) ? sourceData.expenseIncomes : [];
     const stockMovements = Array.isArray(sourceData.stockMovements) ? sourceData.stockMovements : [];
     const ownerAccounts = Array.isArray(sourceData.ownerAccounts) ? sourceData.ownerAccounts : [];
@@ -191,8 +185,8 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
       customers.length + suppliers.length + invoices.length + embeddedInvoiceItems + embeddedPayments +
       invoiceReturns.length + cashboxes.length + financialTransactions.length + cheques.length +
       installments.length + representatives.length + repTransfers.length + repItemTransfers.length +
-      customerItemOrders.length + employees.length + advancesDeductions.length + attendance.length +
-      payrolls.length + expenseIncomes.length + stockMovements.length +
+      customerItemOrders.length + employees.length +
+      expenseIncomes.length + stockMovements.length +
       ownerAccounts.length + ownerTransactions.length + stockCounts.length + stockTransferRequests.length +
       auditLogs.length + (sourceData.settings ? 1 : 0);
 
@@ -455,7 +449,7 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
               purchase_price = EXCLUDED.purchase_price,
               selling_price = EXCLUDED.selling_price,
               stock_per_warehouse = EXCLUDED.stock_per_warehouse,
-              image = EXCLUDED.image,
+              image = NULL,
               status = EXCLUDED.status,
               import_batch_id = EXCLUDED.import_batch_id,
               imported_from_file = EXCLUDED.imported_from_file,
@@ -474,7 +468,7 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
             sellingPrice,
             minStock,
             JSON.stringify(p.stockPerWarehouse || {}),
-            p.image || null,
+            null,
             p.notes || '',
             status,
             p.importBatchId || null,
@@ -1038,7 +1032,7 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
                 it.productId,
                 prod?.code || '',
                 it.productName,
-                it.productImage || prod?.image || null,
+                null,
                 it.unit || prod?.baseUnit || 'قطعة',
                 Number(it.unitFactor || 1),
                 Number(it.quantity || 1),
@@ -1154,36 +1148,6 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
             `UPDATE users SET employee_id = $1 WHERE id = $2 AND (employee_id IS NULL OR employee_id = $1)`,
             [empId, uId]
           );
-        }
-
-        for (const adv of advancesDeductions) {
-          if (!employees.some((e) => e.id === adv.employeeId)) continue;
-          await client.query(`
-            INSERT INTO advances_deductions (id, employee_id, employee_name, type, amount, date, reason, cashbox_id, is_settled, status, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active', $10)
-            ON CONFLICT (id) DO UPDATE SET is_settled = EXCLUDED.is_settled;
-          `, [adv.id, adv.employeeId, adv.employeeName, adv.type, Number(adv.amount || 0), adv.date, adv.reason || '', adv.cashboxId || null, Boolean(adv.isSettled), adv.createdAt || new Date().toISOString()]);
-          details.advancesDeductions++;
-        }
-
-        for (const att of attendance) {
-          if (!employees.some((e) => e.id === att.employeeId)) continue;
-          await client.query(`
-            INSERT INTO attendance (id, employee_id, employee_name, date, status, check_in_time, check_out_time, notes)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            ON CONFLICT (id) DO NOTHING;
-          `, [att.id, att.employeeId, att.employeeName, att.date, att.status, att.checkIn || null, att.checkOut || null, att.notes || '']);
-          details.attendance++;
-        }
-
-        for (const pay of payrolls) {
-          if (!employees.some((e) => e.id === pay.employeeId)) continue;
-          await client.query(`
-            INSERT INTO payrolls (id, payroll_number, month, year, employee_id, employee_name, basic_salary, allowances, deductions, advances, net_salary, payment_status, payment_date, cashbox_id, notes)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-            ON CONFLICT (id) DO NOTHING;
-          `, [pay.id, pay.payrollNumber, String(pay.month), pay.year || null, pay.employeeId, pay.employeeName, Number(pay.basicSalary || 0), Number(pay.bonusesTotal || 0), Number(pay.deductionsTotal || 0), Number(pay.advancesTotal || 0), Number(pay.netSalary || 0), pay.status || 'paid', pay.paidDate || null, pay.cashboxId || null, pay.notes || '']);
-          details.payrolls++;
         }
 
         for (const ei of expenseIncomes) {
@@ -1453,9 +1417,6 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
       details.repItemTransfers = repItemTransfers.length;
       details.customerItemOrders = customerItemOrders.length;
       details.employees = employees.length;
-      details.advancesDeductions = advancesDeductions.length;
-      details.attendance = attendance.length;
-      details.payrolls = payrolls.length;
       details.expenseIncomes = expenseIncomes.length;
       details.stockMovements = stockMovements.length;
       details.ownerAccounts = ownerAccounts.length;
@@ -1475,8 +1436,8 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
       details.customers + details.suppliers + details.invoices + details.invoiceItems + details.payments +
       details.returns + details.cashboxes + details.financialTransactions + details.cheques +
       details.installments + details.representatives + details.repTransfers + details.repItemTransfers +
-      details.customerItemOrders + details.employees + details.advancesDeductions + details.attendance +
-      details.payrolls + details.expenseIncomes + details.stockMovements +
+      details.customerItemOrders + details.employees +
+      details.expenseIncomes + details.stockMovements +
       details.ownerAccounts + details.ownerTransactions + details.stockCounts + details.stockTransferRequests +
       details.auditLogs + details.settings;
 

@@ -26,7 +26,6 @@ export interface UserPermissions {
   canManageReps: boolean;
   canManageTransfers: boolean;
   canManageEmployees: boolean;
-  canManageSalaries: boolean;
   canManageUsers: boolean;
   canManageSettings: boolean;
   canAllowNegativeInventory: boolean;
@@ -80,9 +79,6 @@ export type ShortcutActionId =
   | 'nav:rep-transfers'
   | 'nav:rep-item-transfers'
   | 'nav:employees'
-  | 'nav:attendance'
-  | 'nav:advances'
-  | 'nav:payroll'
   | 'nav:reports'
   | 'nav:users'
   | 'nav:audit-log'
@@ -227,7 +223,6 @@ export interface Product {
   stockPerWarehouse: Record<string, number>; // warehouseId -> quantity in base unit
   inStock?: boolean;
   availableQty?: number;
-  image?: string;
   status: 'active' | 'archived'; // active = نشط، archived = موقوف منطقياً
   notes?: string;
   importBatchId?: string;
@@ -748,48 +743,6 @@ export interface Employee {
   notes?: string;
 }
 
-export interface EmployeeAdvanceDeduction {
-  id: string;
-  employeeId: string;
-  employeeName: string;
-  type: 'advance' | 'deduction' | 'bonus'; // سلفة | خصم | مكافأة
-  amount: number;
-  date: string;
-  reason: string;
-  cashboxId?: string;
-  isSettled: boolean;
-  createdAt: string;
-}
-
-export interface AttendanceRecord {
-  id: string;
-  employeeId: string;
-  employeeName: string;
-  date: string;
-  status: 'present' | 'absent' | 'leave' | 'late';
-  checkIn?: string;
-  checkOut?: string;
-  notes?: string;
-}
-
-export interface SalaryPayroll {
-  id: string;
-  payrollNumber: string;
-  month: number;
-  year: number;
-  employeeId: string;
-  employeeName: string;
-  basicSalary: number;
-  advancesTotal: number;
-  deductionsTotal: number;
-  bonusesTotal: number;
-  netSalary: number;
-  status: 'draft' | 'paid';
-  paidDate?: string;
-  cashboxId?: string;
-  notes?: string;
-}
-
 export interface ExpenseIncomeRecord {
   id: string;
   recordNumber: string;
@@ -1233,7 +1186,6 @@ export interface CustomerItemOrderRequest {
     productId: string;
     productCode?: string;
     productName: string;
-    productImage?: string;
     unit: string;
     unitFactor?: number;
     quantity: number;
@@ -1415,7 +1367,6 @@ export interface ProductImportCandidate {
   status: 'pending' | 'imported' | 'skipped';
   sellingPrice?: number;
   oldPrice?: number;
-  image?: string;
   description?: string;
 }
 

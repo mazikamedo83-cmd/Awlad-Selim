@@ -1350,95 +1350,65 @@ async function runSuiteA_JsonLedgerHttp() {
       tokenCustA = okLogin.json.accessToken;
     });
 
-    await test('30. Employees CRUD, suspended advance guard, cashbox overdraft block, salary payout & duplicate payroll block', async () => {
+    await test('30. Employees CRUD, status toggle & removed attendance/advances/payrolls routes return 404 while cashbox overdraft blocks', async () => {
       // Restricted staff gets 403 on HR endpoints
       const hrForbidden = await req(baseUrl, 'POST', '/api/admin/employees', {
         token: tokenStaffRestricted,
-        body: { name: 'موظف', jobTitle: 'عامل', basicSalary: 3000 },
+        body: { name: 'موظف', jobTitle: 'عامل', basicSalary: 0 },
       });
       assert.equal(hrForbidden.status, 403);
 
       // Create employee
       const empRes = await req(baseUrl, 'POST', '/api/admin/employees', {
         token: adminToken,
-        body: { code: 'EMP-900', name: 'مصطفى محمود', jobTitle: 'أمين مخزن', department: 'المخازن', basicSalary: 4000 },
+        body: { code: 'EMP-900', name: 'مصطفى محمود', jobTitle: 'أمين مخزن', department: 'المخازن', basicSalary: 0 },
       });
       assert.equal(empRes.status, 201);
       const empId = empRes.json.employee.id;
 
-      // Suspend employee -> blocks advances (409)
+      // Suspend & reactivate employee cleanly
       const suspEmp = await req(baseUrl, 'PUT', `/api/admin/employees/${empId}`, {
         token: adminToken,
-        body: { status: 'inactive' },
+        body: { status: 'suspended' },
       });
       assert.equal(suspEmp.status, 200);
-      const advSuspended = await req(baseUrl, 'POST', '/api/admin/advances', {
-        token: adminToken,
-        body: { employeeId: empId, type: 'advance', amount: 100, cashboxId: cashboxMainId, reason: 'سلفة' },
-      });
-      assert.equal(advSuspended.status, 409);
-
-      // Reactivate + edit basicSalary to 5000
       assert.equal(
         (await req(baseUrl, 'PUT', `/api/admin/employees/${empId}`, {
           token: adminToken,
-          body: { status: 'active', basicSalary: 5000 },
+          body: { status: 'active', jobTitle: 'أمين مخزن أول' },
         })).status,
         200
       );
 
-      // Overdraft cashbox guard on advance -> 409
-      const hugeAdv = await req(baseUrl, 'POST', '/api/admin/advances', {
+      // Removed attendance, advances & payroll routes MUST return 404
+      const adv404 = await req(baseUrl, 'POST', '/api/admin/advances', {
         token: adminToken,
-        body: { employeeId: empId, type: 'advance', amount: 9999999, cashboxId: cashboxMainId, reason: 'سلفة كبيرة' },
+        body: { employeeId: empId, type: 'advance', amount: 100, cashboxId: cashboxMainId },
       });
-      assert.equal(hugeAdv.status, 409);
+      assert.equal(adv404.status, 404);
+      const att404 = await req(baseUrl, 'POST', '/api/admin/attendance', {
+        token: adminToken,
+        body: { employeeId: empId, status: 'present', date: '2026-11-20' },
+      });
+      assert.equal(att404.status, 404);
+      const pay404 = await req(baseUrl, 'POST', '/api/admin/payrolls', {
+        token: adminToken,
+        body: { employeeId: empId, month: 11, year: 2026, netSalary: 100, cashboxId: cashboxMainId },
+      });
+      assert.equal(pay404.status, 404);
 
-      // Fund cashbox generously and issue 500 advance
-      await req(baseUrl, 'POST', '/api/admin/cash-operations', {
+      // Cashbox overdraft block on cash withdrawal -> 409
+      const hugeWd = await req(baseUrl, 'POST', '/api/admin/cash-operations', {
         token: adminToken,
-        body: { type: 'cash_deposit', cashboxId: cashboxMainId, amount: 10000, category: 'تمويل رواتب' },
+        body: { type: 'cash_withdrawal', cashboxId: cashboxMainId, amount: 9999999, recipientOrPayer: 'تجاوز' },
       });
-      const okAdv = await req(baseUrl, 'POST', '/api/admin/advances', {
-        token: adminToken,
-        body: { employeeId: empId, type: 'advance', amount: 500, cashboxId: cashboxMainId, reason: 'سلفة شهر 11' },
-      });
-      assert.equal(okAdv.status, 201);
-
-      // Pay salary 4500 (5000 - 500 advance) -> settles advance cleanly
-      const paySal = await req(baseUrl, 'POST', '/api/admin/payrolls', {
-        token: adminToken,
-        body: {
-          employeeId: empId,
-          employeeName: 'مصطفى محمود',
-          month: 11,
-          year: 2026,
-          basicSalary: 5000,
-          advancesTotal: 500,
-          deductionsTotal: 0,
-          bonusesTotal: 0,
-          netSalary: 4500,
-          cashboxId: cashboxMainId,
-        },
-      });
-      assert.equal(paySal.status, 201);
-
-      // Duplicate month/year payroll blocked (409 DUPLICATE_PAYROLL)
-      const dupPay = await req(baseUrl, 'POST', '/api/admin/payrolls', {
-        token: adminToken,
-        body: {
-          employeeId: empId,
-          month: 11,
-          year: 2026,
-          basicSalary: 5000,
-          netSalary: 4500,
-          cashboxId: cashboxMainId,
-        },
-      });
-      assert.equal(dupPay.status, 409);
+      assert.equal(hugeWd.status, 409);
 
       const bootHr = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
-      assert.equal(bootHr.advancesDeductions.find((a) => a.employeeId === empId).isSettled, true);
+      assert.ok(bootHr.employees.some((e) => e.id === empId && e.jobTitle === 'أمين مخزن أول'));
+      assert.equal(bootHr.attendance, undefined);
+      assert.equal(bootHr.advancesDeductions, undefined);
+      assert.equal(bootHr.payrolls, undefined);
     });
 
     await test('31. Confirmed Purchase Invoice updates stock (+qty), purchase price, supplier balance & cashbox accurately', async () => {
@@ -2995,20 +2965,26 @@ async function runSuiteB_PostgresPgMem() {
         assert.equal(pgCbOver.status, 409);
       }
 
-      // 5. PG Duplicate payroll block -> 409 & Emp overdraft -> 409
+      // 5. PG Employee preserved, removed HR endpoints return 404, cashbox overdraft blocked -> 409
       const empPg = boot.employees.find((e) => e.code === 'EMP-900');
       assert.ok(empPg);
-      const pgDupPayroll = await req(baseUrlPg, 'POST', '/api/admin/payrolls', {
+      const pgRemovedPay = await req(baseUrlPg, 'POST', '/api/admin/payrolls', {
         token: pgAdminToken,
-        body: { employeeId: empPg.id, month: 11, year: 2026, basicSalary: 5000, netSalary: 4500, cashboxId: cb1 },
+        body: { employeeId: empPg.id, month: 11, year: 2026, netSalary: 100, cashboxId: cb1 },
       });
-      assert.equal(pgDupPayroll.status, 409);
+      assert.equal(pgRemovedPay.status, 404);
 
-      const pgEmpOver = await req(baseUrlPg, 'POST', '/api/admin/advances', {
+      const pgRemovedAdv = await req(baseUrlPg, 'POST', '/api/admin/advances', {
         token: pgAdminToken,
-        body: { employeeId: empPg.id, type: 'advance', amount: 9999999, cashboxId: cb1, reason: 'تجاوز PG' },
+        body: { employeeId: empPg.id, type: 'advance', amount: 100, cashboxId: cb1 },
       });
-      assert.equal(pgEmpOver.status, 409);
+      assert.equal(pgRemovedAdv.status, 404);
+
+      const pgCbOpOver = await req(baseUrlPg, 'POST', '/api/admin/cash-operations', {
+        token: pgAdminToken,
+        body: { type: 'cash_withdrawal', cashboxId: cb1, amount: 9999999, recipientOrPayer: 'تجاوز PG' },
+      });
+      assert.equal(pgCbOpOver.status, 409);
 
       // Verify PG stock_movements recorded unit/movement_number properly on stock transfers
       const mvRows = await pgPool.query(

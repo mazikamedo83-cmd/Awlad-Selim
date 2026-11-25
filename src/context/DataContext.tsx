@@ -34,7 +34,6 @@ import { syncConnectionConfigFromServer } from '../services/discovery';
 import { getOrCreatePersistentDeviceId, notifyLocal, subscribeAppForeground, subscribeNetworkStatus } from '../services/native';
 import { localDb } from '../services/localDb';
 import { normalizeServerOrigin, refreshCachedUserAuthorization } from '../services/offlineAuth';
-import { getCachedProductImageMap, warmProductMediaCache } from '../services/mediaCache';
 import {
   enqueueSyncOperation,
   getSyncRefreshStats,
@@ -54,9 +53,6 @@ import {
   Representative,
   RepTransfer,
   Employee,
-  EmployeeAdvanceDeduction,
-  AttendanceRecord,
-  SalaryPayroll,
   ExpenseIncomeRecord,
   User,
   SystemSettings,
@@ -117,7 +113,6 @@ export interface DataContextType extends DatabaseState {
   syncQueue: SyncQueueItem[];
   syncConflicts: SyncConflictRecord[];
   orderAdvancePayments: OrderAdvancePayment[];
-  cachedMediaMap: Record<string, string>;
   pendingSyncCount: number;
   failedSyncCount: number;
   conflictsCount: number;
@@ -342,12 +337,9 @@ export interface DataContextType extends DatabaseState {
   updateCustomerItemOrderContent: (orderId: string, payload: { items: Array<{ productId: string; unit?: string; unitFactor?: number; quantity: number }>; notes?: string; deliveryAddress?: string; geoCoordinates?: string }) => Promise<{ success: boolean; order?: CustomerItemOrderRequest; error?: string }>;
   cancelCustomerItemOrder: (orderId: string, reason?: string) => Promise<{ success: boolean; order?: CustomerItemOrderRequest; error?: string }>;
 
-  // Employees & Payroll
+  // Employees
   addEmployee: (employee: Omit<Employee, 'id'>) => Promise<{ success: boolean; error?: string }>;
   updateEmployee: (id: string, updates: Omit<Partial<Employee>, 'userId'> & { userId?: string | null }) => Promise<{ success: boolean; error?: string }>;
-  recordAttendance: (attendance: Omit<AttendanceRecord, 'id'>) => Promise<{ success: boolean; error?: string }>;
-  addAdvanceDeduction: (item: Omit<EmployeeAdvanceDeduction, 'id' | 'createdAt' | 'isSettled'>) => Promise<{ success: boolean; error?: string }>;
-  paySalary: (payroll: Omit<SalaryPayroll, 'id' | 'payrollNumber'>) => Promise<{ success: boolean; error?: string }>;
 
   // Users, Unified Identities & Settings
   auditLogs: AuditLogItem[];
@@ -1443,7 +1435,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [syncConflicts, setSyncConflicts] = useState<SyncConflictRecord[]>([]);
   const [syncDispatchBatches, setSyncDispatchBatches] = useState<SyncDispatchBatch[]>([]);
   const [dispatchRecipients, setDispatchRecipients] = useState<DispatchRecipientOption[]>([]);
-  const [cachedMediaMap, setCachedMediaMap] = useState<Record<string, string>>({});
   const [isServerReachable, setIsServerReachable] = useState<boolean>(
     typeof navigator !== 'undefined' ? navigator.onLine !== false : true
   );
@@ -1704,15 +1695,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           representativeProfile: pullData.representativeProfile || null,
         }).catch(() => {});
       }
-
-      // Warm cached product media in background
-      const prods = nextStateBase.products || [];
-      getCachedProductImageMap(prods)
-        .then((map) => setCachedMediaMap(map))
-        .catch(() => {});
-      warmProductMediaCache(prods, (productId, dataUrl) => {
-        setCachedMediaMap((prev) => ({ ...prev, [productId]: dataUrl }));
-      }).catch(() => {});
     },
     [handleServerAuthRevoked]
   );
@@ -1733,7 +1715,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSyncConflicts([]);
         setSyncDispatchBatches([]);
         setDispatchRecipients([]);
-        setCachedMediaMap({});
         setMobileNotifications([]);
         setLastServerSyncAt(null);
         setIsUsingOfflineCache(false);
@@ -1751,7 +1732,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setStorefrontDraft(null);
         setStorefrontPublishedAdmin(null);
         setCustomerFavorites([]);
-        setCachedMediaMap({});
         setMobileNotifications([]);
         setSyncQueue([]);
         setSyncConflicts([]);
@@ -1805,11 +1785,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setIsUsingOfflineCache(true);
           setLastCacheTimestamp(snap.cachedAt);
           setIsInitialLoaded(true);
-          getCachedProductImageMap(effective.products || [])
-            .then((map) => {
-              if (!cancelled) setCachedMediaMap(map);
-            })
-            .catch(() => {});
         }
       }
     };
@@ -4521,36 +4496,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const recordAttendance = async (attendance: Omit<AttendanceRecord, 'id'>) => {
-    try {
-      await apiRequest('/api/admin/attendance', { method: 'POST', body: attendance });
-      await loadRoleScopedData();
-      return { success: true };
-    } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر تسجيل الحضور' };
-    }
-  };
-
-  const addAdvanceDeduction = async (item: Omit<EmployeeAdvanceDeduction, 'id' | 'createdAt' | 'isSettled'>) => {
-    try {
-      await apiRequest('/api/admin/advances', { method: 'POST', body: item });
-      await loadRoleScopedData();
-      return { success: true };
-    } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر تسجيل السلفة أو الخصم' };
-    }
-  };
-
-  const paySalary = async (payroll: Omit<SalaryPayroll, 'id' | 'payrollNumber'>) => {
-    try {
-      await apiRequest('/api/admin/payrolls', { method: 'POST', body: payroll });
-      await loadRoleScopedData();
-      return { success: true };
-    } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر صرف الراتب' };
-    }
-  };
-
   const permissionPresets: RoleDefaultPermissionPresets | null =
     data.settings?.extraSettings?.roleDefaultPermissions || null;
 
@@ -5251,7 +5196,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         syncDispatchBatches,
         dispatchRecipients,
         incomingDispatchCount,
-        cachedMediaMap,
         isServerReachable,
         isSyncing,
         pendingSyncCount,
@@ -5379,9 +5323,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         cancelCustomerItemOrder,
         addEmployee,
         updateEmployee,
-        recordAttendance,
-        addAdvanceDeduction,
-        paySalary,
         identities: data.identities || [],
         identityRoles: data.identityRoles || [],
         identityConflicts: data.identityConflicts || [],

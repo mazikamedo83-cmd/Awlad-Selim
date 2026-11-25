@@ -2,6 +2,9 @@ name: Build AWLAD SELIM iOS Production Release
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
@@ -71,11 +74,16 @@ jobs:
       - name: Build production web bundle
         run: |
           bun run build
+          test -f dist/awlad-selim-logo.png
+          test ! -e dist/product-images
           test ! -e dist/assets/aistudio
+          node server/tests/verifyElectronBootstrap.mjs
 
       - name: Sync Capacitor iOS project
         run: |
           npx cap sync ios
+          test -f ios/App/App/public/awlad-selim-logo.png
+          test ! -e ios/App/App/public/product-images
           test ! -e ios/App/App/public/assets/aistudio
 
       - name: Validate Apple Production Signing Secrets
@@ -189,8 +197,8 @@ jobs:
             mv "$IPA_SRC" "$OUT_IPA"
           fi
 
-          if unzip -l "$OUT_IPA" | grep -iE "\.env$|\.jwt_secret$|database\.json$|assets/aistudio/"; then
-            echo "ERROR: Secret, data, or non-production asset leaked inside IPA!"
+          if unzip -l "$OUT_IPA" | grep -iE "\.env$|\.jwt_secret$|database\.json$|product-images/|assets/aistudio/"; then
+            echo "ERROR: Secret, data, or non-production/deleted asset leaked inside IPA!"
             exit 1
           fi
 

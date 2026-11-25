@@ -139,23 +139,25 @@ function saveAndRestoreEnv(fn) {
 console.log('\n=== Production Strict Mode (PostgreSQL Exclusivity) Test Suite ===');
 
 await saveAndRestoreEnv(async () => {
-  await test('1. Strict mode flags & Electron exemption rules', async () => {
+  await test('1. Strict mode flags: NODE_ENV=production enforces PG strictly even when AWLAD_ELECTRON=true', async () => {
     delete process.env.NODE_ENV;
     delete process.env.AWLAD_REQUIRE_POSTGRES;
     delete process.env.AWLAD_ELECTRON;
     assert.equal(isStrictPostgresMode(), false, 'dev default should not force strict mode');
 
+    process.env.AWLAD_ELECTRON = 'true';
+    assert.equal(isStrictPostgresMode(), false, 'Electron dev/local mode without NODE_ENV=production stays in local JSON mode');
+
     process.env.NODE_ENV = 'production';
+    assert.equal(isStrictPostgresMode(), true, 'NODE_ENV=production enforces strict mode even when AWLAD_ELECTRON=true');
+
+    delete process.env.AWLAD_ELECTRON;
     assert.equal(isStrictPostgresMode(), true, 'NODE_ENV=production on server enables strict mode');
 
-    process.env.AWLAD_ELECTRON = 'true';
-    assert.equal(isStrictPostgresMode(), false, 'Electron desktop mode is exempt from auto production strict mode');
-
     process.env.AWLAD_REQUIRE_POSTGRES = 'true';
-    assert.equal(isStrictPostgresMode(), true, 'Explicit AWLAD_REQUIRE_POSTGRES=true enforces strict mode even on Electron');
+    assert.equal(isStrictPostgresMode(), true, 'Explicit AWLAD_REQUIRE_POSTGRES=true enforces strict mode');
 
     delete process.env.NODE_ENV;
-    delete process.env.AWLAD_ELECTRON;
     assert.equal(isStrictPostgresMode(), true, 'AWLAD_REQUIRE_POSTGRES=true works regardless of NODE_ENV');
   });
 
@@ -230,9 +232,36 @@ await saveAndRestoreEnv(async () => {
     assertNoJsonLedgerFiles('after schema init failure');
   });
 
-  await test('5. Electron local mode (AWLAD_ELECTRON=true, NODE_ENV=production) stays allowed to start & write JSON Ledger without PostgreSQL', async () => {
-    const electronDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'awlad_selim_electron_exempt_'));
+  await test('5. Production mode refuses Electron without PostgreSQL, while Electron local dev mode (no NODE_ENV=production) writes JSON Ledger cleanly', async () => {
+    const strictElectronDir = fs.mkdtempSync(path.join(os.tmpdir(), 'awlad_selim_electron_strict_'));
+    const electronDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'awlad_selim_electron_local_'));
     try {
+      const strictProdChildScript = `
+        import assert from 'node:assert/strict';
+        import { initializeServerRuntime } from './server/app.js';
+        import { isStrictPostgresMode } from './server/db/postgres.js';
+        assert.equal(isStrictPostgresMode(), true);
+        await assert.rejects(() => initializeServerRuntime(), /Production Strict Mode/);
+      `;
+      const strictProdEnv = {
+        ...process.env,
+        AWLAD_DATA_DIR: strictElectronDir,
+        NODE_ENV: 'production',
+        AWLAD_ELECTRON: 'true',
+        AWLAD_QUIET_LOGS: 'true',
+      };
+      delete strictProdEnv.AWLAD_REQUIRE_POSTGRES;
+      delete strictProdEnv.DATABASE_URL;
+      delete strictProdEnv.PG_CONNECTION_STRING;
+      delete strictProdEnv.PGHOST;
+      delete strictProdEnv.DB_HOST;
+
+      await execFileAsync(process.execPath, ['--input-type=module', '-e', strictProdChildScript], {
+        cwd: process.cwd(),
+        env: strictProdEnv,
+      });
+      assert.equal(fs.existsSync(path.join(strictElectronDir, 'database.json')), false, 'Production mode must NOT silently fall back to database.json even with AWLAD_ELECTRON=true');
+
       const childScript = `
         import assert from 'node:assert/strict';
         import http from 'node:http';
@@ -279,10 +308,10 @@ await saveAndRestoreEnv(async () => {
       const childEnv = {
         ...process.env,
         AWLAD_DATA_DIR: electronDataDir,
-        NODE_ENV: 'production',
         AWLAD_ELECTRON: 'true',
         AWLAD_QUIET_LOGS: 'true',
       };
+      delete childEnv.NODE_ENV;
       delete childEnv.AWLAD_REQUIRE_POSTGRES;
       delete childEnv.DATABASE_URL;
       delete childEnv.PG_CONNECTION_STRING;
@@ -294,9 +323,10 @@ await saveAndRestoreEnv(async () => {
         env: childEnv,
       });
 
-      assert.equal(fs.existsSync(path.join(electronDataDir, 'database.json')), true, 'Electron local mode should write database.json in its own dir');
+      assert.equal(fs.existsSync(path.join(electronDataDir, 'database.json')), true, 'Electron local mode without NODE_ENV=production writes database.json in its own dir');
       assertNoJsonLedgerFiles('strict tempDataDir remains untouched by Electron child test');
     } finally {
+      fs.rmSync(strictElectronDir, { recursive: true, force: true });
       fs.rmSync(electronDataDir, { recursive: true, force: true });
     }
   });

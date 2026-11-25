@@ -33,7 +33,6 @@ const REP_DEFAULT_PERMISSIONS: UserPermissions = {
   canManageReps: false,
   canManageTransfers: true,
   canManageEmployees: false,
-  canManageSalaries: false,
   canManageUsers: false,
   canManageSettings: false,
   canAllowNegativeInventory: false,

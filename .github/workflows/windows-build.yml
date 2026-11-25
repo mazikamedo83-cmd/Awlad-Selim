@@ -200,8 +200,13 @@ jobs:
             Write-Error "Missing packaged dist/index.html inside $unpackedApp"
             exit 1
           }
+          if (-not (Test-Path "$unpackedApp/dist/awlad-selim-logo.png")) {
+            Write-Error "Missing official logo inside packaged app: $unpackedApp/dist/awlad-selim-logo.png"
+            exit 1
+          }
           foreach ($forbidden in @(
             "$unpackedApp/AWLAD_SELIM_BACKUP",
+            "$unpackedApp/dist/product-images",
             "$unpackedApp/dist/assets/aistudio",
             "$unpackedApp/server/data",
             "$unpackedApp/server/tests",
@@ -209,7 +214,7 @@ jobs:
             "$unpackedApp/server/data/.jwt_secret"
           )) {
             if (Test-Path $forbidden) {
-              Write-Error "Forbidden secret or data file leaked into packaged Windows app: $forbidden"
+              Write-Error "Forbidden secret, deleted asset, or data file leaked into packaged Windows app: $forbidden"
               exit 1
             }
           }

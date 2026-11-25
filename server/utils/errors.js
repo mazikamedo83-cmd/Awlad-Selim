@@ -78,7 +78,6 @@ export function sanitizeProductForCustomer(product, allowPriceView = true) {
     hidePrices: !allowPriceView,
     inStock: totalStock > 0,
     availableQty: Math.max(0, round3(totalStock)),
-    image: product.image,
     status: product.status || 'active',
     notes: product.notes || '',
     createdAt: product.createdAt,

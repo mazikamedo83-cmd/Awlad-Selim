@@ -24,9 +24,6 @@ import {
   updateRepresentative,
   addEmployee,
   updateEmployee,
-  addAdvanceDeduction,
-  recordAttendance,
-  issuePayroll,
   updateSystemSettings,
   getRolePermissionPresets,
   updateRolePermissionPresets,
@@ -502,7 +499,7 @@ router.put('/representatives/:id', blockRepAndCustomer, requirePermission('canMa
   res.json({ ok: true });
 }));
 
-// Employees & Payroll
+// Employees
 router.post('/employees', blockRepAndCustomer, requirePermission('canManageEmployees'), asyncHandler(async (req, res) => {
   const employee = await addEmployee(req.body || {}, req.auth.user);
   res.status(201).json({ ok: true, employee });
@@ -510,18 +507,6 @@ router.post('/employees', blockRepAndCustomer, requirePermission('canManageEmplo
 router.put('/employees/:id', blockRepAndCustomer, requirePermission('canManageEmployees'), asyncHandler(async (req, res) => {
   await updateEmployee(req.params.id, req.body || {}, req.auth.user);
   res.json({ ok: true });
-}));
-router.post('/advances', blockRepAndCustomer, requirePermission('canManageSalaries'), asyncHandler(async (req, res) => {
-  const item = await addAdvanceDeduction(req.body || {}, req.auth.user);
-  res.status(201).json({ ok: true, item });
-}));
-router.post('/attendance', blockRepAndCustomer, requirePermission('canManageEmployees'), asyncHandler(async (req, res) => {
-  const record = await recordAttendance(req.body || {}, req.auth.user);
-  res.status(201).json({ ok: true, record });
-}));
-router.post('/payrolls', blockRepAndCustomer, requirePermission('canManageSalaries'), asyncHandler(async (req, res) => {
-  const payroll = await issuePayroll(req.body || {}, req.auth.user);
-  res.status(201).json({ ok: true, payroll });
 }));
 
 // System Settings

@@ -290,12 +290,24 @@ async function runComprehensiveScenario(modeLabel) {
     });
     assert.equal(dmgRes.status, 200);
 
-    // Employee Advance payout + Cash withdrawal + Customer payment
-    const advRes = await req(baseUrl, 'POST', '/api/admin/advances', {
+    // Rep cash handover (توريد تحصيلات مندوب) + Cash withdrawal + Customer payment
+    const cashRepRes = await req(baseUrl, 'POST', '/api/admin/representatives', {
       token: adminToken,
-      body: { employeeId: empId, type: 'advance', amount: 300, date: '2026-11-20', cashboxId: cbId, reason: 'سلفة شهرية' },
+      body: { name: 'مندوب التحصيل اليومي', phone: '01088776655' },
     });
-    assert.equal(advRes.status, 201);
+    assert.equal(cashRepRes.status, 201);
+    const cashRepId = cashRepRes.json.representative.id;
+
+    const trCreateRes = await req(baseUrl, 'POST', '/api/inventory/rep-transfers', {
+      token: adminToken,
+      body: { direction: 'rep_to_owner', senderId: cashRepId, amount: 300, cashboxId: cbId, notes: 'توريد تحصيلات' },
+    });
+    assert.equal(trCreateRes.status, 201);
+    const trConfirmRes = await req(baseUrl, 'POST', `/api/inventory/rep-transfers/${trCreateRes.json.transfer.id}/confirm`, {
+      token: adminToken,
+      body: { note: 'استلام توريد المندوب' },
+    });
+    assert.equal(trConfirmRes.status, 200);
 
     const custPayRes = await req(baseUrl, 'POST', `/api/customers/${custId}/payment`, {
       token: adminToken,
@@ -362,7 +374,7 @@ async function runComprehensiveScenario(modeLabel) {
       const cashEmp = await req(
         baseUrl,
         'GET',
-        '/api/reports/comprehensive?reportType=cash_payment_employee&dateFrom=2026-11-20&dateTo=2026-11-20',
+        '/api/reports/comprehensive?reportType=cash_payment_employee',
         { token: adminToken }
       );
       assert.equal(cashEmp.status, 200);

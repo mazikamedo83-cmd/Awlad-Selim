@@ -448,7 +448,6 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
         productId: it.product.id,
         productCode: it.product.code,
         productName: it.product.name,
-        productImage: it.product.image,
         unit: it.unitName,
         unitFactor: it.unitFactor,
         unitPrice: it.unitPrice ?? undefined,
@@ -619,7 +618,6 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
     const available = isProductAvailable(prod);
     const isFav = (data.customerFavorites || []).includes(prod.id);
     const cartEntry = cartItems.find((c) => c.product.id === prod.id && c.unitName === activeUnit);
-    const thumb = data.cachedMediaMap?.[prod.id] || prod.image;
 
     return (
       <div
@@ -645,12 +643,8 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
           <Heart className={`w-3.5 h-3.5 ${isFav ? 'fill-current' : ''}`} />
         </button>
 
-        <div className="w-full aspect-square rounded-lg overflow-hidden bg-slate-50 dark:bg-[#132544] border border-slate-100 dark:border-[#21375C] flex items-center justify-center">
-          {thumb ? (
-            <img src={thumb} alt={prod.name} className="w-full h-full object-contain p-1" loading="lazy" />
-          ) : (
-            <Package className="w-8 h-8 text-slate-300 dark:text-[#6E89B2]" />
-          )}
+        <div className="w-full py-3 rounded-lg bg-slate-50 dark:bg-[#132544] border border-slate-100 dark:border-[#21375C] flex items-center justify-center">
+          <Package className="w-7 h-7 text-slate-300 dark:text-[#6E89B2]" />
         </div>
 
         <div className="space-y-1 flex-1 flex flex-col justify-between">
@@ -839,7 +833,6 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
           storefront={storefront}
           products={activeProducts}
           categories={data.categories || []}
-          cachedMediaMap={data.cachedMediaMap || {}}
           currency={data.settings.currency}
           allowPriceView={allowPriceView}
           favoriteIds={data.customerFavorites || []}
@@ -1414,15 +1407,10 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-slate-100 dark:divide-[#1B2F52]">
-                                    {(ord.items || []).map((it, i) => {
-                                      const itemImg = data.cachedMediaMap?.[it.productId] || it.productImage;
-                                      return (
+                                    {(ord.items || []).map((it, i) => (
                                         <tr key={i}>
                                           <td className="px-2 py-1">
                                             <div className="flex items-center gap-1.5">
-                                              {itemImg && (
-                                                <img src={itemImg} alt={it.productName} className="w-6 h-6 rounded object-cover border border-slate-200 dark:border-[#21375C] shrink-0" />
-                                              )}
                                               <span className="font-bold text-slate-800 dark:text-[#DCE6F5]">{it.productName}</span>
                                             </div>
                                           </td>
@@ -1430,8 +1418,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                                             {it.quantity} {it.unit}
                                           </td>
                                         </tr>
-                                      );
-                                    })}
+                                    ))}
                                   </tbody>
                                 </table>
                               </div>

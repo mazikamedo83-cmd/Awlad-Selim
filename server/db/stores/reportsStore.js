@@ -429,8 +429,8 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
       ritItemRes,
       rcoRes,
       expIncRes,
-      advRes,
-      payRes,
+      _advUnusedRes,
+      _payUnusedRes,
       auditRes,
       linkedInvMetaRes,
       linkedRetMetaRes,
@@ -473,7 +473,7 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
       Promise.resolve({ rows: [] }),
       pool.query(`SELECT * FROM rep_custody_operations ${rcoWhereSql} ORDER BY date DESC, created_at DESC`, rcoParams),
       isRep ? Promise.resolve({ rows: [] }) : pool.query(`SELECT * FROM expenses_incomes ${expFilter.whereSql} ORDER BY date DESC, created_at DESC`, expFilter.params),
-      isRep ? Promise.resolve({ rows: [] }) : pool.query(`SELECT * FROM advances_deductions ${advFilter.whereSql} ORDER BY date DESC, created_at DESC`, advFilter.params),
+      Promise.resolve({ rows: [] }),
       Promise.resolve({ rows: [] }),
       includeAuditLogs ? pool.query('SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 2000') : Promise.resolve({ rows: [] }),
       needsLinkedDocMeta
@@ -880,32 +880,6 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
         createdBy: e.created_by,
         createdAt: isoTimestamp(e.created_at),
       })),
-      advancesDeductions: advRes.rows.map((a) => ({
-        id: a.id,
-        employeeId: a.employee_id,
-        employeeName: a.employee_name,
-        type: a.type,
-        amount: Number(a.amount || 0),
-        date: isoDateOnly(a.date),
-        reason: a.reason || '',
-        cashboxId: a.cashbox_id || undefined,
-        createdBy: a.created_by,
-        createdAt: isoTimestamp(a.created_at),
-      })),
-      payrolls: payRes.rows.map((p) => ({
-        id: p.id,
-        payrollNumber: p.payroll_number,
-        month: Number(p.month),
-        year: Number(p.year || 0),
-        employeeId: p.employee_id,
-        employeeName: p.employee_name,
-        netSalary: Number(p.net_salary || 0),
-        paidDate: p.payment_date ? isoDateOnly(p.payment_date) : isoDateOnly(p.created_at),
-        cashboxId: p.cashbox_id || undefined,
-        notes: p.notes || '',
-        createdBy: p.created_by,
-        createdAt: isoTimestamp(p.created_at),
-      })),
       auditLogs: auditRes.rows.map((a) => ({
         id: a.id,
         timestamp: isoTimestamp(a.timestamp),
@@ -1038,8 +1012,6 @@ export async function loadFullReportDataset(actor, filterHints = {}) {
       ? (db.repCustodyOperations || []).filter((op) => repProfile && op.representativeId === repProfile.id)
       : (db.repCustodyOperations || []),
     expenseIncomes: isRep ? [] : (db.expenseIncomes || []),
-    advancesDeductions: isRep ? [] : (db.advancesDeductions || []),
-    payrolls: [],
     auditLogs: !isRep && (filterHints.productId || filterHints.includeAuditLogs) ? (db.auditLogs || []).slice(0, 2000) : [],
   };
 }
@@ -3254,7 +3226,7 @@ export async function getComprehensiveReport(filters = {}, actor) {
     ? ((data.representatives || []).find((r) => r.userId === actor?.id || r.id === actor?.representativeId) ||
         (await getRepresentativeByUserId(actor?.id)))
     : null;
-  const canViewPayrollRows = actor?.role === 'admin' || actor?.permissions?.canManageSalaries === true || actor?.permissions?.canManageEmployees === true;
+  const canViewPayrollRows = actor?.role === 'admin' || actor?.permissions?.canManageEmployees === true;
   if (!canViewPayrollRows) {
     sections = sections
       .map((sec) => {

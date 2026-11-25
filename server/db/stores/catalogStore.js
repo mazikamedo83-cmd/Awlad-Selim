@@ -2241,7 +2241,7 @@ export async function createProduct(payload, actor) {
           round2(payload.sellingPrice || 0),
           round2(payload.minStockLevel || 0),
           JSON.stringify(payload.stockPerWarehouse || {}),
-          payload.image || null,
+          null,
           payload.notes || '',
           payload.status || 'active',
           importBatchId,
@@ -2328,7 +2328,6 @@ export async function createProduct(payload, actor) {
       sellingPrice: round2(payload.sellingPrice || 0),
       minStockLevel: round2(payload.minStockLevel || 0),
       stockPerWarehouse: payload.stockPerWarehouse || {},
-      image: payload.image || undefined,
       notes: payload.notes || '',
       status: payload.status || 'active',
       importBatchId: importBatchId || undefined,
@@ -2398,8 +2397,6 @@ export async function updateProduct(productId, updates, actor) {
         }
       }
 
-      const nextImage = updates.image !== undefined ? (updates.image || null) : (cur.image || null);
-
       await client.query(
         `UPDATE products SET
           code = $1, barcode = $2, name = $3, category = $4, category_id = $5, base_unit = $6,
@@ -2418,7 +2415,7 @@ export async function updateProduct(productId, updates, actor) {
           round2(updates.purchasePrice ?? cur.purchasePrice),
           round2(updates.sellingPrice ?? cur.sellingPrice),
           round2(updates.minStockLevel ?? cur.minStockLevel),
-          nextImage,
+          null,
           updates.notes ?? cur.notes ?? '',
           updates.status ?? cur.status,
           updates.importBatchId !== undefined ? updates.importBatchId : (cur.importBatchId || null),
@@ -2477,14 +2474,15 @@ export async function updateProduct(productId, updates, actor) {
       }
     }
 
+    const { image: _ignoredImg, ...safeUpdates } = updates || {};
+    const { image: _ignoredCurImg, ...safeCur } = cur;
     db.products[idx] = {
-      ...cur,
-      ...updates,
+      ...safeCur,
+      ...safeUpdates,
       id: cur.id,
       name: nextName,
       code: nextCode,
       barcode: nextBarcode,
-      image: updates.image !== undefined ? (updates.image || undefined) : cur.image,
       stockPerWarehouse: cur.stockPerWarehouse, // Protect stock map from direct override via product edit
       version: Number(cur.version || 1) + 1,
       updatedAt: now,

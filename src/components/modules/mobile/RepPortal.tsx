@@ -594,7 +594,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       productId: string;
       productCode: string;
       productName: string;
-      productImage?: string;
       unit: string;
       unitFactor: number;
       quantity: number;
@@ -2891,7 +2890,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           productId: selectedOrderProduct.id,
           productCode: selectedOrderProduct.code,
           productName: selectedOrderProduct.name,
-          productImage: selectedOrderProduct.image,
           unit: unitUsed,
           unitFactor,
           quantity: ordQty,
