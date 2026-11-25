@@ -4,9 +4,12 @@ import { getPref, setPref, syncNativeStatusBarStyle } from '../services/native';
 
 const THEME_PREF_KEY = 'awlad_selim_theme_pref_v1';
 const LANGUAGE_PREF_KEY = 'awlad_selim_language_v1';
-export const DASHBOARD_MASKED_GROUPS_KEY = 'awlad_selim_dashboard_masked_groups_v1';
+const DASHBOARD_HIDDEN_BALANCES_KEY = 'awlad_selim_hidden_balances_v1';
+const DASHBOARD_BALANCES_RESET_EVENT = 'awlad_selim:reset_dashboard_balances';
 
-export type DashboardBalanceGroup =
+export const MASKED_BALANCE_TEXT = '••••••';
+
+export type DashboardBalanceSectionKey =
   | 'sales'
   | 'purchases'
   | 'cashboxes'
@@ -15,11 +18,12 @@ export type DashboardBalanceGroup =
   | 'supplierDebts'
   | 'expenses'
   | 'income'
+  | 'profits'
   | 'chart'
-  | 'cashboxTable'
-  | 'recentInvoices';
+  | 'cashboxesTable'
+  | 'invoicesTable';
 
-export const ALL_DASHBOARD_BALANCE_GROUPS: DashboardBalanceGroup[] = [
+export const ALL_DASHBOARD_BALANCE_KEYS: DashboardBalanceSectionKey[] = [
   'sales',
   'purchases',
   'cashboxes',
@@ -28,23 +32,56 @@ export const ALL_DASHBOARD_BALANCE_GROUPS: DashboardBalanceGroup[] = [
   'supplierDebts',
   'expenses',
   'income',
+  'profits',
   'chart',
-  'cashboxTable',
-  'recentInvoices',
+  'cashboxesTable',
+  'invoicesTable',
 ];
 
-function readMaskedGroupsFromSession(): DashboardBalanceGroup[] {
+function createInitialHiddenBalancesMap(fillValue = false): Record<DashboardBalanceSectionKey, boolean> {
+  return ALL_DASHBOARD_BALANCE_KEYS.reduce((acc, key) => {
+    acc[key] = fillValue;
+    return acc;
+  }, {} as Record<DashboardBalanceSectionKey, boolean>);
+}
+
+function readHiddenBalancesFromSessionStorage(): Record<DashboardBalanceSectionKey, boolean> {
+  const base = createInitialHiddenBalancesMap(false);
   try {
-    if (typeof sessionStorage === 'undefined') return [];
-    const raw = sessionStorage.getItem(DASHBOARD_MASKED_GROUPS_KEY);
-    if (!raw) return [];
+    if (typeof window === 'undefined' || !window.sessionStorage) return base;
+    const raw = window.sessionStorage.getItem(DASHBOARD_HIDDEN_BALANCES_KEY);
+    if (!raw) return base;
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((g): g is DashboardBalanceGroup =>
-      ALL_DASHBOARD_BALANCE_GROUPS.includes(g as DashboardBalanceGroup)
-    );
+    if (parsed && typeof parsed === 'object') {
+      for (const key of ALL_DASHBOARD_BALANCE_KEYS) {
+        base[key] = Boolean(parsed[key]);
+      }
+    }
   } catch {
-    return [];
+    // ignore storage errors
+  }
+  return base;
+}
+
+function writeHiddenBalancesToSessionStorage(map: Record<DashboardBalanceSectionKey, boolean>): void {
+  try {
+    if (typeof window === 'undefined' || !window.sessionStorage) return;
+    window.sessionStorage.setItem(DASHBOARD_HIDDEN_BALANCES_KEY, JSON.stringify(map));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+export function resetDashboardBalancesSessionStorage(): void {
+  try {
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      window.sessionStorage.removeItem(DASHBOARD_HIDDEN_BALANCES_KEY);
+    }
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new CustomEvent(DASHBOARD_BALANCES_RESET_EVENT));
+    }
+  } catch {
+    // ignore
   }
 }
 
@@ -56,12 +93,13 @@ interface PreferencesContextType {
   dir: 'rtl' | 'ltr';
   setLanguage: (lang: LanguagePreference) => void;
   t: (arText: string, enText: string) => string;
-  maskedDashboardGroups: DashboardBalanceGroup[];
-  isDashboardGroupHidden: (group: DashboardBalanceGroup) => boolean;
-  toggleDashboardGroupVisibility: (group: DashboardBalanceGroup) => void;
+  hiddenDashboardBalances: Record<DashboardBalanceSectionKey, boolean>;
+  isDashboardBalanceHidden: (key: DashboardBalanceSectionKey) => boolean;
+  toggleDashboardBalanceSection: (key: DashboardBalanceSectionKey) => void;
   areAllDashboardBalancesHidden: boolean;
+  areAnyDashboardBalancesHidden: boolean;
   toggleAllDashboardBalances: () => void;
-  resetDashboardBalanceMasks: () => void;
+  resetDashboardBalancesVisibility: () => void;
 }
 
 const PreferencesContext = createContext<PreferencesContextType | undefined>(undefined);
@@ -92,8 +130,8 @@ export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ c
     return 'ar';
   });
 
-  const [maskedDashboardGroups, setMaskedDashboardGroups] = useState<DashboardBalanceGroup[]>(() =>
-    readMaskedGroupsFromSession()
+  const [hiddenDashboardBalances, setHiddenDashboardBalances] = useState<Record<DashboardBalanceSectionKey, boolean>>(
+    () => readHiddenBalancesFromSessionStorage()
   );
 
   const [systemPrefersDark, setSystemPrefersDark] = useState<boolean>(() => getSystemDarkMatch());
@@ -119,39 +157,21 @@ export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, []);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleResetEvent = () => {
+      setHiddenDashboardBalances(createInitialHiddenBalancesMap(false));
+    };
+    window.addEventListener(DASHBOARD_BALANCES_RESET_EVENT, handleResetEvent);
+    return () => window.removeEventListener(DASHBOARD_BALANCES_RESET_EVENT, handleResetEvent);
+  }, []);
+
+  useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
     const handler = (ev: MediaQueryListEvent) => setSystemPrefersDark(ev.matches);
     mq.addEventListener('change', handler);
     return () => mq.removeEventListener('change', handler);
   }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const handlePrivacyReset = () => {
-      setMaskedDashboardGroups([]);
-      try {
-        sessionStorage.removeItem(DASHBOARD_MASKED_GROUPS_KEY);
-      } catch {
-        // ignore
-      }
-    };
-    window.addEventListener('awlad:privacy-reset', handlePrivacyReset);
-    return () => window.removeEventListener('awlad:privacy-reset', handlePrivacyReset);
-  }, []);
-
-  useEffect(() => {
-    try {
-      if (typeof sessionStorage === 'undefined') return;
-      if (maskedDashboardGroups.length === 0) {
-        sessionStorage.removeItem(DASHBOARD_MASKED_GROUPS_KEY);
-      } else {
-        sessionStorage.setItem(DASHBOARD_MASKED_GROUPS_KEY, JSON.stringify(maskedDashboardGroups));
-      }
-    } catch {
-      // ignore
-    }
-  }, [maskedDashboardGroups]);
 
   const resolvedTheme: 'light' | 'dark' =
     themePreference === 'system' ? (systemPrefersDark ? 'dark' : 'light') : themePreference;
@@ -182,35 +202,44 @@ export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setPref(LANGUAGE_PREF_KEY, lang).catch(() => {});
   };
 
-  const isDashboardGroupHidden = useCallback(
-    (group: DashboardBalanceGroup) => maskedDashboardGroups.includes(group),
-    [maskedDashboardGroups]
+  const isDashboardBalanceHidden = useCallback(
+    (key: DashboardBalanceSectionKey) => Boolean(hiddenDashboardBalances[key]),
+    [hiddenDashboardBalances]
   );
 
-  const toggleDashboardGroupVisibility = useCallback((group: DashboardBalanceGroup) => {
-    setMaskedDashboardGroups((prev) =>
-      prev.includes(group) ? prev.filter((g) => g !== group) : [...prev, group]
-    );
+  const toggleDashboardBalanceSection = useCallback((key: DashboardBalanceSectionKey) => {
+    setHiddenDashboardBalances((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      writeHiddenBalancesToSessionStorage(next);
+      return next;
+    });
   }, []);
 
   const areAllDashboardBalancesHidden = useMemo(
-    () => ALL_DASHBOARD_BALANCE_GROUPS.every((g) => maskedDashboardGroups.includes(g)),
-    [maskedDashboardGroups]
+    () => ALL_DASHBOARD_BALANCE_KEYS.every((key) => Boolean(hiddenDashboardBalances[key])),
+    [hiddenDashboardBalances]
+  );
+
+  const areAnyDashboardBalancesHidden = useMemo(
+    () => ALL_DASHBOARD_BALANCE_KEYS.some((key) => Boolean(hiddenDashboardBalances[key])),
+    [hiddenDashboardBalances]
   );
 
   const toggleAllDashboardBalances = useCallback(() => {
-    setMaskedDashboardGroups((prev) =>
-      ALL_DASHBOARD_BALANCE_GROUPS.every((g) => prev.includes(g))
-        ? []
-        : [...ALL_DASHBOARD_BALANCE_GROUPS]
-    );
+    setHiddenDashboardBalances((prev) => {
+      const allCurrentlyHidden = ALL_DASHBOARD_BALANCE_KEYS.every((key) => Boolean(prev[key]));
+      const next = createInitialHiddenBalancesMap(!allCurrentlyHidden);
+      writeHiddenBalancesToSessionStorage(next);
+      return next;
+    });
   }, []);
 
-  const resetDashboardBalanceMasks = useCallback(() => {
-    setMaskedDashboardGroups([]);
+  const resetDashboardBalancesVisibility = useCallback(() => {
+    const clean = createInitialHiddenBalancesMap(false);
+    setHiddenDashboardBalances(clean);
     try {
-      if (typeof sessionStorage !== 'undefined') {
-        sessionStorage.removeItem(DASHBOARD_MASKED_GROUPS_KEY);
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        window.sessionStorage.removeItem(DASHBOARD_HIDDEN_BALANCES_KEY);
       }
     } catch {
       // ignore
@@ -226,24 +255,26 @@ export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ c
       dir,
       setLanguage,
       t: (arText: string, enText: string) => (language === 'en' ? enText : arText),
-      maskedDashboardGroups,
-      isDashboardGroupHidden,
-      toggleDashboardGroupVisibility,
+      hiddenDashboardBalances,
+      isDashboardBalanceHidden,
+      toggleDashboardBalanceSection,
       areAllDashboardBalancesHidden,
+      areAnyDashboardBalancesHidden,
       toggleAllDashboardBalances,
-      resetDashboardBalanceMasks,
+      resetDashboardBalancesVisibility,
     }),
     [
       themePreference,
       resolvedTheme,
       language,
       dir,
-      maskedDashboardGroups,
-      isDashboardGroupHidden,
-      toggleDashboardGroupVisibility,
+      hiddenDashboardBalances,
+      isDashboardBalanceHidden,
+      toggleDashboardBalanceSection,
       areAllDashboardBalancesHidden,
+      areAnyDashboardBalancesHidden,
       toggleAllDashboardBalances,
-      resetDashboardBalanceMasks,
+      resetDashboardBalancesVisibility,
     ]
   );
 
@@ -261,13 +292,15 @@ export function usePreferences(): PreferencesContextType {
       dir: 'rtl',
       setLanguage: () => {},
       t: (arText: string) => arText,
-      maskedDashboardGroups: [],
-      isDashboardGroupHidden: () => false,
-      toggleDashboardGroupVisibility: () => {},
+      hiddenDashboardBalances: createInitialHiddenBalancesMap(false),
+      isDashboardBalanceHidden: () => false,
+      toggleDashboardBalanceSection: () => {},
       areAllDashboardBalancesHidden: false,
+      areAnyDashboardBalancesHidden: false,
       toggleAllDashboardBalances: () => {},
-      resetDashboardBalanceMasks: () => {},
+      resetDashboardBalancesVisibility: () => {},
     };
   }
   return ctx;
 }
+

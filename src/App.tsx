@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider, useData } from './context/DataContext';
-import { PreferencesProvider } from './context/PreferencesContext';
+import { PreferencesProvider, usePreferences } from './context/PreferencesContext';
 import { ShortcutsProvider, useShortcuts } from './context/ShortcutsContext';
 import { LoginView } from './components/modules/auth/LoginView';
 import { ChangePasswordModal } from './components/modules/auth/ChangePasswordModal';
@@ -144,6 +144,7 @@ const MainAppContent: React.FC = () => {
     databaseUnavailableMessage,
   } = useAuth();
   const { networkStatus, lastError, triggerSync, isSyncing } = useData();
+  const { dir } = usePreferences();
   const [currentPage, setCurrentPage] = useState<NavItemKey>('dashboard');
   const [reportProductId, setReportProductId] = useState<string | undefined>(undefined);
   const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() =>
@@ -726,7 +727,15 @@ const MainAppContent: React.FC = () => {
 
           <div
             className={`flex-1 flex flex-col min-w-0 transition-all duration-200 ${
-              isSectionsOpen ? (isSidebarCollapsed ? 'lg:mr-12' : 'lg:mr-52') : ''
+              isSectionsOpen
+                ? dir === 'ltr'
+                  ? isSidebarCollapsed
+                    ? 'lg:ml-12'
+                    : 'lg:ml-52'
+                  : isSidebarCollapsed
+                  ? 'lg:mr-12'
+                  : 'lg:mr-52'
+                : ''
             }`}
           >
             <Header

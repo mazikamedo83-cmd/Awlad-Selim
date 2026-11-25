@@ -13,6 +13,7 @@ import {
   Settings,
   ChevronDown,
   ChevronLeft,
+  ChevronRight,
   ArrowDownCircle,
   ArrowUpCircle,
   TrendingDown,
@@ -37,6 +38,7 @@ import {
 } from '../common/AppIcons';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
+import { usePreferences } from '../../context/PreferencesContext';
 import { CashOperationType } from '../../types';
 
 export type NavItemKey =
@@ -136,6 +138,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const { hasPermission, currentUser } = useAuth();
   const { customerItemOrders = [], incomingDispatchCount = 0 } = useData();
+  const { dir } = usePreferences();
+  const isLtr = dir === 'ltr';
   const pendingOrdersCount = customerItemOrders.filter((o) => o.status === 'pending').length;
 
   // Expand all Windows desktop sections by default; users can collapse/expand freely
@@ -425,15 +429,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
         />
       )}
 
-      {/* RTL Collapsible Sidebar Drawer */}
+      {/* Collapsible Sidebar Drawer (RTL right-docked / LTR left-docked) */}
       <aside
         id="system-sections-drawer"
         aria-label="قائمة الأقسام الجانبية"
         aria-hidden={!isOpen}
-        className={`fixed top-0 bottom-0 right-0 z-50 lg:z-40 bg-white dark:bg-[#0E1C36] text-slate-800 dark:text-[#DCE6F5] border-l border-slate-200 dark:border-[#21375C] shadow-lg transition-all duration-200 ease-out flex flex-col pt-safe pb-safe no-print ${
+        className={`fixed top-0 bottom-0 ${isLtr ? 'left-0 border-r' : 'right-0 border-l'} z-50 lg:z-40 bg-white dark:bg-[#0E1C36] text-slate-800 dark:text-[#DCE6F5] border-slate-200 dark:border-[#21375C] shadow-lg transition-all duration-200 ease-out flex flex-col pt-safe pb-safe no-print ${
           isCollapsed ? 'lg:w-12 w-[78vw] max-w-[260px]' : 'w-[78vw] max-w-[260px] lg:w-52'
         } ${
-          isOpen ? 'translate-x-0 pointer-events-auto' : 'translate-x-full pointer-events-none'
+          isOpen
+            ? 'translate-x-0 pointer-events-auto'
+            : isLtr
+            ? '-translate-x-full pointer-events-none'
+            : 'translate-x-full pointer-events-none'
         }`}
       >
         {/* Drawer Header Strip (Logo Navy/Royal Gradient) */}
@@ -538,11 +546,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </span>
               <span className="truncate">لوحة التحكم الرئيسية</span>
             </div>
-            <ChevronLeft
-              className={`w-3.5 h-3.5 shrink-0 ${
-                currentPage === 'dashboard' ? 'text-blue-100' : 'text-slate-400 dark:text-[#849BBF]'
-              }`}
-            />
+            {isLtr ? (
+              <ChevronRight
+                className={`w-3.5 h-3.5 shrink-0 ${
+                  currentPage === 'dashboard' ? 'text-blue-100' : 'text-slate-400 dark:text-[#849BBF]'
+                }`}
+              />
+            ) : (
+              <ChevronLeft
+                className={`w-3.5 h-3.5 shrink-0 ${
+                  currentPage === 'dashboard' ? 'text-blue-100' : 'text-slate-400 dark:text-[#849BBF]'
+                }`}
+              />
+            )}
           </button>
 
           {/* Quick Cash Operations (Direct Execution, Permission-Gated) */}

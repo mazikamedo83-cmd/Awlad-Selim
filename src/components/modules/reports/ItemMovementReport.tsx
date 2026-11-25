@@ -683,7 +683,7 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-px bg-slate-200 border border-slate-200 rounded-md overflow-hidden tabular-nums">
                     {report.warehouseBreakdown.map((wh) => (
                       <div key={wh.warehouseId} className="px-2 py-1.5 bg-slate-50">
-                        <div className="font-bold text-slate-800 truncate">{wh.warehouseName}</div>
+                        <div className="font-bold text-slate-800 whitespace-normal break-words">{wh.warehouseName}</div>
                         <div className="font-mono font-black text-blue-950 text-xs">{wh.quantity}</div>
                         <div className="text-[10px] text-slate-500 font-mono">تكلفة: {wh.costValue.toLocaleString()} {settings.currency}</div>
                       </div>
@@ -701,7 +701,7 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-px bg-[#DCE6F5] border border-[#DCE6F5] rounded-md overflow-hidden tabular-nums">
                     {report.repCustodyBreakdown.map((rep) => (
                       <div key={rep.representativeId} className="px-2 py-1.5 bg-[#EEF3FA]/70">
-                        <div className="font-bold text-slate-900 truncate">{rep.representativeName}</div>
+                        <div className="font-bold text-slate-900 whitespace-normal break-words">{rep.representativeName}</div>
                         <div className="font-mono font-black text-[#011E58] text-xs">{rep.quantity}</div>
                         <div className="text-[10px] text-slate-600 font-mono">تكلفة: {rep.costValue.toLocaleString()} {settings.currency}</div>
                       </div>
@@ -869,7 +869,7 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
                 }
 
                 if (sec.key === 'adjustments') {
-                  secColumns.push({ key: 'notes', header: 'السبب / الملاحظات', exportValue: (r) => r.notes || '-', render: (r) => <span className="text-slate-600 max-w-[220px] truncate block">{r.notes || '-'}</span> });
+                  secColumns.push({ key: 'notes', header: 'السبب / الملاحظات', exportValue: (r) => r.notes || '-', render: (r) => <span className="text-slate-600 max-w-[260px] whitespace-normal break-words block">{r.notes || '-'}</span> });
                 }
 
                 secColumns.push({

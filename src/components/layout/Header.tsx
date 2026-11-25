@@ -20,9 +20,12 @@ import {
   ReceiptText,
   Truck,
   Menu,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
+import { usePreferences } from '../../context/PreferencesContext';
 import { useShortcuts } from '../../context/ShortcutsContext';
 import { OfflineIndicator } from './OfflineIndicator';
 import { NavItemKey } from './Sidebar';
@@ -92,6 +95,7 @@ export const Header: React.FC<HeaderProps> = ({
     triggerManualSync,
   } = useData();
   const { triggerAction } = useShortcuts();
+  const { resolvedTheme, setThemePreference } = usePreferences();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -439,6 +443,17 @@ export const Header: React.FC<HeaderProps> = ({
                     {savedAccounts.length}
                   </span>
                 )}
+              </button>
+
+              <button
+                type="button"
+                data-testid="header-theme-toggle"
+                onClick={() => setThemePreference(resolvedTheme === 'dark' ? 'light' : 'dark')}
+                className="min-h-[30px] min-w-[30px] flex items-center justify-center rounded-md bg-white/10 hover:bg-white/20 text-blue-50 hover:text-white transition-colors cursor-pointer shrink-0"
+                title={resolvedTheme === 'dark' ? 'التبديل إلى الوضع النهاري' : 'التبديل إلى الوضع الداكن'}
+                aria-label={resolvedTheme === 'dark' ? 'التبديل إلى الوضع النهاري' : 'التبديل إلى الوضع الداكن'}
+              >
+                {resolvedTheme === 'dark' ? <Sun className="w-4 h-4 text-amber-300" /> : <Moon className="w-4 h-4" />}
               </button>
 
               <button

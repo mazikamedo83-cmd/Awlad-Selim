@@ -42,6 +42,7 @@ import {
   upsertSavedAccount,
 } from '../services/accountVault';
 import { logDiagnostic } from '../services/diagnostics';
+import { resetDashboardBalancesSessionStorage, usePreferences } from './PreferencesContext';
 
 export interface PairingBannerMessage {
   type: 'success' | 'warning' | 'error';
@@ -187,6 +188,7 @@ export function createAuthExpiredCallback(
     actions.setIsDatabaseUnavailable(false);
     actions.setDatabaseUnavailableMessage(null);
     actions.setSessionExpiredMessage(message || 'انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً.');
+    resetDashboardBalancesSessionStorage();
   };
 }
 
@@ -232,6 +234,7 @@ export async function executeAuthSessionCheck(params: {
       actions.setIsDatabaseUnavailable(false);
       actions.setDatabaseUnavailableMessage(null);
     }
+    resetDashboardBalancesSessionStorage();
     actions.setIsLoading(false);
   };
 
@@ -437,6 +440,7 @@ export async function executeAuthSessionCheck(params: {
         actions.setLastVerifiedAt(null);
         actions.setIsDatabaseUnavailable(false);
         actions.setDatabaseUnavailableMessage(null);
+        resetDashboardBalancesSessionStorage();
         if (onSavedAccountsLoaded) {
           onSavedAccountsLoaded(await listSavedAccounts(baseUrl).catch(() => []));
         }
@@ -559,6 +563,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { resetDashboardBalancesVisibility } = usePreferences();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [customerProfile, setCustomerProfile] = useState<Customer | null>(null);
   const [representativeProfile, setRepresentativeProfile] = useState<Representative | null>(null);
@@ -899,6 +904,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setPermissionsMayBeStale(false);
       setLastVerifiedAt(null);
       setIsAccountSwitcherOpen(false);
+      resetDashboardBalancesSessionStorage();
+      resetDashboardBalancesVisibility();
     }
     return { serverRevoked, warning };
   };
@@ -1197,6 +1204,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setPermissionsMayBeStale(false);
     setLastVerifiedAt(null);
     setIsAccountSwitcherOpen(false);
+    resetDashboardBalancesSessionStorage();
+    resetDashboardBalancesVisibility();
     return { serverRevoked, warning };
   };
 
@@ -1233,7 +1242,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setDatabaseUnavailableMessage(null);
     setSessionExpiredMessage(reason || 'تم إيقاف الحساب أو سحب الصلاحية من السيرفر المركزي.');
     setIsAccountSwitcherOpen(false);
-  }, [refreshSavedAccounts]);
+    resetDashboardBalancesSessionStorage();
+    resetDashboardBalancesVisibility();
+  }, [refreshSavedAccounts, resetDashboardBalancesVisibility]);
 
   const updatePassword = async (
     newPassword: string,

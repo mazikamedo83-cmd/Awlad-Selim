@@ -2041,7 +2041,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {warehouses.map((w) => (
                   <div key={w.id} className="bg-white p-1.5 rounded-lg border">
-                    <span className="block text-[10px] text-slate-500 font-bold truncate mb-1">{w.name}</span>
+                    <span className="block text-[10px] text-slate-500 font-bold whitespace-normal break-words mb-1">{w.name}</span>
                     <input
                       type="number"
                       min="0"

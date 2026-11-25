@@ -1148,11 +1148,11 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                   <button
                     type="button"
                     onClick={() => setLocationViewerCustomer(selectedCustomer)}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] font-bold border border-[#DCE6F5] transition-all cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] font-bold border border-[#DCE6F5] transition-all cursor-pointer text-right"
                     title="عرض موقع المحل المسجل على الخريطة"
                   >
                     <MapPin className="w-3.5 h-3.5 text-[#003589] shrink-0" />
-                    <span className="max-w-[260px] truncate">{selectedCustomer.address || 'عرض الموقع'}</span>
+                    <span className="whitespace-normal break-words">{selectedCustomer.address || 'عرض الموقع'}</span>
                   </button>
                 </div>
 
@@ -2403,13 +2403,13 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
             render: (cust) => {
               const cls = customerClassificationMap.get(cust.id);
               return (
-                <div className="space-y-0.5 min-w-[175px]">
-                  <div className="font-black text-slate-900 dark:text-[#F3F7FC] whitespace-normal leading-snug">{cust.shopName || cust.name}</div>
+                <div className="space-y-0.5 min-w-[170px]">
+                  <div className="font-black text-slate-900 whitespace-normal break-words">{cust.shopName || cust.name}</div>
                   {cust.shopName && cust.shopName !== cust.name && (
-                    <div className="text-[10px] text-slate-500 dark:text-[#97AECE] whitespace-normal">{cust.name}</div>
+                    <div className="text-[10px] text-slate-500 whitespace-normal break-words">{cust.name}</div>
                   )}
                   {(cust.governorate || cust.area) && (
-                    <div className="text-[10px] text-slate-500 dark:text-[#97AECE] whitespace-normal">
+                    <div className="text-[10px] text-slate-500 whitespace-normal break-words">
                       {[cust.governorate, cust.area].filter(Boolean).join(' · ')}
                     </div>
                   )}
@@ -2457,11 +2457,11 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                 <button
                   type="button"
                   onClick={() => setLocationViewerCustomer(cust)}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] font-bold border border-[#DCE6F5] max-w-[180px] truncate cursor-pointer"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] font-bold border border-[#DCE6F5] min-w-[140px] max-w-[240px] text-right cursor-pointer"
                   title="عرض الموقع المسجل"
                 >
                   <MapPin className="w-3 h-3 text-[#003589] shrink-0" />
-                  <span className="truncate">{cust.address || 'عرض الموقع'}</span>
+                  <span className="whitespace-normal break-words">{cust.address || 'عرض الموقع'}</span>
                 </button>
               </div>
             ),

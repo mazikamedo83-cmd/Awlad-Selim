@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import {
   UserCheck, Plus, ArrowDownCircle, ArrowUpCircle, Wallet, Edit, Printer,
-  Download, FileDown, ShieldCheck, AlertCircle, CheckCircle2, Search, SlidersHorizontal
+  Download, FileDown, ShieldCheck, AlertCircle, CheckCircle2, Search
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
