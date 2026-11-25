@@ -12,13 +12,11 @@ import {
   BellRing,
   Volume2,
   Package,
-  ShoppingCart,
   ClipboardList,
   Receipt,
   Users,
   FilePlus2,
   FileText,
-  ArrowLeftRight,
   X,
   ChevronLeft,
   AlertCircle,
@@ -31,13 +29,12 @@ import {
   Sun,
   Moon,
   Monitor,
-  PanelRightClose,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
 import { usePreferences } from '../../../context/PreferencesContext';
 import { getStoredTokens } from '../../../services/api';
-import { isMobileAppPlatform, registerAndroidBackButton } from '../../../services/native';
+import { registerAndroidBackButton } from '../../../services/native';
 import { MobileNotificationItem } from '../../../types';
 import { CustomerPortal, CustomerTabKey } from './CustomerPortal';
 import { RepPortal, RepTabKey } from './RepPortal';
@@ -61,17 +58,9 @@ export const MobilePortal: React.FC = () => {
   const data = useData();
   const { themePreference, setThemePreference, language, setLanguage, t } = usePreferences();
   const isRep = currentUser?.role === 'representative';
-  const hideSectionsNav = false;
 
   const [customerTab, setCustomerTab] = useState<CustomerTabKey>('home');
   const [repTab, setRepTab] = useState<RepTabKey>('home');
-  const [isDrawerOpen, setIsDrawerOpen] = useState(true);
-
-  useEffect(() => {
-    if (currentUser?.id) {
-      setIsDrawerOpen(true);
-    }
-  }, [currentUser?.id]);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isServerModalOpen, setIsServerModalOpen] = useState(false);
   const [isSyncCenterOpen, setIsSyncCenterOpen] = useState(false);
@@ -182,10 +171,6 @@ export const MobilePortal: React.FC = () => {
         setIsServerModalOpen(false);
         return true;
       }
-      if (isDrawerOpen) {
-        setIsDrawerOpen(false);
-        return true;
-      }
       if (isRep && repTab !== 'home') {
         requestRepTabChange('home');
         return true;
@@ -196,7 +181,7 @@ export const MobilePortal: React.FC = () => {
       }
       return false;
     });
-  }, [pendingRepTab, isSettingsModalOpen, isSyncCenterOpen, isNotificationsOpen, isServerModalOpen, isDrawerOpen, isRep, repTab, customerTab, hasUnsavedRepInvoice]);
+  }, [pendingRepTab, isSettingsModalOpen, isSyncCenterOpen, isNotificationsOpen, isServerModalOpen, isRep, repTab, customerTab, hasUnsavedRepInvoice]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -314,37 +299,6 @@ export const MobilePortal: React.FC = () => {
         { key: 'more', label: 'المزيد', icon: Menu, active: ['more', 'orders', 'account'].includes(customerTab), badge: 0, onSelect: () => setCustomerTab('more') },
       ];
 
-  const allPortalDestinations = isRep
-    ? [
-        { key: 'home', label: 'الرئيسية (الشبكة السريعة)', icon: Home, active: repTab === 'home', onSelect: () => requestRepTabChange('home') },
-        { key: 'cash', label: 'النقدية والعهدة المالية', icon: Receipt, active: repTab === 'cash', onSelect: () => requestRepTabChange('cash') },
-        { key: 'refresh', label: 'REFRESH · الإرسال والاستلام', icon: RefreshCw, active: repTab === 'refresh', onSelect: () => requestRepTabChange('refresh') },
-        { key: 'new-invoice', label: 'إصدار فاتورة بيع', icon: FilePlus2, active: repTab === 'new-invoice', onSelect: () => requestRepTabChange('new-invoice') },
-        { key: 'new-quote', label: 'عرض سعر', icon: FileText, active: repTab === 'new-quote', onSelect: () => requestRepTabChange('new-quote') },
-        { key: 'customers', label: 'دليل العملاء', icon: Users, active: repTab === 'customers', onSelect: () => requestRepTabChange('customers') },
-        { key: 'orders', label: 'الطلبات والتسليمات', icon: ClipboardList, active: repTab === 'orders', onSelect: () => requestRepTabChange('orders') },
-        { key: 'invoices', label: 'سجل فواتير المبيعات', icon: FileText, active: repTab === 'invoices', onSelect: () => requestRepTabChange('invoices') },
-        ...(currentUser?.role === 'admin' || hasPermission('canManagePurchases') || hasPermission('canCreatePurchase')
-          ? [
-              { key: 'purchases-list', label: 'فواتير الشراء', icon: Receipt, active: repTab === 'purchases-list', onSelect: () => requestRepTabChange('purchases-list') },
-              { key: 'suppliers', label: 'الموردون وكشف الحساب', icon: Users, active: repTab === 'suppliers', onSelect: () => requestRepTabChange('suppliers') },
-            ]
-          : []),
-        { key: 'rep-reports', label: 'تقارير المندوب', icon: FileText, active: repTab === 'rep-reports', onSelect: () => requestRepTabChange('rep-reports') },
-        { key: 'custody', label: 'المخزن والعهدة والتحويلات', icon: ArrowLeftRight, active: repTab === 'custody', onSelect: () => requestRepTabChange('custody') },
-        { key: 'more', label: 'المزيد والإعدادات', icon: Menu, active: repTab === 'more', onSelect: () => requestRepTabChange('more') },
-      ]
-    : [
-        { key: 'home', label: 'الرئيسية', icon: Home, active: customerTab === 'home', onSelect: () => setCustomerTab('home') },
-        { key: 'categories', label: 'الأقسام والمنتجات', icon: Package, active: customerTab === 'categories', onSelect: () => setCustomerTab('categories') },
-        { key: 'offers', label: 'العروض والخصومات', icon: Tag, active: customerTab === 'offers', onSelect: () => setCustomerTab('offers') },
-        { key: 'favorites', label: 'المفضلة', icon: Heart, active: customerTab === 'favorites', onSelect: () => setCustomerTab('favorites') },
-        { key: 'cart', label: `سلة الطلبات (${customerCartCount})`, icon: ShoppingCart, active: customerTab === 'cart', onSelect: () => setCustomerTab('cart') },
-        { key: 'orders', label: 'طلباتي الحالية', icon: ClipboardList, active: customerTab === 'orders', onSelect: () => setCustomerTab('orders') },
-        { key: 'account', label: 'فواتيري وكشف الحساب', icon: Receipt, active: customerTab === 'account', onSelect: () => setCustomerTab('account') },
-        { key: 'more', label: 'المزيد والإعدادات', icon: Menu, active: customerTab === 'more', onSelect: () => setCustomerTab('more') },
-      ];
-
   return (
     <div className="h-[100dvh] overflow-hidden bg-[#F4F6FA] dark:bg-[#081326] text-slate-800 dark:text-[#DCE6F5] font-sans antialiased flex flex-col pb-safe">
       {/* Slim Brand Mobile App Header */}
@@ -352,29 +306,6 @@ export const MobilePortal: React.FC = () => {
         <div className="w-full max-w-full mx-auto px-2 sm:px-3">
           <div className="h-11 flex items-center justify-between gap-1.5">
             <div className="flex items-center gap-1.5 min-w-0">
-              {!hideSectionsNav && (
-                <button
-                  type="button"
-                  data-testid="sidebar-toggle-btn"
-                  onClick={() => setIsDrawerOpen((prev) => !prev)}
-                  aria-expanded={isDrawerOpen}
-                  aria-controls="portal-sections-sidebar"
-                  className={`h-8 px-2 flex items-center justify-center gap-1 rounded-md border text-[11px] font-black whitespace-nowrap cursor-pointer shrink-0 transition-colors ${
-                    isDrawerOpen
-                      ? 'bg-white text-[var(--awlad-navy-900)] border-white dark:bg-[#1659C8] dark:text-white dark:border-[#60A5FA]/50 shadow-xs'
-                      : 'bg-white/15 hover:bg-white/25 border-white/30 text-white'
-                  }`}
-                  title={isDrawerOpen ? 'إغلاق القائمة الجانبية' : 'فتح القائمة الجانبية'}
-                  aria-label="تبديل القائمة الجانبية"
-                >
-                  {isDrawerOpen ? (
-                    <PanelRightClose className="w-3.5 h-3.5 shrink-0" />
-                  ) : (
-                    <Menu className="w-3.5 h-3.5 shrink-0" />
-                  )}
-                  <span>{isDrawerOpen ? 'إغلاق' : 'الأقسام'}</span>
-                </button>
-              )}
               <img
                 src="/awlad-selim-logo.png"
                 alt="AWLAD SELIM"
@@ -461,63 +392,6 @@ export const MobilePortal: React.FC = () => {
           </div>
         </div>
       </header>
-
-      {/* Side-by-Side Vertical Sections Sidebar + Expandable Content */}
-      <div className="flex-1 min-h-0 flex items-stretch min-w-0">
-      {!hideSectionsNav && isDrawerOpen && (
-      <aside
-        id="portal-sections-sidebar"
-        aria-label="قائمة أقسام البوابة"
-        className="relative shrink-0 h-full w-[162px] sm:w-56 bg-white dark:bg-[#0E1C36] text-slate-800 dark:text-[#DCE6F5] border-l border-slate-200 dark:border-[#21375C] shadow-xs flex flex-col pt-safe pb-safe no-print"
-      >
-        <div className="h-10 flex items-center justify-between px-1.5 sm:px-2 awlad-brand-gradient text-white border-b border-[var(--awlad-navy-900)] shrink-0">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <img
-              src="/awlad-selim-logo.png"
-              alt="AWLAD SELIM"
-              className="no-dark-surface h-6 w-6 object-contain bg-white dark:bg-white rounded-md p-0.5 shrink-0"
-            />
-            <div className="min-w-0">
-              <span className="block text-[11px] sm:text-xs font-black truncate">أقسام البوابة</span>
-            </div>
-          </div>
-          <button
-            type="button"
-            data-testid="sidebar-close-btn"
-            onClick={() => setIsDrawerOpen(false)}
-            className="h-7 px-1.5 sm:px-2 flex items-center justify-center gap-1 rounded-md bg-white/15 hover:bg-white/25 text-white text-[11px] font-bold cursor-pointer shrink-0"
-            aria-label="إغلاق القائمة الجانبية"
-          >
-            <X className="w-3.5 h-3.5 shrink-0" />
-            <span className="hidden sm:inline">إغلاق</span>
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto overscroll-contain p-1.5 space-y-1">
-          {allPortalDestinations.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => item.onSelect()}
-                className={`w-full min-h-[32px] px-2 py-1 rounded-md flex items-center justify-between gap-1.5 text-[11.5px] border transition-colors cursor-pointer ${
-                  item.active
-                    ? 'bg-[var(--awlad-navy-900)] dark:bg-[#1659C8] text-white border-[var(--awlad-navy-900)] dark:border-[#60A5FA]/40 font-black'
-                    : 'bg-white dark:bg-[#132544] text-slate-800 dark:text-[#DCE6F5] border-slate-200 dark:border-[#21375C] hover:bg-[#EEF3FA] dark:hover:bg-[#1A3461] font-bold'
-                }`}
-              >
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <Icon className="w-3.5 h-3.5 shrink-0" />
-                  <span className="truncate">{item.label}</span>
-                </div>
-                <ChevronLeft className={`w-3.5 h-3.5 shrink-0 ${item.active ? 'text-blue-200' : 'text-slate-400'}`} />
-              </button>
-            );
-          })}
-        </div>
-      </aside>
-      )}
 
       <main className="flex-1 min-w-0 min-h-0 overflow-y-auto p-1.5 sm:p-2 space-y-2">
         {linkWarning && (
@@ -629,7 +503,6 @@ export const MobilePortal: React.FC = () => {
           />
         )}
       </main>
-      </div>
 
       {/* Compact 5-Tab Mobile Bottom Navigation Bar */}
       <nav

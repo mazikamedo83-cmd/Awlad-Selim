@@ -17,6 +17,7 @@ export interface AwladDesktopInfo {
 
 export interface AwladDesktopBridge {
   isElectron: boolean;
+  platform?: string;
   getDesktopInfo: () => Promise<AwladDesktopInfo>;
   openDataFolder: () => Promise<{ ok: boolean; error: string | null }>;
   openBackupsFolder: () => Promise<{ ok: boolean; error: string | null }>;

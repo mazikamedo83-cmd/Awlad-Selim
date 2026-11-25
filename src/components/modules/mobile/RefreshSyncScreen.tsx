@@ -503,7 +503,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
         type: 'success',
         text:
           res.count > 0
-            ? `تم إرسال (${res.count}) عملية بنجاح إلى السيرفر المركزي.`
+            ? `تم إرسال (${res.count}) عملية بنجاح.`
             : 'لا توجد عمليات محلية معلقة للإرسال حالياً — السجل متزامن بالكامل.',
       });
     } else {
@@ -528,12 +528,12 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
     if (res.ok) {
       setActionMsg({
         type: 'success',
-        text: `تم استلام وتحديث البيانات من السيرفر (${res.count} سجل). مراجعة المستندات لا تؤكد الاستلام تلقائياً — استخدم «تأكيد الاستلام» للاعتماد.`,
+        text: `تم استلام وتحديث البيانات (${res.count} سجل). مراجعة المستندات لا تؤكد الاستلام تلقائياً — استخدم «تأكيد الاستلام» للاعتماد.`,
       });
     } else {
       setActionMsg({
         type: 'error',
-        text: res.error || 'تعذر الاتصال بالسيرفر لجلب التحديثات.',
+        text: res.error || 'تعذر الاتصال لجلب التحديثات.',
       });
     }
   };
@@ -638,7 +638,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
       setActionMsg({
         type: 'success',
         text: res.queuedOffline
-          ? `تم تسجيل استلام العهدة (${requestNumber}) محلياً بانتظار الإرسال للسيرفر.`
+          ? `تم تسجيل استلام العهدة (${requestNumber}) محلياً بانتظار الإرسال.`
           : `تم تأكيد استلام عهدة التحويل (${requestNumber}) وإضافتها لمخزون السيارة.`,
       });
     } else {
@@ -1111,7 +1111,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
             <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600 dark:text-[#8DA2C5]">
               <span className={`inline-flex items-center gap-1 font-bold ${isOnline ? 'text-emerald-800 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>
                 {isOnline ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-                {isOnline ? 'متصل بالسيرفر المركزي' : 'وضع العمل بدون إنترنت'}
+                {isOnline ? 'متصل وجاهز للإرسال والاستلام' : 'وضع العمل بدون إنترنت'}
               </span>
               <span aria-hidden="true">·</span>
               <span>آخر مزامنة: <strong className="font-mono tabular-nums text-slate-900 dark:text-[#EEF4FC]">{formatDateTimeAr(data.lastServerSyncAt)}</strong></span>
@@ -1148,8 +1148,8 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
               {isSending
                 ? 'جاري الإرسال...'
                 : kpiStats.readyToSend > 0
-                ? `إرسال إلى السيرفر (${kpiStats.readyToSend})`
-                : 'إرسال إلى السيرفر'}
+                ? `إرسال (${kpiStats.readyToSend})`
+                : 'إرسال'}
             </span>
           </button>
           <button
@@ -1164,8 +1164,8 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
               {isReceiving
                 ? 'جاري الاستلام...'
                 : kpiStats.awaitingReceiveTotal > 0
-                ? `استلام من السيرفر (${kpiStats.awaitingReceiveTotal})`
-                : 'استلام من السيرفر'}
+                ? `استلام (${kpiStats.awaitingReceiveTotal})`
+                : 'استلام'}
             </span>
           </button>
           {onBack && (
@@ -1322,7 +1322,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
             selectedKeys={selectedOpIds}
             onSelectionChange={setSelectedOpIds}
             emptyTitle="لا توجد عمليات محلية معلقة"
-            emptySubtitle="جميع فواتيرك وتحصيلاتك مرسلة ومعتمدة على السيرفر المركزي"
+            emptySubtitle="جميع فواتيرك وتحصيلاتك مرسلة ومعتمدة بالكامل"
             exportFilename="العمليات-المحلية-المعلقة"
             pdfTitle="قائمة العمليات المحلية المعلقة"
             compact

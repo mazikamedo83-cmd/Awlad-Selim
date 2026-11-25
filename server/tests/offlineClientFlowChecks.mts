@@ -600,4 +600,63 @@ await test('8 (Client). Strict Offline mode while navigator.onLine === false que
   }
 });
 
+const { Capacitor } = await import('@capacitor/core');
+const { getAppPlatform, isWindowsDesktopApp } = await import('../../src/services/native.ts');
+
+await test('9 (Platform Detection). Windows Desktop stays windows-desktop even on narrow window; Web, Android & iOS never return true for isWindowsDesktopApp()', async () => {
+  const win = (globalThis as any).window;
+  const origDesktop = win.awladDesktop;
+  const origInnerWidth = win.innerWidth;
+  const origIsNative = Capacitor.isNativePlatform;
+  const origGetPlatform = Capacitor.getPlatform;
+
+  try {
+    // 1. Actual Windows Electron Desktop (wide & narrow resized viewport)
+    (Capacitor as any).isNativePlatform = () => false;
+    (Capacitor as any).getPlatform = () => 'web';
+    win.awladDesktop = { isElectron: true, platform: 'win32' };
+    win.innerWidth = 1440;
+    assert.equal(isWindowsDesktopApp(), true);
+    assert.equal(getAppPlatform(), 'windows-desktop');
+
+    win.innerWidth = 520; // Shrunk Windows desktop window still uses Windows Sidebar
+    assert.equal(isWindowsDesktopApp(), true);
+    assert.equal(getAppPlatform(), 'windows-desktop');
+
+    // Non-Windows Electron (e.g. macOS/Linux) is NOT Windows Desktop
+    win.awladDesktop = { isElectron: true, platform: 'darwin' };
+    assert.equal(isWindowsDesktopApp(), false);
+    assert.equal(getAppPlatform(), 'web');
+
+    // 2. Web Browser Desktop & Mobile viewports
+    win.awladDesktop = undefined;
+    win.innerWidth = 1920;
+    assert.equal(isWindowsDesktopApp(), false);
+    assert.equal(getAppPlatform(), 'web');
+
+    win.innerWidth = 390;
+    assert.equal(isWindowsDesktopApp(), false);
+    assert.equal(getAppPlatform(), 'web');
+
+    // 3. Android Capacitor App
+    (Capacitor as any).isNativePlatform = () => true;
+    (Capacitor as any).getPlatform = () => 'android';
+    win.innerWidth = 1080;
+    assert.equal(isWindowsDesktopApp(), false);
+    assert.equal(getAppPlatform(), 'android');
+
+    // 4. iOS Capacitor App
+    (Capacitor as any).isNativePlatform = () => true;
+    (Capacitor as any).getPlatform = () => 'ios';
+    win.innerWidth = 1024;
+    assert.equal(isWindowsDesktopApp(), false);
+    assert.equal(getAppPlatform(), 'ios');
+  } finally {
+    win.awladDesktop = origDesktop;
+    win.innerWidth = origInnerWidth;
+    (Capacitor as any).isNativePlatform = origIsNative;
+    (Capacitor as any).getPlatform = origGetPlatform;
+  }
+});
+
 console.log(`Client offline sub-suite finished: ${passed} passed.`);

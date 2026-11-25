@@ -27,13 +27,12 @@ import {
   ArrowRight,
   Search,
   Plus,
-  PanelRightClose,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
 import { registerAndroidBackButton } from '../../../services/native';
 import { CashOperationType, MobileNotificationItem, UserPermissions } from '../../../types';
-import { NavItemKey, Sidebar } from '../../layout/Sidebar';
+import type { NavItemKey } from '../../layout/Sidebar';
 import { MobileNotificationsSheet } from './MobileNotificationsSheet';
 import { MobileServerModal } from './MobileServerModal';
 import { MobileAddProductModal } from './MobileAddProductModal';
@@ -107,15 +106,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
   const { currentUser, hasPermission, logout, refreshAuthContext, setIsAccountSwitcherOpen, savedAccounts } = useAuth();
   const data = useData();
 
-  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(true);
   const [isMoreViewOpen, setIsMoreViewOpen] = useState(false);
-
-  // Auto-open vertical sections sidebar immediately upon login on Phone/Mobile viewports
-  useEffect(() => {
-    if (currentUser?.id) {
-      setIsMobileSidebarOpen(true);
-    }
-  }, [currentUser?.id]);
   const [moreSearchQuery, setMoreSearchQuery] = useState('');
   const [collapsedSectionIds, setCollapsedSectionIds] = useState<Record<string, boolean>>({});
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -157,10 +148,6 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         setIsServerModalOpen(false);
         return true;
       }
-      if (isMobileSidebarOpen) {
-        setIsMobileSidebarOpen(false);
-        return true;
-      }
       if (isMoreViewOpen) {
         setIsMoreViewOpen(false);
         return true;
@@ -171,7 +158,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
       }
       return false;
     });
-  }, [showLogoutConfirm, isAddProductModalOpen, isNotificationsOpen, isServerModalOpen, isMobileSidebarOpen, isMoreViewOpen, currentPage, onNavigate]);
+  }, [showLogoutConfirm, isAddProductModalOpen, isNotificationsOpen, isServerModalOpen, isMoreViewOpen, currentPage, onNavigate]);
 
   const sections: LauncherSection[] = useMemo(
     () => [
@@ -719,7 +706,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     if (checkPerm(['canManageReps', 'canManageTransfers', 'canManageSales', 'canManageAccounts', 'canApprove'])) {
       tiles.push({
         id: 'refresh-sync',
-        label: 'استلام المندوبين',
+        label: 'إرسال واستلام',
         icon: <RefreshCloudIcon className="w-11 h-11" />,
         onClick: () => onNavigate('refresh-sync'),
       });
@@ -805,27 +792,6 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
       <header className="shrink-0 z-30 awlad-brand-gradient text-white border-b border-[var(--awlad-royal-500)]/40 pt-safe no-print">
         <div className="w-full max-w-full mx-auto px-2 h-11 flex items-center justify-between gap-1.5">
           <div className="flex items-center gap-1.5 min-w-0 shrink">
-            <button
-              type="button"
-              data-testid="mobile-sidebar-toggle-btn"
-              onClick={() => setIsMobileSidebarOpen((prev) => !prev)}
-              aria-label="تبديل القائمة الجانبية"
-              aria-expanded={isMobileSidebarOpen}
-              aria-controls="system-sections-drawer"
-              title={isMobileSidebarOpen ? 'إغلاق قائمة الأقسام' : 'فتح قائمة الأقسام'}
-              className={`h-8 px-2 flex items-center justify-center gap-1 rounded-md border text-[11px] font-black whitespace-nowrap cursor-pointer shrink-0 transition-colors ${
-                isMobileSidebarOpen
-                  ? 'bg-white text-[var(--awlad-navy-900)] border-white dark:bg-[#1659C8] dark:text-white dark:border-[#60A5FA]/50 shadow-xs'
-                  : 'bg-white/15 hover:bg-white/25 border-white/30 text-white'
-              }`}
-            >
-              {isMobileSidebarOpen ? (
-                <PanelRightClose className="w-3.5 h-3.5 shrink-0" />
-              ) : (
-                <Menu className="w-3.5 h-3.5 shrink-0" />
-              )}
-              <span>{isMobileSidebarOpen ? 'إغلاق' : 'الأقسام'}</span>
-            </button>
             <img
               src="/awlad-selim-logo.png"
               alt="AWLAD SELIM"
@@ -921,22 +887,8 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         </div>
       </header>
 
-      {/* Side-by-Side Vertical Sidebar + Expandable Content */}
-      <div className="flex-1 min-h-0 flex items-stretch min-w-0 print:block">
-        <Sidebar
-          currentPage={currentPage}
-          onNavigate={(page) => {
-            setIsMoreViewOpen(false);
-            onNavigate(page);
-          }}
-          isOpen={isMobileSidebarOpen}
-          onClose={() => setIsMobileSidebarOpen(false)}
-          onOpenCashOp={onOpenCashOp}
-          mobileDrawer={false}
-        />
-
-        {/* Main Content */}
-        <main className="flex-1 min-w-0 min-h-0 overflow-y-auto p-1.5 sm:p-2 space-y-2 print:overflow-visible">
+      {/* Main Content */}
+      <main className="flex-1 min-w-0 min-h-0 overflow-y-auto p-1.5 sm:p-2 space-y-2 print:overflow-visible">
         {(data.isUsingOfflineCache || data.networkStatus === 'disconnected') && (
           <div className="px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900 flex items-center justify-between gap-2 no-print">
             <div className="flex items-center gap-2 min-w-0">
@@ -1162,7 +1114,6 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
           </>
         )}
       </main>
-      </div>
 
       {/* Compact 5-Tab Bottom Navigation Bar */}
       <nav

@@ -1865,7 +1865,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const networkDown = isNetworkFailure(err);
       setIsServerReachable(!networkDown);
       setNetworkStatus(networkDown ? 'disconnected' : 'error');
-      setLastError(err?.message || 'تعذر مزامنة البيانات مع السيرفر');
+      setLastError(err?.message || 'تعذر مزامنة البيانات حالياً');
     } finally {
       isSyncingRef.current = false;
       setIsSyncing(false);
@@ -1904,7 +1904,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const networkDown = isNetworkFailure(err);
         setIsServerReachable(!networkDown);
         setNetworkStatus(networkDown ? 'disconnected' : 'error');
-        setLastError(err?.message || 'تعذر مزامنة البيانات مع السيرفر');
+        setLastError(err?.message || 'تعذر مزامنة البيانات حالياً');
       } finally {
         isSyncingRef.current = false;
         setIsSyncing(false);
@@ -1975,9 +1975,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       setNetworkStatus(outcome.serverReachable ? 'error' : 'disconnected');
       if (outcome.error) setLastError(outcome.error);
-      return { ok: false, count: 0, error: outcome.error || 'تعذر الاستلام من السيرفر' };
+      return { ok: false, count: 0, error: outcome.error || 'تعذر الاستلام حالياً' };
     } catch (err: any) {
-      return { ok: false, count: 0, error: err?.message || 'تعذر الاستلام من السيرفر' };
+      return { ok: false, count: 0, error: err?.message || 'تعذر الاستلام حالياً' };
     } finally {
       isSyncingRef.current = false;
       setIsSyncing(false);
@@ -4282,7 +4282,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           queuedOffline: true,
         };
       }
-      return { success: false, error: err?.message || 'تعذر إرسال الطلب للسيرفر' };
+      return { success: false, error: err?.message || 'تعذر إرسال الطلب حالياً' };
     }
   };
 

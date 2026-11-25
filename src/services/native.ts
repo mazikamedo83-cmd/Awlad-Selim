@@ -30,12 +30,42 @@ export function isMobileAppPlatform(): boolean {
   return platform === 'android' || platform === 'ios';
 }
 
+export type AppPlatform = 'windows-desktop' | 'android' | 'ios' | 'web';
+
 export function isElectronDesktop(): boolean {
   try {
-    return typeof window !== 'undefined' && Boolean((window as any).awladDesktop?.secureVault);
+    if (typeof window === 'undefined') return false;
+    const desktop = (window as any).awladDesktop;
+    return Boolean(desktop && (desktop.isElectron === true || desktop.secureVault));
   } catch {
     return false;
   }
+}
+
+export function isWindowsDesktopApp(): boolean {
+  if (isNativeCapacitor()) return false;
+  const capPlatform = getNativePlatform();
+  if (capPlatform === 'android' || capPlatform === 'ios') return false;
+  if (!isElectronDesktop()) return false;
+  try {
+    const desktopPlatform = (window as any).awladDesktop?.platform;
+    if (typeof desktopPlatform === 'string' && desktopPlatform.trim()) {
+      return desktopPlatform === 'win32';
+    }
+    const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+    if (/android|iphone|ipad|ipod/i.test(ua)) return false;
+    return true;
+  } catch {
+    return true;
+  }
+}
+
+export function getAppPlatform(): AppPlatform {
+  const capPlatform = getNativePlatform();
+  if (capPlatform === 'android') return 'android';
+  if (capPlatform === 'ios') return 'ios';
+  if (isWindowsDesktopApp()) return 'windows-desktop';
+  return 'web';
 }
 
 export function syncNativeStatusBarStyle(appearance: 'light-header' | 'dark-header'): void {

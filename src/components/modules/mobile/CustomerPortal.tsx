@@ -478,7 +478,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
       });
       onTabChange('orders');
     } else {
-      setFeedback({ type: 'error', text: res.error || 'تعذر إرسال الطلب للسيرفر' });
+      setFeedback({ type: 'error', text: res.error || 'تعذر إرسال الطلب حالياً' });
     }
   };
 

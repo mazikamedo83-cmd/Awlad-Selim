@@ -25,7 +25,7 @@ const REP_SAFE_PRESET_KEYS: Array<{ key: keyof UserPermissions; label: string; l
   { key: 'canCreatePurchase', label: 'إنشاء فواتير شراء مسودة وإرسالها للإدارة' },
   { key: 'canManageTransfers', label: 'نظام التحويل بالنصف والعهدة المالية للمندوب' },
   { key: 'canCreateStockTransfer', label: 'إنشاء أوامر وطلبات تحويل أصناف' },
-  { key: 'canSend', label: 'إرسال البيانات والمزامنة للسيرفر (Send)' },
+  { key: 'canSend', label: 'إرسال البيانات والمزامنة (Send)' },
   { key: 'canReceive', label: 'استلام المزامنة والبيانات فقط (Sync Receive — لا يمنح استلام مشتريات المخزن)' },
   { key: 'canViewReports', label: 'عرض ملخصات مبيعات المندوب المسموحة (دون أرباح الشركة)' },
 ];

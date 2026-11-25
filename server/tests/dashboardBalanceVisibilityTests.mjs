@@ -86,24 +86,29 @@ test('DashboardView renders independent Eye/EyeOff buttons, global toggle, profi
   assert.ok(src.includes('grossProfit') && src.includes('netProfit'));
 });
 
-test('Windows Shell (Header, Sidebar, App) enforces default open vertical sidebar, toggle next to logo, flex push layout, and 1-click theme toggle', () => {
+test('Platform Navigation Shell: Windows-only auto-open vertical Sidebar + toggle, Web horizontal sections bar, and restored Mobile portals', () => {
   const header = readSrc('src/components/layout/Header.tsx');
   const sidebar = readSrc('src/components/layout/Sidebar.tsx');
   const app = readSrc('src/App.tsx');
+  const native = readSrc('src/services/native.ts');
   const mobileShell = readSrc('src/components/modules/mobile/StaffMobileShell.tsx');
+  const mobilePortal = readSrc('src/components/modules/mobile/MobilePortal.tsx');
 
+  assert.ok(native.includes('export function isWindowsDesktopApp()') && native.includes('export function getAppPlatform()'));
   assert.ok(header.includes('/awlad-selim-logo.png'), 'Original logo must be preserved in Header');
-  assert.ok(header.includes('aria-label="تبديل القائمة الجانبية"'), 'Sidebar toggle beside logo required');
+  assert.ok(header.includes('{isWinDesktop && (') && header.includes('data-testid="sidebar-toggle-btn"'), 'Sidebar toggle must appear ONLY on Windows Desktop');
+  assert.ok(header.includes('{!isWinDesktop && webHorizontalSections.length > 0 && (') && header.includes('data-testid="web-horizontal-sections-nav"'), 'Web must restore horizontal sections navigation bar');
   assert.ok(header.includes('data-testid="header-theme-toggle"'), '1-click theme toggle required in Header');
   assert.ok(header.includes('awlad-brand-gradient'), 'Top blue brand bar required');
-  assert.ok(!header.includes('primaryNavButtons'), 'Horizontal sections strip beside logo must be replaced by vertical Sidebar');
 
   assert.ok(sidebar.includes('/awlad-selim-logo.png'), 'Original logo must be preserved in Sidebar');
   assert.ok(sidebar.includes("isLtr ? 'left-0 border-r' : 'right-0 border-l'"), 'Sidebar must support symmetric LTR/RTL');
   assert.ok(sidebar.includes('data-testid="sidebar-close-btn"'), 'Sidebar must include explicit close button');
-  assert.ok(app.includes('window.innerWidth >= 768 && !isNativeCapacitor()'), 'Sidebar open by default on desktop/tablet login');
+  assert.ok(app.includes('isWindowsDesktop &&') && app.includes('setIsSectionsOpen(true)'), 'Sidebar auto-open must be scoped strictly to Windows Desktop');
+  assert.ok(app.includes('{isWindowsDesktop && (') && app.includes('<Sidebar'), 'App must render Sidebar ONLY on Windows Desktop');
   assert.ok(app.includes('flex-1 min-h-0 flex items-stretch min-w-0'), 'Flex push layout beside sidebar required so content expands automatically');
-  assert.ok(mobileShell.includes('mobileDrawer={true}'), 'Phone StaffMobileShell must include responsive sliding Sidebar drawer');
+  assert.ok(!mobileShell.includes('<Sidebar') && !mobileShell.includes('isMobileSidebarOpen'), 'StaffMobileShell must not render vertical Sidebar');
+  assert.ok(!mobilePortal.includes('portal-sections-sidebar') && !mobilePortal.includes('isDrawerOpen'), 'MobilePortal must not render vertical drawer sidebar');
 });
 
 test('All 11 Windows UI module families preserve compact brand tokens and avoid name clipping on critical tables', () => {

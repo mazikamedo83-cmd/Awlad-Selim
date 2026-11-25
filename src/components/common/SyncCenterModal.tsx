@@ -152,7 +152,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
         type: 'ok',
         text:
           importedCount > 0
-            ? `تم استيراد (${importedCount}) عملية محلية بأمان وبدء مزامنتها مع السيرفر المركزي.`
+            ? `تم استيراد (${importedCount}) عملية محلية بأمان وبدء المزامنة.`
             : 'جميع العمليات الموجودة في الملف مسجلة أو متزامنة بالفعل.',
       });
     } catch {
@@ -186,7 +186,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
       case 'failed':
         return { label: 'فشل مؤقت', cls: 'bg-red-50 text-red-700 border-red-200', icon: XCircle };
       default:
-        return { label: 'بانتظار السيرفر', cls: 'bg-amber-50 text-amber-800 border-amber-200', icon: Clock };
+        return { label: 'بانتظار الإرسال', cls: 'bg-amber-50 text-amber-800 border-amber-200', icon: Clock };
     }
   };
 
@@ -195,7 +195,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
       isOpen={isOpen}
       onClose={onClose}
       title="مركز المزامنة والعمل المحلي"
-      subtitle="مراقبة العمليات المسجلة بدون إنترنت ومعالجة تعارضات السيرفر المركزي"
+      subtitle="مراقبة العمليات المسجلة بدون إنترنت ومعالجة تعارضات المزامنة"
       maxWidth="4xl"
     >
       <div className="space-y-2.5 text-xs">
@@ -214,9 +214,9 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
             <div>
               <p className="font-black text-slate-900">
                 {networkStatus === 'connected'
-                  ? 'متصل بالسيرفر المركزي'
+                  ? 'متصل وجاهز للإرسال والاستلام'
                   : networkStatus === 'synchronizing'
-                  ? 'جاري المزامنة مع السيرفر...'
+                  ? 'جاري الإرسال والاستلام والمزامنة...'
                   : networkStatus === 'disconnected'
                   ? 'وضع العمل المحلي دون اتصال'
                   : networkStatus === 'error'
@@ -259,12 +259,12 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
               <p className="font-black">
                 {hasUnsyncedData
                   ? `لا تحذف التطبيق الآن: توجد (${unsyncedOperations.length + unresolvedConflicts.length}) عملية محلية غير متزامنة`
-                  : 'الحالة آمنة للترقية: جميع العمليات متزامنة مع السيرفر المركزي'}
+                  : 'الحالة آمنة للترقية: جميع العمليات مرسلة ومتزامنة بالكامل'}
               </p>
               <p className="text-[11px] opacity-85">
                 {hasUnsyncedData
-                  ? 'اضغط "مزامنة الآن" لرفعها للسيرفر، أو صدّر نسخة احتياطية آمنة قبل حذف النسخة القديمة ثم استوردها بعد تثبيت الإصدار الجديد.'
-                  : 'حسابك وبيانات شركتك محفوظة بالكامل على السيرفر المركزي ويمكنك تسجيل الدخول مباشرة بعد التحديث.'}
+                  ? 'اضغط "مزامنة الآن" لإرسالها، أو صدّر نسخة احتياطية آمنة قبل حذف النسخة القديمة ثم استوردها بعد تثبيت الإصدار الجديد.'
+                  : 'حسابك وبيانات شركتك محفوظة بالكامل ويمكنك تسجيل الدخول مباشرة بعد التحديث.'}
               </p>
             </div>
           </div>
@@ -445,7 +445,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
                           onClick={() => handleResolve(cf.id, 'keep_server')}
                           className="min-h-[30px] px-2.5 py-1 rounded-lg bg-[#003589] hover:bg-[#011E58] text-white font-bold cursor-pointer disabled:opacity-50"
                         >
-                          اعتماد نسخة السيرفر
+                          اعتماد النسخة المعتمدة
                         </button>
                         <button
                           type="button"

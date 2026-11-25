@@ -43,6 +43,7 @@ import {
   getLaunchDeepLinkUrl,
   isMobileAppPlatform,
   isNativeCapacitor,
+  isWindowsDesktopApp,
   registerAndroidBackButton,
   subscribeDeepLinks,
   syncNativeStatusBarStyle,
@@ -181,12 +182,21 @@ const MainAppContent: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Auto-open vertical sections sidebar upon login across Desktop, Tablet, and Phone
+  const isWindowsDesktop = isWindowsDesktopApp();
+  const isMobileApp = isMobileAppPlatform();
+
+  // Auto-open vertical sections sidebar immediately after login on Windows Desktop ONLY
   useEffect(() => {
-    if (isAuthenticated && currentUser && currentUser.role !== 'customer' && currentUser.role !== 'representative') {
+    if (
+      isWindowsDesktop &&
+      isAuthenticated &&
+      currentUser &&
+      currentUser.role !== 'customer' &&
+      currentUser.role !== 'representative'
+    ) {
       setIsSectionsOpen(true);
     }
-  }, [isAuthenticated, currentUser?.id]);
+  }, [isWindowsDesktop, isAuthenticated, currentUser?.id, currentUser?.role]);
 
   const inFlightPairingUrlsRef = useRef<Set<string>>(new Set());
   const recentPairingUrlsRef = useRef<Map<string, number>>(new Map());
@@ -342,17 +352,13 @@ const MainAppContent: React.FC = () => {
         setCashOpModal((prev) => ({ ...prev, open: false }));
         return true;
       }
-      if (isSectionsOpen) {
-        setIsSectionsOpen(false);
-        return true;
-      }
       if (currentPage !== 'dashboard') {
         setCurrentPage('dashboard');
         return true;
       }
       return false;
     });
-  }, [isAuthenticated, currentUser?.role, cashOpModal.open, isSectionsOpen, currentPage]);
+  }, [isAuthenticated, currentUser?.role, cashOpModal.open, currentPage]);
 
   useEffect(() => {
     syncNativeStatusBarStyle('dark-header');
@@ -682,7 +688,7 @@ const MainAppContent: React.FC = () => {
       {renderMapsQuotaBanner()}
       {renderFloatingPairingBanner()}
 
-      {isMobileViewport || isMobileAppPlatform() ? (
+      {!isWindowsDesktop && (isMobileApp || isMobileViewport) ? (
         <StaffMobileShell
           currentPage={currentPage}
           onNavigate={(page) => setCurrentPage(page)}
@@ -692,9 +698,14 @@ const MainAppContent: React.FC = () => {
           {renderActivePage()}
         </StaffMobileShell>
       ) : (
-        <div className="min-h-screen md:h-screen md:overflow-hidden print:h-auto print:overflow-visible bg-[var(--awlad-surface-page)] text-slate-800 dark:text-[#DCE6F5] flex flex-col font-sans antialiased pb-safe">
+        <div
+          className={`${
+            isWindowsDesktop ? 'h-screen overflow-hidden' : 'min-h-screen md:h-screen md:overflow-hidden'
+          } print:h-auto print:overflow-visible bg-[var(--awlad-surface-page)] text-slate-800 dark:text-[#DCE6F5] flex flex-col font-sans antialiased pb-safe`}
+        >
           <Header
             currentPage={currentPage}
+            isWindowsDesktop={isWindowsDesktop}
             isSidebarOpen={isSectionsOpen}
             onToggleSidebar={() => setIsSectionsOpen((prev) => !prev)}
             onNavigate={(page) => setCurrentPage(page)}
@@ -702,13 +713,15 @@ const MainAppContent: React.FC = () => {
           />
 
           <div className="flex-1 min-h-0 flex items-stretch min-w-0 print:block">
-            <Sidebar
-              currentPage={currentPage}
-              onNavigate={(page) => setCurrentPage(page)}
-              isOpen={isSectionsOpen}
-              onClose={() => setIsSectionsOpen(false)}
-              onOpenCashOp={(mode) => setCashOpModal({ open: true, mode })}
-            />
+            {isWindowsDesktop && (
+              <Sidebar
+                currentPage={currentPage}
+                onNavigate={(page) => setCurrentPage(page)}
+                isOpen={isSectionsOpen}
+                onClose={() => setIsSectionsOpen(false)}
+                onOpenCashOp={(mode) => setCashOpModal({ open: true, mode })}
+              />
+            )}
 
             <main
               className={`flex-1 flex flex-col min-w-0 min-h-0 overflow-y-auto print:overflow-visible ${

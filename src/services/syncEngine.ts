@@ -400,7 +400,7 @@ async function executeSyncCycle(params: {
       category: isAuthRevokedError(err) ? 'auth' : 'sync_issue',
       severity: 'error',
       source: 'syncEngine.pull',
-      message: err?.message || 'تعذر سحب أحدث بيانات من السيرفر',
+      message: err?.message || 'تعذر استلام أحدث البيانات',
       details: { status: err?.status, code: err?.code, mode },
     });
     if (isAuthRevokedError(err)) {
@@ -421,7 +421,7 @@ async function executeSyncCycle(params: {
       at: new Date().toISOString(),
       count: 0,
       ok: false,
-      error: err?.message || 'تعذر سحب أحدث بيانات من السيرفر',
+      error: err?.message || 'تعذر استلام أحدث البيانات',
     });
     return {
       ok: false,
@@ -431,7 +431,7 @@ async function executeSyncCycle(params: {
       syncedCount,
       failedCount,
       conflictCount,
-      error: err?.message || 'تعذر سحب أحدث بيانات من السيرفر',
+      error: err?.message || 'تعذر استلام أحدث البيانات',
     };
   }
 }
@@ -702,7 +702,7 @@ export async function sendDispatchBatchToServer(params: {
       };
     }
 
-    const errMsg = err?.message || 'تعذر إرسال الدفعة إلى السيرفر — بقيت العمليات محفوظة محليًا ويمكن إعادة الإرسال دون فقد أو تكرار.';
+    const errMsg = err?.message || 'تعذر إرسال الدفعة — بقيت العمليات محفوظة محليًا ويمكن إعادة الإرسال دون فقد أو تكرار.';
     const failedDraft: SyncDispatchBatch = {
       ...sendingDraft,
       sendStatus: 'فشل الإرسال',

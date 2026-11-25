@@ -82,7 +82,7 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ variant = 'l
             ? 'text-rose-100 bg-rose-500/25 border-rose-300/40'
             : 'text-rose-600 bg-rose-500/10 border-rose-500/20',
           dot: 'bg-rose-400',
-          label: isDatabaseUnavailable ? 'قاعدة البيانات غير متاحة مؤقتًا' : 'تعذر المزامنة مع السيرفر',
+          label: isDatabaseUnavailable ? 'قاعدة البيانات غير متاحة مؤقتًا' : 'تعذر المزامنة والإرسال والاستلام',
         };
     }
   };
@@ -130,7 +130,7 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ variant = 'l
         <button
           type="button"
           onClick={() => triggerSync(true)}
-          title="تحديث ومزامنة فورية مع السيرفر المركزي"
+          title="تحديث ومزامنة فورية (إرسال واستلام)"
           aria-label="تحديث ومزامنة"
           className={`min-h-[32px] min-w-[32px] flex items-center justify-center rounded-md transition-colors cursor-pointer ${
             isDark
