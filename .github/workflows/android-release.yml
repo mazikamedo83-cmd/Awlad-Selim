@@ -76,6 +76,8 @@ jobs:
           node server/tests/branchCollectionAndAuditTests.mjs
           node server/tests/storefrontAndLocationTests.mjs
           node server/tests/offlineRefreshAndDispatchTests.mjs
+          node server/tests/platformUiCorrectionTests.mjs
+          node server/tests/dashboardBalanceVisibilityTests.mjs
           npx tsx server/tests/offlineClientFlowChecks.mts
           npx tsx server/tests/diagnosticsTests.mts
 

@@ -77,6 +77,10 @@
     "app-builder-lib>minimatch": "^11.0.9",
     "@electron/universal>minimatch": "^11.0.9"
   },
+  "trustedDependencies": [
+    "electron",
+    "esbuild"
+  ],
   "author": "AWLAD SELIM",
   "build": {
     "appId": "com.awladselim.erp",
@@ -89,12 +93,17 @@
     },
     "files": [
       "dist/**/*",
+      "!dist/assets/aistudio",
       "!dist/assets/aistudio/**/*",
       "electron/**/*",
       "server/**/*",
+      "!server/tests",
       "!server/tests/**/*",
+      "!server/data",
       "!server/data/**/*",
+      "!android",
       "!android/**/*",
+      "!ios",
       "!ios/**/*",
       "!.env",
       "!.env.*",

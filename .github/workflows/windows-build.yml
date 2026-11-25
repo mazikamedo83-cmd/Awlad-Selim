@@ -109,6 +109,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node server/tests/offlineRefreshAndDispatchTests.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/platformUiCorrectionTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/dashboardBalanceVisibilityTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npx tsx server/tests/offlineClientFlowChecks.mts
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npx tsx server/tests/diagnosticsTests.mts
@@ -200,6 +204,7 @@ jobs:
             "$unpackedApp/AWLAD_SELIM_BACKUP",
             "$unpackedApp/dist/assets/aistudio",
             "$unpackedApp/server/data",
+            "$unpackedApp/server/tests",
             "$unpackedApp/.env",
             "$unpackedApp/server/data/.jwt_secret"
           )) {
