@@ -109,6 +109,7 @@ interface SidebarProps {
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
   onOpenCashOp?: (mode: CashOperationType) => void;
+  mobileDrawer?: boolean;
 }
 
 interface NavSection {
@@ -135,6 +136,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isCollapsed = false,
   onToggleCollapse,
   onOpenCashOp,
+  mobileDrawer = false,
 }) => {
   const { hasPermission, currentUser } = useAuth();
   const { customerItemOrders = [], incomingDispatchCount = 0 } = useData();
@@ -372,18 +374,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   }, [currentPage, navSections]);
 
-  // Escape key closes the mobile/tablet sliding drawer when no modal is open
+  // Escape key closes the mobile sliding drawer ONLY when no modal is open (never auto-closes docked desktop sidebar)
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !mobileDrawer) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      if (typeof window !== 'undefined' && window.innerWidth >= 1024) return;
-      if (document.querySelector('.fixed.inset-0.z-50')) return;
+      if (document.querySelector('[role="dialog"], [aria-modal="true"], .fixed.inset-0.z-50')) return;
       onClose();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, mobileDrawer, onClose]);
 
   const checkPerm = (perm?: string | string[]) => {
     if (!perm) return true;
@@ -413,79 +414,71 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const handleItemClick = (key: NavItemKey) => {
     onNavigate(key);
-    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+    if (mobileDrawer || (typeof window !== 'undefined' && window.innerWidth < 768)) {
       onClose();
     }
   };
 
+  if (!mobileDrawer && !isOpen) {
+    return null;
+  }
+
   return (
     <>
-      {/* Backdrop Overlay for Tablet/Small Viewports (< 1024px) */}
-      {isOpen && (
+      {/* Backdrop Overlay for Mobile Sliding Drawer ONLY */}
+      {mobileDrawer && isOpen && (
         <div
-          className="fixed inset-0 z-40 bg-slate-950/35 dark:bg-[#040B17]/65 backdrop-blur-[2px] transition-opacity lg:hidden no-print"
+          className="fixed inset-0 z-40 bg-slate-950/40 dark:bg-[#040B17]/70 backdrop-blur-[2px] transition-opacity no-print"
           onClick={onClose}
           aria-hidden="true"
         />
       )}
 
-      {/* Collapsible Sidebar Drawer (RTL right-docked / LTR left-docked) */}
+      {/* Vertical Sidebar: Docked push sibling on Desktop/Tablet (>=768px), Responsive sliding drawer on Mobile */}
       <aside
         id="system-sections-drawer"
         aria-label="قائمة الأقسام الجانبية"
         aria-hidden={!isOpen}
-        className={`fixed top-0 bottom-0 ${isLtr ? 'left-0 border-r' : 'right-0 border-l'} z-50 lg:z-40 bg-white dark:bg-[#0E1C36] text-slate-800 dark:text-[#DCE6F5] border-slate-200 dark:border-[#21375C] shadow-lg transition-all duration-200 ease-out flex flex-col pt-safe pb-safe no-print ${
-          isCollapsed ? 'lg:w-12 w-[78vw] max-w-[260px]' : 'w-[78vw] max-w-[260px] lg:w-52'
-        } ${
-          isOpen
-            ? 'translate-x-0 pointer-events-auto'
-            : isLtr
-            ? '-translate-x-full pointer-events-none'
-            : 'translate-x-full pointer-events-none'
-        }`}
+        className={`${
+          mobileDrawer
+            ? `fixed top-0 bottom-0 ${isLtr ? 'left-0 border-r' : 'right-0 border-l'} z-50 w-[82vw] max-w-[280px] shadow-2xl transition-transform duration-200 ease-out ${
+                isOpen
+                  ? 'translate-x-0 pointer-events-auto'
+                  : isLtr
+                  ? '-translate-x-full pointer-events-none'
+                  : 'translate-x-full pointer-events-none'
+              }`
+            : `relative shrink-0 h-full ${isLtr ? 'border-r' : 'border-l'} ${
+                isCollapsed ? 'w-12' : 'w-56'
+              } shadow-xs`
+        } bg-white dark:bg-[#0E1C36] text-slate-800 dark:text-[#DCE6F5] border-slate-200 dark:border-[#21375C] flex flex-col pt-safe pb-safe no-print`}
       >
-        {/* Drawer Header Strip (Logo Navy/Royal Gradient) */}
-        <div className={`h-11 flex items-center ${isCollapsed ? 'lg:justify-center lg:px-1 justify-between px-2.5' : 'justify-between px-2'} awlad-brand-gradient text-white border-b border-[var(--awlad-royal-500)]/40 dark:border-[#2A4D86] shrink-0`}>
-          <div className={`flex items-center gap-1.5 min-w-0 ${isCollapsed ? 'lg:hidden' : ''}`}>
+        {/* Sidebar Header Strip (Logo Navy/Royal Gradient) */}
+        <div className="h-10 flex items-center justify-between px-2 awlad-brand-gradient text-white border-b border-[var(--awlad-royal-500)]/40 dark:border-[#2A4D86] shrink-0">
+          <div className="flex items-center gap-1.5 min-w-0">
             <img
               src="/awlad-selim-logo.png"
               alt="أولاد سليم"
-              className="h-7 w-7 object-contain bg-white no-dark-surface rounded-md p-0.5 shrink-0"
+              className="h-6 w-6 object-contain bg-white no-dark-surface rounded-md p-0.5 shrink-0"
             />
             <div className="text-right min-w-0">
               <span className="block font-black text-xs text-white tracking-wide truncate">
                 أقسام النظام
               </span>
-              <span className="block text-[10px] text-blue-100 font-semibold truncate">
-                {currentUser?.fullName}
-              </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-1 shrink-0">
-            {onToggleCollapse && (
-              <button
-                type="button"
-                onClick={onToggleCollapse}
-                className="hidden lg:flex h-7 w-7 items-center justify-center rounded-md bg-white/15 hover:bg-white/25 text-white transition-colors cursor-pointer"
-                aria-label={isCollapsed ? 'توسيع القائمة الجانبية' : 'طي القائمة الجانبية'}
-                title={isCollapsed ? 'توسيع القائمة الجانبية' : 'طي القائمة الجانبية لشريط أيقونات'}
-              >
-                {isCollapsed ? <PanelRightOpen className="w-4 h-4" /> : <PanelRightClose className="w-4 h-4" />}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={onClose}
-              className={`h-7 w-7 flex items-center justify-center rounded-md bg-white/15 hover:bg-white/25 text-white transition-colors cursor-pointer ${
-                isCollapsed ? 'lg:hidden' : ''
-              }`}
-              aria-label="إغلاق قائمة الأقسام"
-              title="إخفاء القائمة"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+          <button
+            type="button"
+            data-testid="sidebar-close-btn"
+            onClick={onClose}
+            className="h-7 px-2 flex items-center justify-center gap-1 rounded-md bg-white/15 hover:bg-white/25 text-white text-[11px] font-bold transition-colors cursor-pointer shrink-0"
+            aria-label="إغلاق قائمة الأقسام"
+            title="إغلاق القائمة الجانبية"
+          >
+            <X className="w-3.5 h-3.5" />
+            <span>إغلاق</span>
+          </button>
         </div>
 
         {/* Collapsed Slim Rail Mode (Desktop lg+) */}
@@ -573,7 +566,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   type="button"
                   onClick={() => {
                     onOpenCashOp('cash_deposit');
-                    if (typeof window !== 'undefined' && window.innerWidth < 1024) onClose();
+                    if (mobileDrawer || (typeof window !== 'undefined' && window.innerWidth < 768)) onClose();
                   }}
                   className="h-6.5 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#2A436E] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] hover:border-[var(--awlad-royal-700)] dark:hover:border-[#3B82F6] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
                 >
@@ -584,7 +577,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   type="button"
                   onClick={() => {
                     onOpenCashOp('cash_withdrawal');
-                    if (typeof window !== 'undefined' && window.innerWidth < 1024) onClose();
+                    if (mobileDrawer || (typeof window !== 'undefined' && window.innerWidth < 768)) onClose();
                   }}
                   className="h-6.5 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#2A436E] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] hover:border-[var(--awlad-royal-700)] dark:hover:border-[#3B82F6] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
                 >
@@ -595,7 +588,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   type="button"
                   onClick={() => {
                     onOpenCashOp('expense');
-                    if (typeof window !== 'undefined' && window.innerWidth < 1024) onClose();
+                    if (mobileDrawer || (typeof window !== 'undefined' && window.innerWidth < 768)) onClose();
                   }}
                   className="h-6.5 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#2A436E] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] hover:border-[var(--awlad-royal-700)] dark:hover:border-[#3B82F6] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
                 >
@@ -606,7 +599,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   type="button"
                   onClick={() => {
                     onOpenCashOp('profit_deposit');
-                    if (typeof window !== 'undefined' && window.innerWidth < 1024) onClose();
+                    if (mobileDrawer || (typeof window !== 'undefined' && window.innerWidth < 768)) onClose();
                   }}
                   className="h-6.5 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#2A436E] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] hover:border-[var(--awlad-royal-700)] dark:hover:border-[#3B82F6] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
                 >
@@ -617,7 +610,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   type="button"
                   onClick={() => {
                     onOpenCashOp('cashbox_transfer');
-                    if (typeof window !== 'undefined' && window.innerWidth < 1024) onClose();
+                    if (mobileDrawer || (typeof window !== 'undefined' && window.innerWidth < 768)) onClose();
                   }}
                   className="col-span-2 h-6.5 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E] text-[var(--awlad-royal-700)] dark:text-[#85B8FF] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
                 >

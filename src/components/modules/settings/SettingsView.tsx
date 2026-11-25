@@ -1318,7 +1318,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             title: 'Free Remote Connection',
             subtitle: 'اتصال خارجي مجاني عبر Cloudflare Quick Tunnel',
             badge: 'مجاني • trycloudflare',
-            badgeClass: 'bg-sky-100 text-sky-900 border-sky-200',
+            badgeClass: 'bg-[#EEF3FA] text-[#003589] border-[#DCE6F5]',
             icon: Radio,
             urlPreview: connProfiles.freeRemote.tunnelUrl || 'https://xxxx.trycloudflare.com',
           },
@@ -1376,7 +1376,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     type="button"
                     onClick={handlePushConfigUpdate}
                     disabled={isPushingUpdate}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-sky-700 hover:bg-sky-800 text-white rounded-md font-bold cursor-pointer disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#011E58] hover:bg-[#003589] border border-[#2E4F86] text-white rounded-md font-bold cursor-pointer disabled:opacity-50"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isPushingUpdate ? 'animate-spin' : ''}`} />
                     <span>{isPushingUpdate ? 'جاري التعميم...' : 'تحديث/تعميم العنوان للأجهزة'}</span>
@@ -1414,7 +1414,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     <button
                       type="button"
                       onClick={() => copyCommandOrUrl(serverInfo.tunnelStatus!.tunnelUrl, 'رابط النفق التلقائي')}
-                      className="px-2 py-0.5 rounded bg-slate-900 border border-slate-600 text-sky-300 font-mono flex items-center gap-1 cursor-pointer"
+                      className="px-2 py-0.5 rounded bg-slate-900 border border-slate-600 text-blue-200 font-mono flex items-center gap-1 cursor-pointer"
                       dir="ltr"
                     >
                       <span>{serverInfo.tunnelStatus.tunnelUrl}</span>
@@ -1444,7 +1444,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                 </div>
                 <div className="px-2.5 py-1.5 bg-slate-900/90">
                   <span className="text-slate-400 block text-[10px]">بروتوكول الاتصال:</span>
-                  <strong className={`font-bold block ${(serverInfo?.httpsActive || /^https:\/\//i.test(activeEndpoint)) ? 'text-sky-400' : 'text-amber-300'}`}>
+                  <strong className={`font-bold block ${(serverInfo?.httpsActive || /^https:\/\//i.test(activeEndpoint)) ? 'text-blue-300' : 'text-amber-300'}`}>
                     {serverInfo?.httpsActive || /^https:\/\//i.test(activeEndpoint) ? 'HTTPS (مشفر نشط)' : 'HTTP محلي (LAN)'}
                   </strong>
                 </div>
@@ -1475,7 +1475,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                         }));
                         copyCommandOrUrl(entry.url, 'عنوان LAN');
                       }}
-                      className="px-2 py-0.5 rounded bg-slate-900 hover:bg-blue-950 border border-slate-600 text-sky-300 font-mono font-bold cursor-pointer flex items-center gap-1"
+                      className="px-2 py-0.5 rounded bg-slate-900 hover:bg-blue-950 border border-slate-600 text-blue-200 font-mono font-bold cursor-pointer flex items-center gap-1"
                       dir="ltr"
                       title="اضغط لاعتماد العنوان ونسخه"
                     >
@@ -1693,17 +1693,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                 </div>
 
                 {/* Mode 2: Free Remote Connection (Cloudflare Quick Tunnel) */}
-                <div className={`bg-white p-3 rounded-lg border shadow-xs space-y-2.5 ${connProfiles.activeMode === 'free_remote' ? 'border-sky-500 ring-1 ring-sky-500/20' : 'border-slate-200'}`}>
+                <div className={`bg-white p-3 rounded-lg border shadow-xs space-y-2.5 ${connProfiles.activeMode === 'free_remote' ? 'border-[#003589] ring-1 ring-[#003589]/20' : 'border-slate-200'}`}>
                   <div className="flex items-center justify-between border-b pb-1.5">
                     <div className="flex items-center gap-1.5">
-                      <Radio className="w-4 h-4 text-sky-600" />
+                      <Radio className="w-4 h-4 text-[#003589]" />
                       <h4 className="font-black text-slate-900 text-xs sm:text-sm">2. الرابط الخارجي المجاني (Cloudflare Quick Tunnel)</h4>
                     </div>
                     <button
                       type="button"
                       disabled={isTestingServer || !connProfiles.freeRemote.tunnelUrl}
                       onClick={() => handleTestConnection('free_remote')}
-                      className="px-2.5 py-1 rounded-md bg-sky-50 hover:bg-sky-100 text-sky-800 font-bold text-[11px] cursor-pointer disabled:opacity-40"
+                      className="px-2.5 py-1 rounded-md bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] font-bold text-[11px] cursor-pointer disabled:opacity-40"
                     >
                       اختبار الرابط
                     </button>
@@ -1722,7 +1722,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                           freeRemote: { ...prev.freeRemote, tunnelUrl: e.target.value },
                         }))
                       }
-                      className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono text-sky-900 font-bold text-left"
+                      className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono text-[#011E58] font-bold text-left"
                     />
                     <span className="text-[10px] text-slate-500 mt-1 block">
                       يعمل فوراً بدون دومين أو اشتراك مدفوع؛ يلتقطه السيرفر تلقائياً من <span className="font-mono" dir="ltr">scripts/start-free-tunnel.bat</span> أو يمكنك لصقه يدوياً.
@@ -1739,7 +1739,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                           freeRemote: { ...prev.freeRemote, autoDetect: e.target.checked },
                         }))
                       }
-                      className="w-3.5 h-3.5 mt-0.5 rounded text-sky-700"
+                      className="w-3.5 h-3.5 mt-0.5 rounded text-[#003589]"
                     />
                     <div>
                       <span className="font-bold text-slate-800 block">تحديث رابط النفق تلقائياً عند تشغيل/تغيير النفق على اللابتوب</span>
@@ -1754,19 +1754,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     </span>
                   </div>
 
-                  <div className="p-2 rounded-md bg-sky-50/70 border border-sky-200 space-y-1.5">
+                  <div className="p-2 rounded-md bg-[#EEF3FA] border border-[#DCE6F5] space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-sky-900 text-[11px]">تشغيل النفق المجاني مع الالتقاط التلقائي للرابط:</span>
+                      <span className="font-bold text-[#011E58] text-[11px]">تشغيل النفق المجاني مع الالتقاط التلقائي للرابط:</span>
                       <button
                         type="button"
                         onClick={() => copyCommandOrUrl(`node scripts/tunnel-supervisor.mjs --mode=quick --port=${activePort}`, 'أمر مراقب النفق المجاني')}
-                        className="px-2 py-0.5 rounded bg-white border border-sky-300 text-sky-800 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                        className="px-2 py-0.5 rounded bg-white border border-[#DCE6F5] text-[#003589] text-[10px] font-bold flex items-center gap-1 cursor-pointer"
                       >
                         <Copy className="w-3 h-3" />
                         <span>نسخ الأمر</span>
                       </button>
                     </div>
-                    <code className="block px-2 py-1.5 rounded bg-slate-900 text-sky-300 font-mono text-[10px] overflow-x-auto" dir="ltr">
+                    <code className="block px-2 py-1.5 rounded bg-slate-900 text-blue-200 font-mono text-[10px] overflow-x-auto" dir="ltr">
                       node scripts/tunnel-supervisor.mjs --mode=quick --port={activePort}
                     </code>
                     <p className="text-[10px] text-slate-600">

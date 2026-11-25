@@ -290,9 +290,9 @@ export function UnifiedDataTable<T>({
           </div>
 
           {(searchable || toolbarFilters) && (
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div className="awlad-filter-row pb-0.5" data-testid="unified-filter-row">
               {searchable && (
-                <div className="relative flex-1 min-w-[180px]">
+                <div className="relative flex-1 min-w-[165px] shrink-0">
                   <Search className="w-3.5 h-3.5 text-slate-500 dark:text-[#8CA3C7] absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="text"
@@ -304,7 +304,7 @@ export function UnifiedDataTable<T>({
                 </div>
               )}
               {toolbarFilters && (
-                <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto [&>*]:shrink-0">
+                <div className="flex flex-nowrap items-center gap-1.5 shrink-0 [&>*]:shrink-0">
                   {toolbarFilters}
                 </div>
               )}
@@ -362,22 +362,9 @@ export function UnifiedDataTable<T>({
             </tr>
           </thead>
 
-          <tbody className="divide-y divide-slate-200 dark:divide-[#1B2F52] bg-white dark:bg-[#0E1C36]">
-            {paginatedRows.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={columns.length + (selectable ? 1 : 0)}
-                  className="py-6 text-center text-slate-500 dark:text-[#A9BCD9]"
-                >
-                  <div className="flex flex-col items-center justify-center gap-1">
-                    <Inbox className="w-6 h-6 text-slate-300 dark:text-[#4F6B94]" />
-                    <p className="text-xs font-bold text-slate-700 dark:text-[#DCE6F5]">{emptyTitle}</p>
-                    <p className="text-[11px] text-slate-400 dark:text-[#849BBF]">{emptySubtitle}</p>
-                  </div>
-                </td>
-              </tr>
-            ) : (
-              paginatedRows.map((row, idx) => {
+          {paginatedRows.length > 0 && (
+            <tbody className="divide-y divide-slate-200 dark:divide-[#1B2F52] bg-white dark:bg-[#0E1C36]">
+              {paginatedRows.map((row, idx) => {
                 const absIdx = paginated ? (safePage - 1) * pageSize + idx : idx;
                 const key = rowKey(row, absIdx);
                 const canSelect = selectable && (isRowSelectable ? isRowSelectable(row) : true);
@@ -441,9 +428,9 @@ export function UnifiedDataTable<T>({
                     })}
                   </tr>
                 );
-              })
-            )}
-          </tbody>
+              })}
+            </tbody>
+          )}
 
           {footerTotalsRow && (
             <tfoot className="bg-slate-100 dark:bg-[#172E56] border-t-2 border-slate-300 dark:border-[#2A436E] font-bold text-slate-900 dark:text-[#F3F7FC]">
@@ -452,6 +439,14 @@ export function UnifiedDataTable<T>({
           )}
         </table>
       </div>
+
+      {paginatedRows.length === 0 && (
+        <div className="px-3 py-6 text-center text-slate-500 dark:text-[#A9BCD9] bg-white dark:bg-[#0E1C36] flex flex-col items-center justify-center gap-1">
+          <Inbox className="w-6 h-6 text-slate-300 dark:text-[#4F6B94]" />
+          <p className="text-xs font-bold text-slate-700 dark:text-[#DCE6F5]">{emptyTitle}</p>
+          <p className="text-[11px] text-slate-400 dark:text-[#849BBF] leading-relaxed">{emptySubtitle}</p>
+        </div>
+      )}
 
       {(paginated || totalRows > 0) && (
         <div className="px-2.5 sm:px-3 py-1.5 border-t border-slate-200 dark:border-[#21375C] bg-slate-50 dark:bg-[#132544] flex flex-wrap items-center justify-between gap-1.5 text-[11px] text-slate-600 dark:text-[#A9BCD9]">

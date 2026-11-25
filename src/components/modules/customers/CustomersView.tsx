@@ -2344,11 +2344,11 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
         pdfTitle="دليل العملاء والأرصدة"
         onRowClick={(cust) => setSelectedCustomerId(cust.id)}
         toolbarFilters={
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-nowrap items-center gap-1.5 shrink-0">
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as any)}
-              className="h-8 bg-slate-50 border border-slate-300 rounded-md px-2 py-1 text-xs font-bold text-slate-700 outline-hidden focus:border-blue-600"
+              className="h-8 shrink-0 bg-slate-50 border border-slate-300 rounded-md px-2 text-xs font-bold text-slate-700 outline-hidden focus:border-blue-600"
             >
               <option value="all">جميع الحالات ({customers.length})</option>
               <option value="active">نشط فقط</option>
@@ -2357,7 +2357,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
             <select
               value={classificationFilter}
               onChange={(e) => setClassificationFilter(e.target.value as any)}
-              className="h-8 bg-slate-50 border border-slate-300 rounded-md px-2 py-1 text-xs font-bold text-slate-700 outline-hidden focus:border-blue-600"
+              className="h-8 shrink-0 bg-slate-50 border border-slate-300 rounded-md px-2 text-xs font-bold text-slate-700 outline-hidden focus:border-blue-600"
             >
               <option value="all">جميع التصنيفات</option>
               <option value="app_and_direct">عميل تطبيق ومبيعات مباشرة</option>

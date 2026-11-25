@@ -256,12 +256,12 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
           exportFilename="سجل-الشيكات-البنكية"
           pdfTitle="سجل الشيكات البنكية"
           toolbarFilters={
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div className="flex flex-nowrap items-center gap-1.5 shrink-0">
               <select
                 aria-label="نوع الشيك"
                 value={chequeTypeFilter}
                 onChange={(e) => setChequeTypeFilter(e.target.value as any)}
-                className="h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC]"
+                className="h-8 shrink-0 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC]"
               >
                 <option value="all">كل الأنواع</option>
                 <option value="incoming">شيك وارد (لنا)</option>
@@ -271,7 +271,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
                 aria-label="حالة الشيك"
                 value={chequeStatusFilter}
                 onChange={(e) => setChequeStatusFilter(e.target.value as any)}
-                className="h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC]"
+                className="h-8 shrink-0 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC]"
               >
                 <option value="all">كل الحالات</option>
                 <option value="pending">قيد التحصيل</option>

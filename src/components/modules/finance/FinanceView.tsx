@@ -900,11 +900,11 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             pdfTitle="حسابات العملاء التفصيلية"
             emptyTitle="لا يوجد عملاء مطابقون لمعايير البحث أو التصفية"
             toolbarFilters={
-              <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              <div className="flex flex-nowrap items-center gap-1.5 text-xs shrink-0">
                 <select
                   value={custDirFilter}
                   onChange={(e) => setCustDirFilter(e.target.value as any)}
-                  className="h-8 bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold text-slate-700"
+                  className="h-8 shrink-0 bg-slate-50 border border-slate-300 rounded-md px-2 text-xs font-bold text-slate-700"
                 >
                   <option value="all">جميع الأرصدة ({customers.length})</option>
                   <option value="debt">مدينون لنا فقط ({customerKpis.debtorsCount})</option>
@@ -914,7 +914,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                 <select
                   value={custSort}
                   onChange={(e) => setCustSort(e.target.value as any)}
-                  className="h-8 bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold text-slate-700"
+                  className="h-8 shrink-0 bg-slate-50 border border-slate-300 rounded-md px-2 text-xs font-bold text-slate-700"
                 >
                   <option value="balance_desc">الأعلى مديونية</option>
                   <option value="balance_asc">الأعلى رصيداً مقدماً</option>
@@ -1058,11 +1058,11 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             pdfTitle="حسابات الموردين التفصيلية"
             emptyTitle="لا يوجد موردون مطابقون لمعايير البحث أو التصفية"
             toolbarFilters={
-              <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              <div className="flex flex-nowrap items-center gap-1.5 text-xs shrink-0">
                 <select
                   value={suppDirFilter}
                   onChange={(e) => setSuppDirFilter(e.target.value as any)}
-                  className="h-8 bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold text-slate-700"
+                  className="h-8 shrink-0 bg-slate-50 border border-slate-300 rounded-md px-2 text-xs font-bold text-slate-700"
                 >
                   <option value="all">جميع الموردين ({suppliers.length})</option>
                   <option value="payable">مستحق للمورد (علينا) ({supplierKpis.payablesCount})</option>
@@ -1072,7 +1072,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                 <select
                   value={suppSort}
                   onChange={(e) => setSuppSort(e.target.value as any)}
-                  className="h-8 bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold text-slate-700"
+                  className="h-8 shrink-0 bg-slate-50 border border-slate-300 rounded-md px-2 text-xs font-bold text-slate-700"
                 >
                   <option value="balance_desc">الأعلى مستحقات علينا</option>
                   <option value="balance_asc">الأعلى دفعات مقدمة لنا</option>
@@ -1342,7 +1342,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             <select
               value={expenseTypeFilter}
               onChange={(e) => setExpenseTypeFilter(e.target.value as any)}
-              className="h-8 bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 outline-hidden"
+              className="h-8 shrink-0 bg-slate-50 border border-slate-300 rounded-md px-2 text-xs font-bold text-slate-700 outline-hidden"
             >
               <option value="all">الكل (مصروفات وإيرادات)</option>
               <option value="expense">المصروفات فقط</option>

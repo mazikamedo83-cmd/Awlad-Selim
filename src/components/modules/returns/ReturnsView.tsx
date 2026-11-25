@@ -471,11 +471,11 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
         pdfTitle="سجل مرتجعات المبيعات والمشتريات"
         emptyTitle="لا توجد مرتجعات مسجلة حتى الآن"
         toolbarFilters={
-          <div className="flex items-center gap-1">
+          <div className="flex flex-nowrap items-center gap-1.5 shrink-0">
             <button
               type="button"
               onClick={() => setReturnTypeFilter('all')}
-              className={`px-2.5 py-1 rounded-md text-xs font-bold transition-colors cursor-pointer ${
+              className={`h-8 inline-flex items-center px-2.5 rounded-md text-xs font-bold transition-colors cursor-pointer shrink-0 ${
                 returnTypeFilter === 'all' ? 'bg-blue-900 text-white' : 'bg-white border border-slate-300 text-slate-700'
               }`}
             >
@@ -484,7 +484,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
             <button
               type="button"
               onClick={() => setReturnTypeFilter('sales_return')}
-              className={`px-2.5 py-1 rounded-md text-xs font-bold transition-colors cursor-pointer ${
+              className={`h-8 inline-flex items-center px-2.5 rounded-md text-xs font-bold transition-colors cursor-pointer shrink-0 ${
                 returnTypeFilter === 'sales_return' ? 'bg-blue-900 text-white' : 'bg-white border border-slate-300 text-slate-700'
               }`}
             >
@@ -493,7 +493,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
             <button
               type="button"
               onClick={() => setReturnTypeFilter('purchase_return')}
-              className={`px-2.5 py-1 rounded-md text-xs font-bold transition-colors cursor-pointer ${
+              className={`h-8 inline-flex items-center px-2.5 rounded-md text-xs font-bold transition-colors cursor-pointer shrink-0 ${
                 returnTypeFilter === 'purchase_return' ? 'bg-blue-900 text-white' : 'bg-white border border-slate-300 text-slate-700'
               }`}
             >

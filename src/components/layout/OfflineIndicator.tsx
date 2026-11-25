@@ -60,9 +60,9 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ variant = 'l
         return {
           icon: RefreshCw,
           color: isDark
-            ? 'text-sky-100 bg-sky-500/25 border-sky-300/40'
-            : 'text-blue-600 bg-blue-500/10 border-blue-500/20',
-          dot: 'bg-sky-300 animate-ping',
+            ? 'text-blue-100 bg-[#1659C8]/30 border-blue-300/40'
+            : 'text-[#003589] bg-[#EEF3FA] border-[#DCE6F5]',
+          dot: 'bg-blue-300 animate-ping',
           label: 'جاري مزامنة البيانات...',
         };
       case 'pending':

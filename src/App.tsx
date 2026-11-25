@@ -151,26 +151,8 @@ const MainAppContent: React.FC = () => {
     typeof window !== 'undefined' ? window.innerWidth < 768 || isNativeCapacitor() : false
   );
   const [isSectionsOpen, setIsSectionsOpen] = useState<boolean>(() =>
-    typeof window !== 'undefined' ? window.innerWidth >= 1024 && !isNativeCapacitor() : true
+    typeof window !== 'undefined' ? window.innerWidth >= 768 && !isNativeCapacitor() : true
   );
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
-    try {
-      return typeof window !== 'undefined' && localStorage.getItem('awlad_selim_sidebar_collapsed') === '1';
-    } catch {
-      return false;
-    }
-  });
-  const toggleSidebarCollapse = () => {
-    setIsSidebarCollapsed((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem('awlad_selim_sidebar_collapsed', next ? '1' : '0');
-      } catch {
-        // ignore
-      }
-      return next;
-    });
-  };
   const [cashOpModal, setCashOpModal] = useState<{ open: boolean; mode: CashOperationType }>({
     open: false,
     mode: 'cash_deposit',
@@ -201,10 +183,10 @@ const MainAppContent: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Auto-open sections sidebar upon large desktop login while keeping toggle control
+  // Auto-open vertical sections sidebar upon login for desktop/tablet viewports (>= 768px)
   useEffect(() => {
     if (isAuthenticated && currentUser && currentUser.role !== 'customer' && currentUser.role !== 'representative') {
-      if (typeof window !== 'undefined' && window.innerWidth >= 1024 && !isNativeCapacitor()) {
+      if (typeof window !== 'undefined' && window.innerWidth >= 768 && !isNativeCapacitor()) {
         setIsSectionsOpen(true);
       }
     }
@@ -714,43 +696,29 @@ const MainAppContent: React.FC = () => {
           {renderActivePage()}
         </StaffMobileShell>
       ) : (
-        <div className="min-h-screen bg-[var(--awlad-surface-page)] text-slate-800 dark:text-[#DCE6F5] flex flex-col font-sans antialiased pb-safe">
-          <Sidebar
+        <div className="min-h-screen md:h-screen md:overflow-hidden print:h-auto print:overflow-visible bg-[var(--awlad-surface-page)] text-slate-800 dark:text-[#DCE6F5] flex flex-col font-sans antialiased pb-safe">
+          <Header
             currentPage={currentPage}
+            isSidebarOpen={isSectionsOpen}
+            onToggleSidebar={() => setIsSectionsOpen((prev) => !prev)}
             onNavigate={(page) => setCurrentPage(page)}
-            isOpen={isSectionsOpen}
-            onClose={() => setIsSectionsOpen(false)}
-            isCollapsed={isSidebarCollapsed}
-            onToggleCollapse={toggleSidebarCollapse}
-            onOpenCashOp={(mode) => setCashOpModal({ open: true, mode })}
+            onNavigateToTransfers={() => setCurrentPage('rep-transfers')}
           />
 
-          <div
-            className={`flex-1 flex flex-col min-w-0 transition-all duration-200 ${
-              isSectionsOpen
-                ? dir === 'ltr'
-                  ? isSidebarCollapsed
-                    ? 'lg:ml-12'
-                    : 'lg:ml-52'
-                  : isSidebarCollapsed
-                  ? 'lg:mr-12'
-                  : 'lg:mr-52'
-                : ''
-            }`}
-          >
-            <Header
+          <div className="flex-1 min-h-0 flex items-stretch min-w-0 print:block">
+            <Sidebar
               currentPage={currentPage}
-              isSidebarOpen={isSectionsOpen}
-              onToggleSidebar={() => setIsSectionsOpen((prev) => !prev)}
               onNavigate={(page) => setCurrentPage(page)}
-              onNavigateToTransfers={() => setCurrentPage('rep-transfers')}
+              isOpen={isSectionsOpen}
+              onClose={() => setIsSectionsOpen(false)}
+              onOpenCashOp={(mode) => setCashOpModal({ open: true, mode })}
             />
 
             <main
-              className={`flex-1 flex flex-col w-full mx-auto min-w-0 ${
+              className={`flex-1 flex flex-col min-w-0 min-h-0 overflow-y-auto print:overflow-visible ${
                 currentPage === 'reports' || currentPage === 'item-movement-report'
-                  ? 'max-w-full px-1.5 sm:px-2 py-1.5'
-                  : 'max-w-full p-1.5 sm:p-2'
+                  ? 'px-1.5 sm:px-2 py-1.5'
+                  : 'p-1.5 sm:p-2'
               }`}
             >
               {renderDbOrSyncAlert()}

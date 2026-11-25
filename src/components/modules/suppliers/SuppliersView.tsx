@@ -491,12 +491,12 @@ export const SuppliersView: React.FC = () => {
         emptyTitle="لا يوجد موردون مسجلون حالياً"
         emptySubtitle={'انقر على زر "إضافة مورد جديد" لإضافة أول شركة توريد أو مورد للمنظومة.'}
         toolbarFilters={
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-nowrap items-center gap-1.5 shrink-0">
             <select
               aria-label="تصفية رصيد المورد"
               value={balanceFilter}
               onChange={(e) => setBalanceFilter(e.target.value as any)}
-              className="h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC] outline-hidden focus:border-[var(--awlad-royal-700)]"
+              className="h-8 shrink-0 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC] outline-hidden focus:border-[var(--awlad-royal-700)]"
             >
               <option value="all">كل الأرصدة ({suppliers.length})</option>
               <option value="payable">مستحق للمورد (علينا)</option>
@@ -507,7 +507,7 @@ export const SuppliersView: React.FC = () => {
               aria-label="ترتيب الموردين"
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as any)}
-              className="h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC] outline-hidden focus:border-[var(--awlad-royal-700)]"
+              className="h-8 shrink-0 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC] outline-hidden focus:border-[var(--awlad-royal-700)]"
             >
               <option value="default">الترتيب الافتراضي</option>
               <option value="balance_desc">الأعلى مديونية</option>

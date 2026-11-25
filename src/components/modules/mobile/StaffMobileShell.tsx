@@ -32,7 +32,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
 import { registerAndroidBackButton } from '../../../services/native';
 import { CashOperationType, MobileNotificationItem, UserPermissions } from '../../../types';
-import { NavItemKey } from '../../layout/Sidebar';
+import { NavItemKey, Sidebar } from '../../layout/Sidebar';
 import { MobileNotificationsSheet } from './MobileNotificationsSheet';
 import { MobileServerModal } from './MobileServerModal';
 import { MobileAddProductModal } from './MobileAddProductModal';
@@ -106,6 +106,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
   const { currentUser, hasPermission, logout, refreshAuthContext, setIsAccountSwitcherOpen, savedAccounts } = useAuth();
   const data = useData();
 
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isMoreViewOpen, setIsMoreViewOpen] = useState(false);
   const [moreSearchQuery, setMoreSearchQuery] = useState('');
   const [collapsedSectionIds, setCollapsedSectionIds] = useState<Record<string, boolean>>({});
@@ -148,6 +149,10 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         setIsServerModalOpen(false);
         return true;
       }
+      if (isMobileSidebarOpen) {
+        setIsMobileSidebarOpen(false);
+        return true;
+      }
       if (isMoreViewOpen) {
         setIsMoreViewOpen(false);
         return true;
@@ -158,7 +163,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
       }
       return false;
     });
-  }, [showLogoutConfirm, isAddProductModalOpen, isNotificationsOpen, isServerModalOpen, isMoreViewOpen, currentPage, onNavigate]);
+  }, [showLogoutConfirm, isAddProductModalOpen, isNotificationsOpen, isServerModalOpen, isMobileSidebarOpen, isMoreViewOpen, currentPage, onNavigate]);
 
   const sections: LauncherSection[] = useMemo(
     () => [
@@ -791,7 +796,19 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
       {/* Slim Logo-Navy/Royal Top App Header Bar */}
       <header className="sticky top-0 z-30 awlad-brand-gradient text-white border-b border-[var(--awlad-royal-500)]/40 pt-safe no-print">
         <div className="w-full max-w-full mx-auto px-2 h-11 flex items-center justify-between gap-1.5">
-          <div className="flex items-center gap-2 min-w-0 shrink">
+          <div className="flex items-center gap-1.5 min-w-0 shrink">
+            <button
+              type="button"
+              data-testid="mobile-sidebar-toggle-btn"
+              onClick={() => setIsMobileSidebarOpen((prev) => !prev)}
+              aria-label="تبديل القائمة الجانبية"
+              aria-expanded={isMobileSidebarOpen}
+              aria-controls="system-sections-drawer"
+              title={isMobileSidebarOpen ? 'إغلاق قائمة الأقسام' : 'فتح قائمة الأقسام'}
+              className="min-h-[32px] min-w-[32px] flex items-center justify-center rounded-md bg-white/15 hover:bg-white/25 border border-white/25 text-white cursor-pointer shrink-0 transition-colors"
+            >
+              <Menu className="w-4 h-4" />
+            </button>
             <img
               src="/awlad-selim-logo.png"
               alt="AWLAD SELIM"
@@ -886,6 +903,18 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
           </div>
         </div>
       </header>
+
+      <Sidebar
+        currentPage={currentPage}
+        onNavigate={(page) => {
+          setIsMoreViewOpen(false);
+          onNavigate(page);
+        }}
+        isOpen={isMobileSidebarOpen}
+        onClose={() => setIsMobileSidebarOpen(false)}
+        onOpenCashOp={onOpenCashOp}
+        mobileDrawer={true}
+      />
 
       {/* Main Content */}
       <main className="w-full max-w-full mx-auto p-1.5 sm:p-2 space-y-2">

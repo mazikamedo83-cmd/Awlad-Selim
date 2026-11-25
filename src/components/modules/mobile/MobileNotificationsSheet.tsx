@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Bell, CheckCheck, X, ArrowLeft } from 'lucide-react';
 import { MobileNotificationItem } from '../../../types';
 
@@ -19,11 +19,33 @@ export const MobileNotificationsSheet: React.FC<MobileNotificationsSheetProps> =
   onMarkAllRead,
   onSelectNotification,
 }) => {
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation?.();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs">
-      <div className="w-full max-w-lg bg-white rounded-t-xl sm:rounded-xl shadow-2xl border border-slate-200 max-h-[82vh] flex flex-col overflow-hidden pb-safe">
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-lg bg-white dark:bg-[#0E1C36] rounded-t-xl sm:rounded-xl shadow-2xl border border-slate-200 dark:border-[#21375C] max-h-[82vh] flex flex-col overflow-hidden pb-safe"
+      >
         <div className="w-9 h-1 bg-slate-300 rounded-full mx-auto mt-2 mb-0.5 sm:hidden" />
 
         <div className="flex items-center justify-between px-2.5 py-2 border-b border-slate-200">

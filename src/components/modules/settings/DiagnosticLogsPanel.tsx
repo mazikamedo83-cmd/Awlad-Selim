@@ -50,7 +50,7 @@ const SEVERITY_META: Record<
   info: {
     label: 'معلومة',
     icon: Info,
-    badgeCls: 'bg-sky-50 text-sky-800 border-sky-200',
+    badgeCls: 'bg-[#EEF3FA] text-[#011E58] border-[#DCE6F5]',
   },
 };
 
@@ -223,14 +223,14 @@ export const DiagnosticLogsPanel: React.FC = () => {
         )}
 
         {/* Filter Bar */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          <div className="relative">
+        <div className="awlad-filter-row" data-testid="diag-filter-row">
+          <div className="relative flex-1 min-w-[175px] shrink-0">
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="بحث في الرسالة أو المصدر أو التفاصيل..."
-              className="w-full h-8 rounded-md border border-slate-300 bg-slate-50 pr-8 pl-2.5 font-semibold focus:bg-white focus:border-blue-600 outline-hidden"
+              className="w-full h-8 rounded-md border border-slate-300 bg-slate-50 pr-8 pl-2.5 text-xs font-semibold focus:bg-white focus:border-blue-600 outline-hidden"
             />
             <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2.5" />
           </div>
@@ -238,9 +238,9 @@ export const DiagnosticLogsPanel: React.FC = () => {
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value as 'all' | DiagnosticCategory)}
-            className="h-8 rounded-md border border-slate-300 bg-slate-50 px-2.5 font-bold text-slate-700 focus:bg-white focus:border-blue-600 outline-hidden"
+            className="h-8 shrink-0 rounded-md border border-slate-300 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 focus:bg-white focus:border-blue-600 outline-hidden"
           >
-            <option value="all">-- جميع التصنيفات --</option>
+            <option value="all">جميع التصنيفات</option>
             <option value="network_error">أخطاء الشبكة والسيرفر</option>
             <option value="sync_issue">مشاكل المزامنة</option>
             <option value="auth">المصادقة والأجهزة</option>
@@ -250,9 +250,9 @@ export const DiagnosticLogsPanel: React.FC = () => {
           <select
             value={severityFilter}
             onChange={(e) => setSeverityFilter(e.target.value as 'all' | DiagnosticSeverity)}
-            className="h-8 rounded-md border border-slate-300 bg-slate-50 px-2.5 font-bold text-slate-700 focus:bg-white focus:border-blue-600 outline-hidden"
+            className="h-8 shrink-0 rounded-md border border-slate-300 bg-slate-50 px-2.5 text-xs font-bold text-slate-700 focus:bg-white focus:border-blue-600 outline-hidden"
           >
-            <option value="all">-- جميع المستويات --</option>
+            <option value="all">جميع المستويات</option>
             <option value="error">خطأ (Error)</option>
             <option value="warning">تحذير (Warning)</option>
             <option value="info">معلومة (Info)</option>

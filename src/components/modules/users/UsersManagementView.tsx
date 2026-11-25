@@ -720,12 +720,12 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           defaultPageSize={25}
           emptyTitle="لا توجد حسابات مستخدمين"
           toolbarFilters={
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div className="flex flex-nowrap items-center gap-1.5 shrink-0">
               <select
                 aria-label="تصفية حسب الدور"
                 value={roleFilter}
                 onChange={(e) => setRoleFilter(e.target.value)}
-                className="h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC]"
+                className="h-8 shrink-0 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC]"
               >
                 <option value="all">كل الأدوار ({users.length})</option>
                 <option value="admin">مالك / مدير عام</option>
@@ -741,7 +741,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                 aria-label="تصفية حسب الحالة"
                 value={activeStatusFilter}
                 onChange={(e) => setActiveStatusFilter(e.target.value as any)}
-                className="h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC]"
+                className="h-8 shrink-0 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC]"
               >
                 <option value="all">كل الحالات</option>
                 <option value="active">نشط فقط</option>

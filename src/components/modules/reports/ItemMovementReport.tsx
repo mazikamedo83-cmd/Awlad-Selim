@@ -518,13 +518,25 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
         </div>
       </div>
 
-      {/* Multi-Filter Toolbar */}
-      <div className="bg-white p-2 rounded-lg border border-slate-200 space-y-1.5 text-xs">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 items-end">
-          <div>
+      {/* Unified Single-Row Multi-Filter Toolbar */}
+      <div className="bg-white dark:bg-[#0E1C36] p-2 rounded-lg border border-slate-200 dark:border-[#21375C] text-xs">
+        <div className="awlad-filter-row pb-0.5" data-testid="imr-single-filter-row">
+          <div className="relative w-[170px] shrink-0">
+            <Search className="w-3.5 h-3.5 text-slate-400 dark:text-[#8CA3C7] absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              aria-label="بحث في المستندات أو الأطراف"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="بحث (فاتورة / طرف / ملاحظات)..."
+              className="w-full h-8 pr-7 pl-2 rounded-md border border-slate-300 dark:border-[#2A436E] text-xs bg-slate-50 dark:bg-[#10203D] focus:bg-white focus:outline-none"
+            />
+          </div>
+
+          <div className="w-[155px] shrink-0">
             <SearchableFilterSelect
               id="imr-filter-product"
-              label="الصنف (بحث بالاسم / الكود / الباركود)"
+              inlinePrefix="الصنف"
               value={productId}
               onChange={setProductId}
               options={productFilterOptions}
@@ -536,10 +548,11 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
               buttonClassName="rounded-md h-8"
             />
           </div>
-          <div>
+
+          <div className="w-[135px] shrink-0">
             <SearchableFilterSelect
               id="imr-filter-warehouse"
-              label="المستودع"
+              inlinePrefix="المستودع"
               value={warehouseId}
               onChange={setWarehouseId}
               options={warehouseFilterOptions}
@@ -549,10 +562,11 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
               buttonClassName="rounded-md h-8"
             />
           </div>
-          <div>
+
+          <div className="w-[135px] shrink-0">
             <SearchableFilterSelect
               id="imr-filter-rep"
-              label="المندوب"
+              inlinePrefix="المندوب"
               value={representativeId}
               onChange={setRepresentativeId}
               options={representativeFilterOptions}
@@ -562,10 +576,11 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
               buttonClassName="rounded-md h-8"
             />
           </div>
-          <div>
+
+          <div className="w-[145px] shrink-0">
             <SearchableFilterSelect
               id="imr-filter-movement-type"
-              label="نوع الحركة / القسم"
+              inlinePrefix="الحركة"
               value={movementType}
               onChange={setMovementType}
               options={movementSectionFilterOptions}
@@ -576,59 +591,48 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
               buttonClassName="rounded-md h-8"
             />
           </div>
-        </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 items-end">
-          <div>
-            <label className="block text-[11px] font-bold text-slate-600 mb-0.5">من تاريخ:</label>
+          <div className="h-8 flex items-center gap-1 bg-slate-50 dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-1.5 shrink-0">
+            <span className="text-[10.5px] font-bold text-slate-500 dark:text-[#8CA3C7] whitespace-nowrap">من</span>
             <input
               type="date"
+              aria-label="من تاريخ"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="w-full h-8 px-2.5 py-1 rounded-md border border-slate-300 font-mono text-xs bg-slate-50"
+              className="h-6 w-[112px] bg-transparent border-0 font-mono text-[11px] focus:outline-none"
             />
           </div>
-          <div>
-            <label className="block text-[11px] font-bold text-slate-600 mb-0.5">إلى تاريخ:</label>
+
+          <div className="h-8 flex items-center gap-1 bg-slate-50 dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-1.5 shrink-0">
+            <span className="text-[10.5px] font-bold text-slate-500 dark:text-[#8CA3C7] whitespace-nowrap">إلى</span>
             <input
               type="date"
+              aria-label="إلى تاريخ"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              className="w-full h-8 px-2.5 py-1 rounded-md border border-slate-300 font-mono text-xs bg-slate-50"
+              className="h-6 w-[112px] bg-transparent border-0 font-mono text-[11px] focus:outline-none"
             />
           </div>
-          <div className="lg:col-span-2 relative">
-            <label className="block text-[11px] font-bold text-slate-600 mb-0.5">بحث في المستندات أو الأطراف:</label>
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="رقم فاتورة، عميل، مورد، أو ملاحظات..."
-                className="w-full h-8 pr-8 pl-2.5 py-1 rounded-md border border-slate-300 text-xs bg-slate-50 focus:bg-white"
-              />
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={fetchReport}
-              disabled={isLoading}
-              className="flex-1 flex items-center justify-center gap-1.5 h-8 px-3 rounded-md bg-[#003589] hover:bg-[#011E58] text-white font-bold cursor-pointer disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-              <span>تحديث</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleResetFilters}
-              className="flex items-center justify-center gap-1 h-8 px-2.5 rounded-md border border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
-              title="إعادة ضبط الفلاتر"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-            </button>
-          </div>
+
+          <button
+            type="button"
+            onClick={fetchReport}
+            disabled={isLoading}
+            className="flex items-center justify-center gap-1 h-8 px-3 rounded-md bg-[#003589] hover:bg-[#011E58] text-white font-bold whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            <span>تحديث</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleResetFilters}
+            className="flex items-center justify-center gap-1 h-8 px-2.5 rounded-md border border-slate-300 dark:border-[#2A436E] bg-slate-100 dark:bg-[#132544] hover:bg-slate-200 text-slate-700 dark:text-[#EEF4FC] font-bold whitespace-nowrap shrink-0 cursor-pointer"
+            title="إعادة ضبط الفلاتر"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>إعادة ضبط</span>
+          </button>
         </div>
       </div>
 
@@ -934,7 +938,7 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
           <div className="sticky bottom-0 z-20 bg-[#001A49] text-white px-2.5 py-1.5 rounded-lg border border-[#002160] grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-xs tabular-nums">
             <div>
               <span className="text-slate-300 text-[10px] block">إجمالي المبيعات (كمية: {report.totals.totalSalesQty})</span>
-              <strong className="text-xs font-mono font-black text-sky-200">
+              <strong className="text-xs font-mono font-black text-[#DCE6F5]">
                 {report.totals.totalSalesValue.toLocaleString()} {settings.currency}
               </strong>
             </div>
@@ -1093,8 +1097,8 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
             )}
 
             {sourceDocDetails?.kind === 'rep_custody' && (
-              <div className="border border-sky-200 rounded-lg overflow-hidden bg-sky-50/40 p-2.5 space-y-1.5">
-                <div className="font-bold text-sky-950">
+              <div className="border border-[#DCE6F5] rounded-lg overflow-hidden bg-[#EEF3FA] p-2.5 space-y-1.5">
+                <div className="font-bold text-[#011E58]">
                   مستند عهدة المندوب ({sourceDocDetails.data.operationNumber}) — {sourceDocDetails.data.operationType}
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">

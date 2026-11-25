@@ -74,28 +74,36 @@ export const DeletedInvoicesView: React.FC = () => {
         }}
         emptyTitle="لا توجد فواتير محذوفة أو ملغاة مطابقة"
         toolbarFilters={
-          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          <div className="flex flex-nowrap items-center gap-1.5 text-xs shrink-0">
             <select
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value as any)}
-              className="h-8 bg-white border border-slate-300 rounded-md px-2 py-1 font-bold"
+              className="h-8 shrink-0 bg-white border border-slate-300 rounded-md px-2 font-bold"
             >
               <option value="all">كل الفواتير الملغاة</option>
               <option value="sales">فواتير البيع الملغاة فقط</option>
               <option value="purchase">فواتير الشراء الملغاة فقط</option>
             </select>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="h-8 bg-white border border-slate-300 rounded-md px-2 py-1 font-mono"
-            />
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="h-8 bg-white border border-slate-300 rounded-md px-2 py-1 font-mono"
-            />
+            <label className="inline-flex items-center gap-1 h-8 px-2 bg-white border border-slate-300 rounded-md shrink-0">
+              <span className="text-[10.5px] font-bold text-slate-500">من:</span>
+              <input
+                type="date"
+                aria-label="من تاريخ"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="bg-transparent text-xs font-mono font-semibold outline-hidden"
+              />
+            </label>
+            <label className="inline-flex items-center gap-1 h-8 px-2 bg-white border border-slate-300 rounded-md shrink-0">
+              <span className="text-[10.5px] font-bold text-slate-500">إلى:</span>
+              <input
+                type="date"
+                aria-label="إلى تاريخ"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="bg-transparent text-xs font-mono font-semibold outline-hidden"
+              />
+            </label>
           </div>
         }
         columns={[

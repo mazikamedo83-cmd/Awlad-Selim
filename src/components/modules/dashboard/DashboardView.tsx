@@ -221,7 +221,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="awlad-filter-row w-auto max-w-full" data-testid="dashboard-filter-row">
           {/* Global Hide / Show All Dashboard Balances Button */}
           <button
             type="button"
@@ -229,7 +229,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             data-testid="dashboard-toggle-all-balances"
             aria-pressed={areAllDashboardBalancesHidden}
             title={areAllDashboardBalancesHidden ? 'إظهار جميع الأرصدة والمبالغ المالية' : 'إخفاء جميع الأرصدة والمبالغ المالية'}
-            className={`h-8 px-2.5 rounded-md border text-xs font-black flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
+            className={`h-8 px-2.5 rounded-md border text-xs font-black inline-flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
               areAllDashboardBalancesHidden
                 ? 'bg-[#011E58] hover:bg-[#003589] text-white border-[#011E58] dark:bg-[#1659C8] dark:hover:bg-[#1F6BE6] dark:border-[#60A5FA]/50'
                 : 'bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] border-[#B8CAE8] dark:bg-[#132544] dark:hover:bg-[#1A3461] dark:text-[#EEF4FC] dark:border-[#2A436E]'
@@ -249,14 +249,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
               onClick={resetDashboardBalancesVisibility}
               data-testid="dashboard-show-all-partial"
               title="إعادة إظهار جميع الأرصدة المخفية"
-              className="h-8 px-2 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] hover:bg-slate-50 dark:hover:bg-[#1A3461] text-[#003589] dark:text-[#85B8FF] text-xs font-bold flex items-center gap-1 cursor-pointer whitespace-nowrap"
+              className="h-8 px-2 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] hover:bg-slate-50 dark:hover:bg-[#1A3461] text-[#003589] dark:text-[#85B8FF] text-xs font-bold inline-flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0"
             >
               <Eye className="w-3.5 h-3.5 shrink-0" />
               <span>إظهار الكل</span>
             </button>
           )}
 
-          <div className="flex items-center gap-1.5 bg-[#EEF3FA] dark:bg-[#132544] px-2 py-0.5 rounded-md border border-[#DCE6F5] dark:border-[#2A436E] text-xs h-8">
+          <div className="inline-flex items-center gap-1.5 bg-[#EEF3FA] dark:bg-[#132544] px-2 rounded-md border border-[#DCE6F5] dark:border-[#2A436E] text-xs h-8 shrink-0">
             <Calendar className="w-3.5 h-3.5 text-[var(--awlad-royal-700)] dark:text-[#85B8FF]" />
             <span className="text-[var(--awlad-navy-950)] dark:text-[#DCE6F5] font-bold">الفترة:</span>
             <select

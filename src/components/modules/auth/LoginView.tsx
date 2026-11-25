@@ -273,7 +273,7 @@ export const LoginView: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-900 dark:bg-[#081326] flex items-center justify-center p-2.5 sm:p-4 relative overflow-hidden font-sans pt-safe pb-safe">
       <div className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 rounded-full bg-blue-600/10 dark:bg-[#1659C8]/15 blur-3xl pointer-events-none"></div>
-      <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-96 h-96 rounded-full bg-sky-500/10 dark:bg-[#1D63D8]/12 blur-3xl pointer-events-none"></div>
+      <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-96 h-96 rounded-full bg-[#003589]/15 dark:bg-[#1D63D8]/12 blur-3xl pointer-events-none"></div>
 
       <div className="w-full max-w-lg bg-white dark:bg-[#0E1C36] rounded-xl shadow-2xl border border-slate-200 dark:border-[#21375C] overflow-hidden relative z-10 text-right animate-in fade-in duration-300">
         {/* Header / Logo banner */}

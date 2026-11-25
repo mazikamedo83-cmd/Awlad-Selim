@@ -15,6 +15,7 @@ export interface SearchableFilterOption {
 interface SearchableFilterSelectProps {
   id?: string;
   label?: string;
+  inlinePrefix?: string;
   value: string;
   onChange: (value: string) => void;
   options: SearchableFilterOption[];
@@ -49,6 +50,7 @@ export function normalizeArabicSearchText(input: string): string {
 export const SearchableFilterSelect: React.FC<SearchableFilterSelectProps> = ({
   id,
   label,
+  inlinePrefix,
   value,
   onChange,
   options,
@@ -285,7 +287,12 @@ export const SearchableFilterSelect: React.FC<SearchableFilterSelectProps> = ({
         } ${buttonClassName}`}
         title={selectedOption?.subtitle ? `${displayLabel} — ${selectedOption.subtitle}` : displayLabel}
       >
-        <span className="flex items-center gap-1.5 min-w-0 flex-1">
+        <span className="flex items-center gap-1 min-w-0 flex-1">
+          {inlinePrefix && (
+            <span className="text-[10.5px] font-bold text-slate-500 dark:text-[#8CA3C7] shrink-0 whitespace-nowrap">
+              {inlinePrefix}:
+            </span>
+          )}
           <span className="truncate font-medium">{displayLabel}</span>
           {selectedOption?.badge && (
             <span className="shrink-0 px-1.5 py-0.5 rounded bg-slate-100 dark:bg-[#172E56] text-[10px] font-semibold text-slate-600 dark:text-[#A9BCD9]">

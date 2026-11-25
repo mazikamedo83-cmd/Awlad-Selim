@@ -1321,7 +1321,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                             <span
                               className={`font-bold text-[11px] ${
                                 ord.status === 'invoiced' || ord.status === 'approved' || ord.status === 'delivered'
-                                  ? 'text-[#0F5A33] dark:text-emerald-400'
+                                  ? 'text-emerald-700 dark:text-emerald-400'
                                   : ord.status === 'rejected' || ord.status === 'needs_review'
                                   ? 'text-red-700 dark:text-red-400'
                                   : 'text-amber-700 dark:text-amber-400'

@@ -818,7 +818,7 @@ export const StockTransfersView: React.FC = () => {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="h-8 bg-slate-50 border border-slate-300 rounded-md px-2 text-xs font-bold"
+              className="h-8 shrink-0 bg-slate-50 border border-slate-300 rounded-md px-2 text-xs font-bold"
             >
               <option value="all">كل حالات التحويل</option>
               <option value="draft">مسودة</option>

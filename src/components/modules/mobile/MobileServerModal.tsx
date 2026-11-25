@@ -127,6 +127,20 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
     }
   }, [isOpen, nativeApp]);
 
+  useEffect(() => {
+    if (!isOpen || showQrScanner) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation?.();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [isOpen, showQrScanner, onClose]);
+
   const handleAutoDiscover = async () => {
     setFormError(null);
     setDiscoveryNotice(null);
@@ -272,10 +286,16 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/65 backdrop-blur-xs">
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/65 backdrop-blur-xs"
+      onClick={onClose}
+    >
       <form
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
         onSubmit={handleSave}
-        className="w-full max-w-lg bg-white rounded-t-xl sm:rounded-lg p-2.5 shadow-2xl border border-slate-200 space-y-2 text-right pb-safe max-h-[92vh] overflow-y-auto"
+        className="w-full max-w-lg bg-white dark:bg-[#0E1C36] rounded-t-xl sm:rounded-lg p-2.5 shadow-2xl border border-slate-200 dark:border-[#21375C] space-y-2 text-right pb-safe max-h-[92vh] overflow-y-auto"
       >
         <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
           <div className="flex items-center gap-2">

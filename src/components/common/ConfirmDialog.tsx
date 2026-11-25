@@ -45,10 +45,17 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !isLoading) onClose();
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') {
+          e.stopImmediatePropagation();
+        }
+        if (!isLoading) onClose();
+      }
     };
-    window.addEventListener('keydown', handleEsc);
-    return () => window.removeEventListener('keydown', handleEsc);
+    window.addEventListener('keydown', handleEsc, true);
+    return () => window.removeEventListener('keydown', handleEsc, true);
   }, [isOpen, isLoading, onClose]);
 
   if (!isOpen) return null;
@@ -91,6 +98,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 bg-slate-900/60 dark:bg-[#040B17]/75 backdrop-blur-xs no-print">
       <div
+        role="dialog"
+        aria-modal="true"
         className="w-full max-w-md rounded-lg bg-white dark:bg-[#0E1C36] p-3 shadow-2xl border border-slate-200 dark:border-[#21375C] text-right"
         onClick={(e) => e.stopPropagation()}
       >

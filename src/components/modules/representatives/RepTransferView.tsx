@@ -934,19 +934,20 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
             t.cashboxName.toLowerCase().includes(q)
           }
           toolbarFilters={
-            <div className="flex items-center gap-1.5 text-xs">
-              <span className="text-slate-500 font-bold">الحالة:</span>
+            <label className="inline-flex items-center gap-1 h-8 px-2 border border-slate-300 rounded-md bg-white text-xs shrink-0">
+              <span className="text-[10.5px] text-slate-500 font-bold">الحالة:</span>
               <select
+                aria-label="حالة التحويل"
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="h-8 px-2 py-1 border border-slate-300 rounded-lg bg-white font-bold text-xs"
+                className="bg-transparent font-bold text-xs outline-hidden"
               >
                 <option value="all">جميع الحالات</option>
                 <option value="awaiting_receipt">في انتظار تأكيد الاستلام</option>
                 <option value="received">تم الاستلام وتعديل الأرصدة</option>
                 <option value="rejected">مرفوض</option>
               </select>
-            </div>
+            </label>
           }
           exportFilename="التحويلات_النقدية_للمناديب"
           pdfTitle="سجل التحويلات النقدية والعهد المالية للمناديب"
@@ -1082,7 +1083,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
           <div className="bg-[#EEF3FA] border border-[#DCE6F5] px-3 py-2 rounded-lg text-xs text-[#011E58] flex items-start gap-2.5">
             <Truck className="w-4 h-4 text-[#003589] shrink-0 mt-0.5" />
             <div>
-              <h4 className="font-black text-xs">دورة عمل طلبات تحويل أصناف وعهدة المندوب المعتمدة (Section 16):</h4>
+              <h4 className="font-black text-xs">دورة عمل طلبات تحويل أصناف وعهدة المندوب المعتمدة:</h4>
               <p className="mt-0.5 leading-relaxed text-[#002160] text-[11px]">
                 عند إصدار المندوب فاتورة مبيعات لعميل جملة ويوجد عجز في كميات السيارة، يتم إنشاء طلب تحويل أصناف مرتبط برقم الفاتورة الأصلية.
                 <strong> لا يتم خصم المخزن الرئيسي إلا بعد مراجعة الإدارة والموافقة والتنفيذ الفعلي للتحويل.</strong>
@@ -1348,117 +1349,122 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
       {activeTab === 'rep-custody-statement' && (
         <div className="space-y-3">
           {/* Controls Strip */}
-          <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs flex flex-wrap items-end justify-between gap-2.5 text-xs">
-            <div className="flex flex-wrap items-end gap-2">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 mb-1">المندوب:</label>
-                <select
-                  value={custodyRepId}
-                  disabled={isRepUser}
-                  onChange={(e) => setCustodyRepId(e.target.value)}
-                  className="h-8 px-2 py-1 rounded-lg border border-slate-300 bg-slate-50 font-bold text-xs min-w-[180px]"
+          <div className="bg-white dark:bg-[#0D1A32] p-2 rounded-lg border border-slate-200 dark:border-[#233961] shadow-xs text-xs">
+            <div className="awlad-filter-row justify-between" data-testid="rep-custody-filter-row">
+              <div className="flex flex-nowrap items-center gap-1.5 shrink-0">
+                <label className="inline-flex items-center gap-1 h-8 px-2 rounded-md border border-slate-300 dark:border-[#2A436E] bg-slate-50 dark:bg-[#10203D] shrink-0">
+                  <span className="text-[10.5px] font-bold text-slate-500 dark:text-[#9CB0D4]">المندوب:</span>
+                  <select
+                    aria-label="المندوب"
+                    value={custodyRepId}
+                    disabled={isRepUser}
+                    onChange={(e) => setCustodyRepId(e.target.value)}
+                    className="bg-transparent font-bold text-xs min-w-[140px] outline-hidden text-slate-800 dark:text-[#EEF4FC]"
+                  >
+                    {representatives.map((r) => (
+                      <option key={r.id} value={r.id}>{r.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="inline-flex items-center gap-1 h-8 px-2 rounded-md border border-slate-300 dark:border-[#2A436E] bg-slate-50 dark:bg-[#10203D] shrink-0">
+                  <span className="text-[10.5px] font-bold text-slate-500 dark:text-[#9CB0D4]">من:</span>
+                  <input
+                    type="date"
+                    aria-label="من تاريخ"
+                    value={custodyDateFrom}
+                    onChange={(e) => setCustodyDateFrom(e.target.value)}
+                    className="bg-transparent font-mono text-xs outline-hidden text-slate-800 dark:text-[#EEF4FC]"
+                  />
+                </label>
+                <label className="inline-flex items-center gap-1 h-8 px-2 rounded-md border border-slate-300 dark:border-[#2A436E] bg-slate-50 dark:bg-[#10203D] shrink-0">
+                  <span className="text-[10.5px] font-bold text-slate-500 dark:text-[#9CB0D4]">إلى:</span>
+                  <input
+                    type="date"
+                    aria-label="إلى تاريخ"
+                    value={custodyDateTo}
+                    onChange={(e) => setCustodyDateTo(e.target.value)}
+                    className="bg-transparent font-mono text-xs outline-hidden text-slate-800 dark:text-[#EEF4FC]"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => loadCustodyStatement(custodyRepId)}
+                  disabled={isCustodyLoading}
+                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-blue-900 hover:bg-blue-950 text-white font-bold cursor-pointer disabled:opacity-50 shrink-0"
                 >
-                  {representatives.map((r) => (
-                    <option key={r.id} value={r.id}>{r.name}</option>
-                  ))}
-                </select>
+                  <RefreshCw className={`w-3.5 h-3.5 ${isCustodyLoading ? 'animate-spin' : ''}`} />
+                  <span>تحديث الكشف</span>
+                </button>
               </div>
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 mb-1">من تاريخ:</label>
-                <input
-                  type="date"
-                  value={custodyDateFrom}
-                  onChange={(e) => setCustodyDateFrom(e.target.value)}
-                  className="h-8 px-2 py-1 rounded-lg border border-slate-300 font-mono text-xs bg-slate-50"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-bold text-slate-600 mb-1">إلى تاريخ:</label>
-                <input
-                  type="date"
-                  value={custodyDateTo}
-                  onChange={(e) => setCustodyDateTo(e.target.value)}
-                  className="h-8 px-2 py-1 rounded-lg border border-slate-300 font-mono text-xs bg-slate-50"
-                />
-              </div>
-              <button
-                type="button"
-                onClick={() => loadCustodyStatement(custodyRepId)}
-                disabled={isCustodyLoading}
-                className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-bold cursor-pointer disabled:opacity-50"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isCustodyLoading ? 'animate-spin' : ''}`} />
-                <span>تحديث الكشف</span>
-              </button>
-            </div>
 
-            <div className="flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => {
-                  const defaultProd = custodyStatement?.itemsSummary?.[0]?.productId || products[0]?.id || '';
-                  setCustodyOpProductId(defaultProd);
-                  setCustodyOpQty(1);
-                  setCustodyOpCustomerId('');
-                  setCustodyOpCustomerName('');
-                  setCustodyOpNotes('');
-                  setCustodyActionModal('deliver');
-                }}
-                className="flex items-center gap-1 h-8 px-2.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
-              >
-                <PackageCheck className="w-3.5 h-3.5" />
-                <span>تسليم جزئي للعميل</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const defaultProd = custodyStatement?.itemsSummary?.[0]?.productId || products[0]?.id || '';
-                  setCustodyOpProductId(defaultProd);
-                  setCustodyOpQty(1);
-                  setCustodyOpTargetWhId(warehouses.find((w) => !w.id.includes('van'))?.id || warehouses[0]?.id || 'wh-main');
-                  setCustodyOpNotes('');
-                  setCustodyActionModal('return');
-                }}
-                className="flex items-center gap-1 h-8 px-2.5 rounded-md bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] border border-[#B8CAE8] font-bold cursor-pointer"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>إرجاع للمخزن الرئيسي</span>
-              </button>
-              {(currentUser?.role === 'admin' || hasPermission('canApprove') || hasPermission('canManageReps')) && (
+              <div className="flex flex-nowrap items-center gap-1.5 shrink-0">
                 <button
                   type="button"
                   onClick={() => {
                     const defaultProd = custodyStatement?.itemsSummary?.[0]?.productId || products[0]?.id || '';
                     setCustodyOpProductId(defaultProd);
                     setCustodyOpQty(1);
-                    setCustodyOpType('custody_damaged');
+                    setCustodyOpCustomerId('');
+                    setCustodyOpCustomerName('');
                     setCustodyOpNotes('');
-                    setCustodyActionModal('adjust');
+                    setCustodyActionModal('deliver');
                   }}
-                  className="flex items-center gap-1 h-8 px-2.5 rounded-md bg-slate-800 hover:bg-slate-900 text-white font-bold cursor-pointer"
+                  className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer shrink-0"
                 >
-                  <AlertTriangle className="w-3.5 h-3.5" />
-                  <span>تسوية / تالف / عجز</span>
+                  <PackageCheck className="w-3.5 h-3.5" />
+                  <span>تسليم جزئي للعميل</span>
                 </button>
-              )}
-              <button
-                type="button"
-                onClick={handleExportCustodyExcel}
-                disabled={!custodyStatement}
-                className="flex items-center gap-1 h-8 px-2.5 rounded-md border border-slate-300 bg-white hover:bg-slate-50 font-bold text-slate-700 cursor-pointer disabled:opacity-50"
-              >
-                <Download className="w-3.5 h-3.5 text-[#003589]" />
-                <span>Excel</span>
-              </button>
-              <button
-                type="button"
-                onClick={handlePrintCustodyStatement}
-                disabled={!custodyStatement}
-                className="flex items-center gap-1 h-8 px-2.5 rounded-md border border-slate-300 bg-white hover:bg-slate-50 font-bold text-slate-700 cursor-pointer disabled:opacity-50"
-              >
-                <Printer className="w-3.5 h-3.5 text-[#011E58]" />
-                <span>طباعة</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const defaultProd = custodyStatement?.itemsSummary?.[0]?.productId || products[0]?.id || '';
+                    setCustodyOpProductId(defaultProd);
+                    setCustodyOpQty(1);
+                    setCustodyOpTargetWhId(warehouses.find((w) => !w.id.includes('van'))?.id || warehouses[0]?.id || 'wh-main');
+                    setCustodyOpNotes('');
+                    setCustodyActionModal('return');
+                  }}
+                  className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] border border-[#B8CAE8] font-bold cursor-pointer shrink-0"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>إرجاع للمخزن الرئيسي</span>
+                </button>
+                {(currentUser?.role === 'admin' || hasPermission('canApprove') || hasPermission('canManageReps')) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const defaultProd = custodyStatement?.itemsSummary?.[0]?.productId || products[0]?.id || '';
+                      setCustodyOpProductId(defaultProd);
+                      setCustodyOpQty(1);
+                      setCustodyOpType('custody_damaged');
+                      setCustodyOpNotes('');
+                      setCustodyActionModal('adjust');
+                    }}
+                    className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md bg-slate-800 hover:bg-slate-900 text-white font-bold cursor-pointer shrink-0"
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    <span>تسوية / تالف / عجز</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleExportCustodyExcel}
+                  disabled={!custodyStatement}
+                  className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md border border-slate-300 bg-white hover:bg-slate-50 font-bold text-slate-700 cursor-pointer disabled:opacity-50 shrink-0"
+                >
+                  <Download className="w-3.5 h-3.5 text-[#003589]" />
+                  <span>Excel</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrintCustodyStatement}
+                  disabled={!custodyStatement}
+                  className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md border border-slate-300 bg-white hover:bg-slate-50 font-bold text-slate-700 cursor-pointer disabled:opacity-50 shrink-0"
+                >
+                  <Printer className="w-3.5 h-3.5 text-[#011E58]" />
+                  <span>طباعة</span>
+                </button>
+              </div>
             </div>
           </div>
 

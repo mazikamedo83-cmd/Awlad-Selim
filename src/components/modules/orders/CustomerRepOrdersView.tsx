@@ -230,11 +230,11 @@ export const CustomerRepOrdersView: React.FC = () => {
         emptyTitle="لا توجد طلبات مطابقة لخيارات البحث الحالية"
         emptySubtitle="جرّب تغيير فلاتر الحالة أو المصدر."
         toolbarFilters={
-          <>
+          <div className="flex flex-nowrap items-center gap-1.5 text-xs shrink-0">
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="h-8 py-1 px-2 rounded-md border border-slate-300 font-bold bg-white text-xs"
+              className="h-8 shrink-0 px-2 rounded-md border border-slate-300 font-bold bg-white text-xs"
             >
               <option value="all">كل الحالات</option>
               {Object.entries(STATUS_META).map(([key, meta]) => (
@@ -246,13 +246,13 @@ export const CustomerRepOrdersView: React.FC = () => {
             <select
               value={requesterFilter}
               onChange={(e) => setRequesterFilter(e.target.value as any)}
-              className="h-8 py-1 px-2 rounded-md border border-slate-300 font-bold bg-white text-xs"
+              className="h-8 shrink-0 px-2 rounded-md border border-slate-300 font-bold bg-white text-xs"
             >
               <option value="all">كل المصادر</option>
               <option value="customer">طلبات العملاء</option>
               <option value="representative">طلبات المناديب</option>
             </select>
-          </>
+          </div>
         }
         columns={[
           {

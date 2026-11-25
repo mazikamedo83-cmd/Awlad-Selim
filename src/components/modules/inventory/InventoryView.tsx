@@ -884,25 +884,27 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
           pdfTitle="سجل حركات المخازن التفصيلي"
           emptyTitle="لا توجد حركات مخزنية مطابقة للبحث"
           toolbarFilters={
-            <div className="flex flex-wrap items-center gap-1.5 text-xs">
-              <div className="min-w-[160px]">
+            <div className="flex flex-nowrap items-center gap-1.5 text-xs shrink-0">
+              <div className="w-[155px] shrink-0">
                 <SearchableFilterSelect
                   id="inv-mov-type"
+                  inlinePrefix="الحركة"
                   value={movementTypeFilter}
                   onChange={setMovementTypeFilter}
                   options={Object.entries(MOVEMENT_LABELS).map(([k, v]) => ({
                     value: k,
                     label: v.label,
                   }))}
-                  allOptionLabel="جميع أنواع الحركات"
+                  allOptionLabel="الكل"
                   allOptionValue="all"
                   allowClear
-                  buttonClassName="rounded-lg min-h-[32px]"
+                  buttonClassName="rounded-md h-8 min-h-[32px]"
                 />
               </div>
-              <div className="min-w-[160px]">
+              <div className="w-[155px] shrink-0">
                 <SearchableFilterSelect
                   id="inv-mov-wh"
+                  inlinePrefix="المستودع"
                   value={movementWhFilter}
                   onChange={setMovementWhFilter}
                   options={warehouses.map((w) => ({
@@ -910,10 +912,10 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                     label: w.name,
                     subtitle: w.code,
                   }))}
-                  allOptionLabel="جميع المستودعات"
+                  allOptionLabel="الكل"
                   allOptionValue="all"
                   allowClear
-                  buttonClassName="rounded-lg min-h-[32px]"
+                  buttonClassName="rounded-md h-8 min-h-[32px]"
                 />
               </div>
             </div>
@@ -1468,24 +1470,26 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
         emptyTitle="لا توجد أصناف غذائية مطابقة للبحث أو لم تتم إضافة أصناف بعد"
         rowClassName={(prod) => prod.status !== 'active' ? 'opacity-65 bg-slate-50 dark:bg-[#101E38]' : ''}
         toolbarFilters={
-          <div className="flex flex-wrap items-center gap-1.5 text-xs">
-            <div className="min-w-[155px]">
+          <div className="flex flex-nowrap items-center gap-1.5 text-xs shrink-0">
+            <div className="w-[150px] shrink-0">
               <SearchableFilterSelect
                 id="inv-prod-cat"
+                inlinePrefix="التصنيف"
                 value={categoryFilter}
                 onChange={setCategoryFilter}
                 options={categories
                   .filter((c) => c !== 'all')
                   .map((c) => ({ value: c, label: c }))}
-                allOptionLabel="جميع التصنيفات"
+                allOptionLabel="الكل"
                 allOptionValue="all"
                 allowClear
                 buttonClassName="rounded-md h-8 min-h-[32px]"
               />
             </div>
-            <div className="min-w-[150px]">
+            <div className="w-[150px] shrink-0">
               <SearchableFilterSelect
                 id="inv-prod-wh"
+                inlinePrefix="المستودع"
                 value={warehouseFilter}
                 onChange={setWarehouseFilter}
                 options={warehouses.map((w) => ({
@@ -1493,7 +1497,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                   label: w.name,
                   subtitle: w.code,
                 }))}
-                allOptionLabel="جميع المستودعات"
+                allOptionLabel="الكل"
                 allOptionValue="all"
                 allowClear
                 buttonClassName="rounded-md h-8 min-h-[32px]"
@@ -1503,7 +1507,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               aria-label="تصفية حسب حالة المخزون"
               value={stockHealthFilter}
               onChange={(e) => setStockHealthFilter(e.target.value as any)}
-              className="h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC] focus:outline-hidden focus:border-[var(--awlad-royal-700)]"
+              className="h-8 shrink-0 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC] focus:outline-hidden focus:border-[var(--awlad-royal-700)]"
             >
               <option value="all">كل حالات المخزون</option>
               <option value="low">نقص مخزون (حد أدنى)</option>

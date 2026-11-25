@@ -864,10 +864,11 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
         pdfTitle="سجل فواتير المشتريات"
         emptyTitle="لا توجد فواتير مشتريات مسجلة"
         toolbarFilters={
-          <div className="flex flex-wrap items-center gap-1.5 text-xs">
-            <div className="min-w-[170px]">
+          <div className="flex flex-nowrap items-center gap-1.5 text-xs shrink-0">
+            <div className="w-[165px] shrink-0">
               <SearchableFilterSelect
                 id="purchase-filter-supplier"
+                inlinePrefix="المورد"
                 value={supplierFilter}
                 onChange={setSupplierFilter}
                 options={suppliers.map((s) => ({
@@ -876,16 +877,17 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   subtitle: s.phone || s.companyName,
                   searchText: `${s.name} ${s.phone || ''} ${s.companyName || ''}`,
                 }))}
-                allOptionLabel="جميع الموردين"
+                allOptionLabel="الكل"
                 allOptionValue="all"
                 searchPlaceholder="ابحث باسم المورد أو الهاتف..."
                 allowClear
-                buttonClassName="rounded-lg min-h-[32px]"
+                buttonClassName="rounded-md h-8 min-h-[32px]"
               />
             </div>
-            <div className="min-w-[175px]">
+            <div className="w-[165px] shrink-0">
               <SearchableFilterSelect
                 id="purchase-filter-status"
+                inlinePrefix="الحالة"
                 value={statusFilter}
                 onChange={(val) => setStatusFilter((val as any) || 'all')}
                 options={[
@@ -894,10 +896,10 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   { value: 'draft', label: 'مسودات وبانتظار الاعتماد' },
                   { value: 'cancelled', label: 'ملغاة / محذوفة' },
                 ]}
-                allOptionLabel="جميع الحالات"
+                allOptionLabel="الكل"
                 allOptionValue="all"
                 allowClear
-                buttonClassName="rounded-lg min-h-[32px]"
+                buttonClassName="rounded-md h-8 min-h-[32px]"
               />
             </div>
           </div>

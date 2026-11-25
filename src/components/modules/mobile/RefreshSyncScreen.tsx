@@ -53,7 +53,7 @@ function getDispatchStatusClasses(status: SyncDispatchBatchStatus | string): str
       return 'bg-blue-50 text-blue-950 border-blue-200';
     case 'جاري الإرسال':
     case 'جاري الاستلام':
-      return 'bg-sky-50 text-sky-900 border-sky-200';
+      return 'bg-[#EEF3FA] text-[#003589] border-[#DCE6F5]';
     case 'محفوظة محليًا':
       return 'bg-slate-100 text-slate-800 border-slate-300';
     case 'فشل الإرسال':
@@ -92,6 +92,9 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
   const receiveStartRef = useRef<number | null>(null);
 
   const [actionMsg, setActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [lastSendOutcomes, setLastSendOutcomes] = useState<
+    Array<{ id: string; label: string; ok: boolean; detail: string }>
+  >([]);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   // Batch creation state (Rep Mode)
@@ -156,6 +159,25 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
   useEffect(() => {
     data.refreshDispatches().catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!pendingSendConfirm && !inspectedBatch) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === 'function') {
+        e.stopImmediatePropagation();
+      }
+      if (pendingSendConfirm) {
+        setPendingSendConfirm(null);
+      } else if (inspectedBatch && !batchActionLoading) {
+        setInspectedBatch(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [pendingSendConfirm, inspectedBatch, batchActionLoading]);
 
   // Unsent local queue operations (eligible for dispatch batch)
   const unsentQueueOps = useMemo(
@@ -253,14 +275,32 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
     const confirmedToday = allBatches.filter(
       (b) => b.receiptStatus === 'تم الاستلام' && String(b.receivedAt || '').slice(0, 10) === todayStr
     ).length;
-    const failed = allBatches.filter(
+    const confirmedTotal = allBatches.filter((b) => b.receiptStatus === 'تم الاستلام').length;
+    const failedBatches = allBatches.filter(
       (b) => b.sendStatus === 'فشل الإرسال' || b.receiptStatus === 'تعذر الاستلام'
     ).length;
     const totalCash = allBatches
       .filter((b) => b.receiptStatus === 'تم الاستلام')
       .reduce((sum, b) => sum + Number(b.totalCashAmount || 0), 0);
-    return { waiting, confirmedToday, failed, totalCash };
-  }, [allBatches]);
+    const readyOps = unsentQueueOps.filter((q) => q.status !== 'failed').length;
+    const failedOps = unsentQueueOps.filter((q) => q.status === 'failed').length;
+    const syncedOps = (data.syncQueue || []).filter((q) => q.status === 'synced').length;
+    const syncedBatches = allBatches.filter((b) => !b.isLocalOnly && b.sendStatus === 'تم الإرسال').length;
+    const incomingBatchesForUser = isRepUser
+      ? allBatches.filter((b) => !b.isLocalOnly && b.recipientUserId === currentUser?.id && b.receiptStatus !== 'تم الاستلام').length
+      : waiting;
+    const awaitingReceiveTotal = awaitingCustodyDispatches.length + awaitingCashTransfers.length + incomingBatchesForUser;
+    return {
+      waiting,
+      confirmedToday,
+      confirmedTotal,
+      failed: failedBatches + failedOps,
+      readyToSend: readyOps + failedDraftBatches.filter((b) => b.isLocalOnly && b.isConfirmedSendQueued).length,
+      syncedTotal: Math.max(syncedOps, syncedBatches),
+      awaitingReceiveTotal,
+      totalCash,
+    };
+  }, [allBatches, unsentQueueOps, data.syncQueue, failedDraftBatches, awaitingCustodyDispatches.length, awaitingCashTransfers.length, isRepUser, currentUser?.id]);
 
   const handleRequestPreSendConfirmation = () => {
     if (isSending) return;
@@ -333,6 +373,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
     const payload = pendingSendConfirm;
     setPendingSendConfirm(null);
     setActionMsg(null);
+    setLastSendOutcomes([]);
     setIsSending(true);
     const res = await data.createAndSendDispatchBatch({
       selectedOperations: payload.chosenOps,
@@ -344,17 +385,41 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
     setIsSending(false);
     if (res.success && res.batch) {
       setBatchNotes('');
+      setLastSendOutcomes(
+        payload.chosenOps.map((op) => ({
+          id: op.operationId,
+          label: op.summaryAr || op.localId || op.operationId,
+          ok: true,
+          detail: `تم الإرسال ضمن الدفعة ${res.batch!.batchNumber}`,
+        }))
+      );
       setActionMsg({
         type: 'success',
         text: `تم إرسال الدفعة الرسمية (${res.batch.batchNumber}) بنجاح إلى ${res.batch.recipientName} وهي الآن «${res.batch.receiptStatus}».`,
       });
     } else if (res.queuedOfflineConfirmed && res.batch) {
       setBatchNotes('');
+      setLastSendOutcomes(
+        payload.chosenOps.map((op) => ({
+          id: op.operationId,
+          label: op.summaryAr || op.localId || op.operationId,
+          ok: true,
+          detail: `مؤكدة للإرسال عند الاتصال (${res.batch!.batchNumber})`,
+        }))
+      );
       setActionMsg({
         type: 'success',
         text: `طلب الإرسال مؤكد من المرسل (${res.batch.batchNumber}) — تم حفظه في طابور الإرسال المؤكد وسيتم إرساله تلقائياً فور عودة الاتصال دون إرسال أي مسودات غير مؤكدة.`,
       });
     } else {
+      setLastSendOutcomes(
+        payload.chosenOps.map((op) => ({
+          id: op.operationId,
+          label: op.summaryAr || op.localId || op.operationId,
+          ok: false,
+          detail: res.error || 'تعذر الإرسال — محفوظة محلياً لإعادة المحاولة',
+        }))
+      );
       setActionMsg({
         type: 'error',
         text: res.error || 'فشل إرسال الدفعة — بقيت العمليات محفوظة محلياً دون أي حذف، ويمكنك إعادة الإرسال فور عودة الاتصال.',
@@ -365,6 +430,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
   const handleRetryBatch = async (batch: SyncDispatchBatch) => {
     if (isSending) return;
     setActionMsg(null);
+    setLastSendOutcomes([]);
     setIsSending(true);
     const res = await data.retryDispatchBatch(batch);
     const finalElapsed = sendStartRef.current !== null ? Date.now() - sendStartRef.current : 0;
@@ -383,6 +449,73 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
     }
   };
 
+  const handleTopSendToServer = async () => {
+    if (isSending) return;
+    setActionMsg(null);
+    setLastSendOutcomes([]);
+
+    // 1) If there are local unsent operations and a recipient is available, use the explicit pre-send confirmation modal
+    if (unsentQueueOps.length > 0 && recipientUserId) {
+      if (selectedOpIds.length === 0) {
+        setSelectedOpIds(unsentQueueOps.map((q) => q.operationId));
+      }
+      handleRequestPreSendConfirmation();
+      return;
+    }
+
+    // 2) If there are failed/queued batches ready for retry
+    if (unsentQueueOps.length === 0 && failedDraftBatches.length > 0) {
+      await handleRetryBatch(failedDraftBatches[0]);
+      return;
+    }
+
+    // 3) Direct idempotent queue push (with per-operation results)
+    setIsSending(true);
+    const attemptedOps = [...unsentQueueOps];
+    const res = await data.syncSendOnly();
+    await data.refreshDispatches();
+    const finalElapsed = sendStartRef.current !== null ? Date.now() - sendStartRef.current : 0;
+    setSendElapsedMs(finalElapsed);
+    setIsSending(false);
+
+    if (attemptedOps.length > 0) {
+      const latestMap = new Map((data.syncQueue || []).map((q) => [q.operationId, q]));
+      setLastSendOutcomes(
+        attemptedOps.map((op) => {
+          const updated = latestMap.get(op.operationId);
+          const isFailed = updated && (updated.status === 'failed' || updated.status === 'needs_review');
+          return {
+            id: op.operationId,
+            label: op.summaryAr || op.localId || op.operationId,
+            ok: !isFailed && res.ok,
+            detail: isFailed
+              ? updated?.lastError || 'فشل الإرسال — محفوظة لإعادة المحاولة'
+              : res.ok
+              ? 'تم الإرسال بنجاح'
+              : res.error || 'تعذر الإرسال',
+          };
+        })
+      );
+    }
+
+    if (res.ok && res.failedCount === 0 && res.conflictCount === 0) {
+      setActionMsg({
+        type: 'success',
+        text:
+          res.count > 0
+            ? `تم إرسال (${res.count}) عملية بنجاح إلى السيرفر المركزي.`
+            : 'لا توجد عمليات محلية معلقة للإرسال حالياً — السجل متزامن بالكامل.',
+      });
+    } else {
+      setActionMsg({
+        type: 'error',
+        text:
+          res.error ||
+          `اكتمل الإرسال مع وجود (${res.failedCount}) عملية فاشلة و(${res.conflictCount}) تعارض — بقيت العمليات الفاشلة محفوظة لإعادة المحاولة.`,
+      });
+    }
+  };
+
   const handleReceiveSyncNow = async () => {
     if (isReceiving) return;
     setActionMsg(null);
@@ -395,7 +528,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
     if (res.ok) {
       setActionMsg({
         type: 'success',
-        text: `تم استلام وتحديث البيانات من السيرفر (${res.count} سجل).`,
+        text: `تم استلام وتحديث البيانات من السيرفر (${res.count} سجل). مراجعة المستندات لا تؤكد الاستلام تلقائياً — استخدم «تأكيد الاستلام» للاعتماد.`,
       });
     } else {
       setActionMsg({
@@ -711,7 +844,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
               {b.sendStatus}
             </span>
             {b.isConfirmedSendQueued && b.isLocalOnly && (
-              <span className="text-[10px] font-bold text-blue-900 dark:text-sky-300">
+              <span className="text-[10px] font-bold text-[#003589] dark:text-[#85B8FF]">
                 طلب الإرسال مؤكد · انتظار المزامنة
               </span>
             )}
@@ -985,7 +1118,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
               {(isSending || sendElapsedMs > 0) && (
                 <>
                   <span aria-hidden="true">·</span>
-                  <span className="font-mono tabular-nums text-blue-950 dark:text-sky-300 font-bold">
+                  <span className="font-mono tabular-nums text-[#003589] dark:text-[#85B8FF] font-bold">
                     زمن الإرسال: {formatElapsedTenths(sendElapsedMs)}
                   </span>
                 </>
@@ -994,7 +1127,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                 <>
                   <span aria-hidden="true">·</span>
                   <span className="font-mono tabular-nums text-emerald-800 dark:text-emerald-400 font-bold">
-                    زمن التحديث: {formatElapsedTenths(receiveElapsedMs)}
+                    زمن الاستلام: {formatElapsedTenths(receiveElapsedMs)}
                   </span>
                 </>
               )}
@@ -1005,12 +1138,35 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
         <div className="flex items-center gap-1.5 flex-wrap">
           <button
             type="button"
+            data-testid="refresh-send-btn"
+            disabled={isSending}
+            onClick={handleTopSendToServer}
+            className="h-8 px-3 rounded-md bg-[#003589] hover:bg-[#011E58] dark:bg-[#1659C8] dark:hover:bg-[#1D63D8] text-white text-xs font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap shadow-xs"
+          >
+            <ArrowUpFromLine className="w-3.5 h-3.5" />
+            <span>
+              {isSending
+                ? 'جاري الإرسال...'
+                : kpiStats.readyToSend > 0
+                ? `إرسال إلى السيرفر (${kpiStats.readyToSend})`
+                : 'إرسال إلى السيرفر'}
+            </span>
+          </button>
+          <button
+            type="button"
+            data-testid="refresh-receive-btn"
             disabled={isReceiving}
             onClick={handleReceiveSyncNow}
-            className="h-8 px-2.5 rounded-md bg-blue-900 hover:bg-blue-950 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap"
+            className="h-8 px-3 rounded-md bg-[#011E58] hover:bg-[#001A49] dark:bg-[#132952] dark:hover:bg-[#1B3A70] dark:border dark:border-[#2E4F86] text-white text-xs font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap shadow-xs"
           >
             <ArrowDownToLine className="w-3.5 h-3.5" />
-            <span>{isReceiving ? 'جاري التحديث...' : 'تحديث واستلام من السيرفر'}</span>
+            <span>
+              {isReceiving
+                ? 'جاري الاستلام...'
+                : kpiStats.awaitingReceiveTotal > 0
+                ? `استلام من السيرفر (${kpiStats.awaitingReceiveTotal})`
+                : 'استلام من السيرفر'}
+            </span>
           </button>
           {onBack && (
             <button
@@ -1041,32 +1197,72 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
         </div>
       )}
 
-      {/* Compact Hairline KPI Summary Strip */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-slate-200 dark:bg-[#21375C] border border-slate-200 dark:border-[#21375C] rounded-md overflow-hidden">
-        <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
-          <div className="text-[11px] font-bold text-slate-500 dark:text-[#8DA2C5]">
-            {isRepUser ? 'العمليات المعلقة للإرسال' : 'دفعات في انتظار الاستلام'}
+      {lastSendOutcomes.length > 0 && (
+        <div className="bg-white dark:bg-[#0E1C36] rounded-lg border border-slate-200 dark:border-[#21375C] p-2 space-y-1 text-xs">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-black text-[#011E58] dark:text-[#EEF4FC]">
+              نتائج الإرسال التفصيلية ({lastSendOutcomes.length} عملية)
+            </span>
+            <button
+              type="button"
+              onClick={() => setLastSendOutcomes([])}
+              className="text-[11px] font-bold text-slate-500 hover:text-slate-800 dark:text-[#97AECE] cursor-pointer"
+            >
+              إخفاء
+            </button>
           </div>
-          <div className="text-sm font-black text-blue-950 dark:text-sky-300 font-mono tabular-nums mt-0.5">
-            {isRepUser ? unsentQueueOps.length : kpiStats.waiting}
+          <div className="divide-y divide-slate-100 dark:divide-[#21375C] max-h-36 overflow-y-auto">
+            {lastSendOutcomes.map((item) => (
+              <div key={item.id} className="py-1 flex items-center justify-between gap-2 text-[11px]">
+                <span className="font-bold text-slate-800 dark:text-[#EEF4FC]">{item.label}</span>
+                <span
+                  className={`font-bold whitespace-nowrap ${
+                    item.ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'
+                  }`}
+                >
+                  {item.detail}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
-        <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
-          <div className="text-[11px] font-bold text-slate-500 dark:text-[#8DA2C5]">دفعات تم استلامها اليوم</div>
-          <div className="text-sm font-black text-emerald-800 dark:text-emerald-400 font-mono tabular-nums mt-0.5">
-            {kpiStats.confirmedToday}
+      )}
+
+      {/* Compact 5-Counter Send & Receive Summary Strip */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-px bg-slate-200 dark:bg-[#21375C] border border-slate-200 dark:border-[#21375C] rounded-md overflow-hidden">
+        <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5" data-testid="counter-ready-send">
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#8DA2C5]">جاهزة للإرسال</div>
+          <div className="text-sm font-black text-[#003589] dark:text-[#85B8FF] font-mono tabular-nums mt-0.5">
+            {kpiStats.readyToSend}
           </div>
         </div>
-        <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
-          <div className="text-[11px] font-bold text-slate-500 dark:text-[#8DA2C5]">دفعات فشل أو تعذر استلامها</div>
+        <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5" data-testid="counter-failed">
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#8DA2C5]">فاشلة / متعذرة</div>
           <div className="text-sm font-black text-red-700 dark:text-red-400 font-mono tabular-nums mt-0.5">
             {kpiStats.failed}
           </div>
         </div>
-        <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
-          <div className="text-[11px] font-bold text-slate-500 dark:text-[#8DA2C5]">إجمالي التحصيلات المستلمة</div>
+        <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5" data-testid="counter-synced">
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#8DA2C5]">متزامنة</div>
           <div className="text-sm font-black text-slate-900 dark:text-[#EEF4FC] font-mono tabular-nums mt-0.5">
-            {kpiStats.totalCash.toLocaleString()} {data.settings.currency}
+            {kpiStats.syncedTotal}
+          </div>
+        </div>
+        <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5" data-testid="counter-awaiting-receive">
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#8DA2C5]">واردة بانتظار الاستلام</div>
+          <div className="text-sm font-black text-amber-700 dark:text-amber-300 font-mono tabular-nums mt-0.5">
+            {kpiStats.awaitingReceiveTotal}
+          </div>
+        </div>
+        <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5 col-span-2 sm:col-span-1" data-testid="counter-confirmed-received">
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#8DA2C5]">مستلمة ومؤكدة</div>
+          <div className="flex items-baseline justify-between gap-2 mt-0.5">
+            <span className="text-sm font-black text-emerald-800 dark:text-emerald-400 font-mono tabular-nums">
+              {kpiStats.confirmedTotal}
+            </span>
+            <span className="text-[10px] font-bold text-slate-500 dark:text-[#97AECE] font-mono tabular-nums">
+              {kpiStats.totalCash.toLocaleString()} {data.settings.currency}
+            </span>
           </div>
         </div>
       </div>
@@ -1089,7 +1285,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                   >
                     <div className="space-y-0.5">
                       <div>
-                        <span className="font-mono font-bold text-blue-950 dark:text-sky-300">{draft.batchNumber}</span>
+                        <span className="font-mono font-bold text-[#011E58] dark:text-[#85B8FF]">{draft.batchNumber}</span>
                         <span className="mx-1.5 text-slate-400">·</span>
                         <span className="font-bold text-slate-800 dark:text-[#EEF4FC]">المستلم: {draft.recipientName}</span>
                         <span className="mx-1.5 text-slate-400">·</span>
@@ -1194,7 +1390,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
         pdfTitle="سجل دفعات إرسال واستلام المندوبين"
         searchPlaceholder="ابحث برقم الدفعة، اسم المندوب، المستلم..."
         toolbarFilters={
-          <div className="flex flex-nowrap overflow-x-auto no-scrollbar sm:flex-wrap items-center gap-1.5 w-full [&>*]:shrink-0">
+          <div className="flex flex-nowrap items-center gap-1.5 shrink-0" data-testid="sync-filter-row">
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
@@ -1271,9 +1467,15 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
       {pendingSendConfirm &&
         typeof document !== 'undefined' &&
         ReactDOM.createPortal(
-          <div className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/65 backdrop-blur-[2px] p-3">
+          <div
+            className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/65 backdrop-blur-[2px] p-3"
+            onClick={() => setPendingSendConfirm(null)}
+          >
             <div
+              role="dialog"
+              aria-modal="true"
               dir="rtl"
+              onClick={(e) => e.stopPropagation()}
               className="bg-white dark:bg-[#0E1C36] rounded-xl border border-slate-200 dark:border-[#21375C] shadow-2xl w-full max-w-lg overflow-hidden"
             >
               <div className="px-4 py-2.5 bg-blue-950 text-white flex items-center justify-between">
@@ -1296,7 +1498,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                     المستلم المحدد: <strong className="text-slate-900 dark:text-[#EEF4FC]">{pendingSendConfirm.recipientLabel}</strong>
                   </div>
                   <div className="text-slate-600 dark:text-[#8DA2C5]">
-                    إجمالي العمليات المحددة: <strong className="font-mono text-blue-950 dark:text-sky-300">{pendingSendConfirm.chosenOps.length}</strong>
+                    إجمالي العمليات المحددة: <strong className="font-mono text-[#011E58] dark:text-[#85B8FF]">{pendingSendConfirm.chosenOps.length}</strong>
                   </div>
                   {pendingSendConfirm.notes && (
                     <div className="text-slate-600 dark:text-[#8DA2C5]">
@@ -1374,9 +1576,15 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
       {inspectedBatch &&
         typeof document !== 'undefined' &&
         ReactDOM.createPortal(
-          <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/60 backdrop-blur-[2px] p-2 sm:p-3">
+          <div
+            className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/60 backdrop-blur-[2px] p-2 sm:p-3"
+            onClick={() => { if (!batchActionLoading) setInspectedBatch(null); }}
+          >
             <div
+              role="dialog"
+              aria-modal="true"
               dir="rtl"
+              onClick={(e) => e.stopPropagation()}
               className="bg-white dark:bg-[#0E1C36] rounded-lg border border-slate-200 dark:border-[#21375C] shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden"
             >
               {/* Modal Header */}
@@ -1409,7 +1617,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                   </div>
                   <div className="px-2.5 py-1.5 bg-white dark:bg-[#10203D]">
                     <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">حالة الاستلام</div>
-                    <div className="font-black text-blue-950 dark:text-sky-300">{inspectedBatch.receiptStatus}</div>
+                    <div className="font-black text-[#011E58] dark:text-[#85B8FF]">{inspectedBatch.receiptStatus}</div>
                   </div>
                   <div className="px-2.5 py-1.5 bg-white dark:bg-[#10203D]">
                     <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">إجمالي المبيعات بالدفعة</div>

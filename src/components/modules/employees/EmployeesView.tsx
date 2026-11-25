@@ -577,12 +577,12 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
           emptyTitle="لا يوجد موظفون مطابقون"
           emptySubtitle={'انقر على زر "+ إضافة موظف" للبدء بتسجيل بيانات الكادر الوظيفي ومسيرات الرواتب.'}
           toolbarFilters={
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div className="flex flex-nowrap items-center gap-1.5 shrink-0">
               <select
                 aria-label="تصفية بالقسم"
                 value={empDeptFilter}
                 onChange={(e) => setEmpDeptFilter(e.target.value)}
-                className="h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC]"
+                className="h-8 shrink-0 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC]"
               >
                 <option value="all">كل الأقسام</option>
                 {employeeDepartments.map((d) => (
@@ -593,7 +593,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
                 aria-label="تصفية بالحالة والسلف"
                 value={empStatusFilter}
                 onChange={(e) => setEmpStatusFilter(e.target.value as any)}
-                className="h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC]"
+                className="h-8 shrink-0 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC]"
               >
                 <option value="all">كل الحالات</option>
                 <option value="active">نشط فقط</option>

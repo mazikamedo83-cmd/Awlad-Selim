@@ -1,11 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   LogOut,
-  LayoutGrid,
-  LayoutDashboard,
-  Boxes,
-  Wallet,
-  ShoppingCart,
   Maximize,
   Minimize,
   Bell,
@@ -20,6 +15,9 @@ import {
   ReceiptText,
   Truck,
   Menu,
+  PanelRightClose,
+  PanelRightOpen,
+  LayoutDashboard,
   Sun,
   Moon,
 } from 'lucide-react';
@@ -42,41 +40,6 @@ interface HeaderProps {
   onNavigateToTransfers?: () => void;
 }
 
-const INVENTORY_KEYS: NavItemKey[] = [
-  'products',
-  'product-categories',
-  'units-settings',
-  'warehouses',
-  'stock-transfers',
-  'stock-transfers-orders',
-  'stock-adjustments',
-  'stock-counts',
-  'damaged-stock',
-  'stock-movements',
-  'abu-selim-import',
-];
-
-const FINANCE_KEYS: NavItemKey[] = [
-  'accounts',
-  'customer-accounts',
-  'supplier-accounts',
-  'cashboxes',
-  'cashbox-transfer',
-  'expenses',
-  'personal-accounts',
-  'cheques',
-  'installments',
-];
-
-const SALES_KEYS: NavItemKey[] = [
-  'sales-invoices',
-  'new-sale',
-  'customers',
-  'sales-returns',
-  'deleted-invoices',
-  'customer-orders',
-];
-
 export const Header: React.FC<HeaderProps> = ({
   currentPage,
   isSidebarOpen,
@@ -95,11 +58,27 @@ export const Header: React.FC<HeaderProps> = ({
     triggerManualSync,
   } = useData();
   const { triggerAction } = useShortcuts();
-  const { resolvedTheme, setThemePreference } = usePreferences();
+  const { resolvedTheme, setThemePreference, dir } = usePreferences();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isServerModalOpen, setIsServerModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (!showLogoutModal) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') {
+          e.stopImmediatePropagation();
+        }
+        setShowLogoutModal(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [showLogoutModal]);
 
   const canPerm = (perm?: keyof UserPermissions | Array<keyof UserPermissions>) => {
     if (!perm) return true;
@@ -109,83 +88,6 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   const hideSectionsNav = isMobileAppPlatform();
-
-  // Primary navigation buttons (permission-gated; Keep الأقسام on Windows)
-  const primaryNavButtons: Array<{
-    key: string;
-    label: string;
-    icon: React.ElementType;
-    active: boolean;
-    onClick: () => void;
-    controlsDrawer?: boolean;
-  }> = [
-    ...(!hideSectionsNav
-      ? [
-          {
-            key: 'sections',
-            label: 'الأقسام',
-            icon: LayoutGrid,
-            active: isSidebarOpen,
-            onClick: onToggleSidebar,
-            controlsDrawer: true,
-          },
-        ]
-      : []),
-    {
-      key: 'dashboard',
-      label: 'الرئيسية',
-      icon: LayoutDashboard,
-      active: currentPage === 'dashboard',
-      onClick: () => onNavigate('dashboard'),
-    },
-    ...(canPerm(['canManageInventory', 'canManageWarehouses', 'canCreateStockCount', 'canApproveStockCount'])
-      ? [
-          {
-            key: 'inventory',
-            label: 'المخزون',
-            icon: Boxes,
-            active: INVENTORY_KEYS.includes(currentPage),
-            onClick: () =>
-              onNavigate(
-                canPerm('canManageInventory')
-                  ? 'products'
-                  : canPerm('canManageWarehouses')
-                  ? 'warehouses'
-                  : 'stock-counts'
-              ),
-          },
-        ]
-      : []),
-    ...(canPerm(['canManageAccounts', 'canManageCashboxes'])
-      ? [
-          {
-            key: 'finance',
-            label: 'الحسابات',
-            icon: Wallet,
-            active: FINANCE_KEYS.includes(currentPage),
-            onClick: () =>
-              onNavigate(
-                canPerm('canManageAccounts')
-                  ? 'customer-accounts'
-                  : canPerm('canManageCashboxes')
-                  ? 'cashboxes'
-                  : 'cheques'
-              ),
-          },
-        ]
-      : []),
-    ...(canPerm('canManageSales')
-      ? [
-          {
-            key: 'sales',
-            label: 'المبيعات',
-            icon: ShoppingCart,
-            active: SALES_KEYS.includes(currentPage),
-            onClick: () => onNavigate('sales-invoices'),
-          },
-        ]
-      : []),
-  ];
 
   // Permanent Quick Shortcuts inside Top Blue Bar (RBAC-gated, never hidden by desktop viewport resizing)
   const quickBarShortcuts: Array<{
@@ -297,21 +199,8 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="max-w-full mx-auto px-2 sm:px-3">
           {/* Top Row: Brand Identity + (Desktop Primary Buttons) + Utility Controls */}
           <div className="h-10 flex items-center justify-between gap-2">
-            {/* Brand Logo, Explicit Hamburger Toggle & Name */}
-            <div className="flex items-center gap-2 min-w-0 shrink-0">
-              {!hideSectionsNav && (
-                <button
-                  type="button"
-                  onClick={onToggleSidebar}
-                  aria-label="تبديل القائمة الجانبية"
-                  aria-expanded={isSidebarOpen}
-                  aria-controls="system-sections-drawer"
-                  title={isSidebarOpen ? 'إخفاء القائمة الجانبية' : 'إظهار القائمة الجانبية'}
-                  className="min-h-[30px] min-w-[30px] flex items-center justify-center rounded-md bg-white/15 hover:bg-white/25 border border-white/20 text-white cursor-pointer shrink-0 transition-colors"
-                >
-                  <Menu className="w-4 h-4" />
-                </button>
-              )}
+            {/* Brand Logo, Clear Sidebar Open/Close Button & Name */}
+            <div className="flex items-center gap-2 min-w-0">
               <img
                 src="/awlad-selim-logo.png"
                 alt="AWLAD SELIM"
@@ -325,35 +214,44 @@ export const Header: React.FC<HeaderProps> = ({
                   {currentUser ? `${currentUser.fullName} · ${getRoleLabel(currentUser.role)}` : 'أولاد سليم'}
                 </p>
               </div>
+              {!hideSectionsNav && (
+                <button
+                  type="button"
+                  data-testid="sidebar-toggle-btn"
+                  onClick={onToggleSidebar}
+                  aria-label="تبديل القائمة الجانبية"
+                  aria-expanded={isSidebarOpen}
+                  aria-controls="system-sections-drawer"
+                  title={isSidebarOpen ? 'إغلاق القائمة الجانبية' : 'فتح القائمة الجانبية'}
+                  className={`min-h-[30px] px-2.5 py-1 flex items-center justify-center gap-1.5 rounded-md border text-xs font-black whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+                    isSidebarOpen
+                      ? 'bg-white text-[var(--awlad-navy-900)] border-white dark:bg-[#1659C8] dark:text-white dark:border-[#60A5FA]/50 shadow-xs'
+                      : 'bg-white/15 hover:bg-white/25 border-white/30 text-white'
+                  }`}
+                >
+                  {isSidebarOpen ? (
+                    dir === 'ltr' ? <PanelRightOpen className="w-3.5 h-3.5 shrink-0" /> : <PanelRightClose className="w-3.5 h-3.5 shrink-0" />
+                  ) : (
+                    <Menu className="w-3.5 h-3.5 shrink-0" />
+                  )}
+                  <span>{isSidebarOpen ? 'إغلاق القائمة' : 'قائمة الأقسام'}</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => onNavigate('dashboard')}
+                aria-current={currentPage === 'dashboard' ? 'page' : undefined}
+                title="لوحة التحكم الرئيسية"
+                className={`hidden sm:flex min-h-[30px] px-2 py-1 items-center gap-1 rounded-md text-xs font-bold whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+                  currentPage === 'dashboard'
+                    ? 'bg-white/20 text-white border border-white/30'
+                    : 'text-blue-100 hover:text-white hover:bg-white/10 border border-transparent'
+                }`}
+              >
+                <LayoutDashboard className="w-3.5 h-3.5 shrink-0" />
+                <span>الرئيسية</span>
+              </button>
             </div>
-
-            {/* Desktop Center: Primary Navigation Buttons inside Top Bar */}
-            <nav
-              aria-label="التنقل الرئيسي"
-              className="hidden md:flex items-center justify-center gap-1 flex-1 min-w-0 overflow-x-auto no-scrollbar"
-            >
-              {primaryNavButtons.map((btn) => {
-                const Icon = btn.icon;
-                return (
-                  <button
-                    key={btn.key}
-                    type="button"
-                    onClick={btn.onClick}
-                    aria-expanded={btn.controlsDrawer ? isSidebarOpen : undefined}
-                    aria-controls={btn.controlsDrawer ? 'system-sections-drawer' : undefined}
-                    aria-current={!btn.controlsDrawer && btn.active ? 'page' : undefined}
-                    className={`min-h-[30px] px-2 xl:px-2.5 py-0.5 rounded-md text-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
-                      btn.active
-                        ? 'bg-white text-[var(--awlad-navy-900)] dark:bg-[#1659C8] dark:text-white dark:border dark:border-[#60A5FA]/45 font-black'
-                        : 'bg-white/10 text-blue-50 border border-white/15 hover:bg-white/20 hover:text-white font-bold'
-                    }`}
-                  >
-                    <Icon className="w-3.5 h-3.5 shrink-0" />
-                    <span>{btn.label}</span>
-                  </button>
-                );
-              })}
-            </nav>
 
             {/* Left (RTL End): Alerts, Status, Notifications, Server, Fullscreen, Logout */}
             <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
@@ -364,7 +262,7 @@ export const Header: React.FC<HeaderProps> = ({
                   type="button"
                   onClick={() => onNavigate('customer-orders')}
                   title={`يوجد ${pendingOrdersCount} طلب شراء جديد بانتظار المراجعة`}
-                  className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-md bg-sky-400/20 text-sky-100 border border-sky-300/35 text-[11px] font-black hover:bg-sky-400/30 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                  className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-md bg-white/15 text-white border border-white/25 text-[11px] font-black hover:bg-white/25 transition-colors cursor-pointer whitespace-nowrap shrink-0"
                 >
                   <Bell className="w-3.5 h-3.5 shrink-0" />
                   <span className="hidden xl:inline">طلبات</span>
@@ -526,33 +424,7 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           )}
 
-          {/* Narrow Viewport (< md): Primary Navigation Buttons Inside Top Blue Rectangle */}
-          <nav
-            aria-label="التنقل الرئيسي للجوال"
-            className="md:hidden border-t border-white/15 py-1 flex items-center gap-1 overflow-x-auto"
-          >
-            {primaryNavButtons.map((btn) => {
-              const Icon = btn.icon;
-              return (
-                <button
-                  key={btn.key}
-                  type="button"
-                  onClick={btn.onClick}
-                  aria-expanded={btn.controlsDrawer ? isSidebarOpen : undefined}
-                  aria-controls={btn.controlsDrawer ? 'system-sections-drawer' : undefined}
-                  aria-current={!btn.controlsDrawer && btn.active ? 'page' : undefined}
-                  className={`flex-1 min-h-[32px] px-2 py-1 rounded-md flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 text-[11px] sm:text-xs whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
-                    btn.active
-                      ? 'bg-white text-blue-950 dark:bg-[#1659C8] dark:text-white dark:border dark:border-[#60A5FA]/45 font-black shadow-xs'
-                      : 'bg-white/10 text-blue-50 hover:bg-white/20 font-bold'
-                  }`}
-                >
-                  <Icon className="w-3.5 h-3.5 shrink-0" />
-                  <span className="leading-none truncate max-w-full">{btn.label}</span>
-                </button>
-              );
-            })}
-          </nav>
+          {/* Narrow Viewport (< md) removed horizontal sections bar — all sections live inside the vertical Sidebar */}
         </div>
       </header>
 
@@ -576,8 +448,22 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Logout Confirmation Modal */}
       {showLogoutModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-900/60 dark:bg-[#040B17]/75 backdrop-blur-xs no-print">
-          <div className="w-full max-w-sm rounded-lg bg-white dark:bg-[#0E1C36] p-3 shadow-2xl border border-slate-200 dark:border-[#21375C] text-right animate-in fade-in zoom-in duration-150">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-900/60 dark:bg-[#040B17]/75 backdrop-blur-xs no-print"
+          onClick={() => setShowLogoutModal(false)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.stopPropagation();
+              setShowLogoutModal(false);
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm rounded-lg bg-white dark:bg-[#0E1C36] p-3 shadow-2xl border border-slate-200 dark:border-[#21375C] text-right animate-in fade-in zoom-in duration-150"
+          >
             <div className="w-9 h-9 rounded-lg bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300 flex items-center justify-center mx-auto mb-2 border border-red-100 dark:border-red-500/30">
               <AlertTriangle className="w-4 h-4" />
             </div>

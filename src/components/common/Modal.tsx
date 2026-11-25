@@ -20,15 +20,22 @@ export const Modal: React.FC<ModalProps> = ({
 }) => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') {
+          e.stopImmediatePropagation();
+        }
+        onClose();
+      }
     };
     if (isOpen) {
       document.body.style.overflow = 'hidden';
-      window.addEventListener('keydown', handleKeyDown);
+      window.addEventListener('keydown', handleKeyDown, true);
     }
     return () => {
       document.body.style.overflow = 'unset';
-      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keydown', handleKeyDown, true);
     };
   }, [isOpen, onClose]);
 
@@ -53,7 +60,9 @@ export const Modal: React.FC<ModalProps> = ({
       />
 
       <div className="flex min-h-full items-center justify-center p-2 text-right">
-        <div 
+        <div
+          role="dialog"
+          aria-modal="true"
           className={`relative w-full ${maxWidthClass} transform rounded-lg bg-white dark:bg-[#0E1C36] shadow-2xl transition-all border border-slate-200 dark:border-[#21375C] overflow-hidden`}
           onClick={(e) => e.stopPropagation()}
         >

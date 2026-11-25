@@ -86,21 +86,24 @@ test('DashboardView renders independent Eye/EyeOff buttons, global toggle, profi
   assert.ok(src.includes('grossProfit') && src.includes('netProfit'));
 });
 
-test('Windows Shell (Header, Sidebar, App) enforces default open sidebar, toggle next to logo, push margins, and 1-click theme toggle', () => {
+test('Windows Shell (Header, Sidebar, App) enforces default open vertical sidebar, toggle next to logo, flex push layout, and 1-click theme toggle', () => {
   const header = readSrc('src/components/layout/Header.tsx');
   const sidebar = readSrc('src/components/layout/Sidebar.tsx');
   const app = readSrc('src/App.tsx');
+  const mobileShell = readSrc('src/components/modules/mobile/StaffMobileShell.tsx');
 
   assert.ok(header.includes('/awlad-selim-logo.png'), 'Original logo must be preserved in Header');
-  assert.ok(header.includes('aria-label="تبديل القائمة الجانبية"'), 'Hamburger toggle beside logo required');
+  assert.ok(header.includes('aria-label="تبديل القائمة الجانبية"'), 'Sidebar toggle beside logo required');
   assert.ok(header.includes('data-testid="header-theme-toggle"'), '1-click theme toggle required in Header');
   assert.ok(header.includes('awlad-brand-gradient'), 'Top blue brand bar required');
+  assert.ok(!header.includes('primaryNavButtons'), 'Horizontal sections strip beside logo must be replaced by vertical Sidebar');
 
   assert.ok(sidebar.includes('/awlad-selim-logo.png'), 'Original logo must be preserved in Sidebar');
   assert.ok(sidebar.includes("isLtr ? 'left-0 border-r' : 'right-0 border-l'"), 'Sidebar must support symmetric LTR/RTL');
-  assert.ok(app.includes('window.innerWidth >= 1024 && !isNativeCapacitor()'), 'Sidebar open by default on Windows desktop');
-  assert.ok(app.includes("'lg:mr-12'") && app.includes("'lg:mr-52'"), 'RTL desktop content push margin required');
-  assert.ok(app.includes("'lg:ml-12'") && app.includes("'lg:ml-52'"), 'LTR desktop content push margin required');
+  assert.ok(sidebar.includes('data-testid="sidebar-close-btn"'), 'Sidebar must include explicit close button');
+  assert.ok(app.includes('window.innerWidth >= 768 && !isNativeCapacitor()'), 'Sidebar open by default on desktop/tablet login');
+  assert.ok(app.includes('flex-1 min-h-0 flex items-stretch min-w-0'), 'Flex push layout beside sidebar required so content expands automatically');
+  assert.ok(mobileShell.includes('mobileDrawer={true}'), 'Phone StaffMobileShell must include responsive sliding Sidebar drawer');
 });
 
 test('All 11 Windows UI module families preserve compact brand tokens and avoid name clipping on critical tables', () => {

@@ -735,9 +735,9 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
             <span className="text-[10px] text-emerald-700 font-bold block">أجهزة نشطة</span>
             <strong className="text-xs font-black font-mono tabular-nums text-emerald-800">{summary.active}</strong>
           </div>
-          <div className="px-2 py-1.5 bg-sky-50/70">
-            <span className="text-[10px] text-sky-700 font-bold block">متصل حالياً (5 د)</span>
-            <strong className="text-xs font-black font-mono tabular-nums text-sky-800">{summary.onlineNow}</strong>
+          <div className="px-2 py-1.5 bg-[#EEF3FA]">
+            <span className="text-[10px] text-[#003589] font-bold block">متصل حالياً (5 د)</span>
+            <strong className="text-xs font-black font-mono tabular-nums text-[#011E58]">{summary.onlineNow}</strong>
           </div>
           <div className="px-2 py-1.5 bg-amber-50/70">
             <span className="text-[10px] text-amber-800 font-bold block">بانتظار الاعتماد</span>

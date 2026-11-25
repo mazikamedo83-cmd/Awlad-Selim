@@ -405,11 +405,11 @@ export const StockCountView: React.FC = () => {
         defaultPageSize={25}
         emptyTitle="لا توجد جلسات جرد مخزن مسجلة حتى الآن"
         toolbarFilters={
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-nowrap items-center gap-1.5 shrink-0">
             <select
               value={warehouseFilter}
               onChange={(e) => setWarehouseFilter(e.target.value)}
-              className="h-8 bg-slate-50 border border-slate-300 rounded-md px-2 text-xs font-bold"
+              className="h-8 shrink-0 bg-slate-50 border border-slate-300 rounded-md px-2 text-xs font-bold"
             >
               <option value="all">كل المستودعات</option>
               {warehouses.map((w) => (
@@ -419,7 +419,7 @@ export const StockCountView: React.FC = () => {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="h-8 bg-slate-50 border border-slate-300 rounded-md px-2 text-xs font-bold"
+              className="h-8 shrink-0 bg-slate-50 border border-slate-300 rounded-md px-2 text-xs font-bold"
             >
               <option value="all">كل حالات الجرد</option>
               <option value="draft">مسودة</option>

@@ -609,10 +609,11 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
           pdfTitle="سجل فواتير المبيعات"
           emptyTitle="لا توجد فواتير مبيعات مطابقة لمعايير البحث الحالية"
           toolbarFilters={
-            <div className="flex flex-wrap items-center gap-1.5 text-xs">
-              <div className="min-w-[165px]">
+            <div className="flex flex-nowrap items-center gap-1.5 text-xs shrink-0">
+              <div className="w-[155px] shrink-0">
                 <SearchableFilterSelect
                   id="sales-filter-customer"
+                  inlinePrefix="العميل"
                   value={selectedCustomerFilter}
                   onChange={setSelectedCustomerFilter}
                   options={customers.map((c) => ({
@@ -621,16 +622,17 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                     subtitle: c.phone || c.name,
                     searchText: `${c.name} ${c.shopName || ''} ${c.phone || ''} ${c.code || ''}`,
                   }))}
-                  allOptionLabel="جميع العملاء"
+                  allOptionLabel="الكل"
                   allOptionValue=""
                   searchPlaceholder="ابحث باسم العميل أو المحل أو الهاتف..."
                   allowClear
-                  buttonClassName="rounded-lg min-h-[32px]"
+                  buttonClassName="rounded-md h-8 min-h-[32px]"
                 />
               </div>
-              <div className="min-w-[130px]">
+              <div className="w-[130px] shrink-0">
                 <SearchableFilterSelect
                   id="sales-filter-status"
+                  inlinePrefix="الحالة"
                   value={statusFilter}
                   onChange={(val) => setStatusFilter((val as any) || 'all')}
                   options={[
@@ -638,41 +640,50 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                     { value: 'draft', label: 'مسودات' },
                     { value: 'cancelled', label: 'فواتير ملغاة / محذوفة' },
                   ]}
-                  allOptionLabel="جميع الحالات"
+                  allOptionLabel="الكل"
                   allOptionValue="all"
                   allowClear
-                  buttonClassName="rounded-lg min-h-[32px]"
+                  buttonClassName="rounded-md h-8 min-h-[32px]"
                 />
               </div>
-              <div className="min-w-[145px]">
+              <div className="w-[140px] shrink-0">
                 <SearchableFilterSelect
                   id="sales-filter-review"
+                  inlinePrefix="المراجعة"
                   value={reviewFilter}
                   onChange={(val) => setReviewFilter((val as any) || 'all')}
                   options={[
                     { value: 'needs_review', label: 'تحتاج مراجعة الإدارة' },
                     { value: 'reviewed', label: 'تمت المراجعة' },
                   ]}
-                  allOptionLabel="حالة المراجعة"
+                  allOptionLabel="الكل"
                   allOptionValue="all"
                   allowClear
-                  buttonClassName="rounded-lg min-h-[32px]"
+                  buttonClassName="rounded-md h-8 min-h-[32px]"
                 />
               </div>
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className="bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 h-8 text-xs font-mono font-semibold focus:bg-white focus:border-blue-600 outline-hidden"
-                title="من تاريخ"
-              />
-              <input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className="bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 h-8 text-xs font-mono font-semibold focus:bg-white focus:border-blue-600 outline-hidden"
-                title="إلى تاريخ"
-              />
+              <label className="inline-flex items-center gap-1 h-8 px-2 bg-slate-50 dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md shrink-0">
+                <span className="text-[10.5px] font-bold text-slate-500">من:</span>
+                <input
+                  type="date"
+                  aria-label="من تاريخ"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="bg-transparent text-xs font-mono font-semibold text-slate-800 dark:text-[#EEF4FC] outline-hidden"
+                  title="من تاريخ"
+                />
+              </label>
+              <label className="inline-flex items-center gap-1 h-8 px-2 bg-slate-50 dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md shrink-0">
+                <span className="text-[10.5px] font-bold text-slate-500">إلى:</span>
+                <input
+                  type="date"
+                  aria-label="إلى تاريخ"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="bg-transparent text-xs font-mono font-semibold text-slate-800 dark:text-[#EEF4FC] outline-hidden"
+                  title="إلى تاريخ"
+                />
+              </label>
             </div>
           }
           columns={[
@@ -923,10 +934,11 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
             </button>
           }
           toolbarFilters={
-            <div className="flex flex-wrap items-center gap-1.5 text-xs">
-              <div className="min-w-[165px]">
+            <div className="flex flex-nowrap items-center gap-1.5 text-xs shrink-0">
+              <div className="w-[160px] shrink-0">
                 <SearchableFilterSelect
                   id="quotes-filter-customer"
+                  inlinePrefix="العميل"
                   value={selectedCustomerFilter}
                   onChange={setSelectedCustomerFilter}
                   options={customers.map((c) => ({
@@ -935,26 +947,34 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                     subtitle: c.phone || c.name,
                     searchText: `${c.name} ${c.shopName || ''} ${c.phone || ''} ${c.code || ''}`,
                   }))}
-                  allOptionLabel="جميع العملاء"
+                  allOptionLabel="الكل"
                   allOptionValue=""
                   allowClear
-                  buttonClassName="rounded-lg min-h-[32px]"
+                  buttonClassName="rounded-md h-8 min-h-[32px]"
                 />
               </div>
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className="bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 h-8 text-xs font-mono font-semibold"
-                title="من تاريخ"
-              />
-              <input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className="bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 h-8 text-xs font-mono font-semibold"
-                title="إلى تاريخ"
-              />
+              <label className="inline-flex items-center gap-1 h-8 px-2 bg-slate-50 dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md shrink-0">
+                <span className="text-[10.5px] font-bold text-slate-500">من:</span>
+                <input
+                  type="date"
+                  aria-label="من تاريخ"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="bg-transparent text-xs font-mono font-semibold text-slate-800 dark:text-[#EEF4FC] outline-hidden"
+                  title="من تاريخ"
+                />
+              </label>
+              <label className="inline-flex items-center gap-1 h-8 px-2 bg-slate-50 dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md shrink-0">
+                <span className="text-[10.5px] font-bold text-slate-500">إلى:</span>
+                <input
+                  type="date"
+                  aria-label="إلى تاريخ"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="bg-transparent text-xs font-mono font-semibold text-slate-800 dark:text-[#EEF4FC] outline-hidden"
+                  title="إلى تاريخ"
+                />
+              </label>
             </div>
           }
           columns={[

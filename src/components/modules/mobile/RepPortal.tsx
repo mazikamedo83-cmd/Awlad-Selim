@@ -1500,7 +1500,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       case 'sent':
         return { key: 'sent', label: 'مرسلة بانتظار الاستلام', badgeClass: 'bg-amber-50 text-amber-900 border border-amber-200' };
       case 'received':
-        return { key: 'received', label: 'تم الاستلام (بانتظار الاعتماد)', badgeClass: 'bg-sky-50 text-sky-900 border border-sky-200' };
+        return { key: 'received', label: 'تم الاستلام (بانتظار الاعتماد)', badgeClass: 'bg-[#EEF3FA] text-[#003589] border border-[#DCE6F5]' };
       case 'rejected':
         return { key: 'rejected', label: 'مرفوضة', badgeClass: 'bg-rose-50 text-rose-800 border border-rose-200' };
       default:
@@ -3737,7 +3737,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         setCustodySubTab('items');
                         onTabChange('custody');
                       }}
-                      className="px-2 py-1 rounded-md bg-cyan-50 border border-cyan-200 text-cyan-950 flex items-center justify-between gap-2 text-[11px] font-bold cursor-pointer hover:bg-cyan-100"
+                      className="px-2 py-1 rounded-md bg-[#EEF3FA] border border-[#DCE6F5] text-[#011E58] flex items-center justify-between gap-2 text-[11px] font-bold cursor-pointer hover:bg-[#DCE6F5]"
                     >
                       <span>عهد بضاعة مرسلة بانتظار تأكيد الاستلام ({pendingCustodyDispatches.length})</span>
                       <ChevronLeft className="w-3.5 h-3.5 shrink-0" />
@@ -3786,6 +3786,24 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 </div>
               </div>
             )}
+
+            {/* Permanent Compact Send & Receive (REFRESH) Entry */}
+            <div className="pt-1.5 border-t border-slate-100 dark:border-[#21375C] flex flex-wrap items-center justify-between gap-1.5">
+              <button
+                type="button"
+                data-testid="rep-home-refresh-btn"
+                onClick={() => onTabChange('refresh')}
+                className="flex-1 min-w-[200px] h-8 px-2.5 rounded-md bg-[#011E58] hover:bg-[#003589] text-white text-[11px] font-black flex items-center justify-between gap-2 cursor-pointer"
+              >
+                <span className="flex items-center gap-1.5">
+                  <RefreshCw className="w-3.5 h-3.5 shrink-0" />
+                  <span>مركز الإرسال والاستلام (REFRESH)</span>
+                </span>
+                <span className="font-mono text-[10px] bg-white/15 px-1.5 py-0.5 rounded tabular-nums">
+                  إرسال: {data.pendingSyncCount} · استلام: {pendingCustodyDispatches.length + pendingCashReceipts.length}
+                </span>
+              </button>
+            </div>
           </div>
 
           {/* Quick Customers, Purchases, Suppliers & Reports Access Strip */}
@@ -4437,8 +4455,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             )}
 
             {/* Search, Filter Chips & Sort */}
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 items-center">
-              <div className="relative sm:col-span-5">
+            <div className="awlad-filter-row" data-testid="rep-customers-filter-row">
+              <div className="relative flex-1 min-w-[165px] shrink-0">
                 <input
                   type="text"
                   value={customerSearch}
@@ -4451,13 +4469,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               <select
                 value={customerSortMode}
                 onChange={(e) => setCustomerSortMode(e.target.value as any)}
-                className="sm:col-span-3 h-8 rounded-md border border-slate-300 px-2 text-xs font-bold bg-white"
+                className="h-8 shrink-0 rounded-md border border-slate-300 px-2 text-xs font-bold bg-white"
               >
                 <option value="debt_desc">ترتيب: الأعلى مديونية</option>
                 <option value="credit_desc">ترتيب: الأعلى رصيداً دائناً</option>
                 <option value="name">ترتيب: أبجدياً</option>
               </select>
-              <div className="sm:col-span-4 flex flex-wrap gap-1 text-[11px] font-bold">
+              <div className="flex flex-nowrap items-center gap-1 text-[11px] font-bold shrink-0">
                 {[
                   { id: 'all', label: `الكل (${repCustomersStats.total})` },
                   { id: 'current', label: 'الحاليين' },
@@ -4478,7 +4496,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     key={tab.id}
                     type="button"
                     onClick={() => setCustomerFilterMode(tab.id as any)}
-                    className={`h-8 px-2 rounded-md border transition-colors cursor-pointer ${
+                    className={`h-8 inline-flex items-center px-2 rounded-md border transition-colors cursor-pointer shrink-0 ${
                       customerFilterMode === tab.id
                         ? 'bg-blue-900 text-white border-blue-900 font-black'
                         : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
@@ -4533,8 +4551,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       onClick={() => setSelectedCustomerDetail(c)}
                       className="text-right min-w-0 cursor-pointer"
                     >
-                      <span className="font-black text-slate-900 flex items-center gap-1">
-                        <span className="truncate max-w-[160px]">{c.shopName || c.name}</span>
+                      <span className="font-black text-slate-900 flex items-center gap-1 whitespace-normal break-words">
+                        <span>{c.shopName || c.name}</span>
                         <Eye className="w-3 h-3 text-blue-700 shrink-0" />
                       </span>
                       <span className="block text-[10px] text-slate-500">
@@ -7364,7 +7382,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             </button>
           </div>
 
-          <div className="flex flex-wrap gap-1">
+          <div className="awlad-filter-row" data-testid="rep-purchases-filter-row">
             {[
               { id: 'all' as const, label: 'الكل' },
               { id: 'draft' as const, label: 'مسودة' },
@@ -7377,7 +7395,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 key={tab.id}
                 type="button"
                 onClick={() => setPurListFilter(tab.id)}
-                className={`h-7 px-2 rounded-md text-[11px] font-bold border cursor-pointer ${
+                className={`h-8 inline-flex items-center px-2.5 rounded-md text-xs font-bold border cursor-pointer shrink-0 ${
                   purListFilter === tab.id
                     ? 'bg-[#003589] text-white border-[#011E58]'
                     : 'bg-white text-slate-700 border-slate-200'
@@ -7445,7 +7463,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         <span className="block text-slate-600">موجهة إلى: {inv.recipientName}</span>
                       )}
                       {inv.receivedBy && (
-                        <span className="block text-sky-800 font-bold">
+                        <span className="block text-[#003589] font-bold">
                           المستلم: {inv.receivedBy}
                         </span>
                       )}
@@ -7831,7 +7849,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     </div>
                     <div className="px-2 py-1.5 bg-[#002463] dark:bg-[#132544]">
                       <span className="text-[10px] text-blue-100 dark:text-[#97AECE] block">المسلم للعملاء</span>
-                      <strong className="font-mono text-xs text-sky-300">{custodyStatement.totals.totalDeliveredQty}</strong>
+                      <strong className="font-mono text-xs text-blue-200">{custodyStatement.totals.totalDeliveredQty}</strong>
                     </div>
                     <div className="px-2 py-1.5 bg-[#002463] dark:bg-[#132544]">
                       <span className="text-[10px] text-blue-100 dark:text-[#97AECE] block">المرتجع للمخزن</span>
@@ -7859,7 +7877,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       columns={[
                         { key: 'productName', header: 'الصنف', render: (item) => <span className="font-bold">{item.productName}</span> },
                         { key: 'receivedQty', header: 'مستلم', align: 'center', render: (item) => <span className="font-mono">{item.receivedQty}</span> },
-                        { key: 'deliveredToCustomersQty', header: 'مباع', align: 'center', render: (item) => <span className="font-mono text-sky-700">{item.deliveredToCustomersQty}</span> },
+                        { key: 'deliveredToCustomersQty', header: 'مباع', align: 'center', render: (item) => <span className="font-mono text-[#003589]">{item.deliveredToCustomersQty}</span> },
                         { key: 'returnedToWarehouseQty', header: 'مرتجع', align: 'center', render: (item) => <span className="font-mono text-amber-700">{item.returnedToWarehouseQty}</span> },
                         { key: 'remainingCustodyQty', header: 'متبقي', align: 'center', render: (item) => <strong className="font-mono text-emerald-700">{item.remainingCustodyQty}</strong> },
                       ]}
@@ -8750,49 +8768,50 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               </div>
             )}
 
-            {/* Always-Visible Compact Filters Grid */}
-            <div className="pt-1.5 border-t border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">من تاريخ</label>
+            {/* Single-Row Unified Compact Filters */}
+            <div className="pt-1.5 border-t border-slate-200">
+              <div className="awlad-filter-row" data-testid="rep-reports-filter-row">
+                <label className="inline-flex items-center gap-1 h-8 px-2 rounded-md border border-slate-300 bg-white shrink-0">
+                  <span className="text-[10.5px] font-bold text-slate-500">من:</span>
                   <input
                     type="date"
+                    aria-label="من تاريخ"
                     value={rptDateFrom}
                     onChange={(e) => {
                       setRptDateFrom(e.target.value);
                       setRptPage(1);
                     }}
-                    className="w-full h-8 rounded-md border border-slate-300 px-2 font-mono bg-white"
+                    className="bg-transparent font-mono text-xs outline-hidden"
                   />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">إلى تاريخ</label>
+                </label>
+                <label className="inline-flex items-center gap-1 h-8 px-2 rounded-md border border-slate-300 bg-white shrink-0">
+                  <span className="text-[10.5px] font-bold text-slate-500">إلى:</span>
                   <input
                     type="date"
+                    aria-label="إلى تاريخ"
                     value={rptDateTo}
                     onChange={(e) => {
                       setRptDateTo(e.target.value);
                       setRptPage(1);
                     }}
-                    className="w-full h-8 rounded-md border border-slate-300 px-2 font-mono bg-white"
+                    className="bg-transparent font-mono text-xs outline-hidden"
                   />
-                </div>
-                <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">رقم المستند</label>
-                  <input
-                    type="text"
-                    value={rptInvoiceNumber}
-                    onChange={(e) => {
-                      setRptInvoiceNumber(e.target.value);
-                      setRptPage(1);
-                    }}
-                    placeholder="رقم الفاتورة..."
-                    className="w-full h-8 rounded-md border border-slate-300 px-2 font-mono bg-white"
-                  />
-                </div>
-                <div>
+                </label>
+                <input
+                  type="text"
+                  aria-label="رقم المستند"
+                  value={rptInvoiceNumber}
+                  onChange={(e) => {
+                    setRptInvoiceNumber(e.target.value);
+                    setRptPage(1);
+                  }}
+                  placeholder="رقم الفاتورة..."
+                  className="w-[125px] shrink-0 h-8 rounded-md border border-slate-300 px-2 font-mono text-xs bg-white outline-hidden focus:border-blue-600"
+                />
+                <div className="w-[140px] shrink-0">
                   <SearchableFilterSelect
                     id="rep-rpt-optype"
-                    label="نوع العملية"
+                    inlinePrefix="العملية"
                     value={rptOpType}
                     onChange={(val) => {
                       setRptOpType((val as any) || 'all');
@@ -8809,15 +8828,15 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           ]
                         : []),
                     ]}
-                    allOptionLabel="جميع العمليات"
+                    allOptionLabel="الكل"
                     allOptionValue="all"
-                    buttonClassName="h-8 rounded-md"
+                    buttonClassName="h-8 min-h-[32px] rounded-md"
                   />
                 </div>
-                <div className="col-span-2">
+                <div className="w-[165px] shrink-0">
                   <SearchableFilterSelect
                     id="rep-rpt-party"
-                    label={canCreatePurchase ? 'العميل / المورد' : 'العميل'}
+                    inlinePrefix={canCreatePurchase ? 'العميل/المورد' : 'العميل'}
                     value={rptPartyKey}
                     onChange={(val) => {
                       setRptPartyKey(val);
@@ -8843,17 +8862,17 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           }))
                         : []),
                     ]}
-                    allOptionLabel={canCreatePurchase ? 'كل العملاء والموردين' : 'كل العملاء'}
+                    allOptionLabel="الكل"
                     allOptionValue="all"
                     searchPlaceholder="ابحث باسم العميل أو المحل أو المورد..."
                     allowClear
-                    buttonClassName="h-8 rounded-md"
+                    buttonClassName="h-8 min-h-[32px] rounded-md"
                   />
                 </div>
-                <div className="col-span-2">
+                <div className="w-[155px] shrink-0">
                   <SearchableFilterSelect
                     id="rep-rpt-product"
-                    label="الصنف"
+                    inlinePrefix="الصنف"
                     value={rptProductId || 'all'}
                     onChange={(val) => {
                       setRptProductId(val === 'all' ? '' : val);
@@ -8866,17 +8885,17 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       badge: p.code || undefined,
                       searchText: `${p.code || ''} ${p.barcode || ''} ${p.category || ''}`,
                     }))}
-                    allOptionLabel="كل الأصناف"
+                    allOptionLabel="الكل"
                     allOptionValue="all"
                     searchPlaceholder="ابحث باسم الصنف أو الكود أو الباركود..."
                     allowClear
-                    buttonClassName="h-8 rounded-md"
+                    buttonClassName="h-8 min-h-[32px] rounded-md"
                   />
                 </div>
-                <div>
+                <div className="w-[130px] shrink-0">
                   <SearchableFilterSelect
                     id="rep-rpt-payment-status"
-                    label="حالة السداد"
+                    inlinePrefix="السداد"
                     value={rptPaymentStatus}
                     onChange={(val) => {
                       setRptPaymentStatus((val as any) || 'all');
@@ -8889,13 +8908,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     ]}
                     allOptionLabel="الكل"
                     allOptionValue="all"
-                    buttonClassName="h-8 rounded-md"
+                    buttonClassName="h-8 min-h-[32px] rounded-md"
                   />
                 </div>
-                <div>
+                <div className="w-[135px] shrink-0">
                   <SearchableFilterSelect
                     id="rep-rpt-invoice-status"
-                    label="حالة الفاتورة"
+                    inlinePrefix="الحالة"
                     value={rptInvoiceStatus}
                     onChange={(val) => {
                       setRptInvoiceStatus((val as any) || 'all');
@@ -8908,30 +8927,29 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     ]}
                     allOptionLabel="الكل"
                     allOptionValue="all"
-                    buttonClassName="h-8 rounded-md"
+                    buttonClassName="h-8 min-h-[32px] rounded-md"
                   />
                 </div>
-                <div className="col-span-2 flex items-end">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setRptDateFrom('');
-                      setRptDateTo('');
-                      setRptPartyKey('all');
-                      setRptProductId('');
-                      setRptInvoiceNumber('');
-                      setRptOpType('all');
-                      setRptPaymentStatus('all');
-                      setRptInvoiceStatus('all');
-                      setRptPage(1);
-                    }}
-                    className="w-full h-8 px-2 rounded-md border border-slate-300 bg-white hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 text-slate-700 font-bold text-[11px] flex items-center justify-center gap-1 transition-colors cursor-pointer"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>إعادة ضبط الفلاتر</span>
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRptDateFrom('');
+                    setRptDateTo('');
+                    setRptPartyKey('all');
+                    setRptProductId('');
+                    setRptInvoiceNumber('');
+                    setRptOpType('all');
+                    setRptPaymentStatus('all');
+                    setRptInvoiceStatus('all');
+                    setRptPage(1);
+                  }}
+                  className="h-8 px-2.5 rounded-md border border-slate-300 bg-white hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 text-slate-700 font-bold text-xs inline-flex items-center justify-center gap-1 transition-colors cursor-pointer shrink-0"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>إعادة ضبط</span>
+                </button>
               </div>
+            </div>
           </div>
 
           {repReportData && (
@@ -9143,7 +9161,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                                 const sup = data.suppliers.find((s) => s.id === ss.id);
                                 if (sup) setSelectedSupplierDetail(sup);
                               }}
-                              className="px-2 py-0.5 rounded-md text-[11px] bg-indigo-50 text-indigo-900 border border-indigo-200 font-bold cursor-pointer whitespace-nowrap"
+                              className="px-2 py-0.5 rounded-md text-[11px] bg-[#EEF3FA] text-[#011E58] border border-[#DCE6F5] font-bold cursor-pointer whitespace-nowrap"
                             >
                               كشف الحساب
                             </button>
@@ -9172,7 +9190,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       header: 'النوع',
                       align: 'center',
                       render: (row) => (
-                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${row.type === 'purchase' ? 'bg-indigo-50 text-indigo-900' : row.type === 'quote' ? 'bg-slate-100 text-slate-700' : 'bg-blue-50 text-blue-900'}`}>
+                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${row.type === 'purchase' ? 'bg-[#EEF3FA] text-[#011E58]' : row.type === 'quote' ? 'bg-slate-100 text-slate-700' : 'bg-blue-50 text-blue-900'}`}>
                           {row.type === 'purchase' ? 'فاتورة شراء' : row.type === 'quote' ? 'عرض سعر' : 'فاتورة بيع'}
                         </span>
                       ),
@@ -9971,27 +9989,35 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         </button>
                       </div>
 
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                        <input
-                          type="date"
-                          value={stmtDateFrom}
-                          onChange={(e) => setStmtDateFrom(e.target.value)}
-                          title="من تاريخ"
-                          className="h-8 rounded-md border border-slate-300 px-2 font-mono text-[11px] bg-slate-50"
-                        />
-                        <input
-                          type="date"
-                          value={stmtDateTo}
-                          onChange={(e) => setStmtDateTo(e.target.value)}
-                          title="إلى تاريخ"
-                          className="h-8 rounded-md border border-slate-300 px-2 font-mono text-[11px] bg-slate-50"
-                        />
+                      <div className="awlad-filter-row" data-testid="rep-stmt-filter-row">
+                        <label className="inline-flex items-center gap-1 h-8 px-2 rounded-md border border-slate-300 bg-slate-50 shrink-0">
+                          <span className="text-[10.5px] font-bold text-slate-500">من:</span>
+                          <input
+                            type="date"
+                            aria-label="من تاريخ"
+                            value={stmtDateFrom}
+                            onChange={(e) => setStmtDateFrom(e.target.value)}
+                            title="من تاريخ"
+                            className="bg-transparent font-mono text-xs outline-hidden"
+                          />
+                        </label>
+                        <label className="inline-flex items-center gap-1 h-8 px-2 rounded-md border border-slate-300 bg-slate-50 shrink-0">
+                          <span className="text-[10.5px] font-bold text-slate-500">إلى:</span>
+                          <input
+                            type="date"
+                            aria-label="إلى تاريخ"
+                            value={stmtDateTo}
+                            onChange={(e) => setStmtDateTo(e.target.value)}
+                            title="إلى تاريخ"
+                            className="bg-transparent font-mono text-xs outline-hidden"
+                          />
+                        </label>
                         <input
                           type="text"
                           value={stmtSearch}
                           onChange={(e) => setStmtSearch(e.target.value)}
                           placeholder="بحث برقم المستند أو العملية..."
-                          className="col-span-2 sm:col-span-1 h-8 rounded-md border border-slate-300 px-2 text-[11px] bg-slate-50"
+                          className="flex-1 min-w-[140px] h-8 rounded-md border border-slate-300 px-2 text-xs bg-slate-50 shrink-0"
                         />
                       </div>
                     </div>
@@ -10066,7 +10092,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                             header: 'العملية',
                             render: (entry) => (
                               <div>
-                                <span className="font-bold text-slate-900 block truncate max-w-[120px]">{entry.label}</span>
+                                <span className="font-bold text-slate-900 block whitespace-normal break-words">{entry.label}</span>
                                 {entry.docNumber && (
                                   <span className="font-mono text-[10px] text-slate-400 block">{entry.docNumber}</span>
                                 )}
@@ -10247,7 +10273,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       {/* Unsaved Invoice Leave Guard Modal */}
       {pendingLeaveTab && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 bg-slate-950/60 backdrop-blur-xs">
-          <div className="w-full max-w-sm bg-white rounded-lg p-2.5 border border-slate-200 space-y-2 text-xs">
+          <div role="dialog" aria-modal="true" className="w-full max-w-sm bg-white rounded-lg p-2.5 border border-slate-200 space-y-2 text-xs">
             <div className="flex items-center gap-1.5 font-black text-xs text-amber-800">
               <AlertTriangle className="w-4 h-4 shrink-0" />
               <span>توجد أصناف غير محفوظة في الفاتورة</span>
@@ -10282,7 +10308,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       {/* Invoice Detail Sheet */}
       {selectedInvoice && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs">
-          <div className="w-full max-w-lg bg-white rounded-t-lg sm:rounded-lg p-2.5 border border-slate-200 max-h-[82vh] flex flex-col gap-2 text-xs pb-safe">
+          <div role="dialog" aria-modal="true" className="w-full max-w-lg bg-white rounded-t-lg sm:rounded-lg p-2.5 border border-slate-200 max-h-[82vh] flex flex-col gap-2 text-xs pb-safe">
             <div className="flex items-center justify-between border-b border-slate-200 pb-1.5">
               <div>
                 <h4 className="font-black text-xs text-slate-900">
@@ -10327,7 +10353,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       {/* Purchase Invoice Review & Dispatch Modal */}
       {purReviewOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs">
-          <div className="w-full max-w-lg bg-white rounded-t-lg sm:rounded-lg p-2.5 border border-slate-200 max-h-[88vh] overflow-y-auto space-y-2 text-xs pb-safe">
+          <div role="dialog" aria-modal="true" className="w-full max-w-lg bg-white rounded-t-lg sm:rounded-lg p-2.5 border border-slate-200 max-h-[88vh] overflow-y-auto space-y-2 text-xs pb-safe">
             <div className="flex items-center justify-between border-b border-slate-200 pb-1.5">
               <h4 className="font-black text-xs text-slate-900">معاينة ومراجعة فاتورة الشراء قبل الإرسال</h4>
               <button
@@ -10431,7 +10457,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       {/* Quick Send Draft Purchase Modal */}
       {sendingPurchaseTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 bg-slate-950/60 backdrop-blur-xs">
-          <div className="w-full max-w-sm bg-white rounded-lg p-2.5 border border-slate-200 space-y-2 text-xs">
+          <div role="dialog" aria-modal="true" className="w-full max-w-sm bg-white rounded-lg p-2.5 border border-slate-200 space-y-2 text-xs">
             <h4 className="font-black text-xs text-slate-900">
               إرسال فاتورة الشراء ({sendingPurchaseTarget.invoiceNumber}) للإدارة
             </h4>
@@ -10491,7 +10517,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       {/* Purchase Dispatch History Modal */}
       {historyPurchaseTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 bg-slate-950/60 backdrop-blur-xs">
-          <div className="w-full max-w-md bg-white rounded-lg p-2.5 border border-slate-200 space-y-2 text-xs max-h-[82vh] overflow-y-auto">
+          <div role="dialog" aria-modal="true" className="w-full max-w-md bg-white rounded-lg p-2.5 border border-slate-200 space-y-2 text-xs max-h-[82vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-200 pb-1.5">
               <h4 className="font-black text-xs text-slate-900">
                 سجل الإرسال والاستلام — {historyPurchaseTarget.invoiceNumber}
@@ -10540,7 +10566,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           className="fixed inset-0 z-50 flex items-center justify-center p-2.5 bg-slate-950/80 backdrop-blur-xs"
           onClick={() => setPreviewShopPhoto(null)}
         >
-          <div className="w-full max-w-lg bg-white rounded-lg overflow-hidden border border-slate-200" onClick={(e) => e.stopPropagation()}>
+          <div role="dialog" aria-modal="true" className="w-full max-w-lg bg-white rounded-lg overflow-hidden border border-slate-200" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-2.5 py-1.5 border-b bg-slate-50 text-xs">
               <strong className="text-slate-900">معاينة صورة المحل</strong>
               <button
@@ -10565,7 +10591,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         const canSendOrEdit = pur.status === 'draft' && (meta.key === 'draft' || meta.key === 'rejected');
         return (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs">
-            <div className="w-full max-w-lg bg-white rounded-t-lg sm:rounded-lg p-2.5 border border-slate-200 max-h-[88vh] flex flex-col gap-2 text-xs pb-safe">
+            <div role="dialog" aria-modal="true" className="w-full max-w-lg bg-white rounded-t-lg sm:rounded-lg p-2.5 border border-slate-200 max-h-[88vh] flex flex-col gap-2 text-xs pb-safe">
               <div className="flex items-start justify-between gap-2 border-b border-slate-200 pb-1.5">
                 <div>
                   <div className="flex items-center gap-1.5 flex-wrap">
@@ -10597,7 +10623,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   </p>
                 )}
                 {pur.receivedBy && (
-                  <p className="text-sky-800 font-bold">
+                  <p className="text-[#003589] font-bold">
                     المستلم الفعلي: {pur.receivedBy}
                     {pur.receivedAt ? ` (${new Date(pur.receivedAt).toLocaleString('ar-EG')})` : ''}
                   </p>

@@ -192,13 +192,22 @@ export const MobilePortal: React.FC = () => {
   }, [pendingRepTab, isSettingsModalOpen, isSyncCenterOpen, isNotificationsOpen, isServerModalOpen, isDrawerOpen, isRep, repTab, customerTab, hasUnsavedRepInvoice]);
 
   useEffect(() => {
-    if (!isDrawerOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setIsDrawerOpen(false);
+      if (e.key !== 'Escape') return;
+      if (pendingRepTab) {
+        setPendingRepTab(null);
+        return;
+      }
+      if (isSettingsModalOpen) {
+        setIsSettingsModalOpen(false);
+        return;
+      }
+      if (document.querySelector('[role="dialog"], [aria-modal="true"], .fixed.inset-0.z-50')) return;
+      if (isDrawerOpen) setIsDrawerOpen(false);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isDrawerOpen]);
+  }, [isDrawerOpen, pendingRepTab, isSettingsModalOpen]);
 
   const handleSelectNotification = (item: MobileNotificationItem) => {
     if (isRep) {
@@ -369,7 +378,7 @@ export const MobilePortal: React.FC = () => {
                 onClick={() => setIsSyncCenterOpen(true)}
                 className={`relative min-h-[34px] min-w-[34px] flex items-center justify-center rounded-lg text-white cursor-pointer ${
                   data.conflictsCount > 0
-                    ? 'bg-orange-600 hover:bg-orange-700'
+                    ? 'bg-red-700 hover:bg-red-800'
                     : data.pendingSyncCount > 0
                     ? 'bg-amber-600 hover:bg-amber-700'
                     : 'bg-white/10 hover:bg-white/20'
@@ -656,8 +665,16 @@ export const MobilePortal: React.FC = () => {
       </nav>
 
       {pendingRepTab && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 bg-slate-950/60 backdrop-blur-xs">
-          <div className="w-full max-w-sm bg-white rounded-lg p-3 shadow-2xl border border-slate-200 space-y-2 text-xs">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-2.5 bg-slate-950/60 backdrop-blur-xs"
+          onClick={() => setPendingRepTab(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm bg-white dark:bg-[#0E1C36] rounded-lg p-3 shadow-2xl border border-slate-200 dark:border-[#21375C] space-y-2 text-xs"
+          >
             <div className="flex items-center gap-1.5 font-black text-sm text-amber-800">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>توجد أصناف غير محفوظة في الفاتورة</span>
@@ -715,8 +732,16 @@ export const MobilePortal: React.FC = () => {
       />
 
       {isSettingsModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 bg-slate-950/60 backdrop-blur-xs">
-          <div className="w-full max-w-sm bg-white dark:bg-[#0E1C36] rounded-lg p-3 shadow-2xl border border-slate-200 dark:border-[#21375C] space-y-2 text-xs">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-2.5 bg-slate-950/60 backdrop-blur-xs"
+          onClick={() => setIsSettingsModalOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm bg-white dark:bg-[#0E1C36] rounded-lg p-3 shadow-2xl border border-slate-200 dark:border-[#21375C] space-y-2 text-xs"
+          >
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-[#1B2F52] pb-1.5">
               <div className="flex items-center gap-2">
                 <div className="w-7 h-7 rounded-md bg-blue-50 dark:bg-[#172E56] text-blue-800 dark:text-[#85B8FF] flex items-center justify-center">
