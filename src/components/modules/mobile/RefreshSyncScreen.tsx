@@ -1328,12 +1328,12 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
             compact
             headerActions={
               unsentQueueOps.length > 0 ? (
-                <div className="flex flex-wrap items-center gap-1.5">
+                <div className="awlad-filter-row w-auto max-w-full" data-testid="sync-batch-send-row">
                   <select
                     value={recipientUserId}
                     onChange={(e) => setRecipientUserId(e.target.value)}
                     aria-label="الموظف المستلم للدفعة"
-                    className="h-8 px-2 rounded-md border border-slate-300 dark:border-[#2C4775] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC]"
+                    className="h-8 px-2 rounded-md border border-slate-300 dark:border-[#2C4775] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC] shrink-0"
                   >
                     <option value="">-- اختر المستلم (إدارة / موظف / مندوب) --</option>
                     {(data.dispatchRecipients || []).map((rec) => (
@@ -1347,15 +1347,15 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                     value={batchNotes}
                     onChange={(e) => setBatchNotes(e.target.value)}
                     placeholder="ملاحظات الإرسال (اختياري)..."
-                    className="h-8 px-2 rounded-md border border-slate-300 dark:border-[#2C4775] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC] w-44"
+                    className="h-8 px-2 rounded-md border border-slate-300 dark:border-[#2C4775] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC] w-40 shrink-0"
                   />
                   <button
                     type="button"
                     disabled={isSending || selectedOpIds.length === 0}
                     onClick={handleRequestPreSendConfirmation}
-                    className="h-8 px-3 rounded-md bg-blue-900 hover:bg-blue-950 text-white text-xs font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap"
+                    className="h-8 px-3 rounded-md bg-blue-900 hover:bg-blue-950 text-white text-xs font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0"
                   >
-                    <Send className="w-3.5 h-3.5" />
+                    <Send className="w-3.5 h-3.5 shrink-0" />
                     <span>{isSending ? 'جاري الإرسال...' : `إرسال (${selectedOpIds.length})`}</span>
                   </button>
                 </div>
@@ -1390,12 +1390,12 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
         pdfTitle="سجل دفعات إرسال واستلام المندوبين"
         searchPlaceholder="ابحث برقم الدفعة، اسم المندوب، المستلم..."
         toolbarFilters={
-          <div className="flex flex-nowrap items-center gap-1.5 shrink-0" data-testid="sync-filter-row">
+          <div className="flex flex-nowrap items-center gap-1.5 shrink-0 [&>*]:shrink-0" data-testid="sync-filter-row">
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               aria-label="تصفية بحالة الدفعة"
-              className="h-8 px-2 rounded-md border border-slate-300 dark:border-[#2C4775] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC]"
+              className="h-8 px-2 rounded-md border border-slate-300 dark:border-[#2C4775] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC] shrink-0"
             >
               <option value="all">جميع الحالات</option>
               <option value="في انتظار الاستلام">في انتظار الاستلام</option>
@@ -1414,7 +1414,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                 value={senderFilter}
                 onChange={(e) => setSenderFilter(e.target.value)}
                 aria-label="تصفية بالمرسل"
-                className="h-8 px-2 rounded-md border border-slate-300 dark:border-[#2C4775] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC]"
+                className="h-8 px-2 rounded-md border border-slate-300 dark:border-[#2C4775] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC] shrink-0"
               >
                 <option value="all">كل المندوبين</option>
                 {uniqueSenders.map((s) => (
@@ -1428,7 +1428,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                 value={recipientFilter}
                 onChange={(e) => setRecipientFilter(e.target.value)}
                 aria-label="تصفية بالمستلم"
-                className="h-8 px-2 rounded-md border border-slate-300 dark:border-[#2C4775] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC]"
+                className="h-8 px-2 rounded-md border border-slate-300 dark:border-[#2C4775] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC] shrink-0"
               >
                 <option value="all">كل المستلمين</option>
                 {uniqueRecipients.map((r) => (
@@ -1442,7 +1442,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value)}
               aria-label="تصفية بتاريخ الإرسال"
-              className="h-8 px-2 rounded-md border border-slate-300 dark:border-[#2C4775] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC]"
+              className="h-8 px-2 rounded-md border border-slate-300 dark:border-[#2C4775] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC] shrink-0"
             />
 
             {(statusFilter !== 'all' || senderFilter !== 'all' || recipientFilter !== 'all' || dateFilter) && (
@@ -1454,7 +1454,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                   setRecipientFilter('all');
                   setDateFilter('');
                 }}
-                className="h-8 px-2.5 rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-[#132544] dark:hover:bg-[#1A3158] text-slate-700 dark:text-[#EEF4FC] text-xs font-bold cursor-pointer"
+                className="h-8 px-2.5 rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-[#132544] dark:hover:bg-[#1A3158] text-slate-700 dark:text-[#EEF4FC] text-xs font-bold cursor-pointer whitespace-nowrap shrink-0"
               >
                 إعادة ضبط
               </button>

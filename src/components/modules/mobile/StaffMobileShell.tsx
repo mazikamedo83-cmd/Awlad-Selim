@@ -27,6 +27,7 @@ import {
   ArrowRight,
   Search,
   Plus,
+  PanelRightClose,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
@@ -106,8 +107,15 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
   const { currentUser, hasPermission, logout, refreshAuthContext, setIsAccountSwitcherOpen, savedAccounts } = useAuth();
   const data = useData();
 
-  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(true);
   const [isMoreViewOpen, setIsMoreViewOpen] = useState(false);
+
+  // Auto-open vertical sections sidebar immediately upon login on Phone/Mobile viewports
+  useEffect(() => {
+    if (currentUser?.id) {
+      setIsMobileSidebarOpen(true);
+    }
+  }, [currentUser?.id]);
   const [moreSearchQuery, setMoreSearchQuery] = useState('');
   const [collapsedSectionIds, setCollapsedSectionIds] = useState<Record<string, boolean>>({});
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -792,9 +800,9 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
   }, [currentUser, onNavigate]);
 
   return (
-    <div className="min-h-screen bg-[var(--awlad-surface-page)] dark:bg-[#081326] text-slate-800 dark:text-[#DCE6F5] font-['Cairo'] antialiased pb-16">
+    <div className="h-[100dvh] overflow-hidden print:h-auto print:overflow-visible bg-[var(--awlad-surface-page)] dark:bg-[#081326] text-slate-800 dark:text-[#DCE6F5] font-['Cairo'] antialiased flex flex-col">
       {/* Slim Logo-Navy/Royal Top App Header Bar */}
-      <header className="sticky top-0 z-30 awlad-brand-gradient text-white border-b border-[var(--awlad-royal-500)]/40 pt-safe no-print">
+      <header className="shrink-0 z-30 awlad-brand-gradient text-white border-b border-[var(--awlad-royal-500)]/40 pt-safe no-print">
         <div className="w-full max-w-full mx-auto px-2 h-11 flex items-center justify-between gap-1.5">
           <div className="flex items-center gap-1.5 min-w-0 shrink">
             <button
@@ -805,9 +813,18 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
               aria-expanded={isMobileSidebarOpen}
               aria-controls="system-sections-drawer"
               title={isMobileSidebarOpen ? 'إغلاق قائمة الأقسام' : 'فتح قائمة الأقسام'}
-              className="min-h-[32px] min-w-[32px] flex items-center justify-center rounded-md bg-white/15 hover:bg-white/25 border border-white/25 text-white cursor-pointer shrink-0 transition-colors"
+              className={`h-8 px-2 flex items-center justify-center gap-1 rounded-md border text-[11px] font-black whitespace-nowrap cursor-pointer shrink-0 transition-colors ${
+                isMobileSidebarOpen
+                  ? 'bg-white text-[var(--awlad-navy-900)] border-white dark:bg-[#1659C8] dark:text-white dark:border-[#60A5FA]/50 shadow-xs'
+                  : 'bg-white/15 hover:bg-white/25 border-white/30 text-white'
+              }`}
             >
-              <Menu className="w-4 h-4" />
+              {isMobileSidebarOpen ? (
+                <PanelRightClose className="w-3.5 h-3.5 shrink-0" />
+              ) : (
+                <Menu className="w-3.5 h-3.5 shrink-0" />
+              )}
+              <span>{isMobileSidebarOpen ? 'إغلاق' : 'الأقسام'}</span>
             </button>
             <img
               src="/awlad-selim-logo.png"
@@ -904,20 +921,22 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         </div>
       </header>
 
-      <Sidebar
-        currentPage={currentPage}
-        onNavigate={(page) => {
-          setIsMoreViewOpen(false);
-          onNavigate(page);
-        }}
-        isOpen={isMobileSidebarOpen}
-        onClose={() => setIsMobileSidebarOpen(false)}
-        onOpenCashOp={onOpenCashOp}
-        mobileDrawer={true}
-      />
+      {/* Side-by-Side Vertical Sidebar + Expandable Content */}
+      <div className="flex-1 min-h-0 flex items-stretch min-w-0 print:block">
+        <Sidebar
+          currentPage={currentPage}
+          onNavigate={(page) => {
+            setIsMoreViewOpen(false);
+            onNavigate(page);
+          }}
+          isOpen={isMobileSidebarOpen}
+          onClose={() => setIsMobileSidebarOpen(false)}
+          onOpenCashOp={onOpenCashOp}
+          mobileDrawer={false}
+        />
 
-      {/* Main Content */}
-      <main className="w-full max-w-full mx-auto p-1.5 sm:p-2 space-y-2">
+        {/* Main Content */}
+        <main className="flex-1 min-w-0 min-h-0 overflow-y-auto p-1.5 sm:p-2 space-y-2 print:overflow-visible">
         {(data.isUsingOfflineCache || data.networkStatus === 'disconnected') && (
           <div className="px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900 flex items-center justify-between gap-2 no-print">
             <div className="flex items-center gap-2 min-w-0">
@@ -1143,11 +1162,12 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
           </>
         )}
       </main>
+      </div>
 
-      {/* Fixed 5-Tab Bottom Navigation Bar */}
+      {/* Compact 5-Tab Bottom Navigation Bar */}
       <nav
         aria-label="التنقل السفلي"
-        className="fixed bottom-0 inset-x-0 z-30 bg-white dark:bg-[#0E1C36] border-t border-slate-200 dark:border-[#21375C] pb-safe shadow-[0_-2px_10px_rgba(1,30,88,0.08)] dark:shadow-[0_-4px_16px_rgba(0,0,0,0.35)] no-print"
+        className="shrink-0 z-30 bg-white dark:bg-[#0E1C36] border-t border-slate-200 dark:border-[#21375C] pb-safe shadow-[0_-2px_10px_rgba(1,30,88,0.08)] dark:shadow-[0_-4px_16px_rgba(0,0,0,0.35)] no-print"
       >
         <div className="w-full max-w-3xl mx-auto flex items-stretch justify-around">
           {bottomNavTabs.map((tab) => {

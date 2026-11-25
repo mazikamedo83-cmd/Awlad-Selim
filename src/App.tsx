@@ -150,9 +150,7 @@ const MainAppContent: React.FC = () => {
   const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() =>
     typeof window !== 'undefined' ? window.innerWidth < 768 || isNativeCapacitor() : false
   );
-  const [isSectionsOpen, setIsSectionsOpen] = useState<boolean>(() =>
-    typeof window !== 'undefined' ? window.innerWidth >= 768 && !isNativeCapacitor() : true
-  );
+  const [isSectionsOpen, setIsSectionsOpen] = useState<boolean>(true);
   const [cashOpModal, setCashOpModal] = useState<{ open: boolean; mode: CashOperationType }>({
     open: false,
     mode: 'cash_deposit',
@@ -183,12 +181,10 @@ const MainAppContent: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Auto-open vertical sections sidebar upon login for desktop/tablet viewports (>= 768px)
+  // Auto-open vertical sections sidebar upon login across Desktop, Tablet, and Phone
   useEffect(() => {
     if (isAuthenticated && currentUser && currentUser.role !== 'customer' && currentUser.role !== 'representative') {
-      if (typeof window !== 'undefined' && window.innerWidth >= 768 && !isNativeCapacitor()) {
-        setIsSectionsOpen(true);
-      }
+      setIsSectionsOpen(true);
     }
   }, [isAuthenticated, currentUser?.id]);
 

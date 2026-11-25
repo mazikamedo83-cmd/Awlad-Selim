@@ -87,7 +87,7 @@ export const Header: React.FC<HeaderProps> = ({
     return hasPermission(perm);
   };
 
-  const hideSectionsNav = isMobileAppPlatform();
+  const hideSectionsNav = false;
 
   // Permanent Quick Shortcuts inside Top Blue Bar (RBAC-gated, never hidden by desktop viewport resizing)
   const quickBarShortcuts: Array<{

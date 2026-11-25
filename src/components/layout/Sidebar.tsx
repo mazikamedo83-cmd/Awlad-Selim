@@ -414,7 +414,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const handleItemClick = (key: NavItemKey) => {
     onNavigate(key);
-    if (mobileDrawer || (typeof window !== 'undefined' && window.innerWidth < 768)) {
+    if (mobileDrawer) {
       onClose();
     }
   };
@@ -449,20 +449,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   : 'translate-x-full pointer-events-none'
               }`
             : `relative shrink-0 h-full ${isLtr ? 'border-r' : 'border-l'} ${
-                isCollapsed ? 'w-12' : 'w-56'
+                isCollapsed ? 'w-12' : 'w-[162px] sm:w-56'
               } shadow-xs`
         } bg-white dark:bg-[#0E1C36] text-slate-800 dark:text-[#DCE6F5] border-slate-200 dark:border-[#21375C] flex flex-col pt-safe pb-safe no-print`}
       >
         {/* Sidebar Header Strip (Logo Navy/Royal Gradient) */}
-        <div className="h-10 flex items-center justify-between px-2 awlad-brand-gradient text-white border-b border-[var(--awlad-royal-500)]/40 dark:border-[#2A4D86] shrink-0">
-          <div className="flex items-center gap-1.5 min-w-0">
+        <div className="h-10 flex items-center justify-between px-1.5 sm:px-2 awlad-brand-gradient text-white border-b border-[var(--awlad-royal-500)]/40 dark:border-[#2A4D86] shrink-0">
+          <div className="flex items-center gap-1 sm:gap-1.5 min-w-0">
             <img
               src="/awlad-selim-logo.png"
               alt="أولاد سليم"
               className="h-6 w-6 object-contain bg-white no-dark-surface rounded-md p-0.5 shrink-0"
             />
             <div className="text-right min-w-0">
-              <span className="block font-black text-xs text-white tracking-wide truncate">
+              <span className="block font-black text-[11px] sm:text-xs text-white tracking-wide truncate">
                 أقسام النظام
               </span>
             </div>
@@ -472,12 +472,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
             type="button"
             data-testid="sidebar-close-btn"
             onClick={onClose}
-            className="h-7 px-2 flex items-center justify-center gap-1 rounded-md bg-white/15 hover:bg-white/25 text-white text-[11px] font-bold transition-colors cursor-pointer shrink-0"
+            className="h-7 px-1.5 sm:px-2 flex items-center justify-center gap-1 rounded-md bg-white/15 hover:bg-white/25 text-white text-[10.5px] sm:text-[11px] font-bold transition-colors cursor-pointer shrink-0"
             aria-label="إغلاق قائمة الأقسام"
             title="إغلاق القائمة الجانبية"
           >
-            <X className="w-3.5 h-3.5" />
-            <span>إغلاق</span>
+            <X className="w-3.5 h-3.5 shrink-0" />
+            <span className="hidden sm:inline">إغلاق</span>
           </button>
         </div>
 
@@ -566,7 +566,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   type="button"
                   onClick={() => {
                     onOpenCashOp('cash_deposit');
-                    if (mobileDrawer || (typeof window !== 'undefined' && window.innerWidth < 768)) onClose();
+                    if (mobileDrawer) onClose();
                   }}
                   className="h-6.5 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#2A436E] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] hover:border-[var(--awlad-royal-700)] dark:hover:border-[#3B82F6] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
                 >
@@ -577,7 +577,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   type="button"
                   onClick={() => {
                     onOpenCashOp('cash_withdrawal');
-                    if (mobileDrawer || (typeof window !== 'undefined' && window.innerWidth < 768)) onClose();
+                    if (mobileDrawer) onClose();
                   }}
                   className="h-6.5 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#2A436E] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] hover:border-[var(--awlad-royal-700)] dark:hover:border-[#3B82F6] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
                 >
@@ -588,7 +588,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   type="button"
                   onClick={() => {
                     onOpenCashOp('expense');
-                    if (mobileDrawer || (typeof window !== 'undefined' && window.innerWidth < 768)) onClose();
+                    if (mobileDrawer) onClose();
                   }}
                   className="h-6.5 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#2A436E] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] hover:border-[var(--awlad-royal-700)] dark:hover:border-[#3B82F6] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
                 >
@@ -599,7 +599,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   type="button"
                   onClick={() => {
                     onOpenCashOp('profit_deposit');
-                    if (mobileDrawer || (typeof window !== 'undefined' && window.innerWidth < 768)) onClose();
+                    if (mobileDrawer) onClose();
                   }}
                   className="h-6.5 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#2A436E] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] hover:border-[var(--awlad-royal-700)] dark:hover:border-[#3B82F6] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
                 >
@@ -610,7 +610,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   type="button"
                   onClick={() => {
                     onOpenCashOp('cashbox_transfer');
-                    if (mobileDrawer || (typeof window !== 'undefined' && window.innerWidth < 768)) onClose();
+                    if (mobileDrawer) onClose();
                   }}
                   className="col-span-2 h-6.5 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E] text-[var(--awlad-royal-700)] dark:text-[#85B8FF] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
                 >

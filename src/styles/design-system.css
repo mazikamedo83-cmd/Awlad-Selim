@@ -90,6 +90,7 @@ html.dark {
   align-items: center;
   gap: 0.375rem;
   width: 100%;
+  min-height: 2rem;
   overflow-x: auto;
   overflow-y: visible;
   scrollbar-width: thin;
@@ -97,7 +98,8 @@ html.dark {
   -webkit-overflow-scrolling: touch;
 }
 
-.awlad-filter-row > * {
+.awlad-filter-row > *,
+.awlad-filter-row > .flex-nowrap > * {
   flex-shrink: 0;
 }
 

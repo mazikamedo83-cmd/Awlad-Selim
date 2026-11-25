@@ -1465,21 +1465,21 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
       ) : (
         <div className="flex-1 flex flex-col min-h-[260px] bg-white dark:bg-[#0E1C36] border border-t-0 border-slate-300 dark:border-[#21375C] rounded-b-lg overflow-hidden">
           {/* Unified Logo Navy Header Strip: عرض + in-table search */}
-          <div className="bg-[var(--awlad-navy-900)] text-white px-2.5 py-1 flex flex-wrap items-center justify-between gap-2 text-xs font-extrabold">
-            <div className="flex items-center gap-2">
+          <div className="bg-[var(--awlad-navy-900)] text-white px-2.5 py-1 flex flex-nowrap items-center justify-between gap-2 text-xs font-extrabold overflow-x-auto">
+            <div className="flex items-center gap-2 shrink-0 whitespace-nowrap">
               <span>عرض — {activeReportOption.label}</span>
               <span className="bg-white/15 px-1.5 py-0.5 rounded font-mono text-[11px] tabular-nums">
                 {processedSections.reduce((s, sec) => s + sec.rows.length, 0)} حركة
               </span>
               {isLoading && <span className="text-[11px] opacity-90">جاري التحديث...</span>}
             </div>
-            <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="flex items-center gap-2 shrink-0">
               <input
                 type="text"
                 value={inlineTableSearch}
                 onChange={(e) => setInlineTableSearch(e.target.value)}
                 placeholder="تصفية سريعة داخل الجدول..."
-                className="h-7 px-2 rounded-md bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] placeholder-slate-400 dark:placeholder-[#849BBF] border border-transparent dark:border-[#2A436E] text-[11px] font-normal w-full sm:w-48 focus:outline-none"
+                className="h-7 px-2 rounded-md bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] placeholder-slate-400 dark:placeholder-[#849BBF] border border-transparent dark:border-[#2A436E] text-[11px] font-normal w-40 sm:w-48 shrink-0 focus:outline-none"
               />
             </div>
           </div>

@@ -618,7 +618,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-1">
+            <div className="awlad-filter-row w-auto max-w-full" data-testid="returns-sales-req-filter-row">
               {[
                 { id: 'pending' as const, label: `معلق (${pendingSrReqCount})` },
                 { id: 'approved' as const, label: 'معتمد' },
@@ -629,7 +629,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                   key={st.id}
                   type="button"
                   onClick={() => setSalesReqStatusFilter(st.id)}
-                  className={`h-7 px-2 rounded-md font-bold border cursor-pointer ${
+                  className={`h-8 px-2.5 rounded-md text-xs font-bold border whitespace-nowrap shrink-0 cursor-pointer ${
                     salesReqStatusFilter === st.id
                       ? 'bg-[#011E58] text-white border-[#011E58]'
                       : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-[#EEF3FA]'
@@ -816,7 +816,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-1">
+            <div className="awlad-filter-row w-auto max-w-full" data-testid="returns-purchase-req-filter-row">
               {[
                 { id: 'pending' as const, label: `معلق (${pendingPrReqCount})` },
                 { id: 'approved' as const, label: 'معتمد' },
@@ -827,7 +827,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                   key={st.id}
                   type="button"
                   onClick={() => setRequestStatusFilter(st.id)}
-                  className={`h-7 px-2 rounded-md font-bold border cursor-pointer ${
+                  className={`h-8 px-2.5 rounded-md text-xs font-bold border whitespace-nowrap shrink-0 cursor-pointer ${
                     requestStatusFilter === st.id
                       ? 'bg-[#011E58] text-white border-[#011E58]'
                       : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-[#EEF3FA]'

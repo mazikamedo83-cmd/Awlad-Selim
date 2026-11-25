@@ -9954,9 +9954,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
                 {customerDetailSubTab === 'statement' && (
                   <div className="space-y-2">
-                    {/* Customer Switcher + Date Range Filter Strip */}
-                    <div className="bg-white rounded-lg border border-slate-200 p-2 space-y-1.5">
-                      <div className="flex items-center gap-1.5">
+                    {/* Customer Switcher + Date Range + Search Filter Strip (Single Horizontal Row) */}
+                    <div className="bg-white rounded-lg border border-slate-200 p-2">
+                      <div className="awlad-filter-row" data-testid="rep-stmt-filter-row">
                         <select
                           value={c.id}
                           onChange={(e) => {
@@ -9966,7 +9966,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                               setCustomerDetailSubTab('statement');
                             }
                           }}
-                          className="flex-1 h-8 rounded-md border border-slate-300 px-2 font-bold bg-slate-50"
+                          aria-label="تبديل العميل"
+                          className="w-[175px] h-8 rounded-md border border-slate-300 px-2 text-xs font-bold bg-slate-50 shrink-0"
                         >
                           {data.customers.map((x) => (
                             <option key={x.id} value={x.id}>
@@ -9987,9 +9988,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         >
                           <RefreshCw className={`w-3.5 h-3.5 ${isLoadingCustomerStatement ? 'animate-spin' : ''}`} />
                         </button>
-                      </div>
-
-                      <div className="awlad-filter-row" data-testid="rep-stmt-filter-row">
                         <label className="inline-flex items-center gap-1 h-8 px-2 rounded-md border border-slate-300 bg-slate-50 shrink-0">
                           <span className="text-[10.5px] font-bold text-slate-500">من:</span>
                           <input

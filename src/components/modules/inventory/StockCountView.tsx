@@ -602,18 +602,18 @@ export const StockCountView: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-1.5">
-            <div className="relative flex-1 min-w-[200px]">
+          <div className="awlad-filter-row justify-between" data-testid="stockcount-modal-filter-row">
+            <div className="relative flex-1 min-w-[180px] shrink-0">
               <input
                 type="text"
                 placeholder="تصفية الأصناف بالاسم أو الكود أو الباركود..."
                 value={itemSearch}
                 onChange={(e) => setItemSearch(e.target.value)}
-                className="w-full h-8 border border-slate-300 rounded-md pr-7 pl-2"
+                className="w-full h-8 border border-slate-300 rounded-md pr-7 pl-2 text-xs"
               />
               <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2 top-2" />
             </div>
-            <label className="flex items-center gap-1.5 h-8 px-2.5 bg-slate-50 border border-slate-200 rounded-md cursor-pointer font-bold">
+            <label className="flex items-center gap-1.5 h-8 px-2.5 bg-slate-50 border border-slate-200 rounded-md cursor-pointer font-bold text-xs whitespace-nowrap shrink-0">
               <input
                 type="checkbox"
                 checked={onlyVarianceFilter}
