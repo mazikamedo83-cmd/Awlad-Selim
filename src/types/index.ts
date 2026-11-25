@@ -1878,9 +1878,19 @@ export interface SyncDispatchBatch {
   receivedByUserId?: string;
   receivedByName?: string;
   receivedAt?: string;
+  receivedDeviceId?: string;
+  discrepancyDetails?: {
+    hasDiscrepancy?: boolean;
+    note?: string;
+    items?: Array<{ label: string; expected?: string | number; actual?: string | number; note?: string }>;
+    reportedAt?: string;
+    reportedByUserId?: string;
+  };
+  rejectionReason?: string;
   createdAt: string;
   updatedAt: string;
   isLocalOnly?: boolean;
+  isConfirmedSendQueued?: boolean;
 }
 
 export interface SyncConflictRecord {

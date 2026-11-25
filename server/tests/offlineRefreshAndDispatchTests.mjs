@@ -146,7 +146,7 @@ await test('Scenarios 1–5 & 7-Client: Offline Auth, LocalDB persistence, Immed
   for (const line of output.trim().split('\n')) {
     if (line.trim()) console.log(`    ${line}`);
   }
-  assert.match(output, /Client offline sub-suite finished: 4 passed/);
+  assert.match(output, /Client offline sub-suite finished: 5 passed/);
 });
 
 // -----------------------------------------------------------------------------
@@ -224,6 +224,37 @@ await test('Scenario 17: Key modules use UnifiedDataTable consistently', async (
     const content = fs.readFileSync(path.join(projectRoot, rel), 'utf8');
     assert.ok(content.includes('UnifiedDataTable'), `${rel} must use UnifiedDataTable`);
   }
+});
+
+await test('Scenario 18: Static UI integrity — no RTL/LTR text, always-visible filters, manual refresh dispatch, Hamburger menu & Rep settings', async () => {
+  const custMore = fs.readFileSync(path.join(projectRoot, 'src/components/modules/mobile/CustomerMoreScreen.tsx'), 'utf8');
+  assert.ok(!custMore.includes('(RTL)') && !custMore.includes('(LTR)'), 'CustomerMoreScreen must not expose (RTL) or (LTR) labels');
+
+  const mobilePortal = fs.readFileSync(path.join(projectRoot, 'src/components/modules/mobile/MobilePortal.tsx'), 'utf8');
+  assert.ok(mobilePortal.includes('setLanguage('), 'MobilePortal settings must expose language toggle');
+  assert.ok(mobilePortal.includes('notifPrefs'), 'MobilePortal settings must expose notification toggles');
+  assert.ok(!mobilePortal.includes('<LayoutGrid'), 'MobilePortal drawer button must use 3-line Menu icon instead of LayoutGrid');
+
+  const headerSrc = fs.readFileSync(path.join(projectRoot, 'src/components/layout/Header.tsx'), 'utf8');
+  assert.ok(headerSrc.includes('<Menu className="w-4 h-4" />') && headerSrc.includes('onToggleSidebar'), 'Header must render Hamburger Menu sidebar toggle');
+
+  const unifiedSrc = fs.readFileSync(path.join(projectRoot, 'src/components/common/UnifiedDataTable.tsx'), 'utf8');
+  assert.ok(!unifiedSrc.includes('showMobileFilters'), 'UnifiedDataTable must keep filters always visible without mobile collapse toggle');
+  assert.ok(!unifiedSrc.includes('hidden sm:flex'), 'UnifiedDataTable toolbarFilters must never use hidden sm:flex');
+  assert.ok(unifiedSrc.includes('onDoubleClick') && unifiedSrc.includes('isInteractiveTarget'), 'UnifiedDataTable must gate desktop activation via onDoubleClick and ignore interactive children');
+
+  const repPortalSrc = fs.readFileSync(path.join(projectRoot, 'src/components/modules/mobile/RepPortal.tsx'), 'utf8');
+  assert.ok(!repPortalSrc.includes('showReportFilters'), 'RepPortal report filters must stay always visible');
+
+  const reportsSrc = fs.readFileSync(path.join(projectRoot, 'src/components/modules/reports/ReportsView.tsx'), 'utf8');
+  assert.ok(!reportsSrc.includes('showMoreFilters'), 'ReportsView detailed filters must stay always visible');
+
+  const refreshSrc = fs.readFileSync(path.join(projectRoot, 'src/components/modules/mobile/RefreshSyncScreen.tsx'), 'utf8');
+  assert.ok(refreshSrc.includes('pendingSendConfirm'), 'RefreshSyncScreen must enforce Pre-Send Summary Confirmation modal');
+  assert.ok(refreshSrc.includes('hasDiscrepancyInput'), 'RefreshSyncScreen must support discrepancy objection notes on manual receive');
+  const inspectStart = refreshSrc.indexOf('const handleOpenInspectBatch');
+  const inspectSlice = refreshSrc.slice(inspectStart, inspectStart + 450);
+  assert.ok(!inspectSlice.includes('markDispatchReceiving'), 'Inspecting a dispatch batch must NEVER auto-mutate receipt status');
 });
 
 // -----------------------------------------------------------------------------
@@ -668,6 +699,97 @@ async function runDualBackendSuite(label, isPg) {
       });
       assert.equal(blockedFail.status, 409);
       assert.equal(blockedFail.json.code, 'ALREADY_CONFIRMED');
+    });
+
+    await test(`${label} | Scenario 10B: Targeted Rep recipient confirms dispatch with deviceId & discrepancyDetails while unrelated rep & self-confirm stay blocked (403)`, async () => {
+      const regRep2 = await req(baseUrl, 'POST', '/api/auth/register', {
+        body: {
+          role: 'representative',
+          fullName: 'مندوب ثاني غير مستهدف',
+          username: `rep_other_${Date.now()}`,
+          password: 'RepOther!2026',
+          phone: `01099${Math.floor(100000 + Math.random() * 899999)}`,
+          area: 'مدينة نصر',
+        },
+      });
+      assert.equal(regRep2.status, 201);
+      const otherRepToken = regRep2.json.accessToken;
+
+      const adminToRep = await req(baseUrl, 'POST', '/api/sync/dispatches', {
+        token: adminToken,
+        headers: { 'X-Device-Id': 'DEV-ADMIN-PC-01' },
+        body: {
+          clientBatchUuid: `CBU-ADMIN-REP-${Date.now()}`,
+          recipientUserId: repUserId,
+          notes: 'ترحيلة موجهة للمندوب الأول',
+          operations: [
+            {
+              operationId: `OP-ADMIN-TO-REP-${Date.now()}`,
+              operationType: 'create_customer',
+              entityType: 'customer',
+              payload: { name: 'عميل مضاف من الإدارة للمندوب', phone: `01122${Math.floor(100000 + Math.random() * 899999)}` },
+            },
+          ],
+        },
+      });
+      assert.equal(adminToRep.status, 201);
+      const targetedBatchId = adminToRep.json.batch.id;
+
+      // Unrelated rep MUST get 403
+      const otherAttempt = await req(baseUrl, 'POST', `/api/sync/dispatches/${targetedBatchId}/confirm-receipt`, {
+        token: otherRepToken,
+      });
+      assert.equal(otherAttempt.status, 403);
+
+      // Sender admin MUST get 403 on self-receipt
+      const selfAttempt = await req(baseUrl, 'POST', `/api/sync/dispatches/${targetedBatchId}/confirm-receipt`, {
+        token: adminToken,
+      });
+      assert.equal(selfAttempt.status, 403);
+
+      // Targeted rep confirms with discrepancy objection & explicit X-Device-Id
+      const targetConfirm = await req(baseUrl, 'POST', `/api/sync/dispatches/${targetedBatchId}/confirm-receipt`, {
+        token: repToken,
+        headers: { 'X-Device-Id': 'DEV-REP-PHONE-99' },
+        body: {
+          hasDiscrepancy: true,
+          discrepancyNote: 'نقص كرتونة واحدة عند التسليم',
+          receiptNotes: 'تم الاستلام مع إثبات الملاحظة',
+        },
+      });
+      assert.equal(targetConfirm.status, 200);
+      assert.equal(targetConfirm.json.batch.receiptStatus, 'تم الاستلام');
+      assert.equal(targetConfirm.json.batch.receivedByUserId, repUserId);
+      assert.equal(targetConfirm.json.batch.receivedDeviceId, 'DEV-REP-PHONE-99');
+      assert.equal(targetConfirm.json.batch.discrepancyDetails?.hasDiscrepancy, true);
+      assert.equal(targetConfirm.json.batch.discrepancyDetails?.note, 'نقص كرتونة واحدة عند التسليم');
+    });
+
+    await test(`${label} | Scenario 12B: Store-level RBAC blocks representative from stock adjustment, damaged stock & stock transfer approvals (403)`, async () => {
+      const { adjustStock, recordDamagedStock } = await import('../db/stores/inventoryAdminStore.js');
+      const { approveStockTransferRequest, rejectStockTransferRequest, executeStockTransferRequest } = await import('../db/stores/stockTransfersStore.js');
+
+      const fakeRepActor = { id: repUserId, fullName: 'كريم المندوب', role: 'representative' };
+      await assert.rejects(
+        () => adjustStock({ productId: prodId, warehouseId: repVanWhId, newQuantity: 999, reason: 'محاولة تلاعب' }, fakeRepActor),
+        (err) => err?.status === 403
+      );
+      await assert.rejects(
+        () => recordDamagedStock({ productId: prodId, warehouseId: repVanWhId, quantity: 1, type: 'damaged', reason: 'محاولة' }, fakeRepActor),
+        (err) => err?.status === 403
+      );
+      await assert.rejects(
+        () => approveStockTransferRequest('TR-ANY', {}, fakeRepActor),
+        (err) => err?.status === 403
+      );
+      await assert.rejects(
+        () => rejectStockTransferRequest('TR-ANY', 'رفض', fakeRepActor),
+        (err) => err?.status === 403
+      );
+      await assert.rejects(
+        () => executeStockTransferRequest('TR-ANY', {}, fakeRepActor),
+        (err) => err?.status === 403
+      );
     });
 
     if (isPg) {

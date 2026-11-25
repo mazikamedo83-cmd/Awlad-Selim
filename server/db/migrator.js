@@ -1334,9 +1334,9 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
 
         for (const sdb of (sourceData.syncDispatchBatches || [])) {
           await client.query(`
-            INSERT INTO sync_dispatch_batches (id, batch_number, client_batch_uuid, idempotency_key, device_id, sender_user_id, sender_name, representative_id, representative_name, recipient_user_id, recipient_name, recipient_role, send_status, receipt_status, sales_count, purchases_count, returns_count, collections_count, orders_count, customers_count, custody_ops_count, total_sales_amount, total_cash_amount, operation_ids, operations_snapshot, doc_summary, notes, receipt_notes, error_message, sent_at, received_by_user_id, received_by_name, received_at, created_at, updated_at)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35)
-            ON CONFLICT (id) DO UPDATE SET receipt_status = EXCLUDED.receipt_status, received_by_user_id = EXCLUDED.received_by_user_id, received_by_name = EXCLUDED.received_by_name, received_at = EXCLUDED.received_at, updated_at = EXCLUDED.updated_at;
+            INSERT INTO sync_dispatch_batches (id, batch_number, client_batch_uuid, idempotency_key, device_id, sender_user_id, sender_name, representative_id, representative_name, recipient_user_id, recipient_name, recipient_role, send_status, receipt_status, sales_count, purchases_count, returns_count, collections_count, orders_count, customers_count, custody_ops_count, total_sales_amount, total_cash_amount, operation_ids, operations_snapshot, doc_summary, notes, receipt_notes, error_message, sent_at, received_by_user_id, received_by_name, received_at, received_device_id, discrepancy_details, rejection_reason, created_at, updated_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38)
+            ON CONFLICT (id) DO UPDATE SET receipt_status = EXCLUDED.receipt_status, received_by_user_id = EXCLUDED.received_by_user_id, received_by_name = EXCLUDED.received_by_name, received_at = EXCLUDED.received_at, received_device_id = EXCLUDED.received_device_id, discrepancy_details = EXCLUDED.discrepancy_details, rejection_reason = EXCLUDED.rejection_reason, updated_at = EXCLUDED.updated_at;
           `, [
             sdb.id, sdb.batchNumber, sdb.clientBatchUuid || sdb.id, sdb.idempotencyKey || sdb.id,
             sdb.deviceId || null, sdb.senderUserId, sdb.senderName || '', sdb.representativeId || null,
@@ -1349,6 +1349,7 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
             sdb.notes || '', sdb.receiptNotes || '', sdb.errorMessage || '',
             sdb.sentAt || sdb.createdAt || new Date().toISOString(),
             sdb.receivedByUserId || null, sdb.receivedByName || '', sdb.receivedAt || null,
+            sdb.receivedDeviceId || null, JSON.stringify(sdb.discrepancyDetails || {}), sdb.rejectionReason || '',
             sdb.createdAt || new Date().toISOString(), sdb.updatedAt || new Date().toISOString(),
           ]);
         }

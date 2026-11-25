@@ -83,6 +83,24 @@ html.dark {
   font-variant-numeric: tabular-nums;
 }
 
+@media not print {
+  html:not(.dark) :is(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+    select,
+    textarea
+  ):not(.text-white) {
+    color: #0F172A;
+  }
+
+  html:not(.dark) :is(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+    textarea
+  )::placeholder {
+    color: #64748B;
+    opacity: 1;
+  }
+}
+
 /* ============================================================================
    AWLAD SELIM — Harmonized Navy Dark Mode Layer (Non-destructive to Light Mode)
    Excludes print views (.print-container, .print-only) and explicit dark: classes
@@ -431,7 +449,7 @@ html.dark {
     input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
     textarea
   ):not([class*="dark:placeholder-"]):not(.print-container *):not(.print-only *)::placeholder {
-    color: #7F96BA !important;
+    color: #8CA3C7 !important;
     opacity: 1;
   }
 

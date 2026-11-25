@@ -9,7 +9,6 @@ import {
   Printer,
   FileSpreadsheet,
   FileText,
-  SlidersHorizontal,
   History,
   Table2,
   Receipt,
@@ -181,7 +180,6 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [recordId, setRecordId] = useState('');
   const [search, setSearch] = useState('');
-  const [showMoreFilters, setShowMoreFilters] = useState(false);
   const [inlineTableSearch, setInlineTableSearch] = useState('');
 
   const [debouncedTextFilters, setDebouncedTextFilters] = useState({
@@ -546,33 +544,6 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
       showRecordId: true,
     };
   }, [reportType, isRepRole, hasPermission]);
-
-  const extraDetailedFiltersCount = useMemo(() => {
-    let count = 0;
-    if (filterVisibility.showWarehouse && warehouseId !== 'all') count++;
-    if (filterVisibility.showCashbox && cashboxId !== 'all') count++;
-    if (filterVisibility.showRepresentative && representativeId !== 'all') count++;
-    if (filterVisibility.showEmployee && employeeId !== 'all') count++;
-    if (filterVisibility.showUser && userId !== 'all') count++;
-    if (filterVisibility.showProductFilters && productId !== 'all') count++;
-    if (filterVisibility.showProductFilters && productSearch.trim()) count++;
-    if (filterVisibility.showProductFilters && barcode.trim()) count++;
-    if (filterVisibility.showInvoiceNumber && invoiceNumber.trim()) count++;
-    if (filterVisibility.showRecordId && recordId.trim()) count++;
-    return count;
-  }, [
-    filterVisibility,
-    warehouseId,
-    cashboxId,
-    representativeId,
-    employeeId,
-    userId,
-    productId,
-    productSearch,
-    barcode,
-    invoiceNumber,
-    recordId,
-  ]);
 
   // Apply optional inline search + sorting within each section
   const processedSections = useMemo(() => {
@@ -1292,29 +1263,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
             <RotateCcw className="w-3.5 h-3.5 shrink-0" />
             <span>إعادة ضبط</span>
           </button>
-
-          <button
-            type="button"
-            onClick={() => setShowMoreFilters((p) => !p)}
-            aria-expanded={showMoreFilters}
-            className={`h-8 px-2.5 rounded-md border text-xs font-bold flex items-center gap-1 whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
-              showMoreFilters
-                ? 'bg-[var(--awlad-navy-900)] text-white border-[var(--awlad-navy-900)]'
-                : 'bg-white text-[var(--awlad-navy-900)] border-slate-300 hover:bg-[#EEF3FA]'
-            }`}
-          >
-            <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
-            <span>
-              {showMoreFilters ? 'إخفاء الفلاتر الإضافية' : 'فلاتر إضافية'}
-              {extraDetailedFiltersCount > 0 ? ` (${extraDetailedFiltersCount})` : ''}
-            </span>
-            {showMoreFilters ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-          </button>
         </div>
 
-        {/* Row 3 (Collapsible): Secondary Detailed Selectors & Code Inputs */}
-        {showMoreFilters && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-1.5 items-end pt-1.5 border-t border-slate-200/90">
+        {/* Row 3 (Always Visible): Secondary Detailed Selectors & Code Inputs */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-1.5 items-end pt-1.5 border-t border-slate-200/90 dark:border-[#21375C]">
             {filterVisibility.showWarehouse && (
               <div className="min-w-0">
                 <SearchableFilterSelect
@@ -1499,7 +1451,6 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
               </div>
             )}
           </div>
-        )}
       </form>
 
       {/* Error State */}

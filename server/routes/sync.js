@@ -889,7 +889,7 @@ router.post(
 router.post(
   '/dispatches/:batchId/confirm-receipt',
   asyncHandler(async (req, res) => {
-    const result = await confirmDispatchBatchReceipt(req.params.batchId, req.body || {}, req.auth.user);
+    const result = await confirmDispatchBatchReceipt(req.params.batchId, req.body || {}, req.auth);
     res.json({ ok: true, ...result });
   })
 );
@@ -897,7 +897,7 @@ router.post(
 router.post(
   '/dispatches/:batchId/fail-receipt',
   asyncHandler(async (req, res) => {
-    const result = await failDispatchBatchReceipt(req.params.batchId, req.body || {}, req.auth.user);
+    const result = await failDispatchBatchReceipt(req.params.batchId, req.body || {}, req.auth);
     res.json({ ok: true, ...result });
   })
 );

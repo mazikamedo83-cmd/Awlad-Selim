@@ -270,6 +270,9 @@ export async function submitStockTransferRequest(id, actor) {
 }
 
 export async function approveStockTransferRequest(id, { notes = '' } = {}, actor) {
+  if (!actor || actor.role === 'representative' || actor.role === 'customer') {
+    throw new AppError(403, 'غير مصرح للمندوبين أو العملاء باعتماد طلبات التحويل المخزني', 'FORBIDDEN_TRANSFER_APPROVE');
+  }
   const now = nowIso();
   if (await isPgMode()) {
     const out = await withTransaction(async (client) => {
@@ -310,6 +313,9 @@ export async function approveStockTransferRequest(id, { notes = '' } = {}, actor
 }
 
 export async function rejectStockTransferRequest(id, { reason }, actor) {
+  if (!actor || actor.role === 'representative' || actor.role === 'customer') {
+    throw new AppError(403, 'غير مصرح للمندوبين أو العملاء برفض طلبات التحويل المخزني', 'FORBIDDEN_TRANSFER_REJECT');
+  }
   const cleanReason = String(reason || '').trim();
   if (!cleanReason) throw new AppError(400, 'يرجى كتابة سبب رفض التحويل', 'REASON_REQUIRED');
   const now = nowIso();
@@ -352,6 +358,9 @@ export async function rejectStockTransferRequest(id, { reason }, actor) {
 }
 
 export async function executeStockTransferRequest(id, actor) {
+  if (!actor || actor.role === 'representative' || actor.role === 'customer') {
+    throw new AppError(403, 'غير مصرح للمندوبين أو العملاء بتنفيذ التحويلات المخزنية', 'FORBIDDEN_TRANSFER_EXECUTE');
+  }
   const now = nowIso();
   const dateStr = todayIso();
 

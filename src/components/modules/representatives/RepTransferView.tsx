@@ -369,17 +369,32 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
     const vanStock = prod.stockPerWarehouse[itemReqTargetWhId] || 0;
     const shortage = Math.max(0, qtyVal - vanStock);
 
-    setSelectedItemsForReq(prev => [
-      ...prev,
-      {
-        productId: prod.id,
-        productName: prod.name,
-        unit: prod.baseUnit,
-        requestedQty: qtyVal,
-        availableInVanQty: vanStock,
-        shortageQty: shortage,
+    setSelectedItemsForReq((prev) => {
+      const existingIdx = prev.findIndex((it) => it.productId === prod.id && it.unit === prod.baseUnit);
+      if (existingIdx >= 0) {
+        return prev.map((it, idx) => {
+          if (idx !== existingIdx) return it;
+          const nextQty = Number((it.requestedQty + qtyVal).toFixed(4));
+          return {
+            ...it,
+            requestedQty: nextQty,
+            availableInVanQty: vanStock,
+            shortageQty: Math.max(0, nextQty - vanStock),
+          };
+        });
       }
-    ]);
+      return [
+        ...prev,
+        {
+          productId: prod.id,
+          productName: prod.name,
+          unit: prod.baseUnit,
+          requestedQty: qtyVal,
+          availableInVanQty: vanStock,
+          shortageQty: shortage,
+        },
+      ];
+    });
     setTempProdId('');
     setTempQty('');
     window.setTimeout(() => repProdSearchRef.current?.focus(), 25);

@@ -7,7 +7,7 @@ import {
   ArrowUpCircle, UserPlus, Building2, Receipt, CreditCard, FileSpreadsheet,
   Wallet, Settings, LogOut, ChevronLeft, Lock, Warehouse as WarehouseIcon,
   Barcode, X, Eye, Calculator, ClipboardCheck, Send, Clock, Edit, Upload, ExternalLink, Store, PackagePlus,
-  ArrowRight, Printer, Info, Calendar, ChevronDown, ChevronUp, SlidersHorizontal
+  ArrowRight, Printer, Info, Calendar, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
@@ -269,7 +269,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [safeDeleteSearch, setSafeDeleteSearch] = useState('');
   const [actualDrawerCash, setActualDrawerCash] = useState<string>('');
   const [showCustomerStats, setShowCustomerStats] = useState(false);
-  const [showReportFilters, setShowReportFilters] = useState(false);
 
   // ==================== 2. PURCHASE INVOICE STATE ====================
   const [purEditingInvoiceId, setPurEditingInvoiceId] = useState<string | null>(null);
@@ -1208,21 +1207,39 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     }
     const safeDiscount = Math.max(0, Number(invLineDiscount || 0));
     const total = computeLineTotal(qtyNum, priceNum, safeDiscount);
-    setInvItems((prev) => [
-      ...prev,
-      {
-        productId: selectedProduct.id,
-        productName: selectedProduct.name,
-        barcode: selectedProduct.barcode,
-        unit: invUnitName || selectedProduct.baseUnit,
-        unitFactor,
-        quantity: qtyNum,
-        unitPrice: priceNum,
-        purchasePriceAtTime,
-        discount: safeDiscount,
-        total,
-      },
-    ]);
+    const targetUnit = invUnitName || selectedProduct.baseUnit;
+    setInvItems((prev) => {
+      const existingIdx = prev.findIndex((it) => it.productId === selectedProduct.id && it.unit === targetUnit);
+      if (existingIdx >= 0) {
+        return prev.map((it, idx) => {
+          if (idx !== existingIdx) return it;
+          const nextQty = Number((it.quantity + qtyNum).toFixed(4));
+          const nextDiscount = Number(((it.discount || 0) + safeDiscount).toFixed(2));
+          return {
+            ...it,
+            quantity: nextQty,
+            unitPrice: priceNum,
+            discount: nextDiscount,
+            total: computeLineTotal(nextQty, priceNum, nextDiscount),
+          };
+        });
+      }
+      return [
+        ...prev,
+        {
+          productId: selectedProduct.id,
+          productName: selectedProduct.name,
+          barcode: selectedProduct.barcode,
+          unit: targetUnit,
+          unitFactor,
+          quantity: qtyNum,
+          unitPrice: priceNum,
+          purchasePriceAtTime,
+          discount: safeDiscount,
+          total,
+        },
+      ];
+    });
     setInvProductId('');
     setInvQty('');
     setInvPrice('');
@@ -1551,21 +1568,37 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     const exact = purDuplicateCheckState.exactMatch;
     if (exact) {
       const effectiveBuy = buyPrice || exact.purchasePrice || 0;
-      setPurItems((prev) => [
-        ...prev,
-        {
-          productId: exact.id,
-          productName: exact.name,
-          barcode: exact.barcode || '',
-          unit: exact.baseUnit,
-          unitFactor: 1,
-          quantity: qtyNum,
-          unitPrice: effectiveBuy,
-          purchasePriceAtTime: effectiveBuy,
-          discount: 0,
-          total: computeLineTotal(qtyNum, effectiveBuy),
-        },
-      ]);
+      setPurItems((prev) => {
+        const existingIdx = prev.findIndex((it) => it.productId === exact.id && it.unit === exact.baseUnit);
+        if (existingIdx >= 0) {
+          return prev.map((it, idx) => {
+            if (idx !== existingIdx) return it;
+            const nextQty = Number((it.quantity + qtyNum).toFixed(4));
+            return {
+              ...it,
+              quantity: nextQty,
+              unitPrice: effectiveBuy,
+              purchasePriceAtTime: effectiveBuy,
+              total: computeLineTotal(nextQty, effectiveBuy, it.discount || 0),
+            };
+          });
+        }
+        return [
+          ...prev,
+          {
+            productId: exact.id,
+            productName: exact.name,
+            barcode: exact.barcode || '',
+            unit: exact.baseUnit,
+            unitFactor: 1,
+            quantity: qtyNum,
+            unitPrice: effectiveBuy,
+            purchasePriceAtTime: effectiveBuy,
+            discount: 0,
+            total: computeLineTotal(qtyNum, effectiveBuy),
+          },
+        ];
+      });
       setFeedback({
         type: 'success',
         text: `تم ربط البند بالصنف الموجود (${exact.name}) لمنع التكرار في المخزن.`,
@@ -1625,21 +1658,39 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       const u = prod.units.find((x) => x.name === purUnitName);
       if (u) factor = u.conversionFactor;
     }
-    setPurItems((prev) => [
-      ...prev,
-      {
-        productId: prod.id,
-        productName: prod.name,
-        barcode: prod.barcode,
-        unit: purUnitName || prod.baseUnit,
-        unitFactor: factor,
-        quantity: qtyNum,
-        unitPrice: priceNum,
-        purchasePriceAtTime: factor > 0 ? Number((priceNum / factor).toFixed(2)) : priceNum,
-        discount: 0,
-        total: computeLineTotal(qtyNum, priceNum),
-      },
-    ]);
+    const targetUnit = purUnitName || prod.baseUnit;
+    const perBaseCost = factor > 0 ? Number((priceNum / factor).toFixed(2)) : priceNum;
+    setPurItems((prev) => {
+      const existingIdx = prev.findIndex((it) => it.productId === prod.id && it.unit === targetUnit);
+      if (existingIdx >= 0) {
+        return prev.map((it, idx) => {
+          if (idx !== existingIdx) return it;
+          const nextQty = Number((it.quantity + qtyNum).toFixed(4));
+          return {
+            ...it,
+            quantity: nextQty,
+            unitPrice: priceNum,
+            purchasePriceAtTime: perBaseCost,
+            total: computeLineTotal(nextQty, priceNum, it.discount || 0),
+          };
+        });
+      }
+      return [
+        ...prev,
+        {
+          productId: prod.id,
+          productName: prod.name,
+          barcode: prod.barcode,
+          unit: targetUnit,
+          unitFactor: factor,
+          quantity: qtyNum,
+          unitPrice: priceNum,
+          purchasePriceAtTime: perBaseCost,
+          discount: 0,
+          total: computeLineTotal(qtyNum, priceNum),
+        },
+      ];
+    });
     setPurProductId('');
     setPurQty('');
     setPurPrice('');
@@ -2585,21 +2636,37 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       const u = prod.units.find((x) => x.name === quoteUnitName);
       if (u) factor = u.conversionFactor;
     }
-    setQuoteItems((prev) => [
-      ...prev,
-      {
-        productId: prod.id,
-        productName: prod.name,
-        barcode: prod.barcode,
-        unit: quoteUnitName || prod.baseUnit,
-        unitFactor: factor,
-        quantity: qQty,
-        unitPrice: qPrice,
-        purchasePriceAtTime: prod.purchasePrice * factor,
-        discount: 0,
-        total: computeLineTotal(qQty, qPrice),
-      },
-    ]);
+    const targetUnit = quoteUnitName || prod.baseUnit;
+    setQuoteItems((prev) => {
+      const existingIdx = prev.findIndex((it) => it.productId === prod.id && it.unit === targetUnit);
+      if (existingIdx >= 0) {
+        return prev.map((it, idx) => {
+          if (idx !== existingIdx) return it;
+          const nextQty = Number((it.quantity + qQty).toFixed(4));
+          return {
+            ...it,
+            quantity: nextQty,
+            unitPrice: qPrice,
+            total: computeLineTotal(nextQty, qPrice, it.discount || 0),
+          };
+        });
+      }
+      return [
+        ...prev,
+        {
+          productId: prod.id,
+          productName: prod.name,
+          barcode: prod.barcode,
+          unit: targetUnit,
+          unitFactor: factor,
+          quantity: qQty,
+          unitPrice: qPrice,
+          purchasePriceAtTime: prod.purchasePrice * factor,
+          discount: 0,
+          total: computeLineTotal(qQty, qPrice),
+        },
+      ];
+    });
     setQuoteProductId('');
     setQuoteQty('');
     setQuotePrice('');
@@ -8404,19 +8471,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => setShowReportFilters((v) => !v)}
-                  className={`h-8 px-2.5 rounded-md border font-bold inline-flex items-center gap-1 cursor-pointer ${
-                    showReportFilters
-                      ? 'bg-blue-900 text-white border-blue-900'
-                      : 'bg-slate-50 text-slate-700 border-slate-200'
-                  }`}
-                >
-                  <SlidersHorizontal className="w-3.5 h-3.5" />
-                  <span>فلاتر</span>
-                  {showReportFilters ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                </button>
-                <button
-                  type="button"
                   disabled={isLoadingRepReport}
                   onClick={loadRepSummaryReport}
                   className="h-8 px-2.5 rounded-md bg-blue-900 text-white font-bold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
@@ -8438,9 +8492,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               </div>
             )}
 
-            {/* Collapsible Compact Filters Grid */}
-            {showReportFilters && (
-              <div className="pt-1.5 border-t border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+            {/* Always-Visible Compact Filters Grid */}
+            <div className="pt-1.5 border-t border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-600 mb-0.5">من تاريخ</label>
                   <input
@@ -8621,7 +8674,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   </button>
                 </div>
               </div>
-            )}
           </div>
 
           {repReportData && (

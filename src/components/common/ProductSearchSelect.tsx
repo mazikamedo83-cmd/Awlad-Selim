@@ -55,6 +55,7 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
   const inputElRef = externalInputRef || internalInputRef;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
+  const lastCommitAtRef = useRef<number>(0);
 
   const selectedProduct = useMemo(
     () => products.find((p) => p.id === selectedProductId) || null,
@@ -243,6 +244,9 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
   };
 
   const commitSelection = (product: Product) => {
+    const now = Date.now();
+    if (now - lastCommitAtRef.current < 180) return;
+    lastCommitAtRef.current = now;
     onSelect(product);
     setIsOpen(false);
     if (clearOnSelect) {
@@ -273,6 +277,7 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
       );
     } else if (e.key === 'Enter') {
       e.preventDefault();
+      e.stopPropagation();
       // If exact barcode match exists, prioritize it even if highlighted differs
       const normQ = normalizeSearchText(query);
       const exactBarcode = filteredProducts.find(
@@ -313,7 +318,7 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           autoComplete="off"
-          className="w-full pr-8 pl-12 py-1.5 h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md text-xs font-bold text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-400 dark:placeholder:text-[#7F96BA] placeholder:font-normal focus:outline-hidden focus:border-[#003589] dark:focus:border-[#3B82F6] focus:ring-1 focus:ring-[#DCE6F5] dark:focus:ring-[#3B82F6]/30 disabled:bg-slate-100 dark:disabled:bg-[#0B172E] disabled:cursor-not-allowed"
+          className="w-full pr-8 pl-12 py-1.5 h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md text-xs font-bold text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-500 dark:placeholder:text-[#8CA3C7] placeholder:font-normal focus:outline-hidden focus:border-[#003589] dark:focus:border-[#3B82F6] focus:ring-1 focus:ring-[#DCE6F5] dark:focus:ring-[#3B82F6]/30 disabled:bg-slate-100 dark:disabled:bg-[#0B172E] disabled:cursor-not-allowed"
         />
         <div className="absolute left-2 flex items-center gap-1">
           {(query || selectedProductId) && !disabled && (

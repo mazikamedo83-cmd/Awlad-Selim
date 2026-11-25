@@ -63,9 +63,10 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
     }
   }, [initialTypeFilter]);
 
-  // Print modal
+  // Print & Preview modal
   const [printData, setPrintData] = useState<PrintData | null>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [previewReturn, setPreviewReturn] = useState<InvoiceReturn | null>(null);
 
   // New return form
   const [returnType, setReturnType] = useState<'sales_return' | 'purchase_return'>('sales_return');
@@ -460,6 +461,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
         title={`سجل مرتجعات المبيعات والمشتريات (${filteredReturns.length})`}
         data={filteredReturns}
         rowKey={(ret) => ret.id}
+        onRowClick={(ret) => setPreviewReturn(ret)}
         searchValue={searchTerm}
         onSearchChange={setSearchTerm}
         searchPlaceholder="بحث برقم المرتجع، الفاتورة الأصلية، أو الطرف..."
@@ -1456,6 +1458,111 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
               </button>
             </div>
           </form>
+        )}
+      </Modal>
+
+      {/* Return Details Preview Modal (Read-only inspection) */}
+      <Modal
+        isOpen={Boolean(previewReturn)}
+        onClose={() => setPreviewReturn(null)}
+        title={previewReturn ? `تفاصيل سند المرتجع: ${previewReturn.returnNumber}` : ''}
+        maxWidth="2xl"
+      >
+        {previewReturn && (
+          <div className="space-y-2.5 text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-2.5 rounded-lg bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C]">
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">النوع</span>
+                <strong className="text-slate-900 dark:text-[#F3F7FC]">
+                  {previewReturn.type === 'sales_return' ? 'مرتجع مبيعات' : 'مرتجع مشتريات'}
+                </strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الفاتورة الأصلية</span>
+                <strong className="font-mono text-slate-900 dark:text-[#F3F7FC]">{previewReturn.originalInvoiceNumber}</strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">التاريخ</span>
+                <strong className="font-mono tabular-nums text-slate-900 dark:text-[#F3F7FC]">{previewReturn.date}</strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">العميل / المورد</span>
+                <strong className="text-slate-900 dark:text-[#F3F7FC]">{previewReturn.partyName}</strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">المستودع</span>
+                <strong className="text-slate-900 dark:text-[#F3F7FC]">{previewReturn.warehouseName}</strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">طريقة التسوية</span>
+                <strong className="text-slate-900 dark:text-[#F3F7FC]">
+                  {previewReturn.refundType === 'cash' ? 'رد نقدي من الخزينة' : 'خصم من رصيد الحساب'}
+                </strong>
+              </div>
+            </div>
+
+            {previewReturn.reason && (
+              <div className="p-2 rounded-md bg-amber-50/70 dark:bg-amber-500/15 border border-amber-200 dark:border-amber-500/30 text-amber-950 dark:text-amber-200">
+                <span className="font-bold">سبب المرتجع: </span>
+                <span>{previewReturn.reason}</span>
+              </div>
+            )}
+
+            <div className="border border-slate-200 dark:border-[#21375C] rounded-lg overflow-hidden awlad-table-scroll">
+              <table className="w-full text-right text-xs">
+                <thead>
+                  <tr className="bg-slate-100 dark:bg-[#172E56] text-slate-700 dark:text-[#F3F7FC] font-bold border-b border-slate-200 dark:border-[#2A436E]">
+                    <th className="p-2">الصنف</th>
+                    <th className="p-2 text-center">الوحدة</th>
+                    <th className="p-2 text-center">الكمية</th>
+                    <th className="p-2 text-center">السعر</th>
+                    <th className="p-2 text-center">الإجمالي</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-[#1B2F52]">
+                  {(previewReturn.items || []).map((it, idx) => (
+                    <tr key={`${it.productId}-${idx}`}>
+                      <td className="p-2 font-bold">{it.productName}</td>
+                      <td className="p-2 text-center">{it.unit}</td>
+                      <td className="p-2 text-center font-mono tabular-nums">{it.quantity}</td>
+                      <td className="p-2 text-center font-mono tabular-nums">{Number(it.unitPrice || 0).toLocaleString()}</td>
+                      <td className="p-2 text-center font-mono tabular-nums font-bold">{Number(it.total || 0).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-200 dark:border-[#21375C]">
+              <div className="font-black text-sm text-slate-900 dark:text-[#F3F7FC]">
+                الإجمالي:{' '}
+                <span className="font-mono tabular-nums text-[#003589] dark:text-[#85B8FF]">
+                  {Number(previewReturn.grandTotal || 0).toLocaleString()} {settings.currency}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = previewReturn;
+                    setPreviewReturn(null);
+                    handlePrintReturn(target);
+                  }}
+                  className="h-8 px-3 rounded-md bg-[#003589] dark:bg-[#1659C8] hover:bg-[#0049B0] text-white font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>طباعة السند</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewReturn(null)}
+                  className="h-8 px-3 rounded-md border border-slate-300 dark:border-[#2A436E] font-bold cursor-pointer"
+                >
+                  إغلاق
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </Modal>
 

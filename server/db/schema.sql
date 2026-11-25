@@ -1311,9 +1311,16 @@ CREATE TABLE IF NOT EXISTS sync_dispatch_batches (
   received_by_user_id VARCHAR(64),
   received_by_name TEXT DEFAULT '',
   received_at TIMESTAMPTZ,
+  received_device_id VARCHAR(64),
+  discrepancy_details JSONB NOT NULL DEFAULT '{}'::jsonb,
+  rejection_reason TEXT DEFAULT '',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE sync_dispatch_batches ADD COLUMN IF NOT EXISTS received_device_id VARCHAR(64);
+ALTER TABLE sync_dispatch_batches ADD COLUMN IF NOT EXISTS discrepancy_details JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE sync_dispatch_batches ADD COLUMN IF NOT EXISTS rejection_reason TEXT DEFAULT '';
 
 CREATE INDEX IF NOT EXISTS idx_sync_dispatch_sender ON sync_dispatch_batches(sender_user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sync_dispatch_rep ON sync_dispatch_batches(representative_id, created_at DESC);

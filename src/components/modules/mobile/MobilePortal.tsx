@@ -7,8 +7,10 @@ import {
   Server,
   ShieldAlert,
   WifiOff,
-  LayoutGrid,
   Home,
+  Globe,
+  BellRing,
+  Volume2,
   Package,
   ShoppingCart,
   ClipboardList,
@@ -56,7 +58,7 @@ export const MobilePortal: React.FC = () => {
     updatePassword,
   } = useAuth();
   const data = useData();
-  const { themePreference, setThemePreference } = usePreferences();
+  const { themePreference, setThemePreference, language, setLanguage, t } = usePreferences();
   const isRep = currentUser?.role === 'representative';
   const hideSectionsNav = isMobileAppPlatform();
 
@@ -76,6 +78,56 @@ export const MobilePortal: React.FC = () => {
   const [hasUnsavedRepInvoice, setHasUnsavedRepInvoice] = useState(false);
   const [pendingRepTab, setPendingRepTab] = useState<RepTabKey | null>(null);
   const [customerCartCount, setCustomerCartCount] = useState(0);
+
+  const notifStorageKey = `awlad_selim_notif_prefs_${currentUser?.id || 'guest'}`;
+  const [notifPrefs, setNotifPrefs] = useState<{
+    soundEnabled: boolean;
+    dispatchAlerts: boolean;
+    orderAlerts: boolean;
+  }>(() => {
+    try {
+      const raw = typeof window !== 'undefined' ? window.localStorage.getItem(notifStorageKey) : null;
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        return {
+          soundEnabled: parsed.soundEnabled !== false,
+          dispatchAlerts: parsed.dispatchAlerts !== false,
+          orderAlerts: parsed.orderAlerts !== false,
+        };
+      }
+    } catch {
+      // ignore storage errors
+    }
+    return { soundEnabled: true, dispatchAlerts: true, orderAlerts: true };
+  });
+
+  useEffect(() => {
+    try {
+      const raw = typeof window !== 'undefined' ? window.localStorage.getItem(notifStorageKey) : null;
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        setNotifPrefs({
+          soundEnabled: parsed.soundEnabled !== false,
+          dispatchAlerts: parsed.dispatchAlerts !== false,
+          orderAlerts: parsed.orderAlerts !== false,
+        });
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }, [notifStorageKey]);
+
+  const toggleNotifPref = (key: 'soundEnabled' | 'dispatchAlerts' | 'orderAlerts') => {
+    setNotifPrefs((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      try {
+        window.localStorage.setItem(notifStorageKey, JSON.stringify(next));
+      } catch {
+        // ignore storage errors
+      }
+      return next;
+    });
+  };
 
   const requestRepTabChange = (nextTab: RepTabKey) => {
     if (isRep && repTab === 'new-invoice' && hasUnsavedRepInvoice && nextTab !== 'new-invoice') {
@@ -222,7 +274,7 @@ export const MobilePortal: React.FC = () => {
         {
           key: 'more',
           label: 'المزيد',
-          icon: LayoutGrid,
+          icon: Menu,
           active: repMoreSecondaryTabs.includes(repTab) && !(repTab === 'rep-reports' && !canRepCash) && !(repTab === 'new-purchase' && !canRepSales) && !(repTab === 'orders' && !canRepSales && !canRepCreatePurchase),
           badge: 0,
           onSelect: () => requestRepTabChange('more'),
@@ -230,7 +282,7 @@ export const MobilePortal: React.FC = () => {
       ]
     : [
         { key: 'home', label: 'الرئيسية', icon: Home, active: customerTab === 'home', badge: 0, onSelect: () => setCustomerTab('home') },
-        { key: 'categories', label: 'الأقسام', icon: LayoutGrid, active: customerTab === 'categories', badge: 0, onSelect: () => setCustomerTab('categories') },
+        { key: 'categories', label: 'الأقسام', icon: Package, active: customerTab === 'categories', badge: 0, onSelect: () => setCustomerTab('categories') },
         { key: 'offers', label: 'العروض', icon: Tag, active: customerTab === 'offers', badge: 0, onSelect: () => setCustomerTab('offers') },
         { key: 'favorites', label: 'المفضلة', icon: Heart, active: customerTab === 'favorites', badge: data.customerFavorites?.length || 0, onSelect: () => setCustomerTab('favorites') },
         { key: 'more', label: 'المزيد', icon: Menu, active: ['more', 'orders', 'account'].includes(customerTab), badge: 0, onSelect: () => setCustomerTab('more') },
@@ -254,7 +306,7 @@ export const MobilePortal: React.FC = () => {
           : []),
         { key: 'rep-reports', label: 'تقارير المندوب', icon: FileText, active: repTab === 'rep-reports', onSelect: () => requestRepTabChange('rep-reports') },
         { key: 'custody', label: 'المخزن والعهدة والتحويلات', icon: ArrowLeftRight, active: repTab === 'custody', onSelect: () => requestRepTabChange('custody') },
-        { key: 'more', label: 'المزيد والإعدادات', icon: LayoutGrid, active: repTab === 'more', onSelect: () => requestRepTabChange('more') },
+        { key: 'more', label: 'المزيد والإعدادات', icon: Menu, active: repTab === 'more', onSelect: () => requestRepTabChange('more') },
       ]
     : [
         { key: 'home', label: 'الرئيسية', icon: Home, active: customerTab === 'home', onSelect: () => setCustomerTab('home') },
@@ -282,7 +334,7 @@ export const MobilePortal: React.FC = () => {
                   title="أقسام البوابة"
                   aria-label="أقسام البوابة"
                 >
-                  <LayoutGrid className="w-4 h-4" />
+                  <Menu className="w-4 h-4" />
                 </button>
               )}
               <img
@@ -707,18 +759,94 @@ export const MobilePortal: React.FC = () => {
                 </div>
               </div>
 
+              {/* Language Switcher (preserving RTL/LTR engine without exposing technical strings) */}
+              <div className="p-2 rounded-md bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C] space-y-1">
+                <p className="font-black text-[11px] text-slate-800 dark:text-[#F3F7FC] flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-[var(--awlad-royal-700)] dark:text-[#85B8FF]" />
+                  <span>{t('لغة الواجهة', 'Interface Language')}</span>
+                </p>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setLanguage('ar')}
+                    className={`h-8 rounded-md border font-bold cursor-pointer transition-colors ${
+                      language === 'ar'
+                        ? 'bg-[var(--awlad-royal-700)] dark:bg-[#1659C8] text-white border-[var(--awlad-royal-700)] dark:border-[#60A5FA]/40'
+                        : 'bg-white dark:bg-[#0E1C36] text-slate-700 dark:text-[#DCE6F5] border-slate-200 dark:border-[#21375C] hover:bg-slate-100 dark:hover:bg-[#1A3461]'
+                    }`}
+                  >
+                    العربية
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLanguage('en')}
+                    className={`h-8 rounded-md border font-bold cursor-pointer transition-colors ${
+                      language === 'en'
+                        ? 'bg-[var(--awlad-royal-700)] dark:bg-[#1659C8] text-white border-[var(--awlad-royal-700)] dark:border-[#60A5FA]/40'
+                        : 'bg-white dark:bg-[#0E1C36] text-slate-700 dark:text-[#DCE6F5] border-slate-200 dark:border-[#21375C] hover:bg-slate-100 dark:hover:bg-[#1A3461]'
+                    }`}
+                  >
+                    English
+                  </button>
+                </div>
+              </div>
+
+              {/* Notifications & Alert Toggles */}
+              <div className="p-2 rounded-md bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C] space-y-1.5">
+                <p className="font-black text-[11px] text-slate-800 dark:text-[#F3F7FC] flex items-center gap-1.5">
+                  <BellRing className="w-3.5 h-3.5 text-[var(--awlad-royal-700)] dark:text-[#85B8FF]" />
+                  <span>{t('تفضيلات التنبيهات', 'Notification Preferences')}</span>
+                </p>
+                <div className="space-y-1">
+                  <label className="flex items-center justify-between gap-2 px-1.5 py-1 rounded bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#21375C] cursor-pointer">
+                    <span className="flex items-center gap-1.5 font-bold text-[11px] text-slate-700 dark:text-[#DCE6F5]">
+                      <Volume2 className="w-3.5 h-3.5 text-slate-500 dark:text-[#8CA3C7]" />
+                      <span>أصوات التنبيه والباركود</span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={notifPrefs.soundEnabled}
+                      onChange={() => toggleNotifPref('soundEnabled')}
+                      className="w-4 h-4 accent-[#003589] dark:accent-[#3B82F6] cursor-pointer"
+                    />
+                  </label>
+                  <label className="flex items-center justify-between gap-2 px-1.5 py-1 rounded bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#21375C] cursor-pointer">
+                    <span className="font-bold text-[11px] text-slate-700 dark:text-[#DCE6F5]">
+                      تنبيهات الإرسال والاستلام والترحيل
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={notifPrefs.dispatchAlerts}
+                      onChange={() => toggleNotifPref('dispatchAlerts')}
+                      className="w-4 h-4 accent-[#003589] dark:accent-[#3B82F6] cursor-pointer"
+                    />
+                  </label>
+                  <label className="flex items-center justify-between gap-2 px-1.5 py-1 rounded bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#21375C] cursor-pointer">
+                    <span className="font-bold text-[11px] text-slate-700 dark:text-[#DCE6F5]">
+                      تنبيهات الطلبات والموافقات الفورية
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={notifPrefs.orderAlerts}
+                      onChange={() => toggleNotifPref('orderAlerts')}
+                      className="w-4 h-4 accent-[#003589] dark:accent-[#3B82F6] cursor-pointer"
+                    />
+                  </label>
+                </div>
+              </div>
+
               {/* Scoped Permissions Summary */}
-              <div className="p-2 rounded-md bg-slate-50 border border-slate-200 space-y-1">
+              <div className="p-2 rounded-md bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C] space-y-1">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 font-black text-slate-800">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                  <div className="flex items-center gap-1.5 font-black text-slate-800 dark:text-[#F3F7FC]">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400 shrink-0" />
                     <span>حالة الحساب والصلاحيات</span>
                   </div>
-                  <span className="text-[10px] text-slate-500 font-mono">
+                  <span className="text-[10px] text-slate-500 dark:text-[#97AECE] font-mono">
                     @{currentUser?.username} · {isRep ? 'مندوب' : 'عميل'}
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-700 font-bold leading-snug">
+                <p className="text-[11px] text-slate-700 dark:text-[#CBD9EE] font-bold leading-snug">
                   {Object.entries(currentUser?.permissions || {})
                     .filter(([, ok]) => Boolean(ok))
                     .slice(0, 8)
@@ -754,13 +882,13 @@ export const MobilePortal: React.FC = () => {
                   setShowPasswordBox((prev) => !prev);
                   setPwdFeedback(null);
                 }}
-                className="w-full min-h-[34px] px-2.5 rounded-md bg-slate-50 hover:bg-[#EEF3FA] border border-slate-200 flex items-center justify-between font-bold text-slate-800 cursor-pointer"
+                className="w-full min-h-[34px] px-2.5 rounded-md bg-slate-50 dark:bg-[#132544] hover:bg-[#EEF3FA] dark:hover:bg-[#1A3461] border border-slate-200 dark:border-[#21375C] flex items-center justify-between font-bold text-slate-800 dark:text-[#F3F7FC] cursor-pointer"
               >
                 <span className="flex items-center gap-2">
-                  <Lock className="w-3.5 h-3.5 text-[var(--awlad-royal-700)]" />
+                  <Lock className="w-3.5 h-3.5 text-[var(--awlad-royal-700)] dark:text-[#85B8FF]" />
                   <span>تغيير كلمة المرور</span>
                 </span>
-                <ChevronLeft className={`w-3.5 h-3.5 text-slate-400 transition-transform ${showPasswordBox ? '-rotate-90' : ''}`} />
+                <ChevronLeft className={`w-3.5 h-3.5 text-slate-400 dark:text-[#849BBF] transition-transform ${showPasswordBox ? '-rotate-90' : ''}`} />
               </button>
 
               {showPasswordBox && (
@@ -788,10 +916,10 @@ export const MobilePortal: React.FC = () => {
                       setPwdFeedback({ type: 'error', text: res.error || 'تعذر تغيير كلمة المرور.' });
                     }
                   }}
-                  className="p-2 rounded-md bg-[#EEF3FA] border border-[#DCE6F5] space-y-1.5"
+                  className="p-2 rounded-md bg-[#EEF3FA] dark:bg-[#132544] border border-[#DCE6F5] dark:border-[#21375C] space-y-1.5"
                 >
                   {pwdFeedback && (
-                    <p className={`text-[11px] font-bold ${pwdFeedback.type === 'success' ? 'text-emerald-800' : 'text-red-700'}`}>
+                    <p className={`text-[11px] font-bold ${pwdFeedback.type === 'success' ? 'text-emerald-800 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>
                       {pwdFeedback.text}
                     </p>
                   )}
@@ -801,7 +929,7 @@ export const MobilePortal: React.FC = () => {
                     value={currPwd}
                     onChange={(e) => setCurrPwd(e.target.value)}
                     placeholder="كلمة المرور الحالية"
-                    className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-mono"
+                    className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] px-2 bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-500 dark:placeholder:text-[#8CA3C7] font-mono"
                   />
                   <input
                     type="password"
@@ -810,7 +938,7 @@ export const MobilePortal: React.FC = () => {
                     value={newPwd}
                     onChange={(e) => setNewPwd(e.target.value)}
                     placeholder="كلمة المرور الجديدة"
-                    className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-mono"
+                    className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] px-2 bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-500 dark:placeholder:text-[#8CA3C7] font-mono"
                   />
                   <input
                     type="password"
@@ -819,12 +947,12 @@ export const MobilePortal: React.FC = () => {
                     value={confirmPwd}
                     onChange={(e) => setConfirmPwd(e.target.value)}
                     placeholder="تأكيد كلمة المرور الجديدة"
-                    className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-mono"
+                    className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] px-2 bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-500 dark:placeholder:text-[#8CA3C7] font-mono"
                   />
                   <button
                     type="submit"
                     disabled={isSavingPwd}
-                    className="w-full h-8 rounded-md bg-[var(--awlad-royal-700)] hover:bg-[var(--awlad-royal-600)] text-white font-black cursor-pointer disabled:opacity-50"
+                    className="w-full h-8 rounded-md bg-[var(--awlad-royal-700)] dark:bg-[#1659C8] hover:bg-[var(--awlad-royal-600)] dark:hover:bg-[#1F6BE6] text-white font-black cursor-pointer disabled:opacity-50"
                   >
                     {isSavingPwd ? 'جاري التحديث...' : 'حفظ كلمة المرور'}
                   </button>
@@ -837,13 +965,13 @@ export const MobilePortal: React.FC = () => {
                   setIsSettingsModalOpen(false);
                   setIsServerModalOpen(true);
                 }}
-                className="w-full min-h-[34px] px-2.5 rounded-md bg-slate-50 hover:bg-[#EEF3FA] border border-slate-200 flex items-center justify-between font-bold text-slate-800 cursor-pointer"
+                className="w-full min-h-[34px] px-2.5 rounded-md bg-slate-50 dark:bg-[#132544] hover:bg-[#EEF3FA] dark:hover:bg-[#1A3461] border border-slate-200 dark:border-[#21375C] flex items-center justify-between font-bold text-slate-800 dark:text-[#F3F7FC] cursor-pointer"
               >
                 <span className="flex items-center gap-2">
-                  <Server className="w-3.5 h-3.5 text-[var(--awlad-royal-700)]" />
+                  <Server className="w-3.5 h-3.5 text-[var(--awlad-royal-700)] dark:text-[#85B8FF]" />
                   <span>عنوان السيرفر والاتصال المركزي</span>
                 </span>
-                <ChevronLeft className="w-3.5 h-3.5 text-slate-400" />
+                <ChevronLeft className="w-3.5 h-3.5 text-slate-400 dark:text-[#849BBF]" />
               </button>
 
               <button
@@ -852,13 +980,13 @@ export const MobilePortal: React.FC = () => {
                   setIsSettingsModalOpen(false);
                   setIsSyncCenterOpen(true);
                 }}
-                className="w-full min-h-[34px] px-2.5 rounded-md bg-slate-50 hover:bg-[#EEF3FA] border border-slate-200 flex items-center justify-between font-bold text-slate-800 cursor-pointer"
+                className="w-full min-h-[34px] px-2.5 rounded-md bg-slate-50 dark:bg-[#132544] hover:bg-[#EEF3FA] dark:hover:bg-[#1A3461] border border-slate-200 dark:border-[#21375C] flex items-center justify-between font-bold text-slate-800 dark:text-[#F3F7FC] cursor-pointer"
               >
                 <span className="flex items-center gap-2">
-                  <CloudOff className="w-3.5 h-3.5 text-amber-600" />
+                  <CloudOff className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                   <span>مركز المزامنة والعمليات المعلقة</span>
                 </span>
-                <span className="font-mono font-black text-slate-800 tabular-nums">
+                <span className="font-mono font-black text-slate-800 dark:text-[#F3F7FC] tabular-nums">
                   {syncBadgeCount}
                 </span>
               </button>
@@ -869,7 +997,7 @@ export const MobilePortal: React.FC = () => {
                   setIsSettingsModalOpen(false);
                   data.triggerManualSync();
                 }}
-                className="w-full min-h-[34px] px-2.5 rounded-md bg-[var(--awlad-navy-900)] hover:bg-[var(--awlad-navy-950)] text-white flex items-center justify-center gap-1.5 font-black cursor-pointer"
+                className="w-full min-h-[34px] px-2.5 rounded-md bg-[var(--awlad-navy-900)] dark:bg-[#1659C8] hover:bg-[var(--awlad-navy-950)] dark:hover:bg-[#1F6BE6] text-white flex items-center justify-center gap-1.5 font-black cursor-pointer"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${data.networkStatus === 'synchronizing' ? 'animate-spin' : ''}`} />
                 <span>مزامنة البيانات الآن</span>
@@ -881,7 +1009,7 @@ export const MobilePortal: React.FC = () => {
                   setIsSettingsModalOpen(false);
                   logout();
                 }}
-                className="w-full min-h-[34px] px-2.5 rounded-md bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 flex items-center justify-center gap-1.5 font-black cursor-pointer"
+                className="w-full min-h-[34px] px-2.5 rounded-md bg-red-50 dark:bg-red-500/15 hover:bg-red-100 dark:hover:bg-red-500/25 border border-red-200 dark:border-red-500/35 text-red-700 dark:text-red-300 flex items-center justify-center gap-1.5 font-black cursor-pointer"
               >
                 <LogOut className="w-3.5 h-3.5" />
                 <span>تسجيل الخروج من الحساب</span>

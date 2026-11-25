@@ -253,30 +253,51 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
 
     const availInWh = selectedProduct.stockPerWarehouse[selectedWarehouseId] || 0;
     const reqBase = qtyVal * unitFactor;
+    const existingBaseForProduct = items
+      .filter((it) => it.productId === selectedProduct.id)
+      .reduce((sum, it) => sum + it.quantity * (it.unitFactor || 1), 0);
     const isRepInvoice = Boolean(selectedRepId || currentUser?.role === 'representative');
 
-    if (invoiceStatusMode === 'confirmed' && availInWh < reqBase && !settings.allowNegativeStock && !isRepInvoice) {
-      setError(`الكمية المتاحة بالمستودع من (${selectedProduct.name}) هي ${availInWh} ${selectedProduct.baseUnit}، وهي غير كافية.`);
+    if (invoiceStatusMode === 'confirmed' && availInWh < existingBaseForProduct + reqBase && !settings.allowNegativeStock && !isRepInvoice) {
+      setError(
+        `الكمية المتاحة بالمستودع من (${selectedProduct.name}) هي ${availInWh} ${selectedProduct.baseUnit}، وهي غير كافية لإجمالي الكمية المطلوبة (${existingBaseForProduct + reqBase}).`
+      );
       return;
     }
 
     const itemTotal = computeLineTotal(qtyVal, priceVal);
 
-    setItems((prev) => [
-      ...prev,
-      {
-        productId: selectedProduct.id,
-        productName: selectedProduct.name,
-        barcode: selectedProduct.barcode,
-        unit: selectedUnitName,
-        unitFactor,
-        quantity: qtyVal,
-        unitPrice: priceVal,
-        purchasePriceAtTime,
-        discount: 0,
-        total: itemTotal,
-      },
-    ]);
+    setItems((prev) => {
+      const existingIdx = prev.findIndex((it) => it.productId === selectedProduct.id && it.unit === selectedUnitName);
+      if (existingIdx >= 0) {
+        return prev.map((it, idx) => {
+          if (idx !== existingIdx) return it;
+          const nextQty = Number((it.quantity + qtyVal).toFixed(4));
+          return {
+            ...it,
+            quantity: nextQty,
+            unitPrice: priceVal,
+            purchasePriceAtTime,
+            total: computeLineTotal(nextQty, priceVal, it.discount || 0),
+          };
+        });
+      }
+      return [
+        ...prev,
+        {
+          productId: selectedProduct.id,
+          productName: selectedProduct.name,
+          barcode: selectedProduct.barcode,
+          unit: selectedUnitName,
+          unitFactor,
+          quantity: qtyVal,
+          unitPrice: priceVal,
+          purchasePriceAtTime,
+          discount: 0,
+          total: itemTotal,
+        },
+      ];
+    });
 
     setSelectedProductId('');
     setInputQuantity('');

@@ -427,6 +427,7 @@ export const SuppliersView: React.FC = () => {
         subtitle="بحث، فرز، كشوف حسابات، وتسوية الدفعات المقدمة"
         data={filteredSuppliers}
         rowKey={(s) => s.id}
+        onRowClick={(s) => setStatementSupplier(s)}
         compact
         searchValue={searchTerm}
         onSearchChange={setSearchTerm}

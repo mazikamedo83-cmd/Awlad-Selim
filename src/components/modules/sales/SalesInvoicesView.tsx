@@ -600,6 +600,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
           subtitle="الفواتير المعتمدة والمسودات والمراجعة الإدارية"
           data={filteredInvoices}
           rowKey={(inv) => inv.id}
+          onRowClick={(inv) => setActiveInvoice(inv)}
           compact
           searchValue={searchTerm}
           onSearchChange={setSearchTerm}
@@ -904,6 +905,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
           subtitle="عروض الأسعار لا تخصم من المخزون ولا تُقيد مالياً حتى يتم تحويلها لفاتورة بيع معتمدة"
           data={filteredQuotes}
           rowKey={(q) => q.id}
+          onRowClick={(q) => setActiveInvoice(q)}
           compact
           searchValue={searchTerm}
           onSearchChange={setSearchTerm}

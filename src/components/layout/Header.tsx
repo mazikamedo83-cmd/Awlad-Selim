@@ -19,6 +19,7 @@ import {
   FilePlus2,
   ReceiptText,
   Truck,
+  Menu,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
@@ -292,8 +293,21 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="max-w-full mx-auto px-2 sm:px-3">
           {/* Top Row: Brand Identity + (Desktop Primary Buttons) + Utility Controls */}
           <div className="h-10 flex items-center justify-between gap-2">
-            {/* Brand Logo & Name */}
+            {/* Brand Logo, Explicit Hamburger Toggle & Name */}
             <div className="flex items-center gap-2 min-w-0 shrink-0">
+              {!hideSectionsNav && (
+                <button
+                  type="button"
+                  onClick={onToggleSidebar}
+                  aria-label="تبديل القائمة الجانبية"
+                  aria-expanded={isSidebarOpen}
+                  aria-controls="system-sections-drawer"
+                  title={isSidebarOpen ? 'إخفاء القائمة الجانبية' : 'إظهار القائمة الجانبية'}
+                  className="min-h-[30px] min-w-[30px] flex items-center justify-center rounded-md bg-white/15 hover:bg-white/25 border border-white/20 text-white cursor-pointer shrink-0 transition-colors"
+                >
+                  <Menu className="w-4 h-4" />
+                </button>
+              )}
               <img
                 src="/awlad-selim-logo.png"
                 alt="AWLAD SELIM"

@@ -447,21 +447,21 @@ await test('5. LocalDB persistence survives simulated reload without data loss o
   );
 });
 
-// Scenario 7 (client side): Network failure during dispatch preserves ops -> retry succeeds with same idempotencyKey
-await test('7 (Client). Dispatch failure keeps ops safe as فشل الإرسال and retry reuses exact clientBatchUuid & idempotencyKey', async () => {
+// Scenario 7 (client side): Offline confirmed send queues as جاهزة للإرسال -> Server 500 keeps ops safe as فشل الإرسال -> retry reuses exact clientBatchUuid & idempotencyKey
+await test('7 (Client). Confirmed send queues as جاهزة للإرسال when network is unreachable, marks فشل الإرسال on HTTP 500, and retry reuses exact clientBatchUuid & idempotencyKey', async () => {
   saveStoredTokens({ accessToken: 'tok-rep', refreshToken: 'ref-rep' });
   const queueBefore = await localDb.listSyncQueue(sampleRepUser.id);
   const recipient = { id: 'USR-ADMIN-1', fullName: 'مدير النظام', role: 'admin' };
 
   const prevFetch = globalThis.fetch;
-  // Pass 1: Network drops mid-dispatch
+  // Pass 1: Network drops mid-dispatch -> explicitly confirmed send queues offline for auto-flush
   globalThis.fetch = (async () => {
     throw new TypeError('Network connection lost');
   }) as any;
 
-  let failedOutcome: any;
+  let queuedOutcome: any;
   try {
-    failedOutcome = await sendDispatchBatchToServer({
+    queuedOutcome = await sendDispatchBatchToServer({
       userId: sampleRepUser.id,
       senderName: sampleRepUser.fullName,
       representativeId: sampleRepProfile.id,
@@ -474,15 +474,45 @@ await test('7 (Client). Dispatch failure keeps ops safe as فشل الإرسال
     globalThis.fetch = prevFetch;
   }
 
+  assert.equal(queuedOutcome.ok, false);
+  assert.equal(queuedOutcome.queuedOfflineConfirmed, true);
+  assert.equal(queuedOutcome.batch.sendStatus, 'جاهزة للإرسال');
+  assert.equal(queuedOutcome.batch.isConfirmedSendQueued, true);
+  assert.equal(queuedOutcome.batch.isLocalOnly, true);
+
+  // Pass 2: Server returns 500 -> keeps ops safe as فشل الإرسال without discarding clientBatchUuid
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ ok: false, error: 'Server busy 500' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    })) as any;
+
+  let failedOutcome: any;
+  try {
+    failedOutcome = await sendDispatchBatchToServer({
+      userId: sampleRepUser.id,
+      senderName: sampleRepUser.fullName,
+      representativeId: sampleRepProfile.id,
+      representativeName: sampleRepProfile.name,
+      selectedOperations: queueBefore,
+      recipient,
+      notes: 'دفعة نهاية اليوم',
+      existingDraftBatch: queuedOutcome.batch,
+    });
+  } finally {
+    globalThis.fetch = prevFetch;
+  }
+
   assert.equal(failedOutcome.ok, false);
   assert.equal(failedOutcome.batch.sendStatus, 'فشل الإرسال');
   assert.equal(failedOutcome.batch.isLocalOnly, true);
+  assert.equal(failedOutcome.batch.clientBatchUuid, queuedOutcome.batch.clientBatchUuid);
 
   const queueAfterFail = await localDb.listSyncQueue(sampleRepUser.id);
   assert.equal(queueAfterFail.length, 7);
   assert.ok(queueAfterFail.every((q) => q.status === 'pending' && q.dispatchStage === 'فشل الإرسال'));
 
-  // Pass 2: Network restored -> retry existingDraftBatch with exact same UUID/idempotencyKey
+  // Pass 3: Network & server restored -> retry existingDraftBatch with exact same UUID/idempotencyKey
   let capturedBody: any = null;
   globalThis.fetch = (async (_url: any, init: any) => {
     capturedBody = JSON.parse(String(init?.body || '{}'));
@@ -526,11 +556,48 @@ await test('7 (Client). Dispatch failure keeps ops safe as فشل الإرسال
   assert.equal(retryOutcome.batch.receiptStatus, 'في انتظار الاستلام');
 
   const batches = await localDb.listDispatchBatches(sampleRepUser.id);
-  assert.equal(batches.length, 1, 'Failed draft must be replaced rather than duplicated');
+  assert.equal(batches.length, 1, 'Draft must be replaced rather than duplicated');
   assert.equal(batches[0].batchNumber, 'DSP-2026-0001');
 
   const queueAfterRetry = await localDb.listSyncQueue(sampleRepUser.id);
   assert.ok(queueAfterRetry.every((q) => q.status === 'synced' && q.dispatchBatchId === 'DSP-SRV-001'));
+});
+
+await test('8 (Client). Strict Offline mode while navigator.onLine === false queues confirmed send and never clears unconfirmed operations', async () => {
+  await localDb.saveSyncQueue(sampleRepUser.id, []);
+  const unconfirmedOp = await enqueueSyncOperation({
+    userId: sampleRepUser.id,
+    operationType: 'create_customer',
+    entityType: 'customer',
+    localId: 'CUS-LOC-UNCONFIRMED',
+    summaryAr: 'عميل غير مؤكد إرساله',
+    holdForDispatchBatch: true,
+    payload: { localId: 'CUS-LOC-UNCONFIRMED', name: 'عميل محلي', phone: '01077776666' },
+  });
+
+  Object.defineProperty(globalThis, 'navigator', {
+    value: { onLine: false, userAgent: 'AwladSelimOfflineSuite/3.0' },
+    configurable: true,
+  });
+
+  try {
+    const res = await sendDispatchBatchToServer({
+      userId: sampleRepUser.id,
+      senderName: sampleRepUser.fullName,
+      selectedOperations: [unconfirmedOp],
+      recipient: { id: 'USR-ADMIN-1', fullName: 'مدير النظام', role: 'admin' },
+      notes: 'إرسال مؤكد أوفلاين',
+    });
+    assert.equal(res.ok, false);
+    assert.equal(res.queuedOfflineConfirmed, true);
+    assert.equal(res.batch.sendStatus, 'جاهزة للإرسال');
+    assert.equal(res.batch.isConfirmedSendQueued, true);
+  } finally {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { onLine: true, userAgent: 'AwladSelimOfflineSuite/3.0' },
+      configurable: true,
+    });
+  }
 });
 
 console.log(`Client offline sub-suite finished: ${passed} passed.`);

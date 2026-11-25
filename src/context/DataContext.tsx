@@ -31,7 +31,7 @@ import {
   ResolvedProductPromo,
 } from '../utils/storefront';
 import { syncConnectionConfigFromServer } from '../services/discovery';
-import { notifyLocal, subscribeAppForeground, subscribeNetworkStatus } from '../services/native';
+import { getOrCreatePersistentDeviceId, notifyLocal, subscribeAppForeground, subscribeNetworkStatus } from '../services/native';
 import { localDb } from '../services/localDb';
 import { normalizeServerOrigin, refreshCachedUserAuthorization } from '../services/offlineAuth';
 import { getCachedProductImageMap, warmProductMediaCache } from '../services/mediaCache';
@@ -145,9 +145,18 @@ export interface DataContextType extends DatabaseState {
     recipientUserId: string;
     notes?: string;
     existingDraftBatch?: SyncDispatchBatch;
-  }) => Promise<{ success: boolean; batch?: SyncDispatchBatch; error?: string }>;
-  retryDispatchBatch: (batch: SyncDispatchBatch) => Promise<{ success: boolean; batch?: SyncDispatchBatch; error?: string }>;
-  confirmDispatchReceipt: (batchId: string, receiptNotes?: string) => Promise<{ success: boolean; batch?: SyncDispatchBatch; error?: string }>;
+  }) => Promise<{ success: boolean; queuedOfflineConfirmed?: boolean; batch?: SyncDispatchBatch; error?: string }>;
+  retryDispatchBatch: (batch: SyncDispatchBatch) => Promise<{ success: boolean; queuedOfflineConfirmed?: boolean; batch?: SyncDispatchBatch; error?: string }>;
+  confirmDispatchReceipt: (
+    batchId: string,
+    receiptNotesOrOptions?:
+      | string
+      | {
+          receiptNotes?: string;
+          hasDiscrepancy?: boolean;
+          discrepancyNote?: string;
+        }
+  ) => Promise<{ success: boolean; batch?: SyncDispatchBatch; error?: string }>;
   markDispatchReceiving: (batchId: string) => Promise<{ success: boolean; batch?: SyncDispatchBatch; error?: string }>;
   failDispatchReceipt: (batchId: string, reason: string) => Promise<{ success: boolean; batch?: SyncDispatchBatch; error?: string }>;
   refreshDispatches: () => Promise<void>;
@@ -2088,11 +2097,63 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .catch(() => {});
     };
 
+    const flushQueuedConfirmedBatches = async () => {
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+      const localBatches = await localDb.listDispatchBatches(currentUser.id);
+      const queuedConfirmed = localBatches.filter(
+        (b) =>
+          b.isLocalOnly &&
+          b.isConfirmedSendQueued === true &&
+          b.senderUserId === currentUser.id &&
+          b.sendStatus !== 'تم الإرسال'
+      );
+      if (queuedConfirmed.length === 0) return;
+      const localQueue = await localDb.listSyncQueue(currentUser.id);
+      let anySucceeded = false;
+      for (const batch of queuedConfirmed) {
+        const ops =
+          Array.isArray(batch.operationsSnapshot) && batch.operationsSnapshot.length > 0
+            ? batch.operationsSnapshot
+            : localQueue.filter((q) => batch.operationIds.includes(q.operationId));
+        if (ops.length === 0) continue;
+        const repProfile = (data.representatives || []).find((r) => r.userId === currentUser.id);
+        const res = await sendDispatchBatchToServer({
+          userId: currentUser.id,
+          senderName: currentUser.fullName || currentUser.username,
+          representativeId: repProfile?.id,
+          representativeName: repProfile?.name,
+          selectedOperations: ops,
+          recipient: {
+            id: batch.recipientUserId,
+            fullName: batch.recipientName,
+            role: batch.recipientRole || 'admin',
+          },
+          notes: batch.notes,
+          existingDraftBatch: batch,
+        });
+        if (res.authRevoked) {
+          await handleServerAuthRevoked(res.error);
+          return;
+        }
+        if (res.ok) {
+          anySucceeded = true;
+        }
+      }
+      if (anySucceeded) {
+        await refreshQueueAndConflictsFromLocal(currentUser.id);
+        await refreshSyncStatsFromLocal();
+        setSyncDispatchBatches(await localDb.listDispatchBatches(currentUser.id));
+        await loadRoleScopedData();
+      }
+    };
+
     const unsubscribeNet = subscribeNetworkStatus((connected) => {
       setIsServerReachable(connected);
       if (connected) {
         runReconnectConfigSync();
-        triggerSync(true).catch(() => {});
+        flushQueuedConfirmedBatches()
+          .then(() => triggerSync(true))
+          .catch(() => {});
         refreshMobileNotifications();
       } else {
         setNetworkStatus('disconnected');
@@ -2102,13 +2163,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribeFg = subscribeAppForeground(() => {
       if (navigator.onLine !== false) {
         runReconnectConfigSync();
-        triggerSync(true).catch(() => {});
+        flushQueuedConfirmedBatches()
+          .then(() => triggerSync(true))
+          .catch(() => {});
       }
     });
 
     // Periodic 20s auto-sync & notifications check when active & online
     const syncTimer = window.setInterval(() => {
       if (navigator.onLine !== false) {
+        flushQueuedConfirmedBatches().catch(() => {});
         runSyncCycle({ userId: currentUser.id, forceAll: false })
           .then(async (outcome) => {
             await refreshQueueAndConflictsFromLocal(currentUser.id);
@@ -2579,7 +2643,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       for (const lb of localBatches) {
         if (
           !merged.some((sb) => sb.id === lb.id || (lb.clientBatchUuid && sb.clientBatchUuid === lb.clientBatchUuid)) &&
-          (lb.isLocalOnly || lb.sendStatus === 'فشل الإرسال' || lb.sendStatus === 'جاري الإرسال')
+          (lb.isLocalOnly ||
+            lb.isConfirmedSendQueued ||
+            lb.sendStatus === 'فشل الإرسال' ||
+            lb.sendStatus === 'جاهزة للإرسال' ||
+            lb.sendStatus === 'جاري الإرسال')
         ) {
           merged.unshift(lb);
         }
@@ -2602,7 +2670,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       existingDraftBatch?: SyncDispatchBatch;
     }) => {
       if (!currentUser) return { success: false, error: 'المستخدم غير مسجل' };
-      const recipient = dispatchRecipients.find((r) => r.id === params.recipientUserId);
+      const recipient =
+        dispatchRecipients.find((r) => r.id === params.recipientUserId) ||
+        (params.existingDraftBatch
+          ? {
+              id: params.existingDraftBatch.recipientUserId,
+              fullName: params.existingDraftBatch.recipientName,
+              role: params.existingDraftBatch.recipientRole || 'admin',
+            }
+          : undefined);
       if (!recipient) {
         return { success: false, error: 'يرجى اختيار الموظف المستلم من القائمة' };
       }
@@ -2635,8 +2711,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await loadRoleScopedData();
           return { success: true, batch: res.batch };
         }
-        setNetworkStatus('pending');
-        return { success: false, batch: res.batch, error: res.error };
+        setNetworkStatus(res.queuedOfflineConfirmed ? 'disconnected' : 'pending');
+        return {
+          success: false,
+          queuedOfflineConfirmed: Boolean(res.queuedOfflineConfirmed),
+          batch: res.batch,
+          error: res.error,
+        };
       } finally {
         setIsSyncing(false);
       }
@@ -2676,13 +2757,31 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 
   const confirmDispatchReceipt = useCallback(
-    async (batchId: string, receiptNotes = '') => {
+    async (
+      batchId: string,
+      receiptNotesOrOptions:
+        | string
+        | {
+            receiptNotes?: string;
+            hasDiscrepancy?: boolean;
+            discrepancyNote?: string;
+          } = ''
+    ) => {
       try {
+        const opts =
+          typeof receiptNotesOrOptions === 'string'
+            ? { receiptNotes: receiptNotesOrOptions }
+            : receiptNotesOrOptions || {};
         const res = await apiRequest<{ ok: boolean; batch: SyncDispatchBatch }>(
           `/api/sync/dispatches/${batchId}/confirm-receipt`,
           {
             method: 'POST',
-            body: { receiptNotes },
+            body: {
+              receiptNotes: opts.receiptNotes || '',
+              hasDiscrepancy: Boolean(opts.hasDiscrepancy),
+              discrepancyNote: opts.discrepancyNote || '',
+              deviceId: getOrCreatePersistentDeviceId(),
+            },
             idempotencyKey: generateId('CONF-DSP'),
           }
         );
@@ -2703,7 +2802,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           `/api/sync/dispatches/${batchId}/fail-receipt`,
           {
             method: 'POST',
-            body: { reason },
+            body: {
+              reason,
+              deviceId: getOrCreatePersistentDeviceId(),
+            },
           }
         );
         await refreshDispatches();
@@ -5113,7 +5215,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const incomingDispatchCount = syncDispatchBatches.filter((b) => {
     if (b.receiptStatus !== 'في انتظار الاستلام' && b.receiptStatus !== 'جاري الاستلام') return false;
-    if (!currentUser || currentUser.role === 'customer' || currentUser.role === 'representative') return false;
+    if (!currentUser || currentUser.role === 'customer') return false;
+    if (b.senderUserId === currentUser.id) return false;
+    if (currentUser.role === 'representative') {
+      return b.recipientUserId === currentUser.id;
+    }
     const p = currentUser.permissions || {};
     return (
       currentUser.role === 'admin' ||

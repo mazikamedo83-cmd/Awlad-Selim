@@ -508,6 +508,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
           title={`سجل الموظفين (${employees.length})`}
           data={employees}
           rowKey={(emp) => emp.id}
+          onRowClick={(emp) => openEditEmployeeModal(emp)}
           compact
           searchPlaceholder="بحث باسم الموظف أو الكود أو المسمى الوظيفي أو الهاتف..."
           exportFilename="AWLAD_SELIM_Employees"

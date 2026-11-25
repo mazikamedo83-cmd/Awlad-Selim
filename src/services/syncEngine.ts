@@ -465,6 +465,7 @@ export async function sendDispatchBatchToServer(params: {
 }): Promise<{
   ok: boolean;
   batch: SyncDispatchBatch;
+  queuedOfflineConfirmed?: boolean;
   authRevoked?: boolean;
   error?: string;
 }> {
@@ -557,7 +558,44 @@ export async function sendDispatchBatchToServer(params: {
     createdAt: existingDraftBatch?.createdAt || now,
     updatedAt: now,
     isLocalOnly: true,
+    isConfirmedSendQueued: true,
   };
+
+  const persistConfirmedOfflineQueue = async (reasonText: string) => {
+    const queuedDraft: SyncDispatchBatch = {
+      ...sendingDraft,
+      sendStatus: 'جاهزة للإرسال',
+      errorMessage: reasonText,
+      updatedAt: new Date().toISOString(),
+      isLocalOnly: true,
+      isConfirmedSendQueued: true,
+    };
+    await localDb.putDispatchBatch(userId, queuedDraft);
+    const queue = await localDb.listSyncQueue(userId);
+    const updatedQueue = queue.map((q) => {
+      if (!orderedOps.some((o) => o.operationId === q.operationId)) return q;
+      return {
+        ...q,
+        dispatchBatchId: queuedDraft.id,
+        dispatchStage: 'جاهزة للإرسال' as SyncDispatchBatchStatus,
+        lastError: reasonText,
+        updatedAt: new Date().toISOString(),
+      };
+    });
+    await localDb.saveSyncQueue(userId, updatedQueue);
+    return queuedDraft;
+  };
+
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    const queuedMsg = 'طلب الإرسال مؤكد من المرسل — في انتظار المزامنة التلقائية فور عودة الاتصال.';
+    const queuedDraft = await persistConfirmedOfflineQueue(queuedMsg);
+    return {
+      ok: false,
+      queuedOfflineConfirmed: true,
+      batch: queuedDraft,
+      error: queuedMsg,
+    };
+  }
 
   // Persist sending draft locally FIRST so disconnects or crashes can resume idempotently
   await localDb.putDispatchBatch(userId, sendingDraft);
@@ -587,7 +625,11 @@ export async function sendDispatchBatchToServer(params: {
       idempotencyKey,
     });
 
-    const serverBatch: SyncDispatchBatch = { ...res.batch, isLocalOnly: false };
+    const serverBatch: SyncDispatchBatch = {
+      ...res.batch,
+      isLocalOnly: false,
+      isConfirmedSendQueued: false,
+    };
     const resultMap = new Map((res.opResults || []).map((r) => [r.operationId, r]));
     const queue = await localDb.listSyncQueue(userId);
     const updatedQueue = queue.map((q) => {
@@ -645,13 +687,29 @@ export async function sendDispatchBatchToServer(params: {
 
     return { ok: true, batch: serverBatch };
   } catch (err: any) {
-    const errMsg = err?.message || 'انقطع الاتصال بالسيرفر أثناء الإرسال — العمليات محفوظة محليًا ويمكن إعادة الإرسال دون فقد أو تكرار.';
+    const authRevoked = isAuthRevokedError(err);
+    const statusCode = Number(err?.status || 0);
+    const isNetworkUnreachable = !authRevoked && (!statusCode || statusCode === 502 || statusCode === 503 || statusCode === 504);
+
+    if (isNetworkUnreachable) {
+      const queuedMsg = 'طلب الإرسال مؤكد من المرسل — في انتظار المزامنة التلقائية فور عودة الاتصال.';
+      const queuedDraft = await persistConfirmedOfflineQueue(queuedMsg);
+      return {
+        ok: false,
+        queuedOfflineConfirmed: true,
+        batch: queuedDraft,
+        error: queuedMsg,
+      };
+    }
+
+    const errMsg = err?.message || 'تعذر إرسال الدفعة إلى السيرفر — بقيت العمليات محفوظة محليًا ويمكن إعادة الإرسال دون فقد أو تكرار.';
     const failedDraft: SyncDispatchBatch = {
       ...sendingDraft,
       sendStatus: 'فشل الإرسال',
       errorMessage: errMsg,
       updatedAt: new Date().toISOString(),
       isLocalOnly: true,
+      isConfirmedSendQueued: false,
     };
     await localDb.putDispatchBatch(userId, failedDraft);
 
@@ -679,7 +737,7 @@ export async function sendDispatchBatchToServer(params: {
     return {
       ok: false,
       batch: failedDraft,
-      authRevoked: isAuthRevokedError(err),
+      authRevoked,
       error: errMsg,
     };
   }

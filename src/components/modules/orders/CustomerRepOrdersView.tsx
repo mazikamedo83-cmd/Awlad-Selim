@@ -221,6 +221,7 @@ export const CustomerRepOrdersView: React.FC = () => {
         title={`سجل طلبات العملاء والمندوبين (${filteredOrders.length})`}
         data={filteredOrders}
         rowKey={(ord) => ord.id}
+        onRowClick={(ord) => setSelectedOrderId(ord.id)}
         searchValue={search}
         onSearchChange={setSearch}
         searchPlaceholder="بحث برقم الطلب، العميل، المحل، أو المندوب..."

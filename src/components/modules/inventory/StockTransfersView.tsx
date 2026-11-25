@@ -165,18 +165,34 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
       return;
     }
 
-    setItems((prev) => [
-      ...prev,
-      {
-        productId: prod.id,
-        productName: prod.name,
-        unit: pickedUnitName || prod.baseUnit,
-        unitFactor: factor,
-        requestedQty: qtyVal,
-        available,
-        notes: pickedNotes.trim(),
-      },
-    ]);
+    const targetUnit = pickedUnitName || prod.baseUnit;
+    setItems((prev) => {
+      const existingIdx = prev.findIndex((it) => it.productId === prod.id && it.unit === targetUnit);
+      if (existingIdx >= 0) {
+        return prev.map((it, idx) =>
+          idx === existingIdx
+            ? {
+                ...it,
+                requestedQty: Number((it.requestedQty + qtyVal).toFixed(4)),
+                available,
+                notes: pickedNotes.trim() || it.notes,
+              }
+            : it
+        );
+      }
+      return [
+        ...prev,
+        {
+          productId: prod.id,
+          productName: prod.name,
+          unit: targetUnit,
+          unitFactor: factor,
+          requestedQty: qtyVal,
+          available,
+          notes: pickedNotes.trim(),
+        },
+      ];
+    });
     setPickedProductId('');
     setPickedUnitName('');
     setPickedUnitFactor(1);

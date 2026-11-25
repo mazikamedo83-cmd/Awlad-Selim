@@ -353,7 +353,7 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
                   : 'bg-slate-50 dark:bg-[#132544] text-slate-700 dark:text-[#DCE6F5] border-slate-200 dark:border-[#21375C]'
               }`}
             >
-              العربية (RTL)
+              العربية
             </button>
             <button
               type="button"
@@ -364,7 +364,7 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
                   : 'bg-slate-50 dark:bg-[#132544] text-slate-700 dark:text-[#DCE6F5] border-slate-200 dark:border-[#21375C]'
               }`}
             >
-              English (LTR)
+              English
             </button>
           </div>
         </div>

@@ -388,21 +388,37 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     const priceNum = Math.max(0, Number(itemPrice || 0));
     const total = computeLineTotal(qtyNum, priceNum);
 
-    setItems(prev => [
-      ...prev,
-      {
-        productId: prod.id,
-        productName: prod.name,
-        barcode: prod.barcode,
-        unit: prod.baseUnit,
-        unitFactor: 1,
-        quantity: qtyNum,
-        unitPrice: priceNum,
-        purchasePriceAtTime: priceNum,
-        discount: 0,
-        total,
+    setItems((prev) => {
+      const existingIdx = prev.findIndex((it) => it.productId === prod.id && it.unit === prod.baseUnit);
+      if (existingIdx >= 0) {
+        return prev.map((it, idx) => {
+          if (idx !== existingIdx) return it;
+          const nextQty = Number((it.quantity + qtyNum).toFixed(4));
+          return {
+            ...it,
+            quantity: nextQty,
+            unitPrice: priceNum,
+            purchasePriceAtTime: priceNum,
+            total: computeLineTotal(nextQty, priceNum, it.discount || 0),
+          };
+        });
       }
-    ]);
+      return [
+        ...prev,
+        {
+          productId: prod.id,
+          productName: prod.name,
+          barcode: prod.barcode,
+          unit: prod.baseUnit,
+          unitFactor: 1,
+          quantity: qtyNum,
+          unitPrice: priceNum,
+          purchasePriceAtTime: priceNum,
+          discount: 0,
+          total,
+        },
+      ];
+    });
     setItemProdId('');
     setItemQty('');
     setItemPrice('');
@@ -431,21 +447,37 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     if (exact) {
       const total = computeLineTotal(qtyNum, buyPrice || exact.purchasePrice || 0);
       const effectiveBuy = buyPrice || exact.purchasePrice || 0;
-      setItems((prev) => [
-        ...prev,
-        {
-          productId: exact.id,
-          productName: exact.name,
-          barcode: exact.barcode || '',
-          unit: exact.baseUnit,
-          unitFactor: 1,
-          quantity: qtyNum,
-          unitPrice: effectiveBuy,
-          purchasePriceAtTime: effectiveBuy,
-          discount: 0,
-          total,
-        },
-      ]);
+      setItems((prev) => {
+        const existingIdx = prev.findIndex((it) => it.productId === exact.id && it.unit === exact.baseUnit);
+        if (existingIdx >= 0) {
+          return prev.map((it, idx) => {
+            if (idx !== existingIdx) return it;
+            const nextQty = Number((it.quantity + qtyNum).toFixed(4));
+            return {
+              ...it,
+              quantity: nextQty,
+              unitPrice: effectiveBuy,
+              purchasePriceAtTime: effectiveBuy,
+              total: computeLineTotal(nextQty, effectiveBuy, it.discount || 0),
+            };
+          });
+        }
+        return [
+          ...prev,
+          {
+            productId: exact.id,
+            productName: exact.name,
+            barcode: exact.barcode || '',
+            unit: exact.baseUnit,
+            unitFactor: 1,
+            quantity: qtyNum,
+            unitPrice: effectiveBuy,
+            purchasePriceAtTime: effectiveBuy,
+            discount: 0,
+            total,
+          },
+        ];
+      });
       setActionMessage({
         type: 'success',
         text: `تم ربط البند بالصنف المسجل مسبقاً (${exact.name}) لمنع التكرار في المخزن.`,
@@ -674,21 +706,37 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
       return;
     }
     const priceNum = Math.max(0, Number(editAddPrice || 0));
-    setEditItems((prev) => [
-      ...prev,
-      {
-        productId: prod.id,
-        productName: prod.name,
-        barcode: prod.barcode || prod.code || '',
-        unit: prod.baseUnit,
-        unitFactor: 1,
-        quantity: qtyNum,
-        unitPrice: priceNum,
-        purchasePriceAtTime: priceNum,
-        discount: 0,
-        total: computeLineTotal(qtyNum, priceNum, 0),
-      },
-    ]);
+    setEditItems((prev) => {
+      const existingIdx = prev.findIndex((it) => it.productId === prod.id && it.unit === prod.baseUnit);
+      if (existingIdx >= 0) {
+        return prev.map((it, idx) => {
+          if (idx !== existingIdx) return it;
+          const nextQty = Number((it.quantity + qtyNum).toFixed(4));
+          return {
+            ...it,
+            quantity: nextQty,
+            unitPrice: priceNum,
+            purchasePriceAtTime: priceNum,
+            total: computeLineTotal(nextQty, priceNum, it.discount || 0),
+          };
+        });
+      }
+      return [
+        ...prev,
+        {
+          productId: prod.id,
+          productName: prod.name,
+          barcode: prod.barcode || prod.code || '',
+          unit: prod.baseUnit,
+          unitFactor: 1,
+          quantity: qtyNum,
+          unitPrice: priceNum,
+          purchasePriceAtTime: priceNum,
+          discount: 0,
+          total: computeLineTotal(qtyNum, priceNum, 0),
+        },
+      ];
+    });
     setEditAddProdId('');
     setEditAddQty('');
     setEditAddPrice('');
@@ -804,6 +852,11 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
         subtitle="فواتير الشراء المعتمدة والمسودات وفواتير المناديب الواردة"
         data={filteredPurchases}
         rowKey={(inv) => inv.id}
+        onRowClick={(inv) => {
+          setIsRejectBoxOpen(false);
+          setRejectReasonText('');
+          setActiveInvoice(inv);
+        }}
         searchValue={searchTerm}
         onSearchChange={setSearchTerm}
         searchPlaceholder="بحث برقم الفاتورة أو المورد أو المندوب..."

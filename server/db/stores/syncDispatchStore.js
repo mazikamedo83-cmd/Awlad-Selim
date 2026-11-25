@@ -87,6 +87,9 @@ function mapPgBatchRow(r, viewer = null) {
     receivedByUserId: r.received_by_user_id || undefined,
     receivedByName: r.received_by_name || '',
     receivedAt: r.received_at ? isoTimestamp(r.received_at) : undefined,
+    receivedDeviceId: r.received_device_id || undefined,
+    discrepancyDetails: r.discrepancy_details && typeof r.discrepancy_details === 'object' ? r.discrepancy_details : undefined,
+    rejectionReason: r.rejection_reason || '',
     createdAt: isoTimestamp(r.created_at),
     updatedAt: isoTimestamp(r.updated_at),
   };
@@ -112,7 +115,7 @@ export function canUserViewDispatchBatch(batch, user, repProfile = null) {
   if (!batch || !user) return false;
   if (user.role === 'customer') return false;
   if (user.role === 'representative') {
-    if (batch.senderUserId === user.id) return true;
+    if (batch.senderUserId === user.id || batch.recipientUserId === user.id) return true;
     if (repProfile && batch.representativeId === repProfile.id) return true;
     return false;
   }
@@ -134,8 +137,11 @@ export function canUserViewDispatchBatch(batch, user, repProfile = null) {
 
 export function canUserConfirmDispatchBatch(batch, user) {
   if (!batch || !user) return false;
-  if (user.role === 'customer' || user.role === 'representative') return false;
+  if (user.role === 'customer') return false;
   if (batch.senderUserId === user.id) return false; // لا يجوز لنفس المرسل استلام دفعته
+  if (user.role === 'representative') {
+    return batch.recipientUserId === user.id;
+  }
   if (user.role === 'admin' || user.role === 'manager') return true;
   if (batch.recipientUserId === user.id) return true;
   const p = user.permissions || {};
@@ -151,8 +157,9 @@ export async function listDispatchRecipients(actor) {
     const res = await pool.query(
       `SELECT id, full_name, role, job_title, is_active, permissions
        FROM users
-       WHERE is_active = TRUE AND role NOT IN ('customer', 'representative')
-       ORDER BY full_name ASC`
+       WHERE is_active = TRUE AND role <> 'customer' AND id <> $1
+       ORDER BY full_name ASC`,
+      [actor.id]
     );
     return res.rows.map(mapPgUserRow).map((u) => ({
       id: u.id,
@@ -163,7 +170,7 @@ export async function listDispatchRecipients(actor) {
   }
   const db = readJsonDatabase();
   return (db.users || [])
-    .filter((u) => u && u.isActive !== false && u.role !== 'customer' && u.role !== 'representative')
+    .filter((u) => u && u.isActive !== false && u.role !== 'customer' && u.id !== actor.id)
     .sort((a, b) => String(a.fullName || '').localeCompare(String(b.fullName || ''), 'ar'))
     .map((u) => ({
       id: u.id,
@@ -429,8 +436,8 @@ export async function createAndSendDispatchBatch(body, authContext, deps) {
   if (!recipientUser || recipientUser.isActive === false) {
     throw new AppError(404, 'حساب الموظف المستلم المحدد غير موجود أو معطل', 'DISPATCH_RECIPIENT_NOT_FOUND');
   }
-  if (recipientUser.role === 'customer' || recipientUser.role === 'representative') {
-    throw new AppError(400, 'يجب اختيار موظف أو مسؤول إدارة لاستلام الدفعة وليس عميلًا أو مندوبًا', 'INVALID_DISPATCH_RECIPIENT');
+  if (recipientUser.role === 'customer') {
+    throw new AppError(400, 'لا يجوز توجيه دفعة مزامنة إلى حساب عميل', 'INVALID_DISPATCH_RECIPIENT');
   }
   if (recipientUser.id === user.id) {
     throw new AppError(403, 'لا يجوز إرسال دفعة المزامنة واستلامها لنفس المستخدم', 'SELF_DISPATCH_FORBIDDEN');
@@ -602,6 +609,9 @@ export async function createAndSendDispatchBatch(body, authContext, deps) {
     receivedByUserId: undefined,
     receivedByName: '',
     receivedAt: undefined,
+    receivedDeviceId: undefined,
+    discrepancyDetails: undefined,
+    rejectionReason: '',
     createdAt: now,
     updatedAt: now,
   };
@@ -712,8 +722,9 @@ export async function markDispatchBatchReceiving(batchId, actor) {
   return { batch: await getRawDispatchBatchById(batchId, actor), alreadyConfirmed: false };
 }
 
-export async function confirmDispatchBatchReceipt(batchId, body, actor) {
-  if (!actor || actor.role === 'customer' || actor.role === 'representative') {
+export async function confirmDispatchBatchReceipt(batchId, body, actorOrAuth) {
+  const actor = actorOrAuth?.user || actorOrAuth;
+  if (!actor || actor.role === 'customer') {
     throw new AppError(403, 'تأكيد استلام الدفعات متاح لموظفي الإدارة والمستلم المخول فقط', 'FORBIDDEN_DISPATCH_CONFIRM');
   }
   const batch = await getRawDispatchBatchById(batchId, actor);
@@ -728,7 +739,24 @@ export async function confirmDispatchBatchReceipt(batchId, body, actor) {
     return { deduplicated: true, batch };
   }
 
-  const receiptNotes = String(body?.receiptNotes || '').trim();
+  const receivedDeviceId = String(body?.deviceId || body?.receivedDeviceId || actorOrAuth?.deviceId || '').trim() || undefined;
+  const rawDiscrepancy = body?.discrepancyDetails && typeof body.discrepancyDetails === 'object' ? body.discrepancyDetails : {};
+  const hasDiscrepancy = Boolean(body?.hasDiscrepancy || rawDiscrepancy?.hasDiscrepancy);
+  const discrepancyNote = String(body?.discrepancyNote || rawDiscrepancy?.note || '').trim();
+  const discrepancyItems = Array.isArray(body?.discrepancyItems || rawDiscrepancy?.items)
+    ? (body.discrepancyItems || rawDiscrepancy.items).slice(0, 50)
+    : [];
+  const discrepancyDetails = hasDiscrepancy || discrepancyNote || discrepancyItems.length > 0
+    ? {
+        hasDiscrepancy: true,
+        note: discrepancyNote,
+        items: discrepancyItems,
+        reportedAt: nowIso(),
+        reportedByUserId: actor.id,
+      }
+    : undefined;
+
+  const receiptNotes = String(body?.receiptNotes || discrepancyNote || '').trim();
   const now = nowIso();
 
   // IMPORTANT: Confirmation updates ONLY the dispatch batch receipt status & audit log.
@@ -742,11 +770,23 @@ export async function confirmDispatchBatchReceipt(batchId, body, actor) {
              received_by_user_id = $1,
              received_by_name = $2,
              received_at = $3,
-             receipt_notes = CASE WHEN $4 <> '' THEN $4 ELSE receipt_notes END,
+             received_device_id = COALESCE(NULLIF($4, ''), received_device_id),
+             discrepancy_details = COALESCE($5::jsonb, discrepancy_details),
+             receipt_notes = CASE WHEN $6 <> '' THEN $6 ELSE receipt_notes END,
              error_message = '',
-             updated_at = $5
-         WHERE id = $6`,
-        [actor.id, actor.fullName || actor.username, now, receiptNotes, now, batchId]
+             rejection_reason = '',
+             updated_at = $7
+         WHERE id = $8`,
+        [
+          actor.id,
+          actor.fullName || actor.username,
+          now,
+          receivedDeviceId || '',
+          JSON.stringify(discrepancyDetails || {}),
+          receiptNotes,
+          now,
+          batchId,
+        ]
       );
     });
   } else {
@@ -757,8 +797,11 @@ export async function confirmDispatchBatchReceipt(batchId, body, actor) {
         target.receivedByUserId = actor.id;
         target.receivedByName = actor.fullName || actor.username;
         target.receivedAt = now;
+        if (receivedDeviceId) target.receivedDeviceId = receivedDeviceId;
+        if (discrepancyDetails) target.discrepancyDetails = discrepancyDetails;
         if (receiptNotes) target.receiptNotes = receiptNotes;
         target.errorMessage = '';
+        target.rejectionReason = '';
         target.updatedAt = now;
       }
     });
@@ -767,7 +810,9 @@ export async function confirmDispatchBatchReceipt(batchId, body, actor) {
   await recordAuditLog({
     userId: actor.id,
     userName: actor.fullName || actor.username,
-    action: `استلام وتأكيد دفعة المندوب رقم ${batch.batchNumber} (${batch.senderName}) دون إعادة ترحيل`,
+    action: discrepancyDetails
+      ? `استلام دفعة المندوب رقم ${batch.batchNumber} (${batch.senderName}) مع تسجيل ملاحظة/اعتراض دون إعادة ترحيل`
+      : `استلام وتأكيد دفعة المندوب رقم ${batch.batchNumber} (${batch.senderName}) دون إعادة ترحيل`,
     module: 'إرسال واستلام المندوبين',
     recordId: batchId,
     notes: receiptNotes || `المستلم الفعلي: ${actor.fullName}`,
@@ -779,9 +824,10 @@ export async function confirmDispatchBatchReceipt(batchId, body, actor) {
   };
 }
 
-export async function failDispatchBatchReceipt(batchId, body, actor) {
-  if (!actor || actor.role === 'customer' || actor.role === 'representative') {
-    throw new AppError(403, 'هذا الإجراء متاح لموظفي الإدارة فقط', 'FORBIDDEN_DISPATCH_FAIL');
+export async function failDispatchBatchReceipt(batchId, body, actorOrAuth) {
+  const actor = actorOrAuth?.user || actorOrAuth;
+  if (!actor || actor.role === 'customer') {
+    throw new AppError(403, 'هذا الإجراء متاح للمستلم المخول فقط', 'FORBIDDEN_DISPATCH_FAIL');
   }
   const batch = await getRawDispatchBatchById(batchId, actor);
   if (!batch) {
@@ -794,6 +840,7 @@ export async function failDispatchBatchReceipt(batchId, body, actor) {
     throw new AppError(409, 'تم تأكيد استلام الدفعة بالفعل ولا يمكن تحويلها إلى تعذر الاستلام', 'ALREADY_CONFIRMED');
   }
 
+  const receivedDeviceId = String(body?.deviceId || body?.receivedDeviceId || actorOrAuth?.deviceId || '').trim() || undefined;
   const reason = String(body?.reason || body?.errorMessage || 'تعذر التحقق من الاستلام — يرجى المراجعة').trim();
   const now = nowIso();
 
@@ -803,9 +850,11 @@ export async function failDispatchBatchReceipt(batchId, body, actor) {
         `UPDATE sync_dispatch_batches
          SET receipt_status = 'تعذر الاستلام',
              error_message = $1,
-             updated_at = $2
-         WHERE id = $3`,
-        [reason, now, batchId]
+             rejection_reason = $1,
+             received_device_id = COALESCE(NULLIF($2, ''), received_device_id),
+             updated_at = $3
+         WHERE id = $4`,
+        [reason, receivedDeviceId || '', now, batchId]
       );
     });
   } else {
@@ -814,6 +863,8 @@ export async function failDispatchBatchReceipt(batchId, body, actor) {
       if (target) {
         target.receiptStatus = 'تعذر الاستلام';
         target.errorMessage = reason;
+        target.rejectionReason = reason;
+        if (receivedDeviceId) target.receivedDeviceId = receivedDeviceId;
         target.updatedAt = now;
       }
     });

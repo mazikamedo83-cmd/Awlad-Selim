@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   ArrowDown,
   ArrowUp,
@@ -9,7 +9,6 @@ import {
   Printer,
   Search,
   Inbox,
-  SlidersHorizontal,
 } from 'lucide-react';
 import { exportToExcel } from './ExcelExporter';
 import { exportTableToPdf, PdfExportOptions } from './PdfExporter';
@@ -98,7 +97,27 @@ export function UnifiedDataTable<T>({
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(defaultPageSize);
-  const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const lastRowActivateRef = useRef<number>(0);
+
+  const isInteractiveTarget = (target: EventTarget | null): boolean => {
+    const el = target as HTMLElement | null;
+    return Boolean(
+      el?.closest('button, a, input, select, textarea, label, [role="button"], [data-no-row-activate]')
+    );
+  };
+
+  const isCoarseOrCompactViewport = (): boolean => {
+    if (typeof window === 'undefined') return false;
+    return Boolean(window.matchMedia?.('(pointer: coarse)')?.matches || window.innerWidth < 768);
+  };
+
+  const triggerRowActivate = (row: T, e: React.MouseEvent) => {
+    if (!onRowClick || isInteractiveTarget(e.target)) return;
+    const now = Date.now();
+    if (now - lastRowActivateRef.current < 260) return;
+    lastRowActivateRef.current = now;
+    onRowClick(row);
+  };
 
   const effectiveSearch = searchValue !== undefined ? searchValue : internalSearch;
   const handleSearch = (val: string) => {
@@ -274,36 +293,18 @@ export function UnifiedDataTable<T>({
             <div className="flex flex-wrap items-center gap-1.5">
               {searchable && (
                 <div className="relative flex-1 min-w-[160px]">
-                  <Search className="w-3.5 h-3.5 text-slate-400 dark:text-[#849BBF] absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <Search className="w-3.5 h-3.5 text-slate-500 dark:text-[#8CA3C7] absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="text"
                     value={effectiveSearch}
                     onChange={(e) => handleSearch(e.target.value)}
                     placeholder={searchPlaceholder}
-                    className="w-full h-8 pr-7 pl-2 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-xs text-slate-900 dark:text-[#EEF4FC] dark:placeholder-[#7F96BA] focus:outline-none focus:ring-1 focus:ring-[var(--awlad-royal-700)] focus:border-[var(--awlad-royal-700)] dark:focus:border-[#3B82F6] dark:focus:ring-[#3B82F6]/30"
+                    className="w-full h-8 pr-7 pl-2 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-xs text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-500 dark:placeholder:text-[#8CA3C7] focus:outline-none focus:ring-1 focus:ring-[var(--awlad-royal-700)] focus:border-[var(--awlad-royal-700)] dark:focus:border-[#3B82F6] dark:focus:ring-[#3B82F6]/30"
                   />
                 </div>
               )}
-              {toolbarFilters && searchable && (
-                <button
-                  type="button"
-                  onClick={() => setShowMobileFilters((v) => !v)}
-                  className={`sm:hidden inline-flex items-center gap-1 h-8 px-2.5 rounded-md border text-[11px] font-bold shrink-0 cursor-pointer ${
-                    showMobileFilters
-                      ? 'bg-[var(--awlad-royal-700)] dark:bg-[#1659C8] text-white border-[var(--awlad-royal-700)] dark:border-[#60A5FA]/40'
-                      : 'bg-white dark:bg-[#10203D] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] border-slate-300 dark:border-[#2A436E]'
-                  }`}
-                >
-                  <SlidersHorizontal className="w-3.5 h-3.5" />
-                  <span>فلاتر</span>
-                </button>
-              )}
               {toolbarFilters && (
-                <div
-                  className={`${
-                    searchable ? (showMobileFilters ? 'flex' : 'hidden sm:flex') : 'flex'
-                  } flex-wrap items-center gap-1.5 w-full sm:w-auto`}
-                >
+                <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
                   {toolbarFilters}
                 </div>
               )}
@@ -385,7 +386,19 @@ export function UnifiedDataTable<T>({
                 return (
                   <tr
                     key={key}
-                    onClick={() => onRowClick && onRowClick(row)}
+                    onClick={(e) => {
+                      if (!onRowClick) return;
+                      if (isCoarseOrCompactViewport()) {
+                        triggerRowActivate(row, e);
+                      }
+                    }}
+                    onDoubleClick={(e) => {
+                      if (!onRowClick) return;
+                      if (!isCoarseOrCompactViewport()) {
+                        triggerRowActivate(row, e);
+                      }
+                    }}
+                    title={onRowClick ? 'نقر مزدوج للتفاصيل (أو نقرة واحدة على الجوال)' : undefined}
                     className={`transition-colors ${
                       onRowClick ? 'cursor-pointer' : ''
                     } ${

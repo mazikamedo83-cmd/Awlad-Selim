@@ -1099,6 +1099,9 @@ export async function transferStock({ productId, fromWarehouseId, toWarehouseId,
 }
 
 export async function adjustStock({ productId, warehouseId, newQuantity, reason = '' }, actor) {
+  if (!actor || actor.role === 'representative' || actor.role === 'customer') {
+    throw new AppError(403, 'غير مصرح للمندوبين أو العملاء بإجراء تسويات جردية', 'FORBIDDEN_INVENTORY_ADJUSTMENT');
+  }
   const nextQty = round3(newQuantity);
   const now = nowIso();
   const dateStr = todayIso();
@@ -1161,6 +1164,9 @@ export async function adjustStock({ productId, warehouseId, newQuantity, reason 
 }
 
 export async function recordDamagedStock({ productId, warehouseId, quantity, reason = '' }, actor) {
+  if (!actor || actor.role === 'representative' || actor.role === 'customer') {
+    throw new AppError(403, 'غير مصرح للمندوبين أو العملاء بإثبات التوالف', 'FORBIDDEN_INVENTORY_DAMAGED');
+  }
   const qty = round3(quantity);
   if (qty <= 0) throw new AppError(400, 'الكمية التالفة يجب أن تكون أكبر من صفر', 'INVALID_QUANTITY');
   const now = nowIso();
