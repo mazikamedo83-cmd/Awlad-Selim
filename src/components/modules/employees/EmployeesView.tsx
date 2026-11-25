@@ -19,6 +19,8 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
   } = useData();
 
   const [activeTab, setActiveTab] = useState<'employees' | 'attendance' | 'advances' | 'payrolls'>(initialTab);
+  const [empDeptFilter, setEmpDeptFilter] = useState<string>('all');
+  const [empStatusFilter, setEmpStatusFilter] = useState<'all' | 'active' | 'suspended' | 'with_advance'>('all');
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
@@ -79,6 +81,39 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
     () => employees.filter((e) => e.status !== 'suspended'),
     [employees]
   );
+
+  const employeeDepartments = useMemo(() => {
+    const depts = new Set<string>();
+    employees.forEach((e) => {
+      if (e.department?.trim()) depts.add(e.department.trim());
+    });
+    return Array.from(depts);
+  }, [employees]);
+
+  const totalBaseSalaries = useMemo(
+    () => activeEmployees.reduce((s, e) => s + Number(e.basicSalary || 0), 0),
+    [activeEmployees]
+  );
+
+  const totalUnsettledAdvances = useMemo(
+    () =>
+      advancesDeductions
+        .filter((a) => a.type === 'advance' && !a.isSettled)
+        .reduce((s, a) => s + Number(a.amount || 0), 0),
+    [advancesDeductions]
+  );
+
+  const filteredEmployees = useMemo(() => {
+    return employees.filter((emp) => {
+      if (empDeptFilter !== 'all' && (emp.department || '').trim() !== empDeptFilter) return false;
+      if (empStatusFilter === 'active') return emp.status !== 'suspended';
+      if (empStatusFilter === 'suspended') return emp.status === 'suspended';
+      if (empStatusFilter === 'with_advance') {
+        return advancesDeductions.some((a) => a.employeeId === emp.id && a.type === 'advance' && !a.isSettled);
+      }
+      return true;
+    });
+  }, [employees, empDeptFilter, empStatusFilter, advancesDeductions]);
 
   // Sync default selectors when lists change
   useEffect(() => {
@@ -506,19 +541,67 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
         </button>
       </div>
 
+      {/* Compact HR Summary Ledger Strip */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-px bg-slate-200 dark:bg-[#21375C] border border-slate-200 dark:border-[#21375C] rounded-lg overflow-hidden text-xs">
+        <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#A9BCD9]">الموظفون النشطون</div>
+          <div className="text-sm font-black font-mono tabular-nums text-[var(--awlad-navy-950)] dark:text-[#F3F7FC]">
+            {activeEmployees.length} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">من أصل {employees.length}</span>
+          </div>
+        </div>
+        <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#A9BCD9]">إجمالي الرواتب الأساسية</div>
+          <div className="text-sm font-black font-mono tabular-nums text-[var(--awlad-royal-700)] dark:text-[#85B8FF]">
+            {totalBaseSalaries.toLocaleString()} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">{settings.currency}</span>
+          </div>
+        </div>
+        <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#A9BCD9]">سلف قائمة غير مسددة</div>
+          <div className="text-sm font-black font-mono tabular-nums text-amber-700 dark:text-amber-400">
+            {totalUnsettledAdvances.toLocaleString()} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">{settings.currency}</span>
+          </div>
+        </div>
+      </div>
+
       {/* Employees Tab */}
       {activeTab === 'employees' && (
         <UnifiedDataTable<Employee>
-          title={`سجل الموظفين (${employees.length})`}
-          data={employees}
+          title={`سجل الموظفين (${filteredEmployees.length})`}
+          data={filteredEmployees}
           rowKey={(emp) => emp.id}
           onRowClick={(emp) => openEditEmployeeModal(emp)}
           compact
           searchPlaceholder="بحث باسم الموظف أو الكود أو المسمى الوظيفي أو الهاتف..."
           exportFilename="AWLAD_SELIM_Employees"
           pdfTitle="قائمة الموظفين والكادر الوظيفي"
-          emptyTitle="لا يوجد موظفون مسجلون حالياً"
+          emptyTitle="لا يوجد موظفون مطابقون"
           emptySubtitle={'انقر على زر "+ إضافة موظف" للبدء بتسجيل بيانات الكادر الوظيفي ومسيرات الرواتب.'}
+          toolbarFilters={
+            <div className="flex flex-wrap items-center gap-1.5">
+              <select
+                aria-label="تصفية بالقسم"
+                value={empDeptFilter}
+                onChange={(e) => setEmpDeptFilter(e.target.value)}
+                className="h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC]"
+              >
+                <option value="all">كل الأقسام</option>
+                {employeeDepartments.map((d) => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+              <select
+                aria-label="تصفية بالحالة والسلف"
+                value={empStatusFilter}
+                onChange={(e) => setEmpStatusFilter(e.target.value as any)}
+                className="h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC]"
+              >
+                <option value="all">كل الحالات</option>
+                <option value="active">نشط فقط</option>
+                <option value="suspended">موقوف</option>
+                <option value="with_advance">لديه سلفة قائمة</option>
+              </select>
+            </div>
+          }
           columns={[
             {
               key: 'code',

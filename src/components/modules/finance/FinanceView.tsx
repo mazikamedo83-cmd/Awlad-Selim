@@ -748,14 +748,14 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
   return (
     <div className="space-y-2">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-white px-2.5 py-2 rounded-lg border border-slate-200">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-white dark:bg-[#0E1C36] px-2.5 py-2 rounded-lg border border-slate-200 dark:border-[#21375C]">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0">
+          <div className="w-8 h-8 rounded-lg bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C] flex items-center justify-center shrink-0">
             <AccountsLedgerIcon className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-sm font-black text-slate-900 tracking-tight">مركز الحسابات والعملاء والموردين والخزائن</h2>
-            <p className="text-[11px] text-slate-500">
+            <h2 className="text-sm font-black text-slate-900 dark:text-[#F3F7FC] tracking-tight">مركز الحسابات والعملاء والموردين والخزائن</h2>
+            <p className="text-[11px] text-slate-500 dark:text-[#97AECE]">
               كشوف الحسابات التفصيلية للعملاء والموردين، السيولة النقدية ({totalLiquidity.toLocaleString()} {settings.currency})، وسندات الصرف والقبض
             </p>
           </div>
@@ -768,7 +768,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               setRecordType('expense');
               setIsExpenseModalOpen(true);
             }}
-            className="flex items-center gap-1 px-2.5 py-1 bg-amber-700 hover:bg-amber-800 text-white rounded-md text-xs font-bold transition-all cursor-pointer"
+            className="h-8 flex items-center gap-1 px-2.5 bg-amber-700 hover:bg-amber-800 text-white rounded-md text-xs font-bold transition-all cursor-pointer"
           >
             <TrendingDown className="w-3.5 h-3.5" />
             <span>سند صرف مصروف</span>
@@ -780,7 +780,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               setRecordType('income');
               setIsExpenseModalOpen(true);
             }}
-            className="flex items-center gap-1 px-2.5 py-1 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md text-xs font-bold transition-all cursor-pointer"
+            className="h-8 flex items-center gap-1 px-2.5 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md text-xs font-bold transition-all cursor-pointer"
           >
             <TrendingUp className="w-3.5 h-3.5" />
             <span>سند قبض إيراد</span>
@@ -791,7 +791,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               setTransferError(null);
               setIsTransferModalOpen(true);
             }}
-            className="flex items-center gap-1 px-2.5 py-1 bg-[#011E58] hover:bg-[#002160] text-white rounded-md text-xs font-bold transition-all cursor-pointer"
+            className="h-8 flex items-center gap-1 px-2.5 bg-[#011E58] hover:bg-[#002160] text-white rounded-md text-xs font-bold transition-all cursor-pointer"
           >
             <ArrowLeftRight className="w-3.5 h-3.5" />
             <span>تحويل بين الخزائن</span>
@@ -822,7 +822,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
       )}
 
       {/* Navigation Tabs */}
-      <div className="flex flex-wrap border-b border-slate-200 text-xs font-bold gap-2 sm:gap-3 bg-white px-2.5 pt-1 rounded-t-lg">
+      <div className="flex flex-wrap border-b border-slate-200 dark:border-[#21375C] text-xs font-bold gap-2 sm:gap-3 bg-white dark:bg-[#0E1C36] px-2.5 pt-1 rounded-t-lg">
         {[
           { key: 'customer-accounts' as const, label: `حسابات العملاء (${customers.length})`, Icon: CustomersGroupIcon },
           { key: 'supplier-accounts' as const, label: `حسابات الموردين (${suppliers.length})`, Icon: SuppliersTruckIcon },
@@ -836,7 +836,9 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
               className={`flex items-center gap-1.5 pb-2 pt-1 px-1.5 transition-colors border-b-2 cursor-pointer ${
-                isActive ? 'border-blue-900 text-blue-950 font-black' : 'border-transparent text-slate-500 hover:text-slate-800'
+                isActive
+                  ? 'border-blue-900 dark:border-[#60A5FA] text-blue-950 dark:text-[#85B8FF] font-black'
+                  : 'border-transparent text-slate-500 dark:text-[#97AECE] hover:text-slate-800 dark:hover:text-[#F3F7FC]'
               }`}
             >
               <tab.Icon className="w-4 h-4 shrink-0" />
@@ -848,39 +850,39 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
 
       {/* TAB: CUSTOMER ACCOUNTS (حسابات جميع العملاء بالتفصيل) */}
       {activeTab === 'customer-accounts' && (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {/* Separated KPI Strip: NEVER net لنا & علينا */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden text-xs">
-            <div className="bg-white px-3 py-2">
-              <span className="text-[10px] font-bold text-slate-600 block">إجمالي مستحقاتنا عند العملاء (لنا)</span>
-              <div className="text-base font-black font-mono tabular-nums text-red-700">
-                {customerKpis.receivableTotal.toLocaleString()} <span className="text-[10px] font-sans text-slate-500">{settings.currency}</span>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-slate-200 dark:bg-[#21375C] border border-slate-200 dark:border-[#21375C] rounded-lg overflow-hidden text-xs">
+            <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
+              <span className="text-[10px] font-bold text-slate-600 dark:text-[#A9BCD9] block">إجمالي مستحقاتنا عند العملاء (لنا)</span>
+              <div className="text-sm font-black font-mono tabular-nums text-red-700 dark:text-rose-400">
+                {customerKpis.receivableTotal.toLocaleString()} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">{settings.currency}</span>
               </div>
-              <span className="text-[10px] font-bold text-red-600">عدد {customerKpis.debtorsCount} عميل مدين</span>
+              <span className="text-[10px] font-bold text-red-600 dark:text-rose-300">عدد {customerKpis.debtorsCount} عميل مدين</span>
             </div>
 
-            <div className="bg-white px-3 py-2">
-              <span className="text-[10px] font-bold text-slate-600 block">إجمالي الدفعات المقدمة للعملاء (علينا)</span>
-              <div className="text-base font-black font-mono tabular-nums text-emerald-700">
-                {customerKpis.advanceTotal.toLocaleString()} <span className="text-[10px] font-sans text-slate-500">{settings.currency}</span>
+            <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
+              <span className="text-[10px] font-bold text-slate-600 dark:text-[#A9BCD9] block">إجمالي الدفعات المقدمة للعملاء (علينا)</span>
+              <div className="text-sm font-black font-mono tabular-nums text-emerald-700 dark:text-emerald-400">
+                {customerKpis.advanceTotal.toLocaleString()} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">{settings.currency}</span>
               </div>
-              <span className="text-[10px] font-bold text-emerald-700">عدد {customerKpis.creditorsCount} عميل برصيد دائن</span>
+              <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300">عدد {customerKpis.creditorsCount} عميل برصيد دائن</span>
             </div>
 
-            <div className="bg-white px-3 py-2">
-              <span className="text-[10px] font-bold text-slate-600 block">إجمالي التحصيلات من العملاء</span>
-              <div className="text-base font-black font-mono tabular-nums text-blue-950">
-                {customerKpis.totalCollections.toLocaleString()} <span className="text-[10px] font-sans text-slate-500">{settings.currency}</span>
+            <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
+              <span className="text-[10px] font-bold text-slate-600 dark:text-[#A9BCD9] block">إجمالي التحصيلات من العملاء</span>
+              <div className="text-sm font-black font-mono tabular-nums text-blue-950 dark:text-[#85B8FF]">
+                {customerKpis.totalCollections.toLocaleString()} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">{settings.currency}</span>
               </div>
-              <span className="text-[10px] text-slate-500">نقدي الفواتير + سندات القبض</span>
+              <span className="text-[10px] text-slate-500 dark:text-[#97AECE]">نقدي الفواتير + سندات القبض</span>
             </div>
 
-            <div className="bg-white px-3 py-2">
-              <span className="text-[10px] font-bold text-slate-600 block">إجمالي عدد العملاء</span>
-              <div className="text-base font-black font-mono tabular-nums text-slate-900">
+            <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
+              <span className="text-[10px] font-bold text-slate-600 dark:text-[#A9BCD9] block">إجمالي عدد العملاء</span>
+              <div className="text-sm font-black font-mono tabular-nums text-slate-900 dark:text-[#F3F7FC]">
                 {customerKpis.totalCount}
               </div>
-              <span className="text-[10px] text-slate-500">ملفات العملاء النشطة والمسجلة</span>
+              <span className="text-[10px] text-slate-500 dark:text-[#97AECE]">ملفات العملاء النشطة والمسجلة</span>
             </div>
           </div>
 
@@ -1436,41 +1438,41 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
           ) : (
             <div className="space-y-2 text-xs">
               {/* Summary Strip (Separated Debt vs Advance Credit) */}
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden">
-                <div className="px-2.5 py-2 bg-slate-50">
-                  <span className="text-[10px] font-bold text-slate-500 block">رصيد أول المدة</span>
-                  <span className="font-mono font-black text-sm text-slate-900">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-slate-200 dark:bg-[#21375C] border border-slate-200 dark:border-[#21375C] rounded-lg overflow-hidden">
+                <div className="px-2.5 py-2 bg-slate-50 dark:bg-[#132544]">
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-[#A9BCD9] block">رصيد أول المدة</span>
+                  <span className="font-mono font-black text-sm text-slate-900 dark:text-[#F3F7FC]">
                     {Number(custStatementData.summary.openingBalance || 0).toLocaleString()} {settings.currency}
                   </span>
                 </div>
-                <div className="px-2.5 py-2 bg-blue-50">
-                  <span className="text-[10px] font-bold text-blue-700 block">إجمالي المبيعات</span>
-                  <span className="font-mono font-black text-sm text-blue-950">
+                <div className="px-2.5 py-2 bg-blue-50 dark:bg-[#16366B]/60">
+                  <span className="text-[10px] font-bold text-blue-700 dark:text-[#85B8FF] block">إجمالي المبيعات</span>
+                  <span className="font-mono font-black text-sm text-blue-950 dark:text-[#F3F7FC]">
                     {Number(custStatementData.summary.totalSales ?? custStatementData.summary.totalDebit ?? 0).toLocaleString()} {settings.currency}
                   </span>
                 </div>
-                <div className="px-2.5 py-2 bg-emerald-50">
-                  <span className="text-[10px] font-bold text-emerald-700 block">إجمالي المدفوعات</span>
-                  <span className="font-mono font-black text-sm text-emerald-900">
+                <div className="px-2.5 py-2 bg-emerald-50 dark:bg-emerald-950/40">
+                  <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 block">إجمالي المدفوعات</span>
+                  <span className="font-mono font-black text-sm text-emerald-900 dark:text-emerald-200">
                     {Number(custStatementData.summary.totalPaid ?? custStatementData.summary.totalCredit ?? 0).toLocaleString()} {settings.currency}
                   </span>
                 </div>
-                <div className="px-2.5 py-2 bg-red-50">
-                  <span className="text-[10px] font-bold text-red-700 block">مستحق لنا (لنا)</span>
-                  <span className="font-mono font-black text-sm text-red-700">
+                <div className="px-2.5 py-2 bg-red-50 dark:bg-rose-950/40">
+                  <span className="text-[10px] font-bold text-red-700 dark:text-rose-300 block">مستحق لنا (لنا)</span>
+                  <span className="font-mono font-black text-sm text-red-700 dark:text-rose-200">
                     {Number(custStatementData.summary.debtAmount ?? Math.max(0, Number(custStatementData.summary.currentBalance || 0))).toLocaleString()} {settings.currency}
                   </span>
                 </div>
-                <div className="px-2.5 py-2 bg-[#EEF3FA]">
-                  <span className="text-[10px] font-bold text-[#003589] block">رصيد دائن للعميل (علينا)</span>
-                  <span className="font-mono font-black text-sm text-[#011E58]">
+                <div className="px-2.5 py-2 bg-[#EEF3FA] dark:bg-[#132544]">
+                  <span className="text-[10px] font-bold text-[#003589] dark:text-[#85B8FF] block">رصيد دائن للعميل (علينا)</span>
+                  <span className="font-mono font-black text-sm text-[#011E58] dark:text-[#F3F7FC]">
                     {Number(custStatementData.summary.creditAmount ?? Math.max(0, -Number(custStatementData.summary.currentBalance || 0))).toLocaleString()} {settings.currency}
                   </span>
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-2 bg-slate-50 rounded-lg border border-slate-200">
-                <div className="text-[11px] text-slate-600 font-bold">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-1.5 bg-slate-50 dark:bg-[#132544] rounded-lg border border-slate-200 dark:border-[#21375C]">
+                <div className="text-[11px] text-slate-600 dark:text-[#A9BCD9] font-bold">
                   آخر فاتورة: {custStatementData.summary.lastInvoiceNumber || '-'} ({custStatementData.summary.lastInvoiceDate || '-'})
                   {' | '}
                   آخر حركة: {custStatementData.summary.lastTransactionDate || '-'}
@@ -1638,41 +1640,41 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             <div className="p-4 text-center text-xs font-bold text-slate-500">جاري تحميل كشف حساب المورد...</div>
           ) : (
             <div className="space-y-2 text-xs">
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden">
-                <div className="px-2.5 py-2 bg-slate-50">
-                  <span className="text-[10px] font-bold text-slate-500 block">رصيد أول المدة</span>
-                  <span className="font-mono font-black text-sm text-slate-900">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-slate-200 dark:bg-[#21375C] border border-slate-200 dark:border-[#21375C] rounded-lg overflow-hidden">
+                <div className="px-2.5 py-2 bg-slate-50 dark:bg-[#132544]">
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-[#A9BCD9] block">رصيد أول المدة</span>
+                  <span className="font-mono font-black text-sm text-slate-900 dark:text-[#F3F7FC]">
                     {Number(suppStatementData.summary.openingBalance || 0).toLocaleString()} {settings.currency}
                   </span>
                 </div>
-                <div className="px-2.5 py-2 bg-[#EEF3FA]">
-                  <span className="text-[10px] font-bold text-[#003589] block">إجمالي المشتريات</span>
-                  <span className="font-mono font-black text-sm text-[#011E58]">
+                <div className="px-2.5 py-2 bg-[#EEF3FA] dark:bg-[#16366B]/60">
+                  <span className="text-[10px] font-bold text-[#003589] dark:text-[#85B8FF] block">إجمالي المشتريات</span>
+                  <span className="font-mono font-black text-sm text-[#011E58] dark:text-[#F3F7FC]">
                     {Number(suppStatementData.summary.totalPurchases || 0).toLocaleString()} {settings.currency}
                   </span>
                 </div>
-                <div className="px-2.5 py-2 bg-emerald-50">
-                  <span className="text-[10px] font-bold text-emerald-700 block">إجمالي المدفوعات</span>
-                  <span className="font-mono font-black text-sm text-emerald-900">
+                <div className="px-2.5 py-2 bg-emerald-50 dark:bg-emerald-950/40">
+                  <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 block">إجمالي المدفوعات</span>
+                  <span className="font-mono font-black text-sm text-emerald-900 dark:text-emerald-200">
                     {Number(suppStatementData.summary.totalPaid || 0).toLocaleString()} {settings.currency}
                   </span>
                 </div>
-                <div className="px-2.5 py-2 bg-amber-50">
-                  <span className="text-[10px] font-bold text-amber-800 block">مستحق للمورد (علينا)</span>
-                  <span className="font-mono font-black text-sm text-amber-900">
+                <div className="px-2.5 py-2 bg-amber-50 dark:bg-amber-950/40">
+                  <span className="text-[10px] font-bold text-amber-800 dark:text-amber-300 block">مستحق للمورد (علينا)</span>
+                  <span className="font-mono font-black text-sm text-amber-900 dark:text-amber-200">
                     {Number(suppStatementData.summary.payableAmount || 0).toLocaleString()} {settings.currency}
                   </span>
                 </div>
-                <div className="px-2.5 py-2 bg-emerald-50/70">
-                  <span className="text-[10px] font-bold text-emerald-800 block">دفعة مقدمة عند المورد (لنا)</span>
-                  <span className="font-mono font-black text-sm text-emerald-900">
+                <div className="px-2.5 py-2 bg-emerald-50/70 dark:bg-emerald-950/30">
+                  <span className="text-[10px] font-bold text-emerald-800 dark:text-emerald-300 block">دفعة مقدمة عند المورد (لنا)</span>
+                  <span className="font-mono font-black text-sm text-emerald-900 dark:text-emerald-200">
                     {Number(suppStatementData.summary.advanceCreditAmount || 0).toLocaleString()} {settings.currency}
                   </span>
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-2 bg-slate-50 rounded-lg border border-slate-200">
-                <div className="text-[11px] text-slate-600 font-bold">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-1.5 bg-slate-50 dark:bg-[#132544] rounded-lg border border-slate-200 dark:border-[#21375C]">
+                <div className="text-[11px] text-slate-600 dark:text-[#A9BCD9] font-bold">
                   آخر فاتورة شراء: {suppStatementData.summary.lastInvoiceNumber || '-'} ({suppStatementData.summary.lastInvoiceDate || '-'})
                   {' | '}
                   آخر حركة: {suppStatementData.summary.lastTransactionDate || '-'}

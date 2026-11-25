@@ -94,6 +94,8 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
   const { currentUser } = useAuth();
 
   const [activeTab, setActiveTab] = useState<'users' | 'presets' | 'identities' | 'audit'>(initialTab || 'users');
+  const [roleFilter, setRoleFilter] = useState<string>('all');
+  const [activeStatusFilter, setActiveStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -703,8 +705,13 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
         <UnifiedDataTable<User>
           compact
           title="حسابات المستخدمين والصلاحيات"
-          subtitle={`إجمالي الحسابات: ${users.length}`}
-          data={users}
+          subtitle={`المعروض: ${users.filter((u) => (roleFilter === 'all' || u.role === roleFilter) && (activeStatusFilter === 'all' || (activeStatusFilter === 'active' ? u.isActive : !u.isActive))).length} من ${users.length}`}
+          data={users.filter((u) => {
+            if (roleFilter !== 'all' && u.role !== roleFilter) return false;
+            if (activeStatusFilter === 'active' && !u.isActive) return false;
+            if (activeStatusFilter === 'inactive' && u.isActive) return false;
+            return true;
+          })}
           rowKey={(u) => u.id}
           onRowClick={(u) => handleOpenEdit(u)}
           searchPlaceholder="بحث بالاسم أو اسم الدخول أو الدور أو الهاتف..."
@@ -712,6 +719,36 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           pdfTitle="دليل المستخدمين والصلاحيات"
           defaultPageSize={25}
           emptyTitle="لا توجد حسابات مستخدمين"
+          toolbarFilters={
+            <div className="flex flex-wrap items-center gap-1.5">
+              <select
+                aria-label="تصفية حسب الدور"
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value)}
+                className="h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC]"
+              >
+                <option value="all">كل الأدوار ({users.length})</option>
+                <option value="admin">مالك / مدير عام</option>
+                <option value="manager">مدير</option>
+                <option value="accountant">محاسب</option>
+                <option value="sales">موظف مبيعات</option>
+                <option value="purchases">موظف مشتريات</option>
+                <option value="warehouse">أمين مستودع</option>
+                <option value="representative">مندوب مبيعات</option>
+                <option value="customer">عميل تطبيق</option>
+              </select>
+              <select
+                aria-label="تصفية حسب الحالة"
+                value={activeStatusFilter}
+                onChange={(e) => setActiveStatusFilter(e.target.value as any)}
+                className="h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC]"
+              >
+                <option value="all">كل الحالات</option>
+                <option value="active">نشط فقط</option>
+                <option value="inactive">معطل فقط</option>
+              </select>
+            </div>
+          }
           columns={[
             {
               key: 'fullName',

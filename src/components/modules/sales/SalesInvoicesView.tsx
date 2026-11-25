@@ -1147,45 +1147,45 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
 
       {/* View Detail Modal */}
       {activeInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 bg-slate-900/60 backdrop-blur-xs">
-          <div className="w-full max-w-3xl bg-white rounded-lg shadow-2xl border border-slate-200 p-2.5 text-right max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b pb-2 mb-2">
-              <h3 className="text-sm font-black text-slate-900">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 bg-slate-900/60 dark:bg-[#040B17]/75 backdrop-blur-xs">
+          <div className="w-full max-w-3xl bg-white dark:bg-[#0E1C36] rounded-lg shadow-2xl border border-slate-200 dark:border-[#21375C] p-2.5 text-right max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-[#21375C] pb-2 mb-2">
+              <h3 className="text-sm font-black text-slate-900 dark:text-[#F3F7FC]">
                 تفاصيل الفاتورة: {activeInvoice.invoiceNumber}
               </h3>
               <button
                 onClick={() => setActiveInvoice(null)}
-                className="text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
+                className="text-slate-500 dark:text-[#97AECE] hover:text-slate-700 dark:hover:text-[#F3F7FC] text-xs font-bold cursor-pointer"
               >
                 إغلاق ✕
               </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs mb-2 p-2 bg-slate-50 rounded-md border border-slate-200">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs mb-2 p-2 bg-slate-50 dark:bg-[#132544] rounded-md border border-slate-200 dark:border-[#21375C]">
               <div>
-                <p className="text-slate-500">العميل: <strong className="text-slate-800">{activeInvoice.customerName}</strong></p>
-                <p className="text-slate-500">المستودع: <strong className="text-slate-800">{activeInvoice.warehouseName}</strong></p>
-                <p className="text-slate-500">أنشئت بواسطة: <strong className="text-slate-800">{activeInvoice.createdBy}</strong></p>
+                <p className="text-slate-500 dark:text-[#97AECE]">العميل: <strong className="text-slate-800 dark:text-[#F3F7FC]">{activeInvoice.customerName}</strong></p>
+                <p className="text-slate-500 dark:text-[#97AECE]">المستودع: <strong className="text-slate-800 dark:text-[#F3F7FC]">{activeInvoice.warehouseName}</strong></p>
+                <p className="text-slate-500 dark:text-[#97AECE]">أنشئت بواسطة: <strong className="text-slate-800 dark:text-[#F3F7FC]">{activeInvoice.createdBy}</strong></p>
                 {activeInvoice.convertedFromQuoteNumber && (
-                  <p className="text-slate-500">محولة من عرض سعر: <strong className="font-mono text-blue-900">{activeInvoice.convertedFromQuoteNumber}</strong></p>
+                  <p className="text-slate-500 dark:text-[#97AECE]">محولة من عرض سعر: <strong className="font-mono text-blue-900 dark:text-[#85B8FF]">{activeInvoice.convertedFromQuoteNumber}</strong></p>
                 )}
               </div>
               <div>
-                <p className="text-slate-500">التاريخ: <strong className="font-mono text-slate-800">{activeInvoice.date}</strong></p>
-                <p className="text-slate-500">المندوب: <strong className="text-slate-800">{activeInvoice.representativeName || '-'}</strong></p>
+                <p className="text-slate-500 dark:text-[#97AECE]">التاريخ: <strong className="font-mono text-slate-800 dark:text-[#F3F7FC]">{activeInvoice.date}</strong></p>
+                <p className="text-slate-500 dark:text-[#97AECE]">المندوب: <strong className="text-slate-800 dark:text-[#F3F7FC]">{activeInvoice.representativeName || '-'}</strong></p>
                 {activeInvoice.reviewedBy && (
-                  <p className="text-emerald-700">مراجعة الإدارة: <strong>{activeInvoice.reviewedBy}</strong> {activeInvoice.reviewNotes ? `(${activeInvoice.reviewNotes})` : ''}</p>
+                  <p className="text-emerald-700 dark:text-emerald-300">مراجعة الإدارة: <strong>{activeInvoice.reviewedBy}</strong> {activeInvoice.reviewNotes ? `(${activeInvoice.reviewNotes})` : ''}</p>
                 )}
                 {activeInvoice.editedBy && (
-                  <p className="text-amber-700">آخر تعديل: <strong>{activeInvoice.editedBy}</strong></p>
+                  <p className="text-amber-700 dark:text-amber-300">آخر تعديل: <strong>{activeInvoice.editedBy}</strong></p>
                 )}
                 {activeInvoice.cancelledBy && (
-                  <p className="text-red-700">ألغيت بواسطة: <strong>{activeInvoice.cancelledBy}</strong> {activeInvoice.cancelReason ? `— ${activeInvoice.cancelReason}` : ''}</p>
+                  <p className="text-red-700 dark:text-rose-300">ألغيت بواسطة: <strong>{activeInvoice.cancelledBy}</strong> {activeInvoice.cancelReason ? `— ${activeInvoice.cancelReason}` : ''}</p>
                 )}
               </div>
             </div>
 
-            <div className="mb-3">
+            <div className="mb-2.5">
               <UnifiedDataTable<InvoiceItem>
                 title="أصناف الفاتورة"
                 data={activeInvoice.items}
@@ -1221,18 +1221,18 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                     key: 'total',
                     header: 'الإجمالي',
                     align: 'center',
-                    render: (it) => <span className="font-bold font-mono text-blue-900 tabular-nums">{it.total}</span>,
+                    render: (it) => <span className="font-bold font-mono text-blue-900 dark:text-[#85B8FF] tabular-nums">{it.total}</span>,
                   },
                 ]}
               />
             </div>
 
             {/* Payments History on this Invoice */}
-            <div className="mt-3 mb-3 p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
-              <div className="flex items-center justify-between mb-2">
+            <div className="mt-2 mb-2.5 p-2.5 bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C] rounded-lg">
+              <div className="flex items-center justify-between mb-1.5">
                 <div className="flex items-center gap-1.5">
-                  <History className="w-3.5 h-3.5 text-emerald-700" />
-                  <h4 className="text-xs font-black text-slate-800">
+                  <History className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
+                  <h4 className="text-xs font-black text-slate-800 dark:text-[#F3F7FC]">
                     سجل الدفعات المسددة على هذه الفاتورة ({activeInvoice.payments?.length || (activeInvoice.paidAmount > 0 ? 1 : 0)})
                   </h4>
                 </div>
@@ -1243,7 +1243,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                       setActiveInvoice(null);
                       handleOpenPaymentModal(inv);
                     }}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-[11px] font-bold transition-colors cursor-pointer"
+                    className="h-7 flex items-center gap-1 px-2.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-[11px] font-bold transition-colors cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>سداد دفعة جديدة</span>
@@ -1252,11 +1252,11 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
               </div>
 
               {(!activeInvoice.payments || activeInvoice.payments.length === 0) ? (
-                <div className="text-[11px] text-slate-500 py-1">
+                <div className="text-[11px] text-slate-500 dark:text-[#97AECE] py-1">
                   {activeInvoice.paidAmount > 0 ? (
-                    <p>تم سداد دفعة نقدية بقيمة <strong className="text-emerald-700 font-bold">{activeInvoice.paidAmount.toLocaleString()} {settings.currency}</strong> عند إنشاء الفاتورة.</p>
+                    <p>تم سداد دفعة نقدية بقيمة <strong className="text-emerald-700 dark:text-emerald-300 font-bold">{activeInvoice.paidAmount.toLocaleString()} {settings.currency}</strong> عند إنشاء الفاتورة.</p>
                   ) : (
-                    <p className="text-amber-700">فاتورة آجلة بالكامل، لم يتم سداد أي دفعات بعد.</p>
+                    <p className="text-amber-700 dark:text-amber-300">فاتورة آجلة بالكامل، لم يتم سداد أي دفعات بعد.</p>
                   )}
                 </div>
               ) : (

@@ -791,17 +791,17 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {/* Top Header Card */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white px-3.5 py-2.5 rounded-lg border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-white dark:bg-[#0E1C36] px-2.5 py-2 rounded-lg border border-slate-200 dark:border-[#21375C]">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-base font-black text-slate-900 tracking-tight">إدارة المندوبين والتحويلات والعهد</h2>
-            <span className="bg-blue-50 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded border border-blue-200">
+            <h2 className="text-sm font-black text-slate-900 dark:text-[#F3F7FC] tracking-tight">إدارة المندوبين والتحويلات والعهد</h2>
+            <span className="bg-blue-50 dark:bg-[#16366B] text-blue-800 dark:text-[#85B8FF] text-[10px] font-bold px-2 py-0.5 rounded border border-blue-200 dark:border-[#2A436E]">
               ربط الفواتير والتحصيل
             </span>
           </div>
-          <p className="text-[11px] text-slate-500 mt-0.5">
+          <p className="text-[11px] text-slate-500 dark:text-[#97AECE] mt-0.5">
             متابعة عهدة البضاعة في سيارات المناديب، التحويلات النقدية بالنصف، وطلبات تحويل الأصناف المرتبطة بالفواتير
           </p>
         </div>
@@ -852,7 +852,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
 
       {statusBanner && (
         <div
-          className={`px-3 py-2 rounded-lg border text-xs font-bold flex items-center justify-between gap-2 ${
+          className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold flex items-center justify-between gap-2 ${
             statusBanner.type === 'success'
               ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
               : 'bg-red-50 border-red-200 text-red-900'
@@ -866,11 +866,13 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
       )}
 
       {/* Tabs Switcher */}
-      <div className="flex items-center gap-1 p-1 bg-slate-200/80 rounded-lg overflow-x-auto text-xs font-bold no-print">
+      <div className="flex items-center gap-1 p-1 bg-slate-200/80 dark:bg-[#132544] border border-transparent dark:border-[#21375C] rounded-lg overflow-x-auto text-xs font-bold no-print">
         <button
           onClick={() => setActiveTab('cash-transfers')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'cash-transfers' ? 'bg-white text-blue-950 shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'cash-transfers'
+              ? 'bg-white dark:bg-[#1659C8] text-blue-950 dark:text-white shadow-xs font-black'
+              : 'text-slate-600 dark:text-[#A9BCD9] hover:text-slate-900 dark:hover:text-[#F3F7FC]'
           }`}
         >
           <CashTransferIcon className="w-4 h-4 shrink-0" />

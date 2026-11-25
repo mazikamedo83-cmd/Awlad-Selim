@@ -1193,59 +1193,59 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 </div>
               </div>
             ) : (
-              <div className="bg-white p-2.5 rounded-lg border border-blue-200 space-y-2.5">
+              <div className="bg-white dark:bg-[#0E1C36] p-2.5 rounded-lg border border-blue-200 dark:border-[#2A436E] space-y-2">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <div className="sm:col-span-2">
-                    <label className="block font-bold text-slate-700 mb-1">اسم الصنف الجديد: *</label>
+                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">اسم الصنف الجديد: *</label>
                     <input
                       type="text"
                       value={newProdName}
                       onChange={(e) => setNewProdName(e.target.value)}
                       placeholder="مثال: سكر الضحى 1 كجم"
-                      className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold focus:border-blue-600 outline-hidden"
+                      className="w-full h-8 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] rounded-md px-2.5 font-bold focus:border-blue-600 outline-hidden"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">الباركود (اختياري):</label>
+                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">الباركود (اختياري):</label>
                     <input
                       type="text"
                       value={newProdBarcode}
                       onChange={(e) => setNewProdBarcode(e.target.value)}
                       placeholder="622..."
-                      className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono focus:border-blue-600 outline-hidden"
+                      className="w-full h-8 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] rounded-md px-2.5 font-mono focus:border-blue-600 outline-hidden"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">الكود (اختياري):</label>
+                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">الكود (اختياري):</label>
                     <input
                       type="text"
                       value={newProdCode}
                       onChange={(e) => setNewProdCode(e.target.value)}
                       placeholder="PRD-..."
-                      className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono focus:border-blue-600 outline-hidden"
+                      className="w-full h-8 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] rounded-md px-2.5 font-mono focus:border-blue-600 outline-hidden"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">التصنيف:</label>
+                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">التصنيف:</label>
                     <input
                       type="text"
                       value={newProdCategory}
                       onChange={(e) => setNewProdCategory(e.target.value)}
-                      className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-semibold focus:border-blue-600 outline-hidden"
+                      className="w-full h-8 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] rounded-md px-2.5 font-semibold focus:border-blue-600 outline-hidden"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">الوحدة الأساسية:</label>
+                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">الوحدة الأساسية:</label>
                     <input
                       type="text"
                       value={newProdBaseUnit}
                       onChange={(e) => setNewProdBaseUnit(e.target.value)}
                       placeholder="قطعة / كرتونة / كجم"
-                      className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-semibold focus:border-blue-600 outline-hidden"
+                      className="w-full h-8 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] rounded-md px-2.5 font-semibold focus:border-blue-600 outline-hidden"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">الكمية المشتراة: *</label>
+                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">الكمية المشتراة: *</label>
                     <QuantityInput
                       allowDecimals
                       min={0.001}
@@ -1253,11 +1253,11 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       placeholder="الكمية"
                       onChange={setNewProdQty}
                       ariaLabel="كمية الصنف الجديد"
-                      inputClassName="w-full bg-white border border-slate-300 rounded-lg px-2 py-1.5 text-center font-mono font-bold outline-hidden focus:border-blue-700"
+                      inputClassName="w-full h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] text-slate-900 dark:text-[#EEF4FC] rounded-md px-2 text-center font-mono font-bold outline-hidden focus:border-blue-700"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">سعر الشراء: *</label>
+                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">سعر الشراء: *</label>
                     <input
                       type="number"
                       step="0.5"
@@ -1268,11 +1268,11 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                         const raw = e.target.value;
                         setNewProdPurchasePrice(raw === '' ? '' : Number(raw));
                       }}
-                      className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-center font-mono font-bold"
+                      className="w-full h-8 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] rounded-md px-2 text-center font-mono font-bold"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">سعر البيع المقترح:</label>
+                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">سعر البيع المقترح:</label>
                     <input
                       type="number"
                       step="0.5"
@@ -1283,7 +1283,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                         const raw = e.target.value;
                         setNewProdSellingPrice(raw === '' ? '' : Number(raw));
                       }}
-                      className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-center font-mono font-bold"
+                      className="w-full h-8 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] rounded-md px-2 text-center font-mono font-bold"
                     />
                   </div>
                 </div>

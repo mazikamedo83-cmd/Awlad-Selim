@@ -120,6 +120,19 @@ export function isAuthSecurityRejectionError(err: any): boolean {
   );
 }
 
+export function clearDashboardPrivacyMasks(): void {
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem('awlad_selim_dashboard_masked_groups_v1');
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('awlad:privacy-reset'));
+    }
+  } catch {
+    // ignore
+  }
+}
+
 export function createAuthExpiredCallback(
   actions: Pick<
     AuthSessionStateActions,
@@ -143,6 +156,7 @@ export function createAuthExpiredCallback(
   }
 ) {
   return (message?: string) => {
+    clearDashboardPrivacyMasks();
     logDiagnostic({
       category: 'auth',
       severity: 'warning',
@@ -874,6 +888,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     clearReadCache(userId);
     await refreshSavedAccounts();
     if (isRemovingActive) {
+      clearDashboardPrivacyMasks();
       await saveStoredTokensAsync(null).catch(() => saveStoredTokens(null));
       setRuntimeUnlockedAccountId(null);
       setCurrentUser(null);
@@ -1164,6 +1179,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } else {
       clearReadCache();
     }
+    clearDashboardPrivacyMasks();
     setRuntimeUnlockedAccountId(null);
     await setActiveAccountId(null).catch(() => {});
     await saveStoredTokensAsync(null).catch(() => saveStoredTokens(null));
@@ -1185,6 +1201,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const handleServerAuthRevoked = useCallback(async (reason?: string) => {
+    clearDashboardPrivacyMasks();
     logDiagnostic({
       category: 'auth',
       severity: 'error',

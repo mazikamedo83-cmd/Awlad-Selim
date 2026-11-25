@@ -650,10 +650,10 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
           </div>
 
           {selectedProduct && selectedCustomer && (
-            <div className="bg-white rounded-md p-2 border border-blue-200 text-xs flex flex-wrap items-center justify-between gap-1.5">
+            <div className="bg-white dark:bg-[#132544] rounded-md p-2 border border-blue-200 dark:border-[#2A436E] text-xs flex flex-wrap items-center justify-between gap-1.5">
               <div className="flex items-center gap-1.5">
-                <History className="w-3.5 h-3.5 text-blue-700 shrink-0" />
-                <span className="font-bold text-slate-800">
+                <History className="w-3.5 h-3.5 text-blue-700 dark:text-[#85B8FF] shrink-0" />
+                <span className="font-bold text-slate-800 dark:text-[#F3F7FC]">
                   آخر 3 أسعار بيع فعلية لهذا العميل ({selectedCustomer.name}) للصنف ({selectedProduct.name}) — من الأقدم للأحدث:
                 </span>
               </div>
@@ -681,13 +681,13 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                         type="button"
                         onClick={() => setInputUnitPrice(normalizedPerSelectedUnit ?? priceVal)}
                         title="انقر لتطبيق هذا السعر يدوياً (مع ضبط الوحدة الحالية عند الحاجة)"
-                        className="px-2 py-1 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-300 text-right transition-colors cursor-pointer"
+                        className="px-2 py-1 rounded-md bg-blue-50 dark:bg-[#16366B] hover:bg-blue-100 dark:hover:bg-[#1B4282] text-blue-900 dark:text-[#EEF4FC] border border-blue-300 dark:border-[#3B82F6]/40 text-right transition-colors cursor-pointer"
                       >
                         <span className="font-mono font-bold text-xs block">
                           {priceVal} {settings.currency}
                           {entryUnit ? ` / ${entryUnit}` : ''}
                         </span>
-                        <span className="text-[10px] text-slate-600 block">
+                        <span className="text-[10px] text-slate-600 dark:text-[#A9BCD9] block">
                           {orderTag}
                           {priceDate ? ` · ${priceDate}` : ''}
                           {typeof entryQty === 'number' && entryQty > 0 ? ` · كمية: ${entryQty}` : ''}
@@ -697,7 +697,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                     );
                   })
                 ) : (
-                  <span className="text-slate-500 italic text-[11px]">
+                  <span className="text-slate-500 dark:text-[#97AECE] italic text-[11px]">
                     لا توجد أسعار بيع سابقة لهذا الصنف مع هذا العميل
                   </span>
                 )}
@@ -706,13 +706,13 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
           )}
 
           {selectedProduct && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 pt-1.5 border-t border-blue-100 text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 pt-1.5 border-t border-blue-100 dark:border-[#21375C] text-xs">
               <div>
-                <label className="block font-bold text-slate-700 mb-0.5">وحدة البيع:</label>
+                <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">وحدة البيع:</label>
                 <select
                   value={selectedUnitName}
                   onChange={(e) => handleUnitChange(e.target.value)}
-                  className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 text-xs font-bold outline-hidden"
+                  className="w-full h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] text-slate-800 dark:text-[#EEF4FC] rounded-md px-2 py-1 text-xs font-bold outline-hidden"
                 >
                   {selectedProduct.units.map((u) => (
                     <option key={u.id} value={u.name}>

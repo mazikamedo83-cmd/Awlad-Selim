@@ -2403,13 +2403,13 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
             render: (cust) => {
               const cls = customerClassificationMap.get(cust.id);
               return (
-                <div className="space-y-0.5 max-w-[230px]">
-                  <div className="font-black text-slate-900 truncate">{cust.shopName || cust.name}</div>
+                <div className="space-y-0.5 min-w-[175px]">
+                  <div className="font-black text-slate-900 dark:text-[#F3F7FC] whitespace-normal leading-snug">{cust.shopName || cust.name}</div>
                   {cust.shopName && cust.shopName !== cust.name && (
-                    <div className="text-[10px] text-slate-500 truncate">{cust.name}</div>
+                    <div className="text-[10px] text-slate-500 dark:text-[#97AECE] whitespace-normal">{cust.name}</div>
                   )}
                   {(cust.governorate || cust.area) && (
-                    <div className="text-[10px] text-slate-500 truncate">
+                    <div className="text-[10px] text-slate-500 dark:text-[#97AECE] whitespace-normal">
                       {[cust.governorate, cust.area].filter(Boolean).join(' · ')}
                     </div>
                   )}

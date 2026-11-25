@@ -18,6 +18,8 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
 
   const [activeTab, setActiveTab] = useState<'cheques' | 'installments'>(initialTab || 'cheques');
   const [searchTerm, setSearchTerm] = useState('');
+  const [chequeTypeFilter, setChequeTypeFilter] = useState<'all' | 'incoming' | 'outgoing'>('all');
+  const [chequeStatusFilter, setChequeStatusFilter] = useState<'all' | 'pending' | 'collected' | 'rejected'>('all');
   const [statusBanner, setStatusBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Add Cheque Modal
@@ -161,11 +163,17 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
     }
   };
 
-  const filteredCheques = cheques.filter(c => 
-    c.chequeNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.bankName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.partyName.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredCheques = cheques.filter((c) => {
+    const q = searchTerm.toLowerCase();
+    const matchSearch =
+      !q ||
+      c.chequeNumber.toLowerCase().includes(q) ||
+      c.bankName.toLowerCase().includes(q) ||
+      c.partyName.toLowerCase().includes(q);
+    const matchType = chequeTypeFilter === 'all' ? true : c.type === chequeTypeFilter;
+    const matchStatus = chequeStatusFilter === 'all' ? true : c.status === chequeStatusFilter;
+    return matchSearch && matchType && matchStatus;
+  });
 
   return (
     <div className="space-y-2">
@@ -237,14 +245,41 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
       {/* Cheques Tab */}
       {activeTab === 'cheques' && (
         <UnifiedDataTable<Cheque>
-          title="سجل الشيكات البنكية"
-          data={cheques}
+          title={`سجل الشيكات البنكية (${filteredCheques.length})`}
+          data={filteredCheques}
           rowKey={(chq) => chq.id}
           onRowClick={(chq) => setPreviewCheque(chq)}
           compact
+          searchValue={searchTerm}
+          onSearchChange={setSearchTerm}
           searchPlaceholder="بحث برقم الشيك أو البنك أو الطرف..."
           exportFilename="سجل-الشيكات-البنكية"
           pdfTitle="سجل الشيكات البنكية"
+          toolbarFilters={
+            <div className="flex flex-wrap items-center gap-1.5">
+              <select
+                aria-label="نوع الشيك"
+                value={chequeTypeFilter}
+                onChange={(e) => setChequeTypeFilter(e.target.value as any)}
+                className="h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC]"
+              >
+                <option value="all">كل الأنواع</option>
+                <option value="incoming">شيك وارد (لنا)</option>
+                <option value="outgoing">شيك صادر (علينا)</option>
+              </select>
+              <select
+                aria-label="حالة الشيك"
+                value={chequeStatusFilter}
+                onChange={(e) => setChequeStatusFilter(e.target.value as any)}
+                className="h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC]"
+              >
+                <option value="all">كل الحالات</option>
+                <option value="pending">قيد التحصيل</option>
+                <option value="collected">محصل / مدفوع</option>
+                <option value="rejected">مرفوض / مرتد</option>
+              </select>
+            </div>
+          }
           columns={[
             {
               key: 'chequeNumber',

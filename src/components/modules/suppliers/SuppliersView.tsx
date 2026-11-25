@@ -27,6 +27,8 @@ export const SuppliersView: React.FC = () => {
   const { registerHandler, consumePendingAction } = useShortcuts();
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [balanceFilter, setBalanceFilter] = useState<'all' | 'payable' | 'advance' | 'settled'>('all');
+  const [sortBy, setSortBy] = useState<'default' | 'balance_desc' | 'balance_asc' | 'name'>('default');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [supplierFormError, setSupplierFormError] = useState<string | null>(null);
@@ -82,14 +84,44 @@ export const SuppliersView: React.FC = () => {
     }
   }, [cashboxes, paymentCashboxId]);
 
+  const supplierSummary = useMemo(() => {
+    let totalPayable = 0;
+    let totalAdvance = 0;
+    suppliers.forEach((s) => {
+      const bal = Number(s.currentBalance || 0);
+      if (bal > 0) totalPayable += bal;
+      else if (bal < 0) totalAdvance += Math.abs(bal);
+    });
+    return { count: suppliers.length, totalPayable, totalAdvance };
+  }, [suppliers]);
+
   const filteredSuppliers = useMemo(() => {
-    return suppliers.filter(s => 
-      s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.phone.includes(searchTerm) ||
-      s.address.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [suppliers, searchTerm]);
+    const q = searchTerm.toLowerCase();
+    const list = suppliers.filter((s) => {
+      const matchSearch =
+        !q ||
+        s.name.toLowerCase().includes(q) ||
+        s.code.toLowerCase().includes(q) ||
+        (s.phone || '').includes(searchTerm) ||
+        (s.address || '').toLowerCase().includes(q);
+      if (!matchSearch) return false;
+      const bal = Number(s.currentBalance || 0);
+      if (balanceFilter === 'payable') return bal > 0.005;
+      if (balanceFilter === 'advance') return bal < -0.005;
+      if (balanceFilter === 'settled') return Math.abs(bal) <= 0.005;
+      return true;
+    });
+    if (sortBy === 'balance_desc') {
+      return [...list].sort((a, b) => Number(b.currentBalance || 0) - Number(a.currentBalance || 0));
+    }
+    if (sortBy === 'balance_asc') {
+      return [...list].sort((a, b) => Number(a.currentBalance || 0) - Number(b.currentBalance || 0));
+    }
+    if (sortBy === 'name') {
+      return [...list].sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+    }
+    return list;
+  }, [suppliers, searchTerm, balanceFilter, sortBy]);
 
   const handleOpenAdd = () => {
     const nextCode = `SUPP-${(suppliers.length + 2001)}`;
@@ -421,6 +453,28 @@ export const SuppliersView: React.FC = () => {
         </div>
       )}
 
+      {/* Compact Supplier Summary Ledger Strip */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-px bg-slate-200 dark:bg-[#21375C] border border-slate-200 dark:border-[#21375C] rounded-lg overflow-hidden text-xs">
+        <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#A9BCD9]">إجمالي الموردين المسجلين</div>
+          <div className="text-sm font-black font-mono tabular-nums text-[var(--awlad-navy-950)] dark:text-[#F3F7FC]">
+            {supplierSummary.count} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">مورد</span>
+          </div>
+        </div>
+        <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#A9BCD9]">مستحقات للموردين (علينا)</div>
+          <div className="text-sm font-black font-mono tabular-nums text-rose-700 dark:text-rose-400">
+            {supplierSummary.totalPayable.toLocaleString()} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">{settings.currency}</span>
+          </div>
+        </div>
+        <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#A9BCD9]">دفعات مقدمة لدى الموردين (لنا)</div>
+          <div className="text-sm font-black font-mono tabular-nums text-emerald-700 dark:text-emerald-400">
+            {supplierSummary.totalAdvance.toLocaleString()} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">{settings.currency}</span>
+          </div>
+        </div>
+      </div>
+
       {/* Unified Suppliers Table */}
       <UnifiedDataTable<Supplier>
         title={`سجل الموردين والمطاحن (${filteredSuppliers.length})`}
@@ -436,6 +490,32 @@ export const SuppliersView: React.FC = () => {
         pdfTitle="دليل الموردين والمطاحن"
         emptyTitle="لا يوجد موردون مسجلون حالياً"
         emptySubtitle={'انقر على زر "إضافة مورد جديد" لإضافة أول شركة توريد أو مورد للمنظومة.'}
+        toolbarFilters={
+          <div className="flex flex-wrap items-center gap-1.5">
+            <select
+              aria-label="تصفية رصيد المورد"
+              value={balanceFilter}
+              onChange={(e) => setBalanceFilter(e.target.value as any)}
+              className="h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC] outline-hidden focus:border-[var(--awlad-royal-700)]"
+            >
+              <option value="all">كل الأرصدة ({suppliers.length})</option>
+              <option value="payable">مستحق للمورد (علينا)</option>
+              <option value="advance">رصيد مقدم (لنا)</option>
+              <option value="settled">حساب متوازن</option>
+            </select>
+            <select
+              aria-label="ترتيب الموردين"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as any)}
+              className="h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC] outline-hidden focus:border-[var(--awlad-royal-700)]"
+            >
+              <option value="default">الترتيب الافتراضي</option>
+              <option value="balance_desc">الأعلى مديونية</option>
+              <option value="balance_asc">الأعلى رصيد مقدم</option>
+              <option value="name">ترتيب أبجدي</option>
+            </select>
+          </div>
+        }
         columns={[
           {
             key: 'code',

@@ -1,9 +1,52 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { LanguagePreference, ThemePreference } from '../types';
 import { getPref, setPref, syncNativeStatusBarStyle } from '../services/native';
 
 const THEME_PREF_KEY = 'awlad_selim_theme_pref_v1';
 const LANGUAGE_PREF_KEY = 'awlad_selim_language_v1';
+export const DASHBOARD_MASKED_GROUPS_KEY = 'awlad_selim_dashboard_masked_groups_v1';
+
+export type DashboardBalanceGroup =
+  | 'sales'
+  | 'purchases'
+  | 'cashboxes'
+  | 'inventory'
+  | 'customerDebts'
+  | 'supplierDebts'
+  | 'expenses'
+  | 'income'
+  | 'chart'
+  | 'cashboxTable'
+  | 'recentInvoices';
+
+export const ALL_DASHBOARD_BALANCE_GROUPS: DashboardBalanceGroup[] = [
+  'sales',
+  'purchases',
+  'cashboxes',
+  'inventory',
+  'customerDebts',
+  'supplierDebts',
+  'expenses',
+  'income',
+  'chart',
+  'cashboxTable',
+  'recentInvoices',
+];
+
+function readMaskedGroupsFromSession(): DashboardBalanceGroup[] {
+  try {
+    if (typeof sessionStorage === 'undefined') return [];
+    const raw = sessionStorage.getItem(DASHBOARD_MASKED_GROUPS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((g): g is DashboardBalanceGroup =>
+      ALL_DASHBOARD_BALANCE_GROUPS.includes(g as DashboardBalanceGroup)
+    );
+  } catch {
+    return [];
+  }
+}
 
 interface PreferencesContextType {
   themePreference: ThemePreference;
@@ -13,6 +56,12 @@ interface PreferencesContextType {
   dir: 'rtl' | 'ltr';
   setLanguage: (lang: LanguagePreference) => void;
   t: (arText: string, enText: string) => string;
+  maskedDashboardGroups: DashboardBalanceGroup[];
+  isDashboardGroupHidden: (group: DashboardBalanceGroup) => boolean;
+  toggleDashboardGroupVisibility: (group: DashboardBalanceGroup) => void;
+  areAllDashboardBalancesHidden: boolean;
+  toggleAllDashboardBalances: () => void;
+  resetDashboardBalanceMasks: () => void;
 }
 
 const PreferencesContext = createContext<PreferencesContextType | undefined>(undefined);
@@ -42,6 +91,10 @@ export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
     return 'ar';
   });
+
+  const [maskedDashboardGroups, setMaskedDashboardGroups] = useState<DashboardBalanceGroup[]>(() =>
+    readMaskedGroupsFromSession()
+  );
 
   const [systemPrefersDark, setSystemPrefersDark] = useState<boolean>(() => getSystemDarkMatch());
 
@@ -73,6 +126,33 @@ export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ c
     return () => mq.removeEventListener('change', handler);
   }, []);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handlePrivacyReset = () => {
+      setMaskedDashboardGroups([]);
+      try {
+        sessionStorage.removeItem(DASHBOARD_MASKED_GROUPS_KEY);
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener('awlad:privacy-reset', handlePrivacyReset);
+    return () => window.removeEventListener('awlad:privacy-reset', handlePrivacyReset);
+  }, []);
+
+  useEffect(() => {
+    try {
+      if (typeof sessionStorage === 'undefined') return;
+      if (maskedDashboardGroups.length === 0) {
+        sessionStorage.removeItem(DASHBOARD_MASKED_GROUPS_KEY);
+      } else {
+        sessionStorage.setItem(DASHBOARD_MASKED_GROUPS_KEY, JSON.stringify(maskedDashboardGroups));
+      }
+    } catch {
+      // ignore
+    }
+  }, [maskedDashboardGroups]);
+
   const resolvedTheme: 'light' | 'dark' =
     themePreference === 'system' ? (systemPrefersDark ? 'dark' : 'light') : themePreference;
   const dir: 'rtl' | 'ltr' = language === 'ar' ? 'rtl' : 'ltr';
@@ -102,6 +182,41 @@ export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setPref(LANGUAGE_PREF_KEY, lang).catch(() => {});
   };
 
+  const isDashboardGroupHidden = useCallback(
+    (group: DashboardBalanceGroup) => maskedDashboardGroups.includes(group),
+    [maskedDashboardGroups]
+  );
+
+  const toggleDashboardGroupVisibility = useCallback((group: DashboardBalanceGroup) => {
+    setMaskedDashboardGroups((prev) =>
+      prev.includes(group) ? prev.filter((g) => g !== group) : [...prev, group]
+    );
+  }, []);
+
+  const areAllDashboardBalancesHidden = useMemo(
+    () => ALL_DASHBOARD_BALANCE_GROUPS.every((g) => maskedDashboardGroups.includes(g)),
+    [maskedDashboardGroups]
+  );
+
+  const toggleAllDashboardBalances = useCallback(() => {
+    setMaskedDashboardGroups((prev) =>
+      ALL_DASHBOARD_BALANCE_GROUPS.every((g) => prev.includes(g))
+        ? []
+        : [...ALL_DASHBOARD_BALANCE_GROUPS]
+    );
+  }, []);
+
+  const resetDashboardBalanceMasks = useCallback(() => {
+    setMaskedDashboardGroups([]);
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.removeItem(DASHBOARD_MASKED_GROUPS_KEY);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const value = useMemo<PreferencesContextType>(
     () => ({
       themePreference,
@@ -111,8 +226,25 @@ export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ c
       dir,
       setLanguage,
       t: (arText: string, enText: string) => (language === 'en' ? enText : arText),
+      maskedDashboardGroups,
+      isDashboardGroupHidden,
+      toggleDashboardGroupVisibility,
+      areAllDashboardBalancesHidden,
+      toggleAllDashboardBalances,
+      resetDashboardBalanceMasks,
     }),
-    [themePreference, resolvedTheme, language, dir]
+    [
+      themePreference,
+      resolvedTheme,
+      language,
+      dir,
+      maskedDashboardGroups,
+      isDashboardGroupHidden,
+      toggleDashboardGroupVisibility,
+      areAllDashboardBalancesHidden,
+      toggleAllDashboardBalances,
+      resetDashboardBalanceMasks,
+    ]
   );
 
   return <PreferencesContext.Provider value={value}>{children}</PreferencesContext.Provider>;
@@ -129,6 +261,12 @@ export function usePreferences(): PreferencesContextType {
       dir: 'rtl',
       setLanguage: () => {},
       t: (arText: string) => arText,
+      maskedDashboardGroups: [],
+      isDashboardGroupHidden: () => false,
+      toggleDashboardGroupVisibility: () => {},
+      areAllDashboardBalancesHidden: false,
+      toggleAllDashboardBalances: () => {},
+      resetDashboardBalanceMasks: () => {},
     };
   }
   return ctx;

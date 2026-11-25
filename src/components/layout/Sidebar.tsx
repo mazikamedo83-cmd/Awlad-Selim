@@ -368,11 +368,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   }, [currentPage, navSections]);
 
-  // Escape key closes the sliding drawer
+  // Escape key closes the mobile/tablet sliding drawer when no modal is open
   useEffect(() => {
     if (!isOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key !== 'Escape') return;
+      if (typeof window !== 'undefined' && window.innerWidth >= 1024) return;
+      if (document.querySelector('.fixed.inset-0.z-50')) return;
+      onClose();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -518,12 +521,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
 
         {/* Expanded Sections Container */}
-        <div className={`flex-1 overflow-y-auto overscroll-contain p-1.5 space-y-1 ${isCollapsed ? 'lg:hidden' : ''}`}>
+        <div className={`flex-1 overflow-y-auto overscroll-contain p-1 space-y-1 ${isCollapsed ? 'lg:hidden' : ''}`}>
           {/* Quick Link: الرئيسية */}
           <button
             type="button"
             onClick={() => handleItemClick('dashboard')}
-            className={`w-full min-h-[32px] flex items-center justify-between px-2 py-1 rounded-md font-bold text-xs border transition-all cursor-pointer ${
+            className={`w-full min-h-[30px] flex items-center justify-between px-2 py-1 rounded-md font-bold text-xs border transition-all cursor-pointer ${
               currentPage === 'dashboard'
                 ? 'bg-[var(--awlad-royal-700)] dark:bg-[#1659C8] text-white border-[var(--awlad-royal-700)] dark:border-[#60A5FA]/40 font-black'
                 : 'bg-white dark:bg-[#132544] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] border-slate-200 dark:border-[#21375C] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461]'
@@ -544,7 +547,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           {/* Quick Cash Operations (Direct Execution, Permission-Gated) */}
           {checkPerm('canManageCashboxes') && onOpenCashOp && (
-            <div className="rounded-lg bg-[var(--awlad-blue-tint-50)]/70 dark:bg-[#132544] border border-[var(--awlad-blue-tint-100)] dark:border-[#21375C] p-1.5 space-y-1">
+            <div className="rounded-lg bg-[var(--awlad-blue-tint-50)]/70 dark:bg-[#132544] border border-[var(--awlad-blue-tint-100)] dark:border-[#21375C] p-1 space-y-1">
               <p className="text-[11px] font-black text-[var(--awlad-navy-900)] dark:text-[#F3F7FC] flex items-center gap-1">
                 <Wallet className="w-3.5 h-3.5 text-[var(--awlad-royal-700)] dark:text-[#60A5FA]" />
                 <span>العمليات النقدية السريعة</span>
@@ -556,7 +559,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onOpenCashOp('cash_deposit');
                     if (typeof window !== 'undefined' && window.innerWidth < 1024) onClose();
                   }}
-                  className="h-7 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#2A436E] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] hover:border-[var(--awlad-royal-700)] dark:hover:border-[#3B82F6] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
+                  className="h-6.5 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#2A436E] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] hover:border-[var(--awlad-royal-700)] dark:hover:border-[#3B82F6] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
                 >
                   <ArrowDownCircle className="w-3 h-3 text-emerald-700 dark:text-emerald-400 shrink-0" />
                   <span>إيداع نقدي</span>
@@ -567,7 +570,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onOpenCashOp('cash_withdrawal');
                     if (typeof window !== 'undefined' && window.innerWidth < 1024) onClose();
                   }}
-                  className="h-7 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#2A436E] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] hover:border-[var(--awlad-royal-700)] dark:hover:border-[#3B82F6] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
+                  className="h-6.5 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#2A436E] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] hover:border-[var(--awlad-royal-700)] dark:hover:border-[#3B82F6] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
                 >
                   <ArrowUpCircle className="w-3 h-3 text-red-700 dark:text-red-400 shrink-0" />
                   <span>سحب نقدي</span>
@@ -578,7 +581,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onOpenCashOp('expense');
                     if (typeof window !== 'undefined' && window.innerWidth < 1024) onClose();
                   }}
-                  className="h-7 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#2A436E] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] hover:border-[var(--awlad-royal-700)] dark:hover:border-[#3B82F6] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
+                  className="h-6.5 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#2A436E] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] hover:border-[var(--awlad-royal-700)] dark:hover:border-[#3B82F6] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
                 >
                   <TrendingDown className="w-3 h-3 text-amber-700 dark:text-amber-400 shrink-0" />
                   <span>مصروف</span>
@@ -589,7 +592,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onOpenCashOp('profit_deposit');
                     if (typeof window !== 'undefined' && window.innerWidth < 1024) onClose();
                   }}
-                  className="h-7 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#2A436E] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] hover:border-[var(--awlad-royal-700)] dark:hover:border-[#3B82F6] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
+                  className="h-6.5 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#2A436E] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] hover:border-[var(--awlad-royal-700)] dark:hover:border-[#3B82F6] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
                 >
                   <TrendingUp className="w-3 h-3 text-[var(--awlad-royal-700)] dark:text-[#60A5FA] shrink-0" />
                   <span>إيداع ربحي</span>
@@ -600,7 +603,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onOpenCashOp('cashbox_transfer');
                     if (typeof window !== 'undefined' && window.innerWidth < 1024) onClose();
                   }}
-                  className="col-span-2 h-7 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E] text-[var(--awlad-royal-700)] dark:text-[#85B8FF] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
+                  className="col-span-2 h-6.5 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E] text-[var(--awlad-royal-700)] dark:text-[#85B8FF] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
                 >
                   <ArrowLeftRight className="w-3 h-3 shrink-0" />
                   <span>ترحيل فوري بين الخزائن</span>
@@ -627,7 +630,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   type="button"
                   onClick={() => toggleSection(section.id)}
                   aria-expanded={isExpanded}
-                  className={`w-full min-h-[30px] flex items-center justify-between px-2 py-1 text-xs font-black transition-colors cursor-pointer ${
+                  className={`w-full min-h-[28px] flex items-center justify-between px-2 py-0.5 text-xs font-black transition-colors cursor-pointer ${
                     section.headerGradient
                   } ${isExpanded ? 'border-b border-slate-200 dark:border-[#21375C]' : ''}`}
                 >

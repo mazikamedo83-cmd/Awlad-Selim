@@ -256,12 +256,12 @@ export function UnifiedDataTable<T>({
   return (
     <div className="bg-white dark:bg-[#0E1C36] rounded-lg border border-slate-200 dark:border-[#21375C] overflow-hidden flex flex-col">
       {(title || searchable || toolbarFilters || headerActions || exportFilename || pdfTitle) && (
-        <div className="p-2 border-b border-slate-200 dark:border-[#21375C] bg-[var(--awlad-blue-tint-50)]/45 dark:bg-[#132544] space-y-1.5">
+        <div className={`${compact ? 'p-1.5 sm:p-2' : 'p-2'} border-b border-slate-200 dark:border-[#21375C] bg-[var(--awlad-blue-tint-50)]/45 dark:bg-[#132544] space-y-1.5`}>
           <div className="flex flex-wrap items-center justify-between gap-1.5">
             {(title || subtitle) && (
               <div className="min-w-0">
-                {title && <h3 className="text-xs sm:text-sm font-black text-[var(--awlad-navy-900)] dark:text-[#F3F7FC] truncate">{title}</h3>}
-                {subtitle && <p className="text-[11px] text-slate-500 dark:text-[#A9BCD9] truncate">{subtitle}</p>}
+                {title && <h3 className="text-xs sm:text-sm font-black text-[var(--awlad-navy-900)] dark:text-[#F3F7FC]">{title}</h3>}
+                {subtitle && <p className="text-[11px] text-slate-500 dark:text-[#A9BCD9]">{subtitle}</p>}
               </div>
             )}
             <div className="flex flex-wrap items-center gap-1.5 mr-auto">
@@ -292,7 +292,7 @@ export function UnifiedDataTable<T>({
           {(searchable || toolbarFilters) && (
             <div className="flex flex-wrap items-center gap-1.5">
               {searchable && (
-                <div className="relative flex-1 min-w-[160px]">
+                <div className="relative flex-1 min-w-[180px]">
                   <Search className="w-3.5 h-3.5 text-slate-500 dark:text-[#8CA3C7] absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="text"
@@ -304,7 +304,7 @@ export function UnifiedDataTable<T>({
                 </div>
               )}
               {toolbarFilters && (
-                <div className="flex flex-nowrap overflow-x-auto no-scrollbar sm:flex-wrap items-center gap-1.5 w-full sm:w-auto [&>*]:shrink-0">
+                <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto [&>*]:shrink-0">
                   {toolbarFilters}
                 </div>
               )}

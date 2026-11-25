@@ -35,6 +35,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [warehouseFilter, setWarehouseFilter] = useState('all');
+  const [stockHealthFilter, setStockHealthFilter] = useState<'all' | 'low' | 'ok' | 'inactive'>('all');
   const [statusBanner, setStatusBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [productModalError, setProductModalError] = useState<string | null>(null);
   const [transferModalError, setTransferModalError] = useState<string | null>(null);
@@ -157,18 +158,47 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
   }, [products]);
 
   const filteredProducts = useMemo(() => {
-    return products.filter(p => {
-      const matchSearch = 
-        p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.barcode.includes(searchTerm) ||
-        p.category.toLowerCase().includes(searchTerm.toLowerCase());
+    const q = searchTerm.toLowerCase();
+    return products.filter((p) => {
+      const matchSearch =
+        !q ||
+        p.name.toLowerCase().includes(q) ||
+        p.code.toLowerCase().includes(q) ||
+        (p.barcode || '').includes(searchTerm) ||
+        p.category.toLowerCase().includes(q);
 
       const matchCat = categoryFilter === 'all' ? true : p.category === categoryFilter;
+      if (!matchSearch || !matchCat) return false;
 
-      return matchSearch && matchCat;
+      if (stockHealthFilter === 'all') return true;
+      if (stockHealthFilter === 'inactive') return p.status !== 'active';
+      const qty =
+        warehouseFilter === 'all'
+          ? Object.values(p.stockPerWarehouse || {}).reduce((a, b) => a + b, 0)
+          : Number(p.stockPerWarehouse?.[warehouseFilter] || 0);
+      if (stockHealthFilter === 'low') return p.status === 'active' && qty <= p.minStockLevel;
+      if (stockHealthFilter === 'ok') return p.status === 'active' && qty > p.minStockLevel;
+      return true;
     });
-  }, [products, searchTerm, categoryFilter]);
+  }, [products, searchTerm, categoryFilter, warehouseFilter, stockHealthFilter]);
+
+  const inventoryStats = useMemo(() => {
+    let activeCount = 0;
+    let lowCount = 0;
+    let totalCostValue = 0;
+    products.forEach((p) => {
+      const qty =
+        warehouseFilter === 'all'
+          ? Object.values(p.stockPerWarehouse || {}).reduce((a, b) => a + b, 0)
+          : Number(p.stockPerWarehouse?.[warehouseFilter] || 0);
+      totalCostValue += qty * p.purchasePrice;
+      if (p.status === 'active') {
+        activeCount += 1;
+        if (qty <= p.minStockLevel) lowCount += 1;
+      }
+    });
+    return { activeCount, lowCount, totalCostValue, warehouseCount: warehouses.length };
+  }, [products, warehouses, warehouseFilter]);
 
   useEffect(() => {
     const firstWh = warehouses[0]?.id || '';
@@ -1345,12 +1375,12 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
   }
 
   return (
-    <div className="space-y-2.5">
+    <div className="space-y-2">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-white px-3 py-2 rounded-lg border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-white dark:bg-[#0E1C36] px-2.5 py-2 rounded-lg border border-slate-200 dark:border-[#21375C]">
         <div>
-          <h2 className="text-base font-black text-[#011E58] tracking-tight">إدارة المخازن والمنتجات الغذائية</h2>
-          <p className="text-[11px] text-slate-500 mt-0.5">
+          <h2 className="text-sm font-black text-[#011E58] dark:text-[#F3F7FC] tracking-tight">إدارة المخازن والمنتجات الغذائية</h2>
+          <p className="text-[11px] text-slate-500 dark:text-[#97AECE]">
             متابعة أرصدة السلع، أسعار الجملة، التحويلات بين المستودعات، والجرد
           </p>
         </div>
@@ -1358,9 +1388,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
         <div className="flex flex-wrap items-center gap-1.5">
           <button
             onClick={handleExportExcel}
-            className="flex items-center gap-1.5 h-8 px-2.5 border border-slate-300 rounded-md text-xs font-bold hover:bg-slate-50 text-slate-700 cursor-pointer"
+            className="flex items-center gap-1.5 h-8 px-2.5 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#132544] rounded-md text-xs font-bold hover:bg-slate-50 dark:hover:bg-[#1A3461] text-slate-700 dark:text-[#DCE6F5] cursor-pointer"
           >
-            <Download className="w-3.5 h-3.5 text-[#003589]" />
+            <Download className="w-3.5 h-3.5 text-[#003589] dark:text-[#85B8FF]" />
             <span>تصدير Excel</span>
           </button>
 
@@ -1369,9 +1399,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               setTransferProdId(products[0]?.id || '');
               setIsTransferModalOpen(true);
             }}
-            className="flex items-center gap-1.5 h-8 px-2.5 bg-[#EEF3FA] border border-[#DCE6F5] text-[#011E58] rounded-md text-xs font-bold hover:bg-[#DCE6F5] transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 h-8 px-2.5 bg-[#EEF3FA] dark:bg-[#132544] border border-[#DCE6F5] dark:border-[#2A436E] text-[#011E58] dark:text-[#85B8FF] rounded-md text-xs font-bold hover:bg-[#DCE6F5] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
           >
-            <ArrowLeftRight className="w-3.5 h-3.5 text-[#003589]" />
+            <ArrowLeftRight className="w-3.5 h-3.5 text-[#003589] dark:text-[#85B8FF]" />
             <span>تحويل بين المستودعات</span>
           </button>
 
@@ -1385,8 +1415,36 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
         </div>
       </div>
 
+      {/* Compact Inventory Summary Ledger Strip */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-slate-200 dark:bg-[#21375C] border border-slate-200 dark:border-[#21375C] rounded-lg overflow-hidden text-xs">
+        <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#A9BCD9]">إجمالي الأصناف النشطة</div>
+          <div className="text-sm font-black font-mono tabular-nums text-[var(--awlad-navy-950)] dark:text-[#F3F7FC]">
+            {inventoryStats.activeCount} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">صنف</span>
+          </div>
+        </div>
+        <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#A9BCD9]">أصناف عند حد الطلب الأدنى</div>
+          <div className="text-sm font-black font-mono tabular-nums text-rose-700 dark:text-rose-400">
+            {inventoryStats.lowCount} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">صنف</span>
+          </div>
+        </div>
+        <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#A9BCD9]">تقييم المخزون (تكلفة)</div>
+          <div className="text-sm font-black font-mono tabular-nums text-[var(--awlad-royal-700)] dark:text-[#85B8FF]">
+            {inventoryStats.totalCostValue.toLocaleString()} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">{settings.currency}</span>
+          </div>
+        </div>
+        <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#A9BCD9]">المستودعات المسجلة</div>
+          <div className="text-sm font-black font-mono tabular-nums text-slate-900 dark:text-[#F3F7FC]">
+            {inventoryStats.warehouseCount} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">مستودع</span>
+          </div>
+        </div>
+      </div>
+
       {statusBanner && (
-        <div className={`px-3 py-2 rounded-lg border text-xs font-bold flex items-center justify-between ${
+        <div className={`px-3 py-1.5 rounded-lg border text-xs font-bold flex items-center justify-between ${
           statusBanner.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-red-50 border-red-200 text-red-900'
         }`}>
           <span>{statusBanner.text}</span>
@@ -1408,10 +1466,10 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
         exportFilename="AWLAD_SELIM_Products"
         pdfTitle="قائمة الأصناف وأرصدة المخازن"
         emptyTitle="لا توجد أصناف غذائية مطابقة للبحث أو لم تتم إضافة أصناف بعد"
-        rowClassName={(prod) => prod.status !== 'active' ? 'opacity-60 bg-slate-50' : ''}
+        rowClassName={(prod) => prod.status !== 'active' ? 'opacity-65 bg-slate-50 dark:bg-[#101E38]' : ''}
         toolbarFilters={
           <div className="flex flex-wrap items-center gap-1.5 text-xs">
-            <div className="min-w-[160px]">
+            <div className="min-w-[155px]">
               <SearchableFilterSelect
                 id="inv-prod-cat"
                 value={categoryFilter}
@@ -1419,13 +1477,13 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                 options={categories
                   .filter((c) => c !== 'all')
                   .map((c) => ({ value: c, label: c }))}
-                allOptionLabel="جميع التصنيفات الغذائية"
+                allOptionLabel="جميع التصنيفات"
                 allOptionValue="all"
                 allowClear
-                buttonClassName="rounded-lg min-h-[32px]"
+                buttonClassName="rounded-md h-8 min-h-[32px]"
               />
             </div>
-            <div className="min-w-[155px]">
+            <div className="min-w-[150px]">
               <SearchableFilterSelect
                 id="inv-prod-wh"
                 value={warehouseFilter}
@@ -1438,9 +1496,20 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                 allOptionLabel="جميع المستودعات"
                 allOptionValue="all"
                 allowClear
-                buttonClassName="rounded-lg min-h-[32px]"
+                buttonClassName="rounded-md h-8 min-h-[32px]"
               />
             </div>
+            <select
+              aria-label="تصفية حسب حالة المخزون"
+              value={stockHealthFilter}
+              onChange={(e) => setStockHealthFilter(e.target.value as any)}
+              className="h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC] focus:outline-hidden focus:border-[var(--awlad-royal-700)]"
+            >
+              <option value="all">كل حالات المخزون</option>
+              <option value="low">نقص مخزون (حد أدنى)</option>
+              <option value="ok">متوفر كافي</option>
+              <option value="inactive">أصناف موقوفة</option>
+            </select>
           </div>
         }
         columns={[

@@ -984,17 +984,17 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
   }, [isRepRole, hasPermission]);
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 text-slate-900 select-none sm:select-text" dir="rtl">
+    <div className="flex-1 flex flex-col min-h-0 text-slate-900 dark:text-[#EEF4FC] select-none sm:select-text" dir="rtl">
       {/* Slim Top Mode + Quick Period Presets + Export Strip */}
-      <div className="bg-[#EEF3FA] border border-slate-300 border-b-slate-300/80 rounded-t-md px-2 py-1 flex flex-wrap items-center justify-between gap-1.5">
+      <div className="bg-[#EEF3FA] dark:bg-[#132544] border border-slate-300 dark:border-[#21375C] border-b-slate-300/80 rounded-t-md px-2 py-1 flex flex-wrap items-center justify-between gap-1.5">
         <div className="flex flex-wrap items-center gap-1">
           <button
             type="button"
             onClick={() => setViewMode('unified_grid')}
             className={`flex items-center gap-1 h-7 px-2.5 rounded-sm text-[11px] font-extrabold transition-colors cursor-pointer ${
               viewMode === 'unified_grid'
-                ? 'bg-[var(--awlad-royal-700)] text-white'
-                : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-100'
+                ? 'bg-[var(--awlad-royal-700)] dark:bg-[#1659C8] text-white'
+                : 'bg-white dark:bg-[#0E1C36] text-slate-700 dark:text-[#DCE6F5] border border-slate-300 dark:border-[#2A436E] hover:bg-slate-100 dark:hover:bg-[#1A3461]'
             }`}
           >
             <Table2 className="w-3.5 h-3.5" />
@@ -1006,15 +1006,15 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
             onClick={() => setViewMode('item_lifecycle')}
             className={`flex items-center gap-1 h-7 px-2.5 rounded-sm text-[11px] font-extrabold transition-colors cursor-pointer ${
               viewMode === 'item_lifecycle'
-                ? 'bg-[var(--awlad-navy-900)] text-white'
-                : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-100'
+                ? 'bg-[var(--awlad-navy-900)] dark:bg-[#173C7E] text-white'
+                : 'bg-white dark:bg-[#0E1C36] text-slate-700 dark:text-[#DCE6F5] border border-slate-300 dark:border-[#2A436E] hover:bg-slate-100 dark:hover:bg-[#1A3461]'
             }`}
           >
             <History className="w-3.5 h-3.5" />
             <span>تاريخ الصنف والأرباح والخسائر</span>
           </button>
 
-          <div className="h-4 w-px bg-slate-300 mx-0.5 hidden sm:block" />
+          <div className="h-4 w-px bg-slate-300 dark:bg-[#2A436E] mx-0.5 hidden sm:block" />
 
           {/* Quick Period Presets */}
           <div className="flex flex-wrap items-center gap-1 text-[11px]">
@@ -1032,8 +1032,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                 onClick={() => applyPeriodPreset(p.id as any)}
                 className={`h-7 px-2 rounded-sm font-bold border transition-colors cursor-pointer ${
                   periodPreset === p.id
-                    ? 'bg-[var(--awlad-navy-900)] text-white border-[var(--awlad-navy-900)]'
-                    : 'bg-white text-slate-700 border-slate-300 hover:bg-[#DCE6F5]'
+                    ? 'bg-[var(--awlad-navy-900)] dark:bg-[#1659C8] text-white border-[var(--awlad-navy-900)] dark:border-[#3B82F6]'
+                    : 'bg-white dark:bg-[#0E1C36] text-slate-700 dark:text-[#DCE6F5] border-slate-300 dark:border-[#2A436E] hover:bg-[#DCE6F5] dark:hover:bg-[#1A3461]'
                 }`}
               >
                 {p.label}
@@ -1048,7 +1048,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
             value={exportScope}
             onChange={(e) => setExportScope(e.target.value as 'filtered' | 'all')}
             aria-label="نطاق التصدير"
-            className="h-7 px-1.5 text-[11px] font-bold bg-white border border-slate-300 rounded-sm text-slate-700 focus:border-[var(--awlad-royal-700)] focus:outline-none"
+            className="h-7 px-1.5 text-[11px] font-bold bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-sm text-slate-700 dark:text-[#EEF4FC] focus:border-[var(--awlad-royal-700)] focus:outline-none"
           >
             <option value="filtered">تصدير المعروض المفلتر</option>
             <option value="all">تصدير كامل التقرير</option>
@@ -1088,11 +1088,11 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
         </div>
       </div>
 
-      {/* Compact Structured Filters: Row 1 (Core), Row 2 (Search + Actions + Extra Toggle), Row 3 (Collapsible Extra Filters) */}
+      {/* Compact Structured Filters: Row 1 (Core), Row 2 (Search + Actions), Row 3 (Always Visible Extra Filters) */}
       <form
         onSubmit={handleApplySearchSubmit}
         aria-label="فلاتر البحث والتصفية للتقارير"
-        className="w-full bg-[#F8FAFC] border-x border-b border-slate-300 px-2.5 py-1.5 space-y-1.5 text-xs"
+        className="w-full bg-[#F8FAFC] dark:bg-[#0E1C36] border-x border-b border-slate-300 dark:border-[#21375C] px-2.5 py-1.5 space-y-1.5 text-xs"
       >
         {/* Row 1: Core Filters Only (Branch, Date From/To, Party, Movement Type) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-1.5 items-end">
@@ -1112,11 +1112,11 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
             />
           </div>
 
-          {/* التاريخ الموحد: يتكدس على الهاتف الضيق (<640px) لمنع قص التاريخ */}
+          {/* التاريخ الموحد */}
           <div className="sm:col-span-2 lg:col-span-4 grid grid-cols-1 sm:grid-cols-2 gap-1.5 min-w-0">
             <div className="min-w-0">
-              <label htmlFor="rpt-filter-date-from" className="flex items-center gap-1 text-[11px] font-bold text-slate-700 leading-tight mb-0.5 whitespace-nowrap">
-                <Calendar className="w-3 h-3 text-[var(--awlad-royal-700)] shrink-0" />
+              <label htmlFor="rpt-filter-date-from" className="flex items-center gap-1 text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] leading-tight mb-0.5 whitespace-nowrap">
+                <Calendar className="w-3 h-3 text-[var(--awlad-royal-700)] dark:text-[#85B8FF] shrink-0" />
                 <span>من تاريخ</span>
               </label>
               <div className="flex items-center gap-0.5">
@@ -1127,7 +1127,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                     setPage(1);
                     setDateFrom((prev) => addDaysYmd(prev || todayYmd(), -1));
                   }}
-                  className="h-8 w-7 shrink-0 bg-white border border-slate-300 rounded-md hover:bg-[#EEF3FA] text-slate-700 font-bold leading-none cursor-pointer"
+                  className="h-8 w-7 shrink-0 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md hover:bg-[#EEF3FA] dark:hover:bg-[#1A3461] text-slate-700 dark:text-[#DCE6F5] font-bold leading-none cursor-pointer"
                   title="يوم سابق"
                   aria-label="يوم سابق"
                 >
@@ -1142,7 +1142,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                     setPage(1);
                     setDateFrom(e.target.value);
                   }}
-                  className="w-full min-w-0 h-8 bg-white border border-slate-300 rounded-md px-1.5 text-xs font-mono tabular-nums text-slate-800 focus:border-[var(--awlad-royal-700)] focus:outline-none"
+                  className="w-full min-w-0 h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-1.5 text-xs font-mono tabular-nums text-slate-800 dark:text-[#EEF4FC] focus:border-[var(--awlad-royal-700)] focus:outline-none"
                 />
                 <button
                   type="button"
@@ -1151,7 +1151,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                     setPage(1);
                     setDateFrom((prev) => addDaysYmd(prev || todayYmd(), 1));
                   }}
-                  className="h-8 w-7 shrink-0 bg-white border border-slate-300 rounded-md hover:bg-[#EEF3FA] text-slate-700 font-bold leading-none cursor-pointer"
+                  className="h-8 w-7 shrink-0 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md hover:bg-[#EEF3FA] dark:hover:bg-[#1A3461] text-slate-700 dark:text-[#DCE6F5] font-bold leading-none cursor-pointer"
                   title="يوم تالٍ"
                   aria-label="يوم تالٍ"
                 >
@@ -1161,7 +1161,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
             </div>
 
             <div className="min-w-0">
-              <label htmlFor="rpt-filter-use-date-to" className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700 leading-tight mb-0.5 cursor-pointer whitespace-nowrap">
+              <label htmlFor="rpt-filter-use-date-to" className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] leading-tight mb-0.5 cursor-pointer whitespace-nowrap">
                 <input
                   id="rpt-filter-use-date-to"
                   type="checkbox"
@@ -1186,7 +1186,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                   setDateTo(e.target.value);
                 }}
                 aria-label="إلى تاريخ"
-                className="w-full min-w-0 h-8 bg-white border border-slate-300 rounded-md px-2 text-xs font-mono tabular-nums text-slate-800 disabled:opacity-45 focus:border-[var(--awlad-royal-700)] focus:outline-none"
+                className="w-full min-w-0 h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-mono tabular-nums text-slate-800 dark:text-[#EEF4FC] disabled:opacity-45 focus:border-[var(--awlad-royal-700)] focus:outline-none"
               />
             </div>
           </div>
@@ -1230,10 +1230,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
           )}
         </div>
 
-        {/* Row 2: Search Input + Execute Search + Reset + Extra Filters Toggle (Visible on ALL Screens) */}
-        <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-200/80">
+        {/* Row 2: Search Input + Execute Search + Reset */}
+        <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-200/80 dark:border-[#21375C]">
           <div className="relative flex-1 min-w-[200px]">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2.5 pointer-events-none" />
+            <Search className="w-3.5 h-3.5 text-slate-400 dark:text-[#8CA3C7] absolute right-2.5 top-2.5 pointer-events-none" />
             <input
               id="rpt-filter-search"
               type="text"
@@ -1241,7 +1241,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="بحث عام بالاسم أو رقم المستند أو الملاحظات..."
-              className="w-full min-w-0 h-8 bg-white border border-slate-300 rounded-md pr-8 pl-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-[var(--awlad-royal-700)] focus:outline-none"
+              className="w-full min-w-0 h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md pr-8 pl-2.5 text-xs text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-400 dark:placeholder:text-[#8CA3C7] focus:border-[var(--awlad-royal-700)] focus:outline-none"
             />
           </div>
 
@@ -1257,7 +1257,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
           <button
             type="button"
             onClick={handleResetFilters}
-            className="h-8 px-2.5 rounded-md bg-white border border-slate-300 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 text-slate-700 font-bold text-xs flex items-center justify-center gap-1 whitespace-nowrap shrink-0 transition-colors cursor-pointer"
+            className="h-8 px-2.5 rounded-md bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-700 dark:hover:text-rose-300 hover:border-rose-300 text-slate-700 dark:text-[#DCE6F5] font-bold text-xs flex items-center justify-center gap-1 whitespace-nowrap shrink-0 transition-colors cursor-pointer"
             title="عرض الكل / إعادة ضبط الفلاتر"
           >
             <RotateCcw className="w-3.5 h-3.5 shrink-0" />
