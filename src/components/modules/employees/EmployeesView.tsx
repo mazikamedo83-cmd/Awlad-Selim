@@ -70,6 +70,10 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
   const [isSavingPayroll, setIsSavingPayroll] = useState(false);
   const [busyEmpActionId, setBusyEmpActionId] = useState<string | null>(null);
   const [printData, setPrintData] = useState<PrintData | null>(null);
+  const [previewHrItem, setPreviewHrItem] = useState<{
+    kind: 'attendance' | 'advance' | 'payroll';
+    item: any;
+  } | null>(null);
 
   const activeEmployees = useMemo(
     () => employees.filter((e) => e.status !== 'suspended'),
@@ -783,6 +787,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
             title={`سجل الحضور والانصراف (${attendance.length})`}
             data={attendance}
             rowKey={(rec) => rec.id}
+            onRowClick={(rec) => setPreviewHrItem({ kind: 'attendance', item: rec })}
             searchPlaceholder="بحث باسم الموظف أو التاريخ أو الملاحظات..."
             exportFilename="AWLAD_SELIM_Attendance"
             pdfTitle="سجل الحضور والانصراف"
@@ -853,6 +858,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
           title={`سجل السلف والخصومات والمكافآت (${advancesDeductions.length})`}
           data={advancesDeductions}
           rowKey={(a) => a.id}
+          onRowClick={(a) => setPreviewHrItem({ kind: 'advance', item: a })}
           compact
           searchPlaceholder="بحث باسم الموظف أو البيان أو التاريخ..."
           exportFilename="AWLAD_SELIM_Advances"
@@ -938,6 +944,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
           title={`مسيرات الرواتب المصروفة (${payrolls.length})`}
           data={payrolls}
           rowKey={(p) => p.id}
+          onRowClick={(p) => setPreviewHrItem({ kind: 'payroll', item: p })}
           compact
           searchPlaceholder="بحث برقم المسير أو اسم الموظف..."
           exportFilename="AWLAD_SELIM_Payrolls"
@@ -1410,6 +1417,141 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({ initialTab = 'empl
             </button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        isOpen={!!previewHrItem}
+        onClose={() => setPreviewHrItem(null)}
+        title={
+          previewHrItem?.kind === 'attendance'
+            ? `تفاصيل سجل الحضور: ${previewHrItem.item.employeeName}`
+            : previewHrItem?.kind === 'advance'
+            ? `تفاصيل السلفة / المكافأة: ${previewHrItem.item.employeeName}`
+            : previewHrItem?.kind === 'payroll'
+            ? `تفاصيل مسير الراتب: ${previewHrItem.item.payrollNumber}`
+            : 'تفاصيل الموارد البشرية'
+        }
+        maxWidth="md"
+      >
+        {previewHrItem && (
+          <div className="space-y-3 text-xs">
+            <div className="grid grid-cols-2 gap-2 p-2.5 rounded-lg bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C]">
+              {previewHrItem.kind === 'attendance' && (
+                <>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الموظف</span>
+                    <strong>{previewHrItem.item.employeeName}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">التاريخ</span>
+                    <strong className="font-mono tabular-nums">{previewHrItem.item.date}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الحالة</span>
+                    <strong>
+                      {previewHrItem.item.status === 'present'
+                        ? 'حاضر'
+                        : previewHrItem.item.status === 'late'
+                        ? 'متأخر'
+                        : previewHrItem.item.status === 'leave'
+                        ? 'إجازة'
+                        : 'غائب'}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الحضور / الانصراف</span>
+                    <strong className="font-mono tabular-nums">
+                      {previewHrItem.item.checkIn || '—'} / {previewHrItem.item.checkOut || '—'}
+                    </strong>
+                  </div>
+                </>
+              )}
+              {previewHrItem.kind === 'advance' && (
+                <>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الموظف</span>
+                    <strong>{previewHrItem.item.employeeName}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">التاريخ</span>
+                    <strong className="font-mono tabular-nums">{previewHrItem.item.date}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">النوع</span>
+                    <strong>
+                      {previewHrItem.item.type === 'advance'
+                        ? 'سلفة'
+                        : previewHrItem.item.type === 'deduction'
+                        ? 'خصم جزاء'
+                        : 'مكافأة'}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">المبلغ</span>
+                    <strong className="font-mono tabular-nums text-[#003589] dark:text-[#85B8FF]">
+                      {Number(previewHrItem.item.amount || 0).toLocaleString()} {settings.currency}
+                    </strong>
+                  </div>
+                </>
+              )}
+              {previewHrItem.kind === 'payroll' && (
+                <>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الموظف</span>
+                    <strong>{previewHrItem.item.employeeName}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الفترة</span>
+                    <strong className="font-mono tabular-nums">
+                      {previewHrItem.item.month} / {previewHrItem.item.year}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الراتب الأساسي</span>
+                    <strong className="font-mono tabular-nums">
+                      {Number(previewHrItem.item.basicSalary || 0).toLocaleString()} {settings.currency}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الصافي المنصرف</span>
+                    <strong className="font-mono tabular-nums text-[#003589] dark:text-[#85B8FF]">
+                      {Number(previewHrItem.item.netSalary || 0).toLocaleString()} {settings.currency}
+                    </strong>
+                  </div>
+                </>
+              )}
+            </div>
+            {(previewHrItem.item.notes || previewHrItem.item.reason) && (
+              <div className="p-2 rounded-md bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C]">
+                <span className="font-bold text-slate-600 dark:text-[#97AECE]">البيان / الملاحظات: </span>
+                <span>{previewHrItem.item.reason || previewHrItem.item.notes}</span>
+              </div>
+            )}
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-200 dark:border-[#21375C]">
+              {previewHrItem.kind === 'payroll' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const p = previewHrItem.item;
+                    setPreviewHrItem(null);
+                    handlePrintPayrollReceipt(p);
+                  }}
+                  className="h-8 px-3 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>طباعة الإيصال</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setPreviewHrItem(null)}
+                className="h-8 px-3 rounded-md border border-slate-300 dark:border-[#2A436E] font-bold cursor-pointer"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       <PrintDocumentModal

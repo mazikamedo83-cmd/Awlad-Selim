@@ -270,7 +270,7 @@ export async function submitStockTransferRequest(id, actor) {
 }
 
 export async function approveStockTransferRequest(id, { notes = '' } = {}, actor) {
-  if (!actor || actor.role === 'representative' || actor.role === 'customer') {
+  if (!actor || !actor.id || !actor.role || actor.role === 'representative' || actor.role === 'customer') {
     throw new AppError(403, 'غير مصرح للمندوبين أو العملاء باعتماد طلبات التحويل المخزني', 'FORBIDDEN_TRANSFER_APPROVE');
   }
   const now = nowIso();
@@ -312,8 +312,8 @@ export async function approveStockTransferRequest(id, { notes = '' } = {}, actor
   return out;
 }
 
-export async function rejectStockTransferRequest(id, { reason }, actor) {
-  if (!actor || actor.role === 'representative' || actor.role === 'customer') {
+export async function rejectStockTransferRequest(id, { reason } = {}, actor) {
+  if (!actor || !actor.id || !actor.role || actor.role === 'representative' || actor.role === 'customer') {
     throw new AppError(403, 'غير مصرح للمندوبين أو العملاء برفض طلبات التحويل المخزني', 'FORBIDDEN_TRANSFER_REJECT');
   }
   const cleanReason = String(reason || '').trim();
@@ -358,7 +358,7 @@ export async function rejectStockTransferRequest(id, { reason }, actor) {
 }
 
 export async function executeStockTransferRequest(id, actor) {
-  if (!actor || actor.role === 'representative' || actor.role === 'customer') {
+  if (!actor || !actor.id || !actor.role || actor.role === 'representative' || actor.role === 'customer') {
     throw new AppError(403, 'غير مصرح للمندوبين أو العملاء بتنفيذ التحويلات المخزنية', 'FORBIDDEN_TRANSFER_EXECUTE');
   }
   const now = nowIso();

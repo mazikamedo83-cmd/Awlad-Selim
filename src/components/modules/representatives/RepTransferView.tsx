@@ -921,6 +921,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
           subtitle="التحويلات المتبادلة بين المناديب والخزائن (توريد تحصيلات أو صرف عهدة)"
           data={filteredTransfers}
           rowKey={(t) => t.id}
+          onRowClick={(t) => setActiveTransferForAudit(t)}
           searchValue={searchTerm}
           onSearchChange={setSearchTerm}
           searchPlaceholder="بحث برقم التحويل أو اسم المندوب أو الخزينة..."
@@ -1093,6 +1094,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
             subtitle="طلبات سحب البضاعة من المخزن الرئيسي إلى سيارات المناديب وتأكيد الاستلام"
             data={filteredItemTransfers}
             rowKey={(req) => req.id}
+            onRowClick={(req) => setActiveItemReqDetail(req)}
             searchPlaceholder="بحث برقم الطلب أو اسم المندوب أو رقم الفاتورة..."
             searchFilter={(r, q) =>
               r.requestNumber.toLowerCase().includes(q) ||
@@ -1225,6 +1227,10 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
           subtitle="قائمة مندوبي التوزيع الميدانيين وأرصدة العهد النقدية الحالية"
           data={representatives}
           rowKey={(rep) => rep.id}
+          onRowClick={(rep) => {
+            setCustodyRepId(rep.id);
+            setActiveTab('rep-custody-statement');
+          }}
           searchPlaceholder="بحث باسم المندوب أو الهاتف أو رقم السيارة..."
           searchFilter={(rep, q) =>
             rep.name.toLowerCase().includes(q) ||

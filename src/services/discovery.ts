@@ -4,162 +4,185 @@ import {
   getConfiguredApiBaseUrl,
   getFallbackEndpoints,
   getStoredConnectionProfiles,
-  getStoredTokens,
+  isLocalOrIpHost,
   normalizeServerUrl,
   resolveModeEndpointUrl,
   saveFallbackEndpoints,
-  saveFallbackEndpointsAsync,
   saveStoredConnectionProfiles,
-  saveStoredConnectionProfilesAsync,
-  saveStoredTokensAsync,
-  setConfiguredApiBaseUrl,
+  saveStoredTokens,
   setConfiguredApiBaseUrlAsync,
   setStoredInstallationIdAsync,
-  testServerHealth,
-  triggerAuthExpired,
   validateConnectionUrl,
+  type StoredFallbackEndpoint,
 } from './api';
-import { getClientDeviceDescriptor, isNativeCapacitor } from './native';
-import { clearLastVerifiedOfflineSession } from './offlineAuth';
-import { clearReadCache } from './storage';
-import type { ConnectionDiscoveryResponse, ConnectionMode, ConnectionProfilesConfig } from '../types';
+import {
+  getClientDeviceDescriptor,
+  getOrCreatePersistentDeviceId,
+  isNativeCapacitor,
+} from './native';
+import type {
+  ConnectionDiscoveryResponse,
+  ConnectionMode,
+  ConnectionProfilesConfig,
+} from '../types';
 
 export interface DiscoveredServerCandidate {
   url: string;
   companyName?: string;
-  activeMode?: ConnectionMode;
+  installationId?: string;
   latencyMs: number;
-  lanUrls?: string[];
+  mode?: ConnectionMode;
+  activeMode?: ConnectionMode;
   profiles?: ConnectionProfilesConfig;
-  fallbackEndpoints?: Array<{ mode: ConnectionMode; url: string; label: string }>;
+  fallbackEndpoints?: StoredFallbackEndpoint[];
 }
 
 export interface ParsedPairingInput {
   token: string;
   serverUrl?: string;
+  mode?: string;
 }
 
-function sanitizeHttpServerUrl(raw: string): string | undefined {
-  const normalized = normalizeServerUrl(raw || '');
-  if (!normalized) return undefined;
-  try {
-    const parsed = new URL(normalized);
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return undefined;
-    if (!parsed.hostname) return undefined;
-    return parsed.origin + (parsed.pathname && parsed.pathname !== '/' ? parsed.pathname.replace(/\/+$/, '') : '');
-  } catch {
-    return undefined;
+export interface ClaimPairingResult {
+  ok: boolean;
+  companyName?: string;
+  installationId?: string;
+  endpointUrl?: string;
+  connectionMode?: ConnectionMode;
+  requiresAdminApproval?: boolean;
+  error?: string;
+}
+
+function isSafeEndpointForCurrentPolicy(url: string, profiles?: ConnectionProfilesConfig): boolean {
+  const clean = normalizeServerUrl(url);
+  if (!clean) return false;
+  if (/^https:\/\//i.test(clean)) return true;
+  if (/^http:\/\//i.test(clean)) {
+    if (isLocalOrIpHost(clean)) return true;
+    return profiles?.enforceHttpsForRemote === false;
   }
+  return false;
 }
 
 export function parsePairingInput(rawInput: string): ParsedPairingInput | null {
-  const raw = String(rawInput || '').trim();
-  if (!raw) return null;
+  const trimmed = String(rawInput || '').trim();
+  if (!trimmed) return null;
 
-  // JSON format fallback if ever pasted
-  if (raw.startsWith('{') && raw.endsWith('}')) {
+  // 1. JSON QR payload
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
     try {
-      const parsed = JSON.parse(raw);
-      const token = String(parsed.token || parsed.rawToken || '').trim();
-      const serverUrl = sanitizeHttpServerUrl(String(parsed.server || parsed.serverUrl || parsed.url || ''));
-      if (token) return { token, serverUrl };
-    } catch {
-      // ignore invalid JSON
-    }
-  }
-
-  // Custom scheme:
-  // awladselim://pair?token=...&server=...
-  // awladselim://invite?token=...&server=...
-  // awladselim://pair/TOKEN?server=... or awladselim:///pair/TOKEN?server=...
-  if (/^awladselim:\/\//i.test(raw)) {
-    try {
-      const parsed = new URL(raw);
-      const queryToken = parsed.searchParams.get('token') || parsed.searchParams.get('pair_token') || '';
-      const routePathMatch = parsed.pathname.match(/^\/(?:pair|invite)\/([^/?#]+)/i);
-      const hostIsRoute = /^(?:pair|invite)$/i.test(parsed.hostname || '');
-      const singleSegmentMatch = hostIsRoute ? parsed.pathname.match(/^\/([^/?#]+)/) : null;
-      const pathToken = routePathMatch?.[1] || singleSegmentMatch?.[1] || '';
-      const token = (queryToken || (pathToken ? decodeURIComponent(pathToken) : '')).trim();
-      const server = parsed.searchParams.get('server') || '';
-      if (token) {
+      const obj = JSON.parse(trimmed);
+      const token = String(obj?.token || obj?.rawToken || obj?.pairToken || '').trim();
+      const serverRaw = String(obj?.serverUrl || obj?.serverBaseUrl || obj?.endpointUrl || '').trim();
+      const mode = obj?.mode || obj?.connectionMode;
+      if (token && token.length >= 10) {
         return {
           token,
-          serverUrl: server.trim() ? sanitizeHttpServerUrl(server.trim()) : undefined,
+          serverUrl: serverRaw ? normalizeServerUrl(serverRaw) : undefined,
+          mode: mode ? String(mode) : undefined,
         };
       }
+      const nestedUrl = String(obj?.directInviteUrl || obj?.deepLinkUrl || '').trim();
+      if (nestedUrl) {
+        return parsePairingInput(nestedUrl);
+      }
     } catch {
-      // ignore malformed scheme
+      // fall through
     }
   }
 
-  // HTTP / HTTPS invite URL: https://host/pair/TOKEN or https://host/invite/TOKEN or https://host/?pair_token=TOKEN
-  if (/^https?:\/\//i.test(raw)) {
-    try {
-      const parsed = new URL(raw);
-      const paramServer = parsed.searchParams.get('server');
-      const safeServer = (paramServer ? sanitizeHttpServerUrl(paramServer) : undefined) || sanitizeHttpServerUrl(parsed.origin);
-      const queryToken = parsed.searchParams.get('pair_token') || parsed.searchParams.get('token');
-      if (queryToken && queryToken.trim()) {
+  // 2. URL formats:
+  //    awladselim://pair?token=...&server=...
+  //    https://host/pair/:token
+  //    https://host/invite/:token
+  //    https://host/?pair_token=...
+  try {
+    const parsed = new URL(trimmed);
+    const protocolLower = parsed.protocol.toLowerCase();
+    if (protocolLower === 'awladselim:') {
+      const qToken =
+        parsed.searchParams.get('token') ||
+        parsed.searchParams.get('pair_token') ||
+        parsed.pathname.replace(/^\/+/, '').split('/')[1] ||
+        '';
+      const qServer =
+        parsed.searchParams.get('server') ||
+        parsed.searchParams.get('serverUrl') ||
+        parsed.searchParams.get('endpoint') ||
+        '';
+      const qMode = parsed.searchParams.get('mode') || undefined;
+      if (qToken.trim().length >= 10) {
+        return {
+          token: qToken.trim(),
+          serverUrl: qServer.trim() ? normalizeServerUrl(qServer.trim()) : undefined,
+          mode: qMode,
+        };
+      }
+      return null;
+    }
+
+    if (protocolLower === 'http:' || protocolLower === 'https:') {
+      const queryToken =
+        parsed.searchParams.get('pair_token') ||
+        parsed.searchParams.get('token') ||
+        '';
+      if (queryToken.trim().length >= 10) {
         return {
           token: queryToken.trim(),
-          serverUrl: safeServer,
+          serverUrl: parsed.origin,
+          mode: parsed.searchParams.get('mode') || undefined,
         };
       }
-      const match = parsed.pathname.match(/\/(?:pair|invite)\/([^/?#]+)/i);
-      if (match && match[1]) {
+
+      const pathMatch = parsed.pathname.match(/^\/(?:pair|invite)\/([A-Za-z0-9._-]{10,})\/?$/i);
+      if (pathMatch && pathMatch[1]) {
         return {
-          token: decodeURIComponent(match[1]).trim(),
-          serverUrl: safeServer,
+          token: pathMatch[1].trim(),
+          serverUrl: parsed.origin,
+          mode: parsed.searchParams.get('mode') || undefined,
         };
       }
-    } catch {
-      // ignore malformed URL
+      return null;
     }
+  } catch {
+    // not a URL; check raw token
   }
 
-  // Relative /pair/TOKEN or /invite/TOKEN
-  const relMatch = raw.match(/^\/?(?:pair|invite)\/([^/?#]+)/i);
-  if (relMatch && relMatch[1]) {
-    const origin = !isNativeCapacitor() && typeof window !== 'undefined' ? sanitizeHttpServerUrl(window.location.origin) : undefined;
-    return {
-      token: decodeURIComponent(relMatch[1]).trim(),
-      serverUrl: origin,
-    };
-  }
-
-  // Raw token string fallback
-  if (/^[A-Za-z0-9_-]{8,128}$/.test(raw)) {
-    const fallbackBase =
-      sanitizeHttpServerUrl(getConfiguredApiBaseUrl()) ||
-      (!isNativeCapacitor() && typeof window !== 'undefined' ? sanitizeHttpServerUrl(window.location.origin) : undefined);
-    return {
-      token: raw,
-      serverUrl: fallbackBase,
-    };
+  // 3. Raw token string
+  if (/^[A-Za-z0-9._-]{12,128}$/.test(trimmed)) {
+    return { token: trimmed };
   }
 
   return null;
 }
 
-async function probeDiscoveryEndpoint(baseUrl: string, timeoutMs = 1100): Promise<DiscoveredServerCandidate | null> {
-  const clean = normalizeServerUrl(baseUrl);
-  if (!clean) return null;
+async function probeDiscoveryEndpoint(url: string, timeoutMs = 2000): Promise<DiscoveredServerCandidate | null> {
+  const cleanUrl = normalizeServerUrl(url);
+  if (!cleanUrl) return null;
+  const profiles = getStoredConnectionProfiles();
+  if (!isSafeEndpointForCurrentPolicy(cleanUrl, profiles)) return null;
+
   const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
   try {
-    const res = await fetchWithTimeout(`${clean}/api/connection/discovery`, { method: 'GET' }, timeoutMs);
+    const res = await fetchWithTimeout(`${cleanUrl}/api/connection/discovery`, { method: 'GET' }, timeoutMs);
     if (!res.ok) return null;
-    const data: ConnectionDiscoveryResponse = await res.json();
-    if (!data?.ok || data.service !== 'AWLAD SELIM Enterprise Server') return null;
-    const latencyMs = Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt);
+    const data = (await res.json().catch(() => null)) as (ConnectionDiscoveryResponse & { installationId?: string }) | null;
+    if (!data || !data.ok) return null;
+
+    const latencyMs = Math.max(
+      1,
+      Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt)
+    );
+
     return {
-      url: clean,
-      companyName: data.companyName,
-      activeMode: data.activeMode,
+      url: normalizeServerUrl(data.currentHostUrl || cleanUrl) || cleanUrl,
+      companyName: data.companyName || 'AWLAD SELIM Server',
+      installationId: data.installationId,
       latencyMs,
-      lanUrls: data.lanUrls,
+      mode: detectModeFromUrl(cleanUrl, data.profiles),
+      activeMode: data.activeMode,
       profiles: data.profiles,
-      fallbackEndpoints: data.fallbackEndpoints,
+      fallbackEndpoints: Array.isArray(data.fallbackEndpoints) ? data.fallbackEndpoints : [],
     };
   } catch {
     return null;
@@ -167,354 +190,244 @@ async function probeDiscoveryEndpoint(baseUrl: string, timeoutMs = 1100): Promis
 }
 
 export async function discoverServerCandidates(): Promise<DiscoveredServerCandidate[]> {
-  const candidateUrls = new Set<string>();
-  const addUrl = (u?: string) => {
-    const clean = normalizeServerUrl(u || '');
-    if (clean) candidateUrls.add(clean);
-  };
+  const candidates = new Set<string>();
+  const currentConfigured = getConfiguredApiBaseUrl();
+  if (currentConfigured) candidates.add(currentConfigured);
 
-  addUrl(getConfiguredApiBaseUrl());
-  const profiles = getStoredConnectionProfiles();
-  addUrl(profiles.cloudVps?.vpsUrl);
-  addUrl(profiles.proRemote?.domainUrl);
-  addUrl(profiles.freeRemote?.tunnelUrl);
-  addUrl(resolveModeEndpointUrl('local_network', profiles));
+  const storedProfiles = getStoredConnectionProfiles();
+  const modeUrls: ConnectionMode[] = ['local_network', 'free_remote', 'pro_remote', 'cloud_vps'];
+  for (const mode of modeUrls) {
+    const resolved = resolveModeEndpointUrl(mode, storedProfiles);
+    if (resolved) candidates.add(resolved);
+  }
+
   for (const fb of getFallbackEndpoints()) {
-    addUrl(fb.url);
+    const normalized = normalizeServerUrl(fb?.url || '');
+    if (normalized) candidates.add(normalized);
   }
 
-  if (!isNativeCapacitor() && typeof window !== 'undefined' && /^https?:\/\//i.test(window.location.origin)) {
-    addUrl(window.location.origin);
+  if (typeof window !== 'undefined' && window.location?.origin && /^https?:\/\//i.test(window.location.origin)) {
+    candidates.add(normalizeServerUrl(window.location.origin));
   }
 
-  // Known local host / emulator / hostname (.local) / router default endpoints
-  if (!isNativeCapacitor()) {
-    addUrl('http://127.0.0.1:3000');
-    addUrl('http://localhost:3000');
-  }
-  const savedPort = Number(profiles.localNetwork?.port || 3000) || 3000;
-  const savedHostname = String(profiles.localNetwork?.hostname || 'awlad-selim-server')
-    .trim()
-    .replace(/^https?:\/\//i, '')
-    .split('/')[0]
-    .split(':')[0];
-  if (savedHostname) {
-    addUrl(`http://${savedHostname}:${savedPort}`);
-    if (!savedHostname.includes('.')) {
-      addUrl(`http://${savedHostname}.local:${savedPort}`);
-    }
-  }
-  if (isNativeCapacitor()) {
-    addUrl(`http://10.0.2.2:${savedPort}`);
-  }
+  // Standard local ports/hosts for Capacitor & Desktop
+  candidates.add('http://192.168.1.100:3000');
+  candidates.add('http://10.0.2.2:3000');
+  candidates.add('http://127.0.0.1:3000');
+  candidates.add('http://localhost:3000');
 
-  // Targeted common LAN IPs around saved subnet, hotspot subnets, and standard 192.168.1.x / 192.168.0.x
-  const savedIp = String(profiles.localNetwork?.ip || '').trim();
-  const savedPrefixMatch = savedIp.match(/^(\d{1,3}\.\d{1,3}\.\d{1,3})\.(\d{1,3})$/);
-  const prefixes = new Set<string>(['192.168.1', '192.168.0']);
-  if (savedPrefixMatch) {
-    prefixes.add(savedPrefixMatch[1]);
-    const baseLast = Number(savedPrefixMatch[2]);
-    for (let offset = -5; offset <= 10; offset += 1) {
-      const n = baseLast + offset;
-      if (n >= 2 && n <= 254) {
-        addUrl(`http://${savedPrefixMatch[1]}.${n}:${savedPort}`);
-      }
-    }
-  }
-  const commonHosts = [2, 10, 20, 50, 100, 101, 102, 105, 110, 150, 200];
-  for (const prefix of prefixes) {
-    for (const h of commonHosts) {
-      addUrl(`http://${prefix}.${h}:${savedPort}`);
-    }
-  }
-  // Common mobile hotspot / USB tethering / second router subnets
-  for (const hotspotPrefix of ['192.168.43', '172.20.10', '192.168.8', '10.0.0']) {
-    for (const h of [1, 2, 3, 100]) {
-      addUrl(`http://${hotspotPrefix}.${h}:${savedPort}`);
+  const uniqueUrls = Array.from(candidates).filter(Boolean);
+  const settled = await Promise.all(uniqueUrls.map((u) => probeDiscoveryEndpoint(u, 2000)));
+  const foundMap = new Map<string, DiscoveredServerCandidate>();
+
+  for (const item of settled) {
+    if (!item) continue;
+    const prev = foundMap.get(item.url);
+    if (!prev || item.latencyMs < prev.latencyMs) {
+      foundMap.set(item.url, item);
     }
   }
 
-  const allUrls = Array.from(candidateUrls);
-  const found: DiscoveredServerCandidate[] = [];
-  const seen = new Set<string>();
-  const batchSize = 18;
-
-  for (let i = 0; i < allUrls.length; i += batchSize) {
-    const batch = allUrls.slice(i, i + batchSize);
-    const results = await Promise.all(batch.map((u) => probeDiscoveryEndpoint(u, 950)));
-    for (const res of results) {
-      if (res && !seen.has(res.url)) {
-        seen.add(res.url);
-        found.push(res);
-      }
-    }
-    // If we already discovered valid server(s) in primary priority candidates, return fast
-    if (i === 0 && found.length > 0 && !isNativeCapacitor()) {
-      break;
-    }
-  }
-
-  return found.sort((a, b) => a.latencyMs - b.latencyMs);
+  return Array.from(foundMap.values()).sort((a, b) => a.latencyMs - b.latencyMs);
 }
 
 export async function claimPairingInvitation(
-  rawUrlOrToken: string,
-  options?: { clearExistingAuth?: boolean }
-): Promise<{
-  ok: boolean;
-  companyName?: string;
-  activeMode?: ConnectionMode;
-  endpointUrl?: string;
-  requiresAdminApproval?: boolean;
-  error?: string;
-}> {
-  const parsed = parsePairingInput(rawUrlOrToken);
+  rawInput: string,
+  options: { clearExistingAuth?: boolean } = {}
+): Promise<ClaimPairingResult> {
+  const parsed = parsePairingInput(rawInput);
   if (!parsed?.token) {
-    return { ok: false, error: 'رابط أو رمز QR غير صالح. تأكد من مسح الرمز أو نسخ الرابط بالكامل.' };
-  }
-
-  const targetServer =
-    sanitizeHttpServerUrl(parsed.serverUrl || '') ||
-    sanitizeHttpServerUrl(getConfiguredApiBaseUrl()) ||
-    (!isNativeCapacitor() && typeof window !== 'undefined' ? sanitizeHttpServerUrl(window.location.origin) : undefined);
-
-  if (!targetServer) {
     return {
       ok: false,
-      error: 'لم يتضمن الرمز عنوان السيرفر. امسح رمز QR من الشاشة أو الصق رابط الدعوة الكامل.',
+      error: 'رمز أو رابط الربط غير صالح. يرجى مسح رمز QR صحيح أو لصق رابط الدعوة كاملاً.',
     };
   }
 
   const storedProfiles = getStoredConnectionProfiles();
-  const initialEnforceHttps = storedProfiles.enforceHttpsForRemote !== false;
-  const initialMode = detectModeFromUrl(targetServer, storedProfiles);
-  const targetServerCheck = validateConnectionUrl(initialMode, targetServer, initialEnforceHttps);
-  if (!targetServerCheck.valid || !targetServerCheck.normalizedUrl) {
+  let targetBase = parsed.serverUrl || getConfiguredApiBaseUrl();
+  if (!targetBase && typeof window !== 'undefined' && /^https?:\/\//i.test(window.location?.origin || '')) {
+    targetBase = normalizeServerUrl(window.location.origin);
+  }
+
+  if (!targetBase) {
     return {
       ok: false,
-      error: targetServerCheck.error || 'عنوان السيرفر في رابط الدعوة غير صالح.',
+      error: 'لم يتم تحديد عنوان السيرفر داخل رابط الدعوة ولا يوجد سيرفر مضبوط مسبقاً.',
     };
   }
-  const safeTargetServer = targetServerCheck.normalizedUrl;
 
-  const descriptor = getClientDeviceDescriptor();
-  const prevUrl = getConfiguredApiBaseUrl();
+  const inferredMode = detectModeFromUrl(targetBase, storedProfiles);
+  const urlCheck = validateConnectionUrl(
+    inferredMode,
+    targetBase,
+    storedProfiles.enforceHttpsForRemote !== false
+  );
+  if (!urlCheck.valid || !urlCheck.normalizedUrl) {
+    return {
+      ok: false,
+      error: urlCheck.error || 'عنوان السيرفر في رابط الربط غير صالح.',
+    };
+  }
+
+  const deviceMeta = getClientDeviceDescriptor();
+  const deviceId = deviceMeta.deviceId || getOrCreatePersistentDeviceId();
 
   try {
-    // Strictly verify and claim the invitation token on the server BEFORE saving serverBaseUrl
     const res = await fetchWithTimeout(
-      `${safeTargetServer}/api/pairing/claim`,
+      `${urlCheck.normalizedUrl}/api/pairing/claim`,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Device-Id': descriptor.deviceId,
+          'X-Device-Id': deviceId,
+          'X-Requested-With': 'awlad-selim-spa',
         },
         body: JSON.stringify({
           token: parsed.token,
-          deviceId: descriptor.deviceId,
-          deviceName: descriptor.deviceName,
-          deviceType: descriptor.deviceType,
-          osVersion: descriptor.osVersion,
-          appVersion: descriptor.appVersion,
+          deviceId,
+          deviceName: deviceMeta.deviceName,
+          deviceType: deviceMeta.deviceType,
+          osVersion: deviceMeta.osVersion,
+          appVersion: deviceMeta.appVersion,
+          connectionMode: parsed.mode || inferredMode,
+          serverUrlUsed: urlCheck.normalizedUrl,
         }),
       },
       10000
     );
+
     const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data?.ok || data?.requiresLogin !== true) {
+    if (!res.ok || data?.ok === false) {
       return {
         ok: false,
         error: data?.error || `تعذر إتمام ربط الجهاز (${res.status})`,
       };
     }
 
-    const chosenEndpoint = sanitizeHttpServerUrl(data.endpointUrl || '') || safeTargetServer;
-    const effectiveMode: ConnectionMode =
-      data.activeMode || detectModeFromUrl(chosenEndpoint, data.profiles);
-    const enforceHttps = data.profiles?.enforceHttpsForRemote !== false;
-
-    // Check whether the chosen endpoint is valid for the claimed mode & reachable from this device, else keep safeTargetServer
-    let finalBaseUrl = safeTargetServer;
-    if (chosenEndpoint === safeTargetServer) {
-      const sameCheck = validateConnectionUrl(effectiveMode, chosenEndpoint, enforceHttps);
-      finalBaseUrl = sameCheck.valid ? sameCheck.normalizedUrl : safeTargetServer;
-    } else {
-      const urlCheck = validateConnectionUrl(effectiveMode, chosenEndpoint, enforceHttps);
-      if (urlCheck.valid) {
-        const check = await testServerHealth(urlCheck.normalizedUrl);
-        if (check.ok) {
-          finalBaseUrl = urlCheck.normalizedUrl;
-        }
-      }
-    }
-
-    const finalCheck = validateConnectionUrl(
-      detectModeFromUrl(finalBaseUrl, data.profiles || storedProfiles),
-      finalBaseUrl,
-      enforceHttps
+    const effectiveEndpoint = normalizeServerUrl(
+      data.endpointUrl || data.serverBaseUrl || urlCheck.normalizedUrl
     );
-    if (!finalCheck.valid || !sanitizeHttpServerUrl(finalCheck.normalizedUrl)) {
-      return {
-        ok: false,
-        error: finalCheck.error || 'عنوان السيرفر المُرجع من الدعوة غير صالح.',
-      };
+    if (!effectiveEndpoint) {
+      return { ok: false, error: 'لم يرجع الخادم عنوان اتصال صالحاً.' };
     }
-    finalBaseUrl = finalCheck.normalizedUrl;
+
+    if (options.clearExistingAuth) {
+      saveStoredTokens(null);
+    }
 
     if (data.profiles) {
-      await saveStoredConnectionProfilesAsync(data.profiles);
+      saveStoredConnectionProfiles(data.profiles);
     }
     if (Array.isArray(data.fallbackEndpoints)) {
-      await saveFallbackEndpointsAsync(data.fallbackEndpoints);
+      saveFallbackEndpoints(data.fallbackEndpoints);
     }
-
-    // Never auto-login or bypass auth: clear existing auth session, offline session & read cache when switching servers or requested (default true)
-    if (
-      options?.clearExistingAuth !== false ||
-      (prevUrl && normalizeServerUrl(prevUrl) !== normalizeServerUrl(finalBaseUrl))
-    ) {
-      await saveStoredTokensAsync(null);
-      await setStoredInstallationIdAsync('').catch(() => {});
-      await clearLastVerifiedOfflineSession().catch(() => {});
-      clearReadCache();
+    if (data.installationId) {
+      await setStoredInstallationIdAsync(String(data.installationId));
     }
-
-    await setConfiguredApiBaseUrlAsync(finalBaseUrl);
+    await setConfiguredApiBaseUrlAsync(effectiveEndpoint);
 
     return {
       ok: true,
-      companyName: data.companyName,
-      activeMode: data.activeMode,
-      endpointUrl: finalBaseUrl,
+      companyName: data.companyName || 'AWLAD SELIM',
+      installationId: data.installationId,
+      endpointUrl: effectiveEndpoint,
+      connectionMode: data.connectionMode || inferredMode,
       requiresAdminApproval: Boolean(data.requiresAdminApproval),
     };
-  } catch {
+  } catch (err: any) {
     return {
       ok: false,
-      error: 'تعذر الوصول إلى السيرفر لإتمام الربط. تأكد من الاتصال بالشبكة أو تشغيل النفق.',
+      error:
+        err?.name === 'AbortError'
+          ? 'انتهت مهلة الاتصال بالسيرفر أثناء تفعيل رابط الربط.'
+          : 'تعذر الوصول إلى السيرفر المركزي لتفعيل رابط الربط. تحقق من الشبكة.',
     };
   }
 }
 
-export async function syncConnectionConfigFromServer(options?: {
+export async function syncConnectionConfigFromServer(options: {
   triggerHeartbeat?: boolean;
   allowLanDiscoveryOnFailure?: boolean;
-}): Promise<{ updated: boolean; switchedUrl?: string; revoked?: boolean }> {
-  const currentBase = getConfiguredApiBaseUrl();
-  const effectiveCurrent =
-    currentBase || (!isNativeCapacitor() && typeof window !== 'undefined' ? window.location.origin : '');
-  const localProfiles = getStoredConnectionProfiles();
-  const profileUrls = [
-    resolveModeEndpointUrl(localProfiles.activeMode, localProfiles),
-    localProfiles.cloudVps?.vpsUrl,
-    localProfiles.proRemote?.domainUrl,
-    localProfiles.freeRemote?.tunnelUrl,
-    resolveModeEndpointUrl('local_network', localProfiles),
-  ];
-  const fallbacks = getFallbackEndpoints().map((f) => f.url);
-  const candidates = Array.from(
-    new Set(
-      [effectiveCurrent, ...fallbacks, ...profileUrls]
-        .map((u) => normalizeServerUrl(u || ''))
-        .filter(Boolean)
-    )
-  );
+} = {}): Promise<{ ok: boolean; switchedUrl?: boolean; activeUrl?: string }> {
+  const currentConfigured = getConfiguredApiBaseUrl();
+  const baseUrl =
+    currentConfigured ||
+    (!isNativeCapacitor() && typeof window !== 'undefined' && /^https?:\/\//i.test(window.location?.origin || '')
+      ? normalizeServerUrl(window.location.origin)
+      : '');
 
-  const descriptor = getClientDeviceDescriptor();
-  const tokens = getStoredTokens();
-  const localVersion = Number(localProfiles.configVersion || 1);
+  if (baseUrl) {
+    const probed = await probeDiscoveryEndpoint(baseUrl, 3500);
+    if (probed) {
+      const prevProfiles = getStoredConnectionProfiles();
+      if (probed.profiles) {
+        saveStoredConnectionProfiles(probed.profiles);
+      }
+      if (Array.isArray(probed.fallbackEndpoints)) {
+        saveFallbackEndpoints(probed.fallbackEndpoints);
+      }
+      if (probed.installationId) {
+        await setStoredInstallationIdAsync(probed.installationId);
+      }
 
-  for (const candidateUrl of candidates) {
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 3500);
-      const endpoint = options?.triggerHeartbeat
-        ? `${candidateUrl}/api/connection/heartbeat`
-        : `${candidateUrl}/api/connection/discovery`;
-      const res = await fetch(endpoint, {
-        method: options?.triggerHeartbeat ? 'POST' : 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Device-Id': descriptor.deviceId,
-          ...(tokens?.accessToken ? { Authorization: `Bearer ${tokens.accessToken}` } : {}),
-        },
-        body: options?.triggerHeartbeat
-          ? JSON.stringify({
-              ...descriptor,
-              connectionMode: detectModeFromUrl(candidateUrl, localProfiles),
-              serverUrlUsed: candidateUrl,
-            })
-          : undefined,
-        signal: controller.signal,
-      }).finally(() => clearTimeout(timer));
-
-      const data = await res.json().catch(() => null);
+      const prevVersion = Number(prevProfiles.configVersion || 0);
+      const nextVersion = Number(probed.profiles?.configVersion || 0);
       if (
-        res.status === 403 &&
-        (data?.code === 'DEVICE_REVOKED' ||
-          data?.code === 'ACCOUNT_DEACTIVATED' ||
-          data?.code === 'ACCOUNT_SUSPENDED')
+        nextVersion > prevVersion &&
+        probed.profiles?.activeMode &&
+        isNativeCapacitor()
       ) {
-        triggerAuthExpired(data?.error || 'تم فصل هذا الجهاز من الإدارة.');
-        return { updated: false, revoked: true };
-      }
-      if (res.status === 503 || data?.code === 'DATABASE_UNAVAILABLE') {
-        return { updated: false };
-      }
-      if (!data) continue;
-
-      if (data.profiles) {
-        saveStoredConnectionProfiles(data.profiles);
-      }
-      if (Array.isArray(data.fallbackEndpoints)) {
-        saveFallbackEndpoints(data.fallbackEndpoints);
-      }
-
-      const serverVersion = Number(data.configVersion || 1);
-      const nextPreferred = normalizeServerUrl(data.activeEndpoint || '');
-
-      // Auto-switch base URL if device was on a failing URL and fell back, or if server pushed a new active endpoint/tunnel URL
-      if (candidateUrl !== effectiveCurrent && (isNativeCapacitor() || currentBase)) {
-        setConfiguredApiBaseUrl(candidateUrl);
-        return { updated: true, switchedUrl: candidateUrl };
-      }
-
-      if (
-        serverVersion > localVersion &&
-        nextPreferred &&
-        nextPreferred !== normalizeServerUrl(effectiveCurrent) &&
-        (isNativeCapacitor() || Boolean(currentBase))
-      ) {
-        const probeNew = await testServerHealth(nextPreferred);
-        if (probeNew.ok) {
-          setConfiguredApiBaseUrl(nextPreferred);
-          return { updated: true, switchedUrl: nextPreferred };
+        const nextEndpoint = resolveModeEndpointUrl(probed.profiles.activeMode, probed.profiles);
+        if (nextEndpoint && nextEndpoint !== currentConfigured && isSafeEndpointForCurrentPolicy(nextEndpoint, probed.profiles)) {
+          const healthy = await probeDiscoveryEndpoint(nextEndpoint, 2500);
+          if (healthy) {
+            await setConfiguredApiBaseUrlAsync(nextEndpoint);
+            return { ok: true, switchedUrl: true, activeUrl: nextEndpoint };
+          }
         }
       }
 
-      return { updated: serverVersion > localVersion };
-    } catch {
-      // try next fallback candidate
-    }
-  }
-
-  // Last-resort automatic LAN rediscovery when all known URLs fail on reconnect
-  if (options?.allowLanDiscoveryOnFailure && (isNativeCapacitor() || Boolean(currentBase))) {
-    try {
-      const discovered = await discoverServerCandidates();
-      if (discovered.length > 0) {
-        const best = discovered[0];
-        if (best.profiles) saveStoredConnectionProfiles(best.profiles);
-        if (Array.isArray(best.fallbackEndpoints)) saveFallbackEndpoints(best.fallbackEndpoints);
-        setConfiguredApiBaseUrl(best.url);
-        return { updated: true, switchedUrl: best.url };
+      if (options.triggerHeartbeat) {
+        try {
+          await fetchWithTimeout(
+            `${baseUrl}/api/connection/heartbeat`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Device-Id': getOrCreatePersistentDeviceId(),
+                'X-Requested-With': 'awlad-selim-spa',
+              },
+              body: JSON.stringify({
+                deviceId: getOrCreatePersistentDeviceId(),
+                serverUrlUsed: baseUrl,
+              }),
+            },
+            3000
+          );
+        } catch {
+          // heartbeat is best-effort
+        }
       }
-    } catch {
-      // ignore rediscovery errors
+
+      return { ok: true, switchedUrl: false, activeUrl: baseUrl };
     }
   }
 
-  return { updated: false };
+  if (options.allowLanDiscoveryOnFailure && isNativeCapacitor()) {
+    const discovered = await discoverServerCandidates();
+    if (discovered.length > 0) {
+      const best = discovered[0];
+      if (best.profiles) saveStoredConnectionProfiles(best.profiles);
+      if (Array.isArray(best.fallbackEndpoints)) saveFallbackEndpoints(best.fallbackEndpoints);
+      if (best.installationId) await setStoredInstallationIdAsync(best.installationId);
+      if (best.url !== currentConfigured) {
+        await setConfiguredApiBaseUrlAsync(best.url);
+        return { ok: true, switchedUrl: true, activeUrl: best.url };
+      }
+      return { ok: true, switchedUrl: false, activeUrl: best.url };
+    }
+  }
+
+  return { ok: false };
 }

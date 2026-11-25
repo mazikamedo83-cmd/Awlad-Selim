@@ -1,5 +1,5 @@
 import { getPool, withTransaction, isPgConnectionError } from '../postgres.js';
-import { readJsonDatabase, withJsonTransaction, nextJsonSequence } from '../jsonLedger.js';
+import { readJsonDatabase, readJsonAuditLogs, withJsonTransaction, nextJsonSequence } from '../jsonLedger.js';
 import { isPgMode, isStrictPostgresMode, markPgUnavailable, createDatabaseUnavailableError, isoTimestamp, mapPgUserRow } from './mode.js';
 import { generateServerId } from '../../utils/crypto.js';
 import { AppError, nowIso, round2, sanitizeSyncPayload } from '../../utils/errors.js';
@@ -340,6 +340,22 @@ export async function getDispatchBatchDetails(batchId, actor) {
       recordId: r.record_id || undefined,
       details: r.notes || '',
     }));
+  } else {
+    const logs = readJsonAuditLogs();
+    auditTrail = logs
+      .filter((l) => l && l.recordId === batch.id)
+      .map((l) => ({
+        id: l.id,
+        timestamp: l.timestamp,
+        userId: l.userId || undefined,
+        userName: l.userName || '',
+        action: l.action,
+        module: l.module,
+        recordId: l.recordId || undefined,
+        details: l.details || l.notes || '',
+      }))
+      .sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')))
+      .slice(-50);
   }
 
   return { batch, auditTrail };
@@ -770,7 +786,7 @@ export async function confirmDispatchBatchReceipt(batchId, body, actorOrAuth) {
              received_by_user_id = $1,
              received_by_name = $2,
              received_at = $3,
-             received_device_id = COALESCE(NULLIF($4, ''), received_device_id),
+             received_device_id = COALESCE($4, received_device_id),
              discrepancy_details = COALESCE($5::jsonb, discrepancy_details),
              receipt_notes = CASE WHEN $6 <> '' THEN $6 ELSE receipt_notes END,
              error_message = '',
@@ -781,8 +797,8 @@ export async function confirmDispatchBatchReceipt(batchId, body, actorOrAuth) {
           actor.id,
           actor.fullName || actor.username,
           now,
-          receivedDeviceId || '',
-          JSON.stringify(discrepancyDetails || {}),
+          receivedDeviceId || null,
+          discrepancyDetails ? JSON.stringify(discrepancyDetails) : null,
           receiptNotes,
           now,
           batchId,
@@ -851,10 +867,10 @@ export async function failDispatchBatchReceipt(batchId, body, actorOrAuth) {
          SET receipt_status = 'تعذر الاستلام',
              error_message = $1,
              rejection_reason = $1,
-             received_device_id = COALESCE(NULLIF($2, ''), received_device_id),
+             received_device_id = COALESCE($2, received_device_id),
              updated_at = $3
          WHERE id = $4`,
-        [reason, receivedDeviceId || '', now, batchId]
+        [reason, receivedDeviceId || null, now, batchId]
       );
     });
   } else {

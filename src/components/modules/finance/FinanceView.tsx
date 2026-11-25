@@ -136,6 +136,12 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
   const [printData, setPrintData] = useState<PrintData | null>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
+  // Read-only Detail Modal for cashboxes / transactions / expenses
+  const [previewFinanceItem, setPreviewFinanceItem] = useState<{
+    kind: 'cashbox' | 'transaction' | 'expense';
+    item: any;
+  } | null>(null);
+
   const canApproveSupplierOverpayment =
     currentUser?.role === 'admin' ||
     currentUser?.role === 'manager' ||
@@ -883,6 +889,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             subtitle="كشوف الحسابات والتحصيل النقدي والبنكي"
             data={filteredCustomersList}
             rowKey={(c) => c.id}
+            onRowClick={(c) => handleOpenCustomerStatement(c)}
             compact
             searchValue={custSearch}
             onSearchChange={setCustSearch}
@@ -1040,6 +1047,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             subtitle="كشوف الحسابات وسداد المستحقات وتسوية الدفعات المقدمة"
             data={filteredSuppliersList}
             rowKey={(s) => s.id}
+            onRowClick={(s) => handleOpenSupplierStatement(s)}
             compact
             searchValue={suppSearch}
             onSearchChange={setSuppSearch}
@@ -1178,6 +1186,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
           subtitle="أرصدة النقدية بالخزائن والحسابات البنكية المسجلة"
           data={cashboxes}
           rowKey={(cb) => cb.id}
+          onRowClick={(cb) => setPreviewFinanceItem({ kind: 'cashbox', item: cb })}
           compact
           searchPlaceholder="بحث باسم الخزينة أو رقم الحساب..."
           searchFilter={(cb, q) => `${cb.name} ${cb.accountNumber || ''}`.toLowerCase().includes(q)}
@@ -1248,6 +1257,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
           title="حركة الخزائن والبنوك"
           data={filteredTransactions}
           rowKey={(tx) => tx.id}
+          onRowClick={(tx) => setPreviewFinanceItem({ kind: 'transaction', item: tx })}
           compact
           searchValue={searchTerm}
           onSearchChange={setSearchTerm}
@@ -1318,6 +1328,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
           title="سندات المصروفات والإيرادات"
           data={filteredExpenses}
           rowKey={(rec) => rec.id}
+          onRowClick={(rec) => setPreviewFinanceItem({ kind: 'expense', item: rec })}
           compact
           searchValue={searchTerm}
           onSearchChange={setSearchTerm}
@@ -2483,6 +2494,144 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Read-only Finance Record Detail Modal */}
+      <Modal
+        isOpen={!!previewFinanceItem}
+        onClose={() => setPreviewFinanceItem(null)}
+        title={
+          previewFinanceItem?.kind === 'cashbox'
+            ? `تفاصيل الخزينة / الحساب: ${previewFinanceItem.item.name}`
+            : previewFinanceItem?.kind === 'transaction'
+            ? `تفاصيل الحركة المالية: ${previewFinanceItem.item.transactionNumber}`
+            : previewFinanceItem?.kind === 'expense'
+            ? `تفاصيل السند المالي: ${previewFinanceItem.item.recordNumber}`
+            : 'تفاصيل السجل المالي'
+        }
+        maxWidth="md"
+      >
+        {previewFinanceItem && (
+          <div className="space-y-3 text-xs">
+            <div className="grid grid-cols-2 gap-2 p-2.5 rounded-lg bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C]">
+              {previewFinanceItem.kind === 'cashbox' && (
+                <>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الاسم</span>
+                    <strong>{previewFinanceItem.item.name}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">النوع</span>
+                    <strong>{previewFinanceItem.item.type === 'bank' ? 'حساب بنكي' : 'خزينة نقدية'}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">رقم الحساب</span>
+                    <strong className="font-mono">{previewFinanceItem.item.accountNumber || '—'}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الرصيد المتاح</span>
+                    <strong className="font-mono tabular-nums text-[#003589] dark:text-[#85B8FF]">
+                      {previewFinanceItem.item.balanceHidden
+                        ? 'محجوب'
+                        : `${Number(previewFinanceItem.item.currentBalance ?? 0).toLocaleString()} ${settings.currency}`}
+                    </strong>
+                  </div>
+                </>
+              )}
+              {previewFinanceItem.kind === 'transaction' && (
+                <>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">رقم الحركة</span>
+                    <strong className="font-mono">{previewFinanceItem.item.transactionNumber}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">التاريخ</span>
+                    <strong className="font-mono tabular-nums">{previewFinanceItem.item.date}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الخزينة</span>
+                    <strong>{previewFinanceItem.item.cashboxName}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">نوع الحركة</span>
+                    <strong>{previewFinanceItem.item.category}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">المبلغ</span>
+                    <strong className="font-mono tabular-nums text-[#003589] dark:text-[#85B8FF]">
+                      {Number(previewFinanceItem.item.amount || 0).toLocaleString()} {settings.currency}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">المسؤول</span>
+                    <strong>{previewFinanceItem.item.createdBy}</strong>
+                  </div>
+                </>
+              )}
+              {previewFinanceItem.kind === 'expense' && (
+                <>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">رقم السند</span>
+                    <strong className="font-mono">{previewFinanceItem.item.recordNumber}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">التاريخ</span>
+                    <strong className="font-mono tabular-nums">{previewFinanceItem.item.date}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">النوع</span>
+                    <strong>{previewFinanceItem.item.type === 'expense' ? 'سند صرف (مصروف)' : 'سند قبض (إيراد)'}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">البند / التصنيف</span>
+                    <strong>{previewFinanceItem.item.category}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الخزينة</span>
+                    <strong>{previewFinanceItem.item.cashboxName}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">المبلغ</span>
+                    <strong className="font-mono tabular-nums text-[#003589] dark:text-[#85B8FF]">
+                      {Number(previewFinanceItem.item.amount || 0).toLocaleString()} {settings.currency}
+                    </strong>
+                  </div>
+                </>
+              )}
+            </div>
+            {(previewFinanceItem.item.description || previewFinanceItem.item.recipientOrPayer || previewFinanceItem.item.notes) && (
+              <div className="p-2 rounded-md bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C] space-y-1">
+                {previewFinanceItem.item.recipientOrPayer && (
+                  <div>
+                    <span className="font-bold text-slate-600 dark:text-[#97AECE]">الجهة: </span>
+                    <span>{previewFinanceItem.item.recipientOrPayer}</span>
+                  </div>
+                )}
+                {previewFinanceItem.item.description && (
+                  <div>
+                    <span className="font-bold text-slate-600 dark:text-[#97AECE]">البيان: </span>
+                    <span>{previewFinanceItem.item.description}</span>
+                  </div>
+                )}
+                {previewFinanceItem.item.notes && (
+                  <div>
+                    <span className="font-bold text-slate-600 dark:text-[#97AECE]">ملاحظات: </span>
+                    <span>{previewFinanceItem.item.notes}</span>
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="flex justify-end pt-2 border-t border-slate-200 dark:border-[#21375C]">
+              <button
+                type="button"
+                onClick={() => setPreviewFinanceItem(null)}
+                className="h-8 px-3 rounded-md border border-slate-300 dark:border-[#2A436E] font-bold cursor-pointer"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* Print Document Modal */}

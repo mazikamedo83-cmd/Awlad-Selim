@@ -563,13 +563,14 @@ async function runDualBackendSuite(label, isPg) {
 
       assert.deepEqual(snapAfter, snapBefore, 'Confirm receipt MUST have ZERO double-posting impact on balances, stock, invoices, or cashboxes');
 
-      if (isPg) {
-        const detailPg = await req(baseUrl, 'GET', `/api/sync/dispatches/${firstBatchId}`, { token: adminToken });
-        assert.ok(
-          detailPg.json.auditTrail.some((a) => String(a.action).includes('استلام وتأكيد')),
-          'PG auditTrail must log dispatch receipt confirmation'
-        );
-      }
+      const detailRes = await req(baseUrl, 'GET', `/api/sync/dispatches/${firstBatchId}`, { token: adminToken });
+      assert.equal(detailRes.status, 200);
+      assert.ok(
+        Array.isArray(detailRes.json.auditTrail) &&
+          detailRes.json.auditTrail.length >= 2 &&
+          detailRes.json.auditTrail.some((a) => String(a.action).includes('استلام وتأكيد')),
+        `${isPg ? 'PG' : 'JSON Ledger'} auditTrail must log dispatch receipt confirmation`
+      );
 
       // Scenario 13 (post-confirm): Rep receives notification with targetTab: 'refresh'
       const repNotifs = await req(baseUrl, 'GET', '/api/mobile/notifications', { token: repToken });
@@ -783,11 +784,11 @@ async function runDualBackendSuite(label, isPg) {
         (err) => err?.status === 403
       );
       await assert.rejects(
-        () => rejectStockTransferRequest('TR-ANY', 'رفض', fakeRepActor),
+        () => rejectStockTransferRequest('TR-ANY', { reason: 'رفض' }, fakeRepActor),
         (err) => err?.status === 403
       );
       await assert.rejects(
-        () => executeStockTransferRequest('TR-ANY', {}, fakeRepActor),
+        () => executeStockTransferRequest('TR-ANY', fakeRepActor),
         (err) => err?.status === 403
       );
     });

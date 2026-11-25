@@ -18,8 +18,9 @@ import {
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
+import { fetchDispatchBatchDetails } from '../../../services/api';
 import { UnifiedColumn, UnifiedDataTable } from '../../common/UnifiedDataTable';
-import { SyncDispatchBatch, SyncDispatchBatchDocSummaryItem, SyncDispatchBatchStatus, SyncQueueItem } from '../../../types';
+import { AuditLogItem, SyncDispatchBatch, SyncDispatchBatchDocSummaryItem, SyncDispatchBatchStatus, SyncQueueItem } from '../../../types';
 
 interface RefreshSyncScreenProps {
   onBack?: () => void;
@@ -106,6 +107,8 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
 
   // Inspection & Confirmation Modal state
   const [inspectedBatch, setInspectedBatch] = useState<SyncDispatchBatch | null>(null);
+  const [inspectedAuditTrail, setInspectedAuditTrail] = useState<AuditLogItem[]>([]);
+  const [isLoadingInspectDetails, setIsLoadingInspectDetails] = useState<boolean>(false);
   const [receiptNotesInput, setReceiptNotesInput] = useState<string>('');
   const [hasDiscrepancyInput, setHasDiscrepancyInput] = useState<boolean>(false);
   const [discrepancyNoteInput, setDiscrepancyNoteInput] = useState<string>('');
@@ -423,11 +426,26 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
   // Purely read-only inspection — NEVER mutates batch status automatically when opened
   const handleOpenInspectBatch = (batch: SyncDispatchBatch, focusFailBox = false) => {
     setInspectedBatch(batch);
+    setInspectedAuditTrail([]);
     setReceiptNotesInput(batch.receiptNotes || '');
     setHasDiscrepancyInput(Boolean(batch.discrepancyDetails?.hasDiscrepancy));
     setDiscrepancyNoteInput(batch.discrepancyDetails?.note || '');
     setFailReasonInput(batch.rejectionReason || '');
     setShowFailReasonBox(focusFailBox);
+    if (!batch.isLocalOnly && isOnline) {
+      setIsLoadingInspectDetails(true);
+      fetchDispatchBatchDetails(batch.id)
+        .then((res) => {
+          setInspectedBatch((curr) => (curr && curr.id === batch.id && res?.batch ? res.batch : curr));
+          if (Array.isArray(res?.auditTrail)) {
+            setInspectedAuditTrail(res.auditTrail);
+          }
+        })
+        .catch(() => {})
+        .finally(() => setIsLoadingInspectDetails(false));
+    } else {
+      setIsLoadingInspectDetails(false);
+    }
   };
 
   const handleConfirmInspectedBatch = async (targetBatch?: SyncDispatchBatch) => {
@@ -1176,7 +1194,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
         pdfTitle="سجل دفعات إرسال واستلام المندوبين"
         searchPlaceholder="ابحث برقم الدفعة، اسم المندوب، المستلم..."
         toolbarFilters={
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex flex-nowrap overflow-x-auto no-scrollbar sm:flex-wrap items-center gap-1.5 w-full [&>*]:shrink-0">
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
@@ -1480,6 +1498,36 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                   compact
                   defaultPageSize={10}
                 />
+
+                {/* Device Traceability & Dispatch Audit Trail */}
+                {(inspectedBatch.deviceId || inspectedBatch.receivedDeviceId || isLoadingInspectDetails || inspectedAuditTrail.length > 0) && (
+                  <div className="p-2 rounded-md bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C] text-xs space-y-1.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-black text-slate-800 dark:text-[#EEF4FC]">سجل التتبع والأجهزة للدفعة</span>
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-slate-600 dark:text-[#97AECE]">
+                        {inspectedBatch.deviceId && <span>جهاز الإرسال: {inspectedBatch.deviceId}</span>}
+                        {inspectedBatch.receivedDeviceId && <span>جهاز الاستلام: {inspectedBatch.receivedDeviceId}</span>}
+                      </div>
+                    </div>
+                    {isLoadingInspectDetails ? (
+                      <div className="text-[11px] text-slate-500 dark:text-[#8DA2C5]">جاري تحميل سجل التدقيق...</div>
+                    ) : inspectedAuditTrail.length > 0 ? (
+                      <div className="divide-y divide-slate-200/70 dark:divide-[#21375C] rounded border border-slate-200 dark:border-[#21375C] bg-white dark:bg-[#0E1C36]">
+                        {inspectedAuditTrail.map((entry) => (
+                          <div key={entry.id} className="px-2 py-1 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                            <div className="font-bold text-slate-800 dark:text-[#EEF4FC]">
+                              {entry.action}
+                              {entry.details ? <span className="font-normal text-slate-500 dark:text-[#97AECE]"> — {entry.details}</span> : null}
+                            </div>
+                            <div className="text-slate-500 dark:text-[#8DA2C5] font-mono">
+                              {entry.userName} · {formatDateTimeAr(entry.timestamp)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
 
                 {/* Authorized Recipient Explicit Confirmation / Objection / Reject Section */}
                 {canConfirmBatch(inspectedBatch) && (

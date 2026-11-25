@@ -203,9 +203,16 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
         const matchesAll = tokens.every((tk) => haystack.includes(tk));
         if (!matchesAll) return null;
 
-        // Prioritize exact barcode/code match, then startsWith name
+        // Prioritize exact barcode/code (including unit barcodes) match, then startsWith name
         let score = 0;
-        if (normalizeSearchText(p.barcode || '') === normQ || normalizeSearchText(p.code) === normQ) {
+        const hasExactUnitBarcode = (p.units || []).some(
+          (u) => normalizeSearchText(u.barcode || '') === normQ
+        );
+        if (
+          normalizeSearchText(p.barcode || '') === normQ ||
+          normalizeSearchText(p.code) === normQ ||
+          hasExactUnitBarcode
+        ) {
           score = 100;
         } else if (normalizeSearchText(p.name).startsWith(normQ)) {
           score = 50;
@@ -225,6 +232,10 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
   useEffect(() => {
     setHighlightedIdx(0);
   }, [query, isOpen]);
+
+  useEffect(() => {
+    setHighlightedIdx((prev) => Math.min(prev, Math.max(0, filteredProducts.length - 1)));
+  }, [filteredProducts.length]);
 
   useEffect(() => {
     if (!isOpen || !listRef.current) return;
@@ -278,12 +289,15 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
     } else if (e.key === 'Enter') {
       e.preventDefault();
       e.stopPropagation();
-      // If exact barcode match exists, prioritize it even if highlighted differs
+      // If exact barcode match (main or unit barcode) exists, prioritize it even if highlighted differs
       const normQ = normalizeSearchText(query);
       const exactBarcode = filteredProducts.find(
-        (p) => normalizeSearchText(p.barcode || '') === normQ || normalizeSearchText(p.code) === normQ
+        (p) =>
+          normalizeSearchText(p.barcode || '') === normQ ||
+          normalizeSearchText(p.code) === normQ ||
+          (p.units || []).some((u) => normalizeSearchText(u.barcode || '') === normQ)
       );
-      const target = exactBarcode || filteredProducts[highlightedIdx];
+      const target = exactBarcode || filteredProducts[Math.min(highlightedIdx, Math.max(0, filteredProducts.length - 1))];
       if (target) {
         commitSelection(target);
       }

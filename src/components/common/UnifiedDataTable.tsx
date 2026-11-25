@@ -304,7 +304,7 @@ export function UnifiedDataTable<T>({
                 </div>
               )}
               {toolbarFilters && (
-                <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
+                <div className="flex flex-nowrap overflow-x-auto no-scrollbar sm:flex-wrap items-center gap-1.5 w-full sm:w-auto [&>*]:shrink-0">
                   {toolbarFilters}
                 </div>
               )}

@@ -102,19 +102,31 @@ export const MobilePortal: React.FC = () => {
   });
 
   useEffect(() => {
-    try {
-      const raw = typeof window !== 'undefined' ? window.localStorage.getItem(notifStorageKey) : null;
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        setNotifPrefs({
-          soundEnabled: parsed.soundEnabled !== false,
-          dispatchAlerts: parsed.dispatchAlerts !== false,
-          orderAlerts: parsed.orderAlerts !== false,
-        });
+    const loadFromStorage = () => {
+      try {
+        const raw = typeof window !== 'undefined' ? window.localStorage.getItem(notifStorageKey) : null;
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          setNotifPrefs({
+            soundEnabled: parsed.soundEnabled !== false,
+            dispatchAlerts: parsed.dispatchAlerts !== false,
+            orderAlerts: parsed.orderAlerts !== false,
+          });
+        }
+      } catch {
+        // ignore storage errors
       }
-    } catch {
-      // ignore storage errors
+    };
+    loadFromStorage();
+    const handler = () => loadFromStorage();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('awlad-notif-prefs-changed', handler);
     }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('awlad-notif-prefs-changed', handler);
+      }
+    };
   }, [notifStorageKey]);
 
   const toggleNotifPref = (key: 'soundEnabled' | 'dispatchAlerts' | 'orderAlerts') => {
@@ -122,6 +134,7 @@ export const MobilePortal: React.FC = () => {
       const next = { ...prev, [key]: !prev[key] };
       try {
         window.localStorage.setItem(notifStorageKey, JSON.stringify(next));
+        window.dispatchEvent(new CustomEvent('awlad-notif-prefs-changed'));
       } catch {
         // ignore storage errors
       }

@@ -67,6 +67,8 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
   const [printData, setPrintData] = useState<PrintData | null>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [previewReturn, setPreviewReturn] = useState<InvoiceReturn | null>(null);
+  const [previewSalesRequest, setPreviewSalesRequest] = useState<SalesReturnRequest | null>(null);
+  const [previewPurchaseRequest, setPreviewPurchaseRequest] = useState<PurchaseReturnRequest | null>(null);
 
   // New return form
   const [returnType, setReturnType] = useState<'sales_return' | 'purchase_return'>('sales_return');
@@ -644,6 +646,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
             searchable={false}
             data={filteredSrRequests}
             rowKey={(req) => req.id}
+            onRowClick={(req) => setPreviewSalesRequest(req)}
             exportFilename="AWLAD_SELIM_SalesReturnRequests"
             emptyTitle="لا توجد طلبات مرتجع مبيعات في هذا التصنيف"
             columns={[
@@ -856,6 +859,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
             searchable={false}
             data={filteredPrRequests}
             rowKey={(req) => req.id}
+            onRowClick={(req) => setPreviewPurchaseRequest(req)}
             exportFilename="AWLAD_SELIM_PurchaseReturnRequests"
             emptyTitle="لا توجد طلبات مرتجع مشتريات في هذا التصنيف"
             columns={[
@@ -1561,6 +1565,177 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                   إغلاق
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Sales Return Request Detail Modal */}
+      <Modal
+        isOpen={!!previewSalesRequest}
+        onClose={() => setPreviewSalesRequest(null)}
+        title={previewSalesRequest ? `تفاصيل طلب مرتجع مبيعات: ${previewSalesRequest.requestNumber}` : 'تفاصيل طلب مرتجع مبيعات'}
+        subtitle={previewSalesRequest?.customerName}
+        maxWidth="2xl"
+      >
+        {previewSalesRequest && (
+          <div className="space-y-3 text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-2.5 rounded-lg bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C]">
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الفاتورة الأصلية</span>
+                <strong className="font-mono">{previewSalesRequest.originalInvoiceNumber}</strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">المندوب / المرسل</span>
+                <strong>{previewSalesRequest.representativeName || previewSalesRequest.requestedByName}</strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">التاريخ</span>
+                <strong className="font-mono tabular-nums">{previewSalesRequest.date}</strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">العميل</span>
+                <strong>{previewSalesRequest.customerName}</strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">المستودع</span>
+                <strong>{previewSalesRequest.warehouseName}</strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الإجمالي</span>
+                <strong className="font-mono tabular-nums text-[#003589] dark:text-[#85B8FF]">
+                  {Number(previewSalesRequest.grandTotal || 0).toLocaleString()} {settings.currency}
+                </strong>
+              </div>
+            </div>
+            {previewSalesRequest.reason && (
+              <div className="p-2 rounded-md bg-amber-50/70 dark:bg-amber-500/15 border border-amber-200 dark:border-amber-500/30">
+                <span className="font-bold">سبب المرتجع: </span>
+                <span>{previewSalesRequest.reason}</span>
+              </div>
+            )}
+            <div className="border border-slate-200 dark:border-[#21375C] rounded-lg overflow-hidden">
+              <table className="w-full text-right text-xs">
+                <thead>
+                  <tr className="bg-slate-100 dark:bg-[#172E56] font-bold border-b border-slate-200 dark:border-[#2A436E]">
+                    <th className="p-2">الصنف</th>
+                    <th className="p-2 text-center">الوحدة</th>
+                    <th className="p-2 text-center">الكمية</th>
+                    <th className="p-2 text-center">السعر</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-[#1B2F52]">
+                  {(previewSalesRequest.items || []).map((it, idx) => (
+                    <tr key={`${it.productId}-${idx}`}>
+                      <td className="p-2 font-bold">{it.productName}</td>
+                      <td className="p-2 text-center">{it.unit}</td>
+                      <td className="p-2 text-center font-mono tabular-nums">{it.quantity}</td>
+                      <td className="p-2 text-center font-mono tabular-nums">{Number(it.unitPrice || 0).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-200 dark:border-[#21375C]">
+              {previewSalesRequest.status === 'pending' && canManageSalesReturnRequests && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const req = previewSalesRequest;
+                    setPreviewSalesRequest(null);
+                    handleOpenApproveSalesReq(req);
+                  }}
+                  className="h-8 px-3 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
+                >
+                  مراجعة واعتماد
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setPreviewSalesRequest(null)}
+                className="h-8 px-3 rounded-md border border-slate-300 dark:border-[#2A436E] font-bold cursor-pointer"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Purchase Return Request Detail Modal */}
+      <Modal
+        isOpen={!!previewPurchaseRequest}
+        onClose={() => setPreviewPurchaseRequest(null)}
+        title={previewPurchaseRequest ? `تفاصيل طلب مرتجع مشتريات: ${previewPurchaseRequest.requestNumber}` : 'تفاصيل طلب مرتجع مشتريات'}
+        subtitle={previewPurchaseRequest?.supplierName}
+        maxWidth="2xl"
+      >
+        {previewPurchaseRequest && (
+          <div className="space-y-3 text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-2.5 rounded-lg bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C]">
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الفاتورة الأصلية</span>
+                <strong className="font-mono">{previewPurchaseRequest.originalInvoiceNumber}</strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">المندوب / المرسل</span>
+                <strong>{previewPurchaseRequest.representativeName || previewPurchaseRequest.requestedByName}</strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">التاريخ</span>
+                <strong className="font-mono tabular-nums">{previewPurchaseRequest.date}</strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">المورد</span>
+                <strong>{previewPurchaseRequest.supplierName}</strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">المستودع</span>
+                <strong>{previewPurchaseRequest.warehouseName}</strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الإجمالي</span>
+                <strong className="font-mono tabular-nums text-[#003589] dark:text-[#85B8FF]">
+                  {Number(previewPurchaseRequest.grandTotal || 0).toLocaleString()} {settings.currency}
+                </strong>
+              </div>
+            </div>
+            {previewPurchaseRequest.reason && (
+              <div className="p-2 rounded-md bg-amber-50/70 dark:bg-amber-500/15 border border-amber-200 dark:border-amber-500/30">
+                <span className="font-bold">سبب المرتجع: </span>
+                <span>{previewPurchaseRequest.reason}</span>
+              </div>
+            )}
+            <div className="border border-slate-200 dark:border-[#21375C] rounded-lg overflow-hidden">
+              <table className="w-full text-right text-xs">
+                <thead>
+                  <tr className="bg-slate-100 dark:bg-[#172E56] font-bold border-b border-slate-200 dark:border-[#2A436E]">
+                    <th className="p-2">الصنف</th>
+                    <th className="p-2 text-center">الوحدة</th>
+                    <th className="p-2 text-center">الكمية</th>
+                    <th className="p-2 text-center">السعر</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-[#1B2F52]">
+                  {(previewPurchaseRequest.items || []).map((it, idx) => (
+                    <tr key={`${it.productId}-${idx}`}>
+                      <td className="p-2 font-bold">{it.productName}</td>
+                      <td className="p-2 text-center">{it.unit}</td>
+                      <td className="p-2 text-center font-mono tabular-nums">{it.quantity}</td>
+                      <td className="p-2 text-center font-mono tabular-nums">{Number(it.unitPrice || 0).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-200 dark:border-[#21375C]">
+              <button
+                type="button"
+                onClick={() => setPreviewPurchaseRequest(null)}
+                className="h-8 px-3 rounded-md border border-slate-300 dark:border-[#2A436E] font-bold cursor-pointer"
+              >
+                إغلاق
+              </button>
             </div>
           </div>
         )}

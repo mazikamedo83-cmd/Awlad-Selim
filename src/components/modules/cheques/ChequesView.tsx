@@ -48,6 +48,10 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
   const [installmentError, setInstallmentError] = useState<string | null>(null);
   const [isPayingInstallment, setIsPayingInstallment] = useState(false);
 
+  // Read-only Detail Modals
+  const [previewCheque, setPreviewCheque] = useState<Cheque | null>(null);
+  const [previewInstallment, setPreviewInstallment] = useState<InstallmentSchedule | null>(null);
+
   useEffect(() => {
     if (initialTab) setActiveTab(initialTab);
   }, [initialTab]);
@@ -236,6 +240,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
           title="سجل الشيكات البنكية"
           data={cheques}
           rowKey={(chq) => chq.id}
+          onRowClick={(chq) => setPreviewCheque(chq)}
           compact
           searchPlaceholder="بحث برقم الشيك أو البنك أو الطرف..."
           exportFilename="سجل-الشيكات-البنكية"
@@ -354,6 +359,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
           title="جداول متابعة الأقساط"
           data={installments}
           rowKey={(sch) => sch.id}
+          onRowClick={(sch) => setPreviewInstallment(sch)}
           compact
           exportFilename="جداول-الأقساط"
           pdfTitle="جداول متابعة الأقساط"
@@ -643,6 +649,171 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
         message={rejectingCheque ? `تسجيل ارتداد الشيك رقم (${rejectingCheque.chequeNumber}) الخاص بـ (${rejectingCheque.partyName}).` : ''}
         confirmLabel="تأكيد الرفض"
       />
+
+      {/* Preview Cheque Detail Modal */}
+      <Modal
+        isOpen={!!previewCheque}
+        onClose={() => setPreviewCheque(null)}
+        title={previewCheque ? `تفاصيل الشيك رقم ${previewCheque.chequeNumber}` : 'تفاصيل الشيك'}
+        maxWidth="md"
+      >
+        {previewCheque && (
+          <div className="space-y-3 text-xs">
+            <div className="grid grid-cols-2 gap-2 p-2.5 rounded-lg bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C]">
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">رقم الشيك</span>
+                <strong className="font-mono text-slate-900 dark:text-[#F3F7FC]">{previewCheque.chequeNumber}</strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">النوع</span>
+                <strong className="text-slate-900 dark:text-[#F3F7FC]">
+                  {previewCheque.type === 'incoming' ? 'شيك وارد (لنا)' : 'شيك صادر (علينا)'}
+                </strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">البنك المسحوب عليه</span>
+                <strong className="text-slate-900 dark:text-[#F3F7FC]">{previewCheque.bankName}</strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الطرف</span>
+                <strong className="text-slate-900 dark:text-[#F3F7FC]">{previewCheque.partyName}</strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">تاريخ الاستحقاق</span>
+                <strong className="font-mono tabular-nums text-slate-900 dark:text-[#F3F7FC]">{previewCheque.dueDate}</strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">المبلغ</span>
+                <strong className="font-mono tabular-nums text-blue-950 dark:text-[#85B8FF]">
+                  {previewCheque.amount.toLocaleString()} {settings.currency}
+                </strong>
+              </div>
+            </div>
+            {previewCheque.notes && (
+              <div className="p-2 rounded-md bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C]">
+                <span className="font-bold text-slate-600 dark:text-[#97AECE]">ملاحظات: </span>
+                <span className="text-slate-900 dark:text-[#EEF4FC]">{previewCheque.notes}</span>
+              </div>
+            )}
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-200 dark:border-[#21375C]">
+              {previewCheque.status !== 'collected' && previewCheque.status !== 'rejected' && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = previewCheque;
+                      setPreviewCheque(null);
+                      setCollectError(null);
+                      setCollectingCheque(target);
+                    }}
+                    className="h-8 px-3 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
+                  >
+                    تحصيل الشيك
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = previewCheque;
+                      setPreviewCheque(null);
+                      setRejectingCheque(target);
+                    }}
+                    className="h-8 px-3 rounded-md bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold cursor-pointer"
+                  >
+                    رفض / ارتداد
+                  </button>
+                </>
+              )}
+              <button
+                type="button"
+                onClick={() => setPreviewCheque(null)}
+                className="h-8 px-3 rounded-md border border-slate-300 dark:border-[#2A436E] font-bold cursor-pointer"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Preview Installment Schedule Detail Modal */}
+      <Modal
+        isOpen={!!previewInstallment}
+        onClose={() => setPreviewInstallment(null)}
+        title={previewInstallment ? `تفاصيل جدولة الأقساط (${previewInstallment.scheduleNumber})` : 'تفاصيل الأقساط'}
+        subtitle={previewInstallment?.customerName}
+        maxWidth="lg"
+      >
+        {previewInstallment && (
+          <div className="space-y-3 text-xs">
+            <div className="grid grid-cols-3 gap-2 p-2.5 rounded-lg bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C]">
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الإجمالي</span>
+                <strong className="font-mono tabular-nums">{previewInstallment.totalAmount.toLocaleString()} {settings.currency}</strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">المسدد</span>
+                <strong className="font-mono tabular-nums text-emerald-700 dark:text-emerald-400">{previewInstallment.paidAmount.toLocaleString()} {settings.currency}</strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">المتبقي</span>
+                <strong className="font-mono tabular-nums text-red-700 dark:text-red-400">{previewInstallment.remainingAmount.toLocaleString()} {settings.currency}</strong>
+              </div>
+            </div>
+
+            <div className="border border-slate-200 dark:border-[#21375C] rounded-lg overflow-hidden">
+              <table className="w-full text-right text-xs">
+                <thead>
+                  <tr className="bg-slate-100 dark:bg-[#172E56] font-bold border-b border-slate-200 dark:border-[#2A436E]">
+                    <th className="p-2">القسط</th>
+                    <th className="p-2 text-center">تاريخ الاستحقاق</th>
+                    <th className="p-2 text-center">المبلغ</th>
+                    <th className="p-2 text-center">المسدد</th>
+                    <th className="p-2 text-center">الحالة</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-[#1B2F52]">
+                  {previewInstallment.items.map((it) => (
+                    <tr key={it.id}>
+                      <td className="p-2 font-bold">قسط {it.installmentNumber}</td>
+                      <td className="p-2 text-center font-mono tabular-nums">{it.dueDate}</td>
+                      <td className="p-2 text-center font-mono tabular-nums font-bold">{it.amount.toLocaleString()}</td>
+                      <td className="p-2 text-center font-mono tabular-nums">{it.paidAmount.toLocaleString()}</td>
+                      <td className="p-2 text-center">
+                        {it.status === 'paid' ? (
+                          <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px]">مسدد</span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const sch = previewInstallment;
+                              setPreviewInstallment(null);
+                              setInstallmentError(null);
+                              setPayingSchedule({ schedule: sch, itemId: it.id, amount: it.amount - it.paidAmount });
+                            }}
+                            className="px-2 py-0.5 rounded bg-[#003589] text-white font-bold text-[10px] cursor-pointer"
+                          >
+                            تسجيل سداد
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-200 dark:border-[#21375C]">
+              <button
+                type="button"
+                onClick={() => setPreviewInstallment(null)}
+                className="h-8 px-3 rounded-md border border-slate-300 dark:border-[#2A436E] font-bold cursor-pointer"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

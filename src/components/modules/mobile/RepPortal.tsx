@@ -7,10 +7,11 @@ import {
   ArrowUpCircle, UserPlus, Building2, Receipt, CreditCard, FileSpreadsheet,
   Wallet, Settings, LogOut, ChevronLeft, Lock, Warehouse as WarehouseIcon,
   Barcode, X, Eye, Calculator, ClipboardCheck, Send, Clock, Edit, Upload, ExternalLink, Store, PackagePlus,
-  ArrowRight, Printer, Info, Calendar, ChevronDown, ChevronUp
+  ArrowRight, Printer, Info, Calendar, ChevronDown, ChevronUp, Sun, Moon, Monitor, Globe, BellRing, Volume2
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
+import { usePreferences } from '../../../context/PreferencesContext';
 import {
   Customer,
   CustomerPhoneEntry,
@@ -175,9 +176,79 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   onLogout,
   onUnsavedInvoiceChange,
 }) => {
-  const { currentUser, representativeProfile, mobileConfig, hasPermission } = useAuth();
+  const { currentUser, representativeProfile, mobileConfig, hasPermission, updatePassword } = useAuth();
   const data = useData();
+  const { themePreference, setThemePreference, language, setLanguage, t } = usePreferences();
   const isNative = isNativeCapacitor();
+
+  const repNotifStorageKey = `awlad_selim_notif_prefs_${currentUser?.id || 'guest'}`;
+  const [repNotifPrefs, setRepNotifPrefs] = useState<{
+    soundEnabled: boolean;
+    dispatchAlerts: boolean;
+    orderAlerts: boolean;
+  }>(() => {
+    try {
+      const raw = typeof window !== 'undefined' ? window.localStorage.getItem(repNotifStorageKey) : null;
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        return {
+          soundEnabled: parsed.soundEnabled !== false,
+          dispatchAlerts: parsed.dispatchAlerts !== false,
+          orderAlerts: parsed.orderAlerts !== false,
+        };
+      }
+    } catch {
+      // ignore
+    }
+    return { soundEnabled: true, dispatchAlerts: true, orderAlerts: true };
+  });
+
+  useEffect(() => {
+    const reload = () => {
+      try {
+        const raw = typeof window !== 'undefined' ? window.localStorage.getItem(repNotifStorageKey) : null;
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          setRepNotifPrefs({
+            soundEnabled: parsed.soundEnabled !== false,
+            dispatchAlerts: parsed.dispatchAlerts !== false,
+            orderAlerts: parsed.orderAlerts !== false,
+          });
+        }
+      } catch {
+        // ignore
+      }
+    };
+    reload();
+    if (typeof window !== 'undefined') {
+      window.addEventListener('awlad-notif-prefs-changed', reload);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('awlad-notif-prefs-changed', reload);
+      }
+    };
+  }, [repNotifStorageKey]);
+
+  const toggleRepNotifPref = (key: 'soundEnabled' | 'dispatchAlerts' | 'orderAlerts') => {
+    setRepNotifPrefs((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      try {
+        window.localStorage.setItem(repNotifStorageKey, JSON.stringify(next));
+        window.dispatchEvent(new CustomEvent('awlad-notif-prefs-changed'));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
+
+  const [showRepPwdBox, setShowRepPwdBox] = useState(false);
+  const [repCurrPwd, setRepCurrPwd] = useState('');
+  const [repNewPwd, setRepNewPwd] = useState('');
+  const [repConfirmPwd, setRepConfirmPwd] = useState('');
+  const [repSavingPwd, setRepSavingPwd] = useState(false);
+  const [repPwdMsg, setRepPwdMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const isAdmin = currentUser?.role === 'admin';
   const isRepRoleAccount = currentUser?.role === 'representative';
@@ -4013,69 +4084,256 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
       {/* ==================== TAB 3: MORE (المزيد) ==================== */}
       {activeTab === 'more' && (
-        <div className="bg-white rounded-lg border border-slate-200 overflow-hidden divide-y divide-slate-100 text-xs">
-          {[
-            { key: 'rep-reports' as RepTabKey, label: 'تقارير المندوب الشاملة', Icon: FileSpreadsheet, allowed: true },
-            { key: 'purchases-list' as RepTabKey, label: 'فواتير الشراء', Icon: PurchaseInvoicesListIcon, allowed: canCreatePurchase },
-            { key: 'suppliers' as RepTabKey, label: 'الموردون وكشف الحساب', Icon: Building2, allowed: canCreatePurchase },
-            { key: 'sales-returns-list' as RepTabKey, label: 'مرتجع البيع', Icon: SalesReturnIcon, allowed: canSales },
-            { key: 'invoices' as RepTabKey, label: 'فواتير البيع', Icon: SalesInvoicesListIcon, allowed: canSales },
-            { key: 'customers' as RepTabKey, label: 'الحسابات والعملاء', Icon: CustomersGroupIcon, allowed: canAccounts || canSales },
-            { key: 'custody' as RepTabKey, label: 'المخزن والعهدة', Icon: WarehouseBoxesIcon, allowed: canInventory },
-            { key: 'purchase-returns-list' as RepTabKey, label: isRepRoleAccount ? 'طلبات ومرتجعات الشراء' : 'مرتجع الشراء', Icon: PurchaseReturnIcon, allowed: canCreatePurchase },
-            { key: 'orders' as RepTabKey, label: 'الطلبات والتسليمات', Icon: OrdersClipboardIcon, allowed: canSales },
-            { key: 'new-quote' as RepTabKey, label: 'عروض الأسعار', Icon: PriceQuoteIcon, allowed: canSales },
-            { key: 'refresh' as RepTabKey, label: 'REFRESH · الإرسال والاستلام', Icon: RefreshCloudIcon, allowed: true },
-          ].map((item) => {
-            const ItemIcon = item.Icon;
-            return (
+        <div className="space-y-2 text-xs">
+          <div className="bg-white dark:bg-[#0E1C36] rounded-lg border border-slate-200 dark:border-[#21375C] overflow-hidden divide-y divide-slate-100 dark:divide-[#1B2F52]">
+            {[
+              { key: 'rep-reports' as RepTabKey, label: 'تقارير المندوب الشاملة', Icon: FileSpreadsheet, allowed: true },
+              { key: 'purchases-list' as RepTabKey, label: 'فواتير الشراء', Icon: PurchaseInvoicesListIcon, allowed: canCreatePurchase },
+              { key: 'suppliers' as RepTabKey, label: 'الموردون وكشف الحساب', Icon: Building2, allowed: canCreatePurchase },
+              { key: 'sales-returns-list' as RepTabKey, label: 'مرتجع البيع', Icon: SalesReturnIcon, allowed: canSales },
+              { key: 'invoices' as RepTabKey, label: 'فواتير البيع', Icon: SalesInvoicesListIcon, allowed: canSales },
+              { key: 'customers' as RepTabKey, label: 'الحسابات والعملاء', Icon: CustomersGroupIcon, allowed: canAccounts || canSales },
+              { key: 'custody' as RepTabKey, label: 'المخزن والعهدة', Icon: WarehouseBoxesIcon, allowed: canInventory },
+              { key: 'purchase-returns-list' as RepTabKey, label: isRepRoleAccount ? 'طلبات ومرتجعات الشراء' : 'مرتجع الشراء', Icon: PurchaseReturnIcon, allowed: canCreatePurchase },
+              { key: 'orders' as RepTabKey, label: 'الطلبات والتسليمات', Icon: OrdersClipboardIcon, allowed: canSales },
+              { key: 'new-quote' as RepTabKey, label: 'عروض الأسعار', Icon: PriceQuoteIcon, allowed: canSales },
+              { key: 'refresh' as RepTabKey, label: 'REFRESH · الإرسال والاستلام', Icon: RefreshCloudIcon, allowed: true },
+            ].map((item) => {
+              const ItemIcon = item.Icon;
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  disabled={!item.allowed}
+                  onClick={() => onTabChange(item.key)}
+                  className="w-full min-h-[36px] px-2.5 py-1.5 flex items-center justify-between gap-2 text-right font-bold text-slate-800 dark:text-[#EEF4FC] hover:bg-slate-50 dark:hover:bg-[#132544] disabled:opacity-45 cursor-pointer"
+                >
+                  <div className="flex items-center gap-2">
+                    <ItemIcon className="w-4 h-4 shrink-0" />
+                    <span>{item.label}</span>
+                  </div>
+                  {item.allowed ? (
+                    <ChevronLeft className="w-4 h-4 text-slate-400 dark:text-[#8CA3C7]" />
+                  ) : (
+                    <Lock className="w-4 h-4 text-slate-300 dark:text-[#5B749B]" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Inline Theme, Language, Notifications & Account Security Settings */}
+          <div className="bg-white dark:bg-[#0E1C36] rounded-lg border border-slate-200 dark:border-[#21375C] p-2.5 space-y-2">
+            <div className="space-y-1">
+              <p className="font-black text-[11px] text-slate-700 dark:text-[#A9BCD9]">{t('مظهر التطبيق', 'App Theme')}</p>
+              <div className="grid grid-cols-3 gap-1.5">
+                {([
+                  { key: 'light', label: t('نهاري', 'Light'), icon: Sun },
+                  { key: 'dark', label: t('داكن', 'Dark'), icon: Moon },
+                  { key: 'system', label: t('النظام', 'System'), icon: Monitor },
+                ] as const).map((opt) => {
+                  const OptIcon = opt.icon;
+                  const active = themePreference === opt.key;
+                  return (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => setThemePreference(opt.key)}
+                      className={`h-8 rounded-md border text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors ${
+                        active
+                          ? 'bg-[var(--awlad-royal-700)] dark:bg-[#1659C8] text-white border-[var(--awlad-royal-700)] dark:border-[#60A5FA]/40'
+                          : 'bg-slate-50 dark:bg-[#132544] text-slate-700 dark:text-[#DCE6F5] border-slate-200 dark:border-[#21375C] hover:bg-slate-100 dark:hover:bg-[#1A3461]'
+                      }`}
+                    >
+                      <OptIcon className="w-3.5 h-3.5" />
+                      <span>{opt.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-1 pt-1 border-t border-slate-100 dark:border-[#1B2F52]">
+              <p className="font-black text-[11px] text-slate-700 dark:text-[#A9BCD9] flex items-center gap-1.5">
+                <Globe className="w-3.5 h-3.5 text-[var(--awlad-royal-700)] dark:text-[#85B8FF]" />
+                <span>{t('لغة الواجهة', 'Interface Language')}</span>
+              </p>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setLanguage('ar')}
+                  className={`h-8 rounded-md border font-bold cursor-pointer transition-colors ${
+                    language === 'ar'
+                      ? 'bg-[var(--awlad-royal-700)] dark:bg-[#1659C8] text-white border-[var(--awlad-royal-700)] dark:border-[#60A5FA]/40'
+                      : 'bg-slate-50 dark:bg-[#132544] text-slate-700 dark:text-[#DCE6F5] border-slate-200 dark:border-[#21375C]'
+                  }`}
+                >
+                  العربية
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLanguage('en')}
+                  className={`h-8 rounded-md border font-bold cursor-pointer transition-colors ${
+                    language === 'en'
+                      ? 'bg-[var(--awlad-royal-700)] dark:bg-[#1659C8] text-white border-[var(--awlad-royal-700)] dark:border-[#60A5FA]/40'
+                      : 'bg-slate-50 dark:bg-[#132544] text-slate-700 dark:text-[#DCE6F5] border-slate-200 dark:border-[#21375C]'
+                  }`}
+                >
+                  English
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-1 pt-1 border-t border-slate-100 dark:border-[#1B2F52]">
+              <p className="font-black text-[11px] text-slate-700 dark:text-[#A9BCD9] flex items-center gap-1.5">
+                <BellRing className="w-3.5 h-3.5 text-[var(--awlad-royal-700)] dark:text-[#85B8FF]" />
+                <span>{t('تفضيلات التنبيهات', 'Notification Preferences')}</span>
+              </p>
+              <label className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C] cursor-pointer">
+                <span className="flex items-center gap-1.5 font-bold text-[11px] text-slate-700 dark:text-[#DCE6F5]">
+                  <Volume2 className="w-3.5 h-3.5 text-slate-500 dark:text-[#8CA3C7]" />
+                  <span>أصوات التنبيه والباركود</span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={repNotifPrefs.soundEnabled}
+                  onChange={() => toggleRepNotifPref('soundEnabled')}
+                  className="w-4 h-4 accent-[#003589] dark:accent-[#3B82F6] cursor-pointer"
+                />
+              </label>
+              <label className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C] cursor-pointer">
+                <span className="font-bold text-[11px] text-slate-700 dark:text-[#DCE6F5]">تنبيهات الإرسال والاستلام والترحيل</span>
+                <input
+                  type="checkbox"
+                  checked={repNotifPrefs.dispatchAlerts}
+                  onChange={() => toggleRepNotifPref('dispatchAlerts')}
+                  className="w-4 h-4 accent-[#003589] dark:accent-[#3B82F6] cursor-pointer"
+                />
+              </label>
+              <label className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C] cursor-pointer">
+                <span className="font-bold text-[11px] text-slate-700 dark:text-[#DCE6F5]">تنبيهات الطلبات والموافقات الفورية</span>
+                <input
+                  type="checkbox"
+                  checked={repNotifPrefs.orderAlerts}
+                  onChange={() => toggleRepNotifPref('orderAlerts')}
+                  className="w-4 h-4 accent-[#003589] dark:accent-[#3B82F6] cursor-pointer"
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-[#0E1C36] rounded-lg border border-slate-200 dark:border-[#21375C] overflow-hidden divide-y divide-slate-100 dark:divide-[#1B2F52]">
+            {onOpenServerModal && (
               <button
-                key={item.key}
                 type="button"
-                disabled={!item.allowed}
-                onClick={() => onTabChange(item.key)}
-                className="w-full min-h-[36px] px-2.5 py-1.5 flex items-center justify-between gap-2 text-right font-bold text-slate-800 hover:bg-slate-50 disabled:opacity-45 cursor-pointer"
+                onClick={onOpenServerModal}
+                className="w-full min-h-[36px] px-2.5 py-1.5 flex items-center justify-between gap-2 text-right font-bold text-slate-800 dark:text-[#EEF4FC] hover:bg-slate-50 dark:hover:bg-[#132544] cursor-pointer"
               >
                 <div className="flex items-center gap-2">
-                  <ItemIcon className="w-4 h-4 shrink-0" />
-                  <span>{item.label}</span>
+                  <SettingsTwinGearsIcon className="w-4 h-4 shrink-0" />
+                  <span>الإعدادات والربط المركزي</span>
                 </div>
-                {item.allowed ? (
-                  <ChevronLeft className="w-4 h-4 text-slate-400" />
-                ) : (
-                  <Lock className="w-4 h-4 text-slate-300" />
-                )}
+                <ChevronLeft className="w-4 h-4 text-slate-400 dark:text-[#8CA3C7]" />
               </button>
-            );
-          })}
+            )}
 
-          {onOpenServerModal && (
             <button
               type="button"
-              onClick={onOpenServerModal}
-              className="w-full min-h-[36px] px-2.5 py-1.5 flex items-center justify-between gap-2 text-right font-bold text-slate-800 hover:bg-slate-50 cursor-pointer"
+              onClick={() => {
+                setShowRepPwdBox((p) => !p);
+                setRepPwdMsg(null);
+              }}
+              className="w-full min-h-[36px] px-2.5 py-1.5 flex items-center justify-between gap-2 text-right font-bold text-slate-800 dark:text-[#EEF4FC] hover:bg-slate-50 dark:hover:bg-[#132544] cursor-pointer"
             >
               <div className="flex items-center gap-2">
-                <SettingsTwinGearsIcon className="w-4 h-4 shrink-0" />
-                <span>الإعدادات والربط المركزي</span>
+                <Lock className="w-4 h-4 text-[var(--awlad-royal-700)] dark:text-[#85B8FF] shrink-0" />
+                <span>تغيير كلمة المرور</span>
               </div>
-              <ChevronLeft className="w-4 h-4 text-slate-400" />
+              <ChevronLeft className={`w-4 h-4 text-slate-400 dark:text-[#8CA3C7] transition-transform ${showRepPwdBox ? '-rotate-90' : ''}`} />
             </button>
-          )}
 
-          {onLogout && (
-            <button
-              type="button"
-              onClick={onLogout}
-              className="w-full min-h-[36px] px-2.5 py-1.5 flex items-center justify-between gap-2 text-right font-black text-red-700 hover:bg-red-50 cursor-pointer"
-            >
-              <div className="flex items-center gap-2.5">
-                <LogoutDoorIcon className="w-5 h-5 shrink-0" />
-                <span>تسجيل الخروج</span>
-              </div>
-              <ChevronLeft className="w-4 h-4 text-red-400" />
-            </button>
-          )}
+            {showRepPwdBox && (
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  setRepPwdMsg(null);
+                  if (repNewPwd.length < 4) {
+                    setRepPwdMsg({ type: 'error', text: 'كلمة المرور يجب أن تكون 4 أحرف على الأقل.' });
+                    return;
+                  }
+                  if (repNewPwd !== repConfirmPwd) {
+                    setRepPwdMsg({ type: 'error', text: 'تأكيد كلمة المرور غير مطابق.' });
+                    return;
+                  }
+                  setRepSavingPwd(true);
+                  const res = await updatePassword(repNewPwd, repCurrPwd || undefined);
+                  setRepSavingPwd(false);
+                  if (res.success) {
+                    setRepCurrPwd('');
+                    setRepNewPwd('');
+                    setRepConfirmPwd('');
+                    setRepPwdMsg({ type: 'success', text: 'تم تحديث كلمة المرور بنجاح.' });
+                  } else {
+                    setRepPwdMsg({ type: 'error', text: res.error || 'تعذر تغيير كلمة المرور.' });
+                  }
+                }}
+                className="p-2.5 bg-slate-50 dark:bg-[#132544] space-y-1.5"
+              >
+                {repPwdMsg && (
+                  <p className={`text-[11px] font-bold ${repPwdMsg.type === 'success' ? 'text-emerald-800 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>
+                    {repPwdMsg.text}
+                  </p>
+                )}
+                <input
+                  type="password"
+                  required
+                  value={repCurrPwd}
+                  onChange={(e) => setRepCurrPwd(e.target.value)}
+                  placeholder="كلمة المرور الحالية"
+                  className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] px-2 bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-500 dark:placeholder:text-[#8CA3C7] font-mono"
+                />
+                <input
+                  type="password"
+                  required
+                  minLength={4}
+                  value={repNewPwd}
+                  onChange={(e) => setRepNewPwd(e.target.value)}
+                  placeholder="كلمة المرور الجديدة"
+                  className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] px-2 bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-500 dark:placeholder:text-[#8CA3C7] font-mono"
+                />
+                <input
+                  type="password"
+                  required
+                  minLength={4}
+                  value={repConfirmPwd}
+                  onChange={(e) => setRepConfirmPwd(e.target.value)}
+                  placeholder="تأكيد كلمة المرور الجديدة"
+                  className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] px-2 bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-500 dark:placeholder:text-[#8CA3C7] font-mono"
+                />
+                <button
+                  type="submit"
+                  disabled={repSavingPwd}
+                  className="w-full h-8 rounded-md bg-[var(--awlad-royal-700)] dark:bg-[#1659C8] hover:bg-[var(--awlad-royal-600)] dark:hover:bg-[#1F6BE6] text-white font-black cursor-pointer disabled:opacity-50"
+                >
+                  {repSavingPwd ? 'جاري التحديث...' : 'حفظ كلمة المرور'}
+                </button>
+              </form>
+            )}
+
+            {onLogout && (
+              <button
+                type="button"
+                onClick={onLogout}
+                className="w-full min-h-[36px] px-2.5 py-1.5 flex items-center justify-between gap-2 text-right font-black text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/35 cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  <LogoutDoorIcon className="w-5 h-5 shrink-0" />
+                  <span>تسجيل الخروج</span>
+                </div>
+                <ChevronLeft className="w-4 h-4 text-red-400" />
+              </button>
+            )}
+          </div>
         </div>
       )}
 

@@ -4,7 +4,7 @@ import {
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
-import { IdentityEntityType, User, UserRole, UserPermissions } from '../../../types';
+import { AuditLogItem, IdentityEntityType, UnifiedIdentity, User, UserRole, UserPermissions } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { SearchableFilterSelect } from '../../common/SearchableFilterSelect';
@@ -103,6 +103,8 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
   const [togglingUserId, setTogglingUserId] = useState<string | null>(null);
   const [hasManualPermEdits, setHasManualPermEdits] = useState(false);
   const [isSavingPresets, setIsSavingPresets] = useState(false);
+  const [previewIdentity, setPreviewIdentity] = useState<UnifiedIdentity | null>(null);
+  const [previewAuditLog, setPreviewAuditLog] = useState<AuditLogItem | null>(null);
 
   // Unified Identity & Conflicts tab state
   const [isRunningAudit, setIsRunningAudit] = useState(false);
@@ -704,6 +706,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           subtitle={`إجمالي الحسابات: ${users.length}`}
           data={users}
           rowKey={(u) => u.id}
+          onRowClick={(u) => handleOpenEdit(u)}
           searchPlaceholder="بحث بالاسم أو اسم الدخول أو الدور أو الهاتف..."
           exportFilename="AWLAD_SELIM_Users"
           pdfTitle="دليل المستخدمين والصلاحيات"
@@ -1247,6 +1250,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
             title={`دليل الهويات الموحدة (${identities.length})`}
             data={filteredIdentities}
             rowKey={(idn) => idn.id}
+            onRowClick={(idn) => setPreviewIdentity(idn)}
             searchValue={identitySearch}
             onSearchChange={setIdentitySearch}
             searchPlaceholder="بحث بالاسم أو الهاتف أو الرقم القومي أو معرف الهوية..."
@@ -1324,6 +1328,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           subtitle={`إجمالي الأحداث المسجلة: ${auditLogs.length}`}
           data={auditLogs}
           rowKey={(log) => log.id}
+          onRowClick={(log) => setPreviewAuditLog(log)}
           searchPlaceholder="بحث بالمستخدم أو الوحدة أو الإجراء أو التفاصيل..."
           exportFilename="AWLAD_SELIM_AuditLogs"
           pdfTitle="سجل تدقيق العمليات"
@@ -1719,6 +1724,118 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
         message={userToDelete ? `هل أنت متأكد من حذف حساب المستخدم (${userToDelete.fullName} - ${userToDelete.username}) نهائياً؟` : ''}
         confirmLabel="حذف الحساب"
       />
+
+      {/* Unified Identity Details Modal */}
+      <Modal
+        isOpen={!!previewIdentity}
+        onClose={() => setPreviewIdentity(null)}
+        title={previewIdentity ? `تفاصيل الهوية الموحدة: ${previewIdentity.fullName}` : 'تفاصيل الهوية'}
+        subtitle={previewIdentity?.id}
+        maxWidth="lg"
+      >
+        {previewIdentity && (
+          <div className="space-y-3 text-xs">
+            <div className="grid grid-cols-2 gap-2 p-2.5 rounded-lg bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C]">
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الاسم الكامل</span>
+                <strong>{previewIdentity.fullName}</strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الهاتف</span>
+                <strong className="font-mono tabular-nums">{previewIdentity.phone || '—'}</strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الرقم القومي</span>
+                <strong className="font-mono tabular-nums">{previewIdentity.nationalId || '—'}</strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">معرف الهوية</span>
+                <strong className="font-mono">{previewIdentity.id}</strong>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <div className="font-bold text-slate-700 dark:text-[#A9BCD9]">السجلات المرتبطة بهذه الهوية:</div>
+              <div className="flex flex-wrap gap-1.5">
+                {(previewIdentity.roles && previewIdentity.roles.length > 0
+                  ? previewIdentity.roles
+                  : identityRoles.filter((r) => r.identityId === previewIdentity.id)
+                ).map((r) => (
+                  <span
+                    key={r.id}
+                    className="px-2 py-1 rounded bg-slate-100 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C] font-bold"
+                  >
+                    {r.linkedRecordType}: {r.linkedRecordId}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="flex justify-end pt-2 border-t border-slate-200 dark:border-[#21375C]">
+              <button
+                type="button"
+                onClick={() => setPreviewIdentity(null)}
+                className="h-8 px-3 rounded-md border border-slate-300 dark:border-[#2A436E] font-bold cursor-pointer"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Audit Log Entry Detail Modal */}
+      <Modal
+        isOpen={!!previewAuditLog}
+        onClose={() => setPreviewAuditLog(null)}
+        title="تفاصيل سجل التدقيق"
+        subtitle={previewAuditLog?.module}
+        maxWidth="md"
+      >
+        {previewAuditLog && (
+          <div className="space-y-3 text-xs">
+            <div className="grid grid-cols-2 gap-2 p-2.5 rounded-lg bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C]">
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">المستخدم</span>
+                <strong>{previewAuditLog.userName}</strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">التاريخ والوقت</span>
+                <strong className="font-mono tabular-nums">
+                  {new Date(previewAuditLog.timestamp).toLocaleString('ar-EG')}
+                </strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">القسم</span>
+                <strong>{previewAuditLog.module}</strong>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">رقم السجل المرجعي</span>
+                <strong className="font-mono">{previewAuditLog.recordId || '—'}</strong>
+              </div>
+            </div>
+            <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C] space-y-1">
+              <div>
+                <span className="font-bold text-slate-600 dark:text-[#97AECE]">الإجراء: </span>
+                <strong>{previewAuditLog.action}</strong>
+              </div>
+              {previewAuditLog.details && (
+                <div>
+                  <span className="font-bold text-slate-600 dark:text-[#97AECE]">التفاصيل: </span>
+                  <span>{previewAuditLog.details}</span>
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end pt-2 border-t border-slate-200 dark:border-[#21375C]">
+              <button
+                type="button"
+                onClick={() => setPreviewAuditLog(null)}
+                className="h-8 px-3 rounded-md border border-slate-300 dark:border-[#2A436E] font-bold cursor-pointer"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

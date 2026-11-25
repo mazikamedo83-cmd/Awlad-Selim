@@ -1,25 +1,22 @@
 import { Router } from 'express';
-import {
-  getPublicConnectionDiscovery,
-  resolvePairingToken,
-  claimPairingToken,
-  recordDeviceHeartbeat,
-  updateTunnelRuntimeStatus,
-  parseValidAndroidSha256Fingerprints,
-} from '../db/stores/connectionPairingStore.js';
-import { validateActiveSession } from '../db/stores/authStore.js';
-import { verifyJwt } from '../utils/crypto.js';
-import { asyncHandler, checkPairingRateLimit, getClientIp } from '../middleware/auth.js';
+import { asyncHandler, checkPairingRateLimit } from '../middleware/auth.js';
 import { isPgConnectionError, isStrictPostgresMode } from '../db/postgres.js';
 import {
   DATABASE_UNAVAILABLE_CODE,
   DATABASE_UNAVAILABLE_MESSAGE,
-  ensureStrictPgReady,
   markPgUnavailable,
 } from '../db/stores/mode.js';
+import {
+  claimPairingToken,
+  getConnectionDiscoveryPayload,
+  inspectPairingTokenPublic,
+  parseValidAndroidSha256Fingerprints,
+  recordDeviceHeartbeat,
+  updateTunnelRuntimeStatus,
+} from '../db/stores/connectionPairingStore.js';
 
 function escapeHtml(raw) {
-  return String(raw ?? '')
+  return String(raw || '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -27,352 +24,212 @@ function escapeHtml(raw) {
     .replace(/'/g, '&#39;');
 }
 
-function detectPlatformFromUa(ua = '') {
-  const s = String(ua || '').toLowerCase();
-  if (/iphone|ipad|ipod/.test(s)) return 'ios';
-  if (/android/.test(s)) return 'android';
-  if (/windows/.test(s)) return 'windows';
-  return 'other';
-}
-
-function modeArabicLabel(mode) {
-  switch (mode) {
-    case 'local_network':
-      return 'الشبكة المحلية (LAN + منفذ 3000)';
-    case 'free_remote':
-      return 'الاتصال الخارجي المجاني (Cloudflare Quick Tunnel)';
-    case 'pro_remote':
-      return 'الاتصال الخارجي الاحترافي (دومين ثابت + HTTPS)';
-    case 'cloud_vps':
-      return 'السيرفر السحابي الدائم (Cloud VPS)';
-    default:
-      return mode || 'اتصال تلقائي';
-  }
-}
-
-function isDirectLoopback(req) {
-  if (req.get('x-forwarded-for')) return false;
-  const addr = String(req.socket?.remoteAddress || req.ip || '').trim();
-  return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
-}
-
-async function resolveOptionalAuthUser(req) {
-  try {
-    const authHeader = req.get('authorization') || '';
-    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
-    if (!token) return null;
-    const payload = verifyJwt(token);
-    if (!payload?.sub || !payload?.sid || !payload?.iid) return null;
-    const sessionCtx = await validateActiveSession(payload.sid, payload.sub, payload.iid);
-    return sessionCtx?.user || null;
-  } catch (err) {
-    if (isStrictPostgresMode() && (isPgConnectionError(err) || err?.code === 'DATABASE_UNAVAILABLE')) {
-      throw err;
-    }
-    return null;
-  }
+function isLoopbackIp(req) {
+  const ip = String(req.socket?.remoteAddress || req.ip || '').trim();
+  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
 }
 
 export const pairingApiRouter = Router();
+export const pairingPublicPagesRouter = Router();
 
+// Public Connection Discovery Endpoint
 pairingApiRouter.get(
   '/connection/discovery',
-  asyncHandler(async (req, res) => {
-    const discovery = await getPublicConnectionDiscovery(req);
-    res.json(discovery);
-  })
-);
-
-pairingApiRouter.post(
-  '/connection/heartbeat',
   checkPairingRateLimit,
   asyncHandler(async (req, res) => {
-    const authUser = await resolveOptionalAuthUser(req);
-    const result = await recordDeviceHeartbeat(
-      { ...(req.body || {}), ipAddress: getClientIp(req) },
-      req,
-      authUser
-    );
-    if (result.ok === false) {
-      return res.status(403).json(result);
-    }
-    return res.json(result);
+    const payload = await getConnectionDiscoveryPayload(req);
+    res.json(payload);
   })
 );
 
-pairingApiRouter.get(
-  '/pairing/resolve/:token',
-  checkPairingRateLimit,
-  asyncHandler(async (req, res) => {
-    const result = await resolvePairingToken(req.params.token, req);
-    res.json(result);
-  })
-);
-
+// Public / Client Pairing Token Claim Endpoint
 pairingApiRouter.post(
   '/pairing/claim',
   checkPairingRateLimit,
   asyncHandler(async (req, res) => {
-    const result = await claimPairingToken(
-      {
-        ...(req.body || {}),
-        deviceId: req.get('x-device-id') || req.body?.deviceId,
-        ipAddress: getClientIp(req),
-      },
-      req
-    );
+    const result = await claimPairingToken(req.body || {}, req);
     res.json(result);
   })
 );
 
+// Device Connection Heartbeat
+pairingApiRouter.post(
+  '/connection/heartbeat',
+  asyncHandler(async (req, res) => {
+    const payload = await recordDeviceHeartbeat(req.body?.deviceId, req.body || {}, req);
+    res.json(payload);
+  })
+);
+
+// Internal Loopback Tunnel Supervisor Hook
 pairingApiRouter.post(
   '/internal/tunnel-status',
   asyncHandler(async (req, res) => {
-    const user = await resolveOptionalAuthUser(req);
-    const isAdminOrPermitted = Boolean(user && (user.role === 'admin' || user.permissions?.canManageSettings));
-    if (!isDirectLoopback(req) && !isAdminOrPermitted) {
+    const configuredSecret = String(process.env.TUNNEL_SUPERVISOR_TOKEN || '').trim();
+    const suppliedSecret = String(req.get('x-tunnel-token') || '').trim();
+    if (configuredSecret) {
+      if (suppliedSecret !== configuredSecret) {
+        return res.status(403).json({ ok: false, code: 'FORBIDDEN', error: 'رمز مشرف النفق غير صالح' });
+      }
+    } else if (!isLoopbackIp(req)) {
       return res.status(403).json({
         ok: false,
-        code: 'FORBIDDEN_TUNNEL_UPDATE',
-        error: 'غير مصرح بتحديث حالة النفق إلا من الجهاز الخادم أو مدير الإعدادات.',
+        code: 'FORBIDDEN_NON_LOOPBACK',
+        error: 'تحديث حالة النفق متاح فقط من الجهاز المحلي (Loopback)',
       });
     }
-    const result = await updateTunnelRuntimeStatus(req.body || {}, user);
+    const result = await updateTunnelRuntimeStatus(req.body || {}, null);
     res.json({ ok: true, ...result });
   })
 );
 
-export const pairingPublicPagesRouter = Router();
-
-pairingPublicPagesRouter.get('/.well-known/assetlinks.json', (req, res) => {
-  const packageName = (process.env.ANDROID_APP_ID || 'com.awladselim.erp').trim();
-  const configuredHost = String(process.env.ANDROID_APP_LINK_HOST || '').trim().toLowerCase();
-  const fingerprints = parseValidAndroidSha256Fingerprints(process.env.ANDROID_APP_SHA256_FINGERPRINTS || '');
-
+// Android Digital Asset Links
+pairingPublicPagesRouter.get('/.well-known/assetlinks.json', (_req, res) => {
+  const pkg = String(process.env.ANDROID_APP_ID || 'com.awladselim.erp').trim();
+  const fingerprints = parseValidAndroidSha256Fingerprints(
+    process.env.ANDROID_APP_SHA256_FINGERPRINTS || ''
+  );
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  if (fingerprints.length === 0 || configuredHost === 'awladselim.app') {
+  if (fingerprints.length === 0) {
     return res.json([]);
-  }
-  if (configuredHost) {
-    const reqHost = String(req.get('x-forwarded-host') || req.get('host') || '')
-      .split(',')[0]
-      .trim()
-      .split(':')[0]
-      .toLowerCase();
-    if (reqHost && reqHost !== configuredHost) {
-      return res.json([]);
-    }
   }
   return res.json([
     {
       relation: ['delegate_permission/common.handle_all_urls'],
       target: {
         namespace: 'android_app',
-        package_name: packageName,
+        package_name: pkg,
         sha256_cert_fingerprints: fingerprints,
       },
     },
   ]);
 });
 
+// Apple Universal Links AASA
 pairingPublicPagesRouter.get('/.well-known/apple-app-site-association', (_req, res) => {
   const teamId = String(process.env.APPLE_TEAM_ID || '').trim();
-  const bundleId = String(process.env.IOS_BUNDLE_ID || 'com.awladselim.erp').trim();
-  const appId = teamId ? `${teamId}.${bundleId}` : bundleId;
-
+  const bundleId = String(process.env.IOS_APP_BUNDLE_ID || 'com.awladselim.erp').trim();
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  if (!teamId) {
+    return res.json({ applinks: { apps: [], details: [] } });
+  }
   return res.json({
     applinks: {
       apps: [],
       details: [
         {
-          appID: appId,
-          appIDs: [appId],
+          appID: `${teamId}.${bundleId}`,
           paths: ['/pair/*', '/invite/*'],
-          components: [
-            { '/': '/pair/*', comment: 'AWLAD SELIM Direct Pairing Links' },
-            { '/': '/invite/*', comment: 'AWLAD SELIM Invite Links' },
-          ],
         },
       ],
     },
   });
 });
 
-async function handleInviteLandingPage(req, res) {
-  const rawToken = String(req.params.token || '').trim();
-  const wantJson = req.query.format === 'json' || (!req.accepts('html') && req.accepts('json'));
+async function handlePublicPairingLanding(req, res) {
+  const wantsJson =
+    String(req.query?.format || '').toLowerCase() === 'json' ||
+    String(req.get('accept') || '').toLowerCase().includes('application/json');
 
   try {
-    const info = await resolvePairingToken(rawToken, req);
-    if (wantJson) {
-      return res.json(info);
+    const rawToken = String(req.params.token || '').trim();
+    const inspection = await inspectPairingTokenPublic(rawToken);
+    const discovery = await getConnectionDiscoveryPayload(req);
+    const serverBaseUrl = escapeHtml(
+      inspection.tokenRecord?.serverBaseUrl || discovery.currentHostUrl || discovery.activeEndpoint
+    );
+    const deepLinkUrl = `awladselim://pair?token=${encodeURIComponent(rawToken)}&server=${encodeURIComponent(
+      inspection.tokenRecord?.serverBaseUrl || discovery.currentHostUrl || discovery.activeEndpoint
+    )}`;
+
+    if (wantsJson) {
+      return res.json({
+        ok: inspection.valid,
+        status: inspection.status,
+        companyName: discovery.companyName,
+        serverBaseUrl: inspection.tokenRecord?.serverBaseUrl || discovery.currentHostUrl,
+        deepLinkUrl,
+        tokenPreview: inspection.tokenRecord?.tokenPreview || null,
+        expiresAt: inspection.tokenRecord?.expiresAt || null,
+        requireAdminApproval: Boolean(inspection.tokenRecord?.requireAdminApproval),
+      });
     }
 
-    const platform = detectPlatformFromUa(req.get('user-agent') || '');
-    const platformLabel =
-      platform === 'android'
-        ? 'Android'
-        : platform === 'ios'
-        ? 'iPhone / iPad (iOS)'
-        : platform === 'windows'
-        ? 'Windows Desktop'
-        : 'المتصفح';
+    const statusBadge =
+      inspection.status === 'active'
+        ? 'رابط ربط صالح وجاهز للتفعيل'
+        : inspection.status === 'used'
+        ? 'تم استخدام هذا الرابط مسبقاً'
+        : inspection.status === 'revoked'
+        ? 'تم إلغاء هذا الرابط من الإدارة'
+        : inspection.status === 'expired'
+        ? 'انتهت صلاحية هذا الرابط'
+        : 'رمز الربط غير صالح';
 
-    const deepLink = `awladselim://pair?token=${encodeURIComponent(rawToken)}&server=${encodeURIComponent(info.endpointUrl)}`;
-    const webAppLink = `/?pair_token=${encodeURIComponent(rawToken)}`;
-    const androidApkUrl = String(process.env.ANDROID_APK_URL || '').trim();
-    const iosStoreUrl = String(process.env.IOS_TESTFLIGHT_URL || process.env.IOS_APP_STORE_URL || '').trim();
-    const windowsUrl = String(process.env.WINDOWS_DOWNLOAD_URL || '').trim();
-
-    let downloadBlockHtml = '';
-    if (platform === 'android') {
-      downloadBlockHtml = androidApkUrl
-        ? `<a class="btn btn-secondary" href="${escapeHtml(androidApkUrl)}">تنزيل تطبيق الأندرويد (APK)</a>`
-        : `<p class="hint">إذا لم يكن تطبيق AWLAD SELIM مثبتًا على جهاز الأندرويد، اطلب ملف التثبيت (APK) من الإدارة ثم افتح هذا الرابط مجددًا.</p>`;
-    } else if (platform === 'ios') {
-      downloadBlockHtml = iosStoreUrl
-        ? `<a class="btn btn-secondary" href="${escapeHtml(iosStoreUrl)}">تنزيل تطبيق الأيفون (iOS)</a>`
-        : `<p class="hint">إذا لم يكن تطبيق AWLAD SELIM مثبتًا على الأيفون، قم بتثبيته عبر TestFlight أو App Store ثم افتح الرابط مجددًا.</p>`;
-    } else if (platform === 'windows') {
-      downloadBlockHtml = windowsUrl
-        ? `<a class="btn btn-secondary" href="${escapeHtml(windowsUrl)}">تنزيل برنامج الويندوز (Windows Installer)</a>`
-        : `<p class="hint">يمكنك تثبيت نسخة Windows Desktop من قسم الإصدارات أو متابعة العمل مباشرة عبر المتصفح بالأسفل.</p>`;
-    }
-
-    const html = `<!DOCTYPE html>
+    return res.status(inspection.valid ? 200 : 410).send(`<!doctype html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ربط جهاز مع ${escapeHtml(info.companyName)} — AWLAD SELIM</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ربط جهاز — ${escapeHtml(discovery.companyName)}</title>
   <style>
-    * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; }
-    body { margin: 0; min-height: 100vh; background: #0f172a; color: #f8fafc; display: flex; align-items: center; justify-content: center; padding: 20px; }
-    .card { width: 100%; max-width: 520px; background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 28px; box-shadow: 0 20px 50px rgba(0,0,0,0.4); }
-    .badge { display: inline-block; padding: 4px 12px; border-radius: 8px; background: #064e3b; color: #6ee7b7; font-size: 13px; font-weight: 700; margin-bottom: 12px; }
-    h1 { margin: 0 0 8px; font-size: 22px; color: #ffffff; }
-    .sub { color: #cbd5e1; font-size: 14px; line-height: 1.7; margin-bottom: 20px; }
-    .box { background: #0f172a; border: 1px solid #334155; border-radius: 12px; padding: 14px; margin-bottom: 18px; font-size: 13px; }
-    .row { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid #1e293b; }
-    .row:last-child { border-bottom: 0; }
-    .lbl { color: #94a3b8; }
-    .val { color: #f1f5f9; font-weight: 600; word-break: break-all; }
-    .ltr { direction: ltr; text-align: left; font-family: Consolas, monospace; }
-    .btn { display: block; width: 100%; text-align: center; text-decoration: none; padding: 13px 16px; border-radius: 10px; font-weight: 700; font-size: 15px; margin-bottom: 10px; border: 0; cursor: pointer; }
-    .btn-primary { background: #059669; color: #ffffff; }
-    .btn-web { background: #0284c7; color: #ffffff; }
-    .btn-secondary { background: #334155; color: #f8fafc; }
-    .notice { background: #451a03; border: 1px solid #92400e; color: #fde68a; border-radius: 10px; padding: 11px 14px; font-size: 13px; line-height: 1.6; margin-bottom: 16px; }
-    .hint { color: #94a3b8; font-size: 13px; line-height: 1.6; background: #0f172a; padding: 10px 12px; border-radius: 10px; border: 1px dashed #475569; }
-    code { background: #0f172a; padding: 2px 6px; border-radius: 6px; color: #38bdf8; }
+    body { font-family: system-ui, -apple-system, sans-serif; background:#eef3fa; color:#0f172a; margin:0; padding:24px; }
+    .card { max-width:520px; margin:24px auto; background:#fff; border:1px solid #dce6f5; border-radius:12px; overflow:hidden; box-shadow:0 10px 30px rgba(1,30,88,.12); }
+    .hdr { background:linear-gradient(135deg,#011E58,#003589); color:#fff; padding:18px 20px; }
+    .body { padding:20px; line-height:1.7; font-size:14px; }
+    .btn { display:inline-block; background:#003589; color:#fff; text-decoration:none; font-weight:700; padding:11px 18px; border-radius:8px; margin-top:10px; }
+    .code { background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:10px; font-family:monospace; direction:ltr; word-break:break-all; font-size:12px; }
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="badge">دعوة ربط جهاز — ${escapeHtml(platformLabel)}</div>
-    <h1>${escapeHtml(info.companyName)}</h1>
-    <p class="sub">تم تجهيز إعدادات الاتصال التلقائي بالسيرفر المركزي لجهازك. بعد فتح التطبيق، سيُطلب منك تسجيل الدخول باسم المستخدم وكلمة المرور المعتادة.</p>
-
-    <div class="box">
-      <div class="row"><span class="lbl">وضع الاتصال:</span><span class="val">${escapeHtml(modeArabicLabel(info.activeMode))}</span></div>
-      <div class="row"><span class="lbl">عنوان السيرفر:</span><span class="val ltr">${escapeHtml(info.endpointUrl)}</span></div>
-      ${info.targetUserName ? `<div class="row"><span class="lbl">الحساب المقصود:</span><span class="val">${escapeHtml(info.targetUserName)}</span></div>` : ''}
-      <div class="row"><span class="lbl">ينتهي في:</span><span class="val ltr">${escapeHtml(new Date(info.expiresAt).toLocaleString('en-GB'))}</span></div>
+    <div class="hdr">
+      <h1 style="margin:0;font-size:18px;">AWLAD SELIM — ${escapeHtml(discovery.companyName)}</h1>
+      <div style="font-size:12px;opacity:.9;margin-top:4px;">${escapeHtml(statusBadge)}</div>
     </div>
-
-    ${
-      info.requireAdminApproval
-        ? `<div class="notice">ملاحظة أمنية: يتطلب هذا الرابط اعتماد مدير النظام للجهاز قبل تفعيل الدخول.</div>`
-        : ''
-    }
-
-    <a id="open-app-btn" class="btn btn-primary" href="${escapeHtml(deepLink)}">فتح تطبيق AWLAD SELIM وإعداد الاتصال تلقائيًا</a>
-    <a class="btn btn-web" href="${escapeHtml(webAppLink)}">متابعة الربط والدخول عبر المتصفح مباشرة</a>
-    ${downloadBlockHtml}
-    <button id="copy-link-btn" type="button" class="btn btn-secondary">نسخ رابط الربط التلقائي</button>
-    <p id="copy-status" class="hint" style="display:none;color:#6ee7b7;border-color:#059669;"></p>
-
-    <p class="hint">في حال استخدام التطبيق يدويًا، افتح شاشة <strong>"إعداد السيرفر"</strong> واختر <strong>"لصق رابط الدعوة"</strong> أو امسح رمز QR. لا يتم تجاوز تسجيل الدخول في أي حالة.</p>
+    <div class="body">
+      <p>يُستخدم هذا الرابط لإعداد عنوان السيرفر المركزي تلقائياً داخل تطبيق أولاد سليم.</p>
+      <div class="code">${serverBaseUrl}</div>
+      ${
+        inspection.valid
+          ? `<p><a class="btn" href="${escapeHtml(deepLinkUrl)}">فتح التطبيق وتفعيل الربط تلقائياً</a></p>
+             <p style="font-size:12px;color:#475569;">أو انسخ هذا الرابط والصقه داخل شاشة مسح QR / لصق رابط الدعوة في التطبيق.</p>`
+          : `<p style="color:#b91c1c;font-weight:700;">يرجى طلب رابط ربط جديد من مدير النظام.</p>`
+      }
+    </div>
   </div>
-  <script>
-    (function () {
-      var copyBtn = document.getElementById('copy-link-btn');
-      var copyStatus = document.getElementById('copy-status');
-      if (copyBtn) {
-        copyBtn.addEventListener('click', function () {
-          var val = window.location.href;
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(val).then(function () {
-              if (copyStatus) {
-                copyStatus.textContent = 'تم نسخ رابط الربط التلقائي بنجاح. الصقه داخل شاشة إعداد السيرفر في التطبيق.';
-                copyStatus.style.display = 'block';
-              }
-            }).catch(function () {});
-          }
+</body>
+</html>`);
+  } catch (err) {
+    const isUnavailable =
+      err?.code === DATABASE_UNAVAILABLE_CODE ||
+      err?.status === 503 ||
+      (isStrictPostgresMode() && isPgConnectionError(err));
+    if (isUnavailable) {
+      markPgUnavailable(err?.code || 'connection_error');
+      const prefersHtml =
+        !wantsJson &&
+        String(req.get('accept') || '').toLowerCase().includes('text/html') &&
+        !String(req.get('content-type') || '').toLowerCase().includes('application/json');
+      if (!prefersHtml) {
+        return res.status(503).json({
+          ok: false,
+          code: DATABASE_UNAVAILABLE_CODE,
+          error: DATABASE_UNAVAILABLE_MESSAGE,
         });
       }
-      ${
-        platform === 'android' || platform === 'ios'
-          ? `setTimeout(function () {
-        try { window.location.href = ${JSON.stringify(deepLink)}; } catch (e) {}
-      }, 350);`
-          : ''
-      }
-    })();
-  </script>
-</body>
-</html>`;
-
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.send(html);
-  } catch (err) {
-    const isStrictDbDown =
-      isStrictPostgresMode() && (isPgConnectionError(err) || err?.code === DATABASE_UNAVAILABLE_CODE);
-    if (isStrictDbDown) {
-      markPgUnavailable(err?.code || 'connection_error');
-    }
-    if (wantJson) {
-      throw err;
-    }
-    const status = isStrictDbDown ? 503 : err?.status || 400;
-    const title = isStrictDbDown ? 'قاعدة البيانات غير متاحة مؤقتًا — AWLAD SELIM' : 'رابط ربط غير صالح — AWLAD SELIM';
-    const heading = isStrictDbDown ? 'قاعدة البيانات المركزية غير متاحة مؤقتًا' : 'تعذر إتمام ربط الجهاز';
-    const msg = isStrictDbDown
-      ? DATABASE_UNAVAILABLE_MESSAGE
-      : err?.message || 'رابط الربط غير صالح أو منتهي الصلاحية.';
-    const subHint = isStrictDbDown
-      ? 'تم إيقاف عمليات الربط مؤقتًا لحماية البيانات. يرجى إعادة المحاولة بعد عودة PostgreSQL للعمل.'
-      : 'يرجى التواصل مع مسؤول النظام لإصدار رابط ربط أو رمز QR جديد.';
-    const html = `<!DOCTYPE html>
+      return res.status(503).send(`<!doctype html>
 <html lang="ar" dir="rtl">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${escapeHtml(title)}</title>
-  <style>
-    body { margin: 0; min-height: 100vh; background: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, sans-serif; display: flex; align-items: center; justify-content: center; padding: 20px; }
-    .card { max-width: 460px; width: 100%; background: #1e293b; border: 1px solid #7f1d1d; border-radius: 16px; padding: 26px; text-align: center; }
-    h1 { color: #fca5a5; font-size: 20px; margin-bottom: 10px; }
-    p { color: #cbd5e1; line-height: 1.7; font-size: 14px; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h1>${escapeHtml(heading)}</h1>
-    <p>${escapeHtml(msg)}</p>
-    <p>${escapeHtml(subHint)}</p>
-  </div>
+<head><meta charset="utf-8" /><title>PostgreSQL غير متاحة</title></head>
+<body style="font-family:system-ui,sans-serif;padding:24px;direction:rtl;">
+  <h2>PostgreSQL — قاعدة البيانات المركزية غير متاحة مؤقتاً</h2>
+  <p>${escapeHtml(DATABASE_UNAVAILABLE_MESSAGE)}</p>
 </body>
-</html>`;
-    res.status(status).setHeader('Content-Type', 'text/html; charset=utf-8').send(html);
+</html>`);
+    }
+    throw err;
   }
 }
 
-const strictPairingPageGuard = asyncHandler(async (_req, _res, next) => {
-  await ensureStrictPgReady();
-  next();
-});
-
-pairingPublicPagesRouter.get('/pair/:token', strictPairingPageGuard, asyncHandler(handleInviteLandingPage));
-pairingPublicPagesRouter.get('/invite/:token', strictPairingPageGuard, asyncHandler(handleInviteLandingPage));
+pairingPublicPagesRouter.get('/pair/:token', asyncHandler(handlePublicPairingLanding));
+pairingPublicPagesRouter.get('/invite/:token', asyncHandler(handlePublicPairingLanding));

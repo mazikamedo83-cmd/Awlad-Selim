@@ -96,6 +96,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [previewProduct, setPreviewProduct] = useState<Product | null>(null);
 
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [transferProdId, setTransferProdId] = useState('');
@@ -1399,6 +1400,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
         subtitle={`إجمالي الأصناف المعروضة: ${filteredProducts.length} صنف`}
         data={filteredProducts}
         rowKey={(prod) => prod.id}
+        onRowClick={(prod) => setPreviewProduct(prod)}
         compact
         searchValue={searchTerm}
         onSearchChange={setSearchTerm}
@@ -2306,6 +2308,154 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
           variant={confirmState.variant}
         />
       )}
+
+      {/* Read-only Product Detail Modal */}
+      <Modal
+        isOpen={!!previewProduct}
+        onClose={() => setPreviewProduct(null)}
+        title={previewProduct ? `بطاقة الصنف: ${previewProduct.name}` : 'بطاقة الصنف'}
+        subtitle={previewProduct ? `${previewProduct.code}${previewProduct.barcode ? ` · باركود: ${previewProduct.barcode}` : ''}` : undefined}
+        maxWidth="2xl"
+      >
+        {previewProduct && (
+          <div className="space-y-3 text-xs">
+            <div className="flex flex-col sm:flex-row gap-3 p-2.5 rounded-lg bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C]">
+              {previewProduct.image ? (
+                <img
+                  src={previewProduct.image}
+                  alt={previewProduct.name}
+                  className="w-20 h-20 rounded-lg object-cover border border-slate-200 dark:border-[#21375C] shrink-0"
+                />
+              ) : (
+                <div className="w-20 h-20 rounded-lg bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#21375C] flex items-center justify-center text-slate-400 shrink-0">
+                  <ImageIcon className="w-7 h-7" />
+                </div>
+              )}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 flex-1">
+                <div>
+                  <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">التصنيف</span>
+                  <strong className="text-slate-900 dark:text-[#F3F7FC]">{previewProduct.category || 'عام'}</strong>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الوحدة الأساسية</span>
+                  <strong className="text-slate-900 dark:text-[#F3F7FC]">{previewProduct.baseUnit}</strong>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">سعر البيع الأساسي</span>
+                  <strong className="font-mono tabular-nums text-[#003589] dark:text-[#85B8FF]">
+                    {Number(previewProduct.sellingPrice || 0).toLocaleString()} {settings.currency}
+                  </strong>
+                </div>
+                {previewProduct.purchasePrice !== undefined && (
+                  <div>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">سعر التكلفة / الشراء</span>
+                    <strong className="font-mono tabular-nums text-slate-900 dark:text-[#F3F7FC]">
+                      {Number(previewProduct.purchasePrice || 0).toLocaleString()} {settings.currency}
+                    </strong>
+                  </div>
+                )}
+                <div>
+                  <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">حد الطلب</span>
+                  <strong className="font-mono tabular-nums text-slate-900 dark:text-[#F3F7FC]">{previewProduct.minStockLevel ?? 0}</strong>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الحالة</span>
+                  <strong className="text-slate-900 dark:text-[#F3F7FC]">
+                    {previewProduct.status === 'active' ? 'نشط' : 'موقف'}
+                  </strong>
+                </div>
+              </div>
+            </div>
+
+            {Array.isArray(previewProduct.units) && previewProduct.units.length > 0 && (
+              <div className="border border-slate-200 dark:border-[#21375C] rounded-lg overflow-hidden">
+                <div className="px-2.5 py-1.5 bg-slate-100 dark:bg-[#172E56] font-bold text-slate-800 dark:text-[#F3F7FC]">
+                  الوحدات والأسعار ({previewProduct.units.length})
+                </div>
+                <table className="w-full text-right text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-[#21375C] text-[11px] text-slate-500 dark:text-[#97AECE]">
+                      <th className="p-2">الوحدة</th>
+                      <th className="p-2 text-center">المعامل</th>
+                      <th className="p-2 text-center">الباركود</th>
+                      <th className="p-2 text-center">سعر البيع</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-[#1B2F52]">
+                    {previewProduct.units.map((u, idx) => (
+                      <tr key={u.id || `${u.name}-${idx}`}>
+                        <td className="p-2 font-bold">{u.name}</td>
+                        <td className="p-2 text-center font-mono tabular-nums">{u.conversionFactor}</td>
+                        <td className="p-2 text-center font-mono">{u.barcode || '—'}</td>
+                        <td className="p-2 text-center font-mono tabular-nums font-bold">
+                          {Number(u.sellingPrice || 0).toLocaleString()} {settings.currency}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="border border-slate-200 dark:border-[#21375C] rounded-lg overflow-hidden">
+              <div className="px-2.5 py-1.5 bg-slate-100 dark:bg-[#172E56] font-bold text-slate-800 dark:text-[#F3F7FC]">
+                الأرصدة التفصيلية بالمستودعات
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-2.5">
+                {warehouses.map((w) => (
+                  <div key={w.id} className="p-2 rounded border border-slate-200 dark:border-[#21375C] bg-white dark:bg-[#10203D]">
+                    <div className="text-[10px] text-slate-500 dark:text-[#97AECE] truncate">{w.name}</div>
+                    <div className="font-mono font-black text-slate-900 dark:text-[#F3F7FC] tabular-nums">
+                      {Number(previewProduct.stockPerWarehouse?.[w.id] || 0).toLocaleString()} {previewProduct.baseUnit}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {previewProduct.notes && (
+              <div className="p-2 rounded-md bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C]">
+                <span className="font-bold text-slate-600 dark:text-[#97AECE]">ملاحظات: </span>
+                <span>{previewProduct.notes}</span>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-200 dark:border-[#21375C]">
+              {onOpenItemMovementReport && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const id = previewProduct.id;
+                    setPreviewProduct(null);
+                    onOpenItemMovementReport(id);
+                  }}
+                  className="h-8 px-3 rounded-md bg-slate-100 dark:bg-[#132544] text-slate-800 dark:text-[#EEF4FC] font-bold cursor-pointer"
+                >
+                  تقرير حركة الصنف
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  const target = previewProduct;
+                  setPreviewProduct(null);
+                  handleOpenEdit(target);
+                }}
+                className="h-8 px-3 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
+              >
+                تعديل الصنف
+              </button>
+              <button
+                type="button"
+                onClick={() => setPreviewProduct(null)}
+                className="h-8 px-3 rounded-md border border-slate-300 dark:border-[#2A436E] font-bold cursor-pointer"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

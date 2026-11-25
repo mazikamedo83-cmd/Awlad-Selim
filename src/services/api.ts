@@ -1235,4 +1235,10 @@ export async function geocodeAddressViaServerApi(address: string): Promise<{
   return apiRequest(`/api/maps/geocode?address=${encodeURIComponent(address)}`, { skipAuth: true });
 }
 
-
+export async function fetchDispatchBatchDetails(batchId: string): Promise<{
+  ok: boolean;
+  batch: import('../types').SyncDispatchBatch;
+  auditTrail: import('../types').AuditLogItem[];
+}> {
+  return apiRequest(`/api/sync/dispatches/${encodeURIComponent(batchId)}`);
+}
