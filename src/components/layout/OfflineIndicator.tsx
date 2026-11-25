@@ -28,9 +28,9 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ variant = 'l
       return {
         icon: AlertTriangle,
         color: isDark
-          ? 'text-orange-100 bg-orange-500/25 border-orange-300/40'
-          : 'text-orange-700 bg-orange-500/10 border-orange-500/30',
-        dot: 'bg-orange-400',
+          ? 'text-amber-100 bg-amber-500/25 border-amber-300/40'
+          : 'text-amber-700 bg-amber-500/10 border-amber-500/30',
+        dot: 'bg-amber-400',
         label: `تعارض يحتاج مراجعة (${conflictsCount})`,
       };
     }
@@ -100,7 +100,7 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ variant = 'l
           title={`مركز المزامنة: ${config.label}${lastError ? ` | ${lastError}` : ''} | آخر فحص: ${lastSyncTime}${
             hasTentativeLocalBalances ? ' | توجد عمليات غير متزامنة (أرصدة محلية مبدئية)' : ''
           }`}
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-bold ${config.color} transition-all cursor-pointer hover:opacity-90 whitespace-nowrap`}
+          className={`flex items-center gap-1 px-2 py-1 rounded-md border text-xs font-bold ${config.color} transition-all cursor-pointer hover:opacity-90 whitespace-nowrap`}
         >
           <span className="relative flex h-2 w-2 shrink-0">
             <span className={`absolute inline-flex h-full w-full rounded-full opacity-75 ${config.dot}`}></span>
@@ -120,7 +120,7 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ variant = 'l
             type="button"
             onClick={() => setIsSyncModalOpen(true)}
             title="جلسة محلية موثقة — الصلاحيات المطبقة من آخر تحقق وقد تتحدث عند الاتصال"
-            className="hidden xl:flex items-center gap-1 px-2 py-1 rounded-xl bg-amber-400/20 border border-amber-300/40 text-amber-100 text-[10px] font-bold cursor-pointer whitespace-nowrap"
+            className="hidden xl:flex items-center gap-1 px-2 py-1 rounded-md bg-amber-400/20 border border-amber-300/40 text-amber-100 text-[10px] font-bold cursor-pointer whitespace-nowrap"
           >
             <ShieldAlert className="w-3 h-3 shrink-0" />
             <span>صلاحيات محلية</span>
@@ -132,7 +132,7 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ variant = 'l
           onClick={() => triggerSync(true)}
           title="تحديث ومزامنة فورية مع السيرفر المركزي"
           aria-label="تحديث ومزامنة"
-          className={`min-h-[36px] min-w-[36px] flex items-center justify-center rounded-xl transition-colors cursor-pointer ${
+          className={`min-h-[32px] min-w-[32px] flex items-center justify-center rounded-md transition-colors cursor-pointer ${
             isDark
               ? 'bg-white/10 hover:bg-white/20 text-blue-100 hover:text-white'
               : 'p-1.5 text-slate-500 hover:text-blue-600 hover:bg-slate-100'

@@ -164,15 +164,15 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
       <div className="flex min-h-full items-center justify-center p-2 sm:p-3 text-right">
         <div className="relative w-full max-w-4xl rounded-xl bg-white shadow-2xl border border-slate-200 overflow-hidden no-print-wrapper">
           {/* Controls Bar (hidden during actual print) */}
-          <div className="flex flex-wrap items-center justify-between border-b border-slate-200 bg-slate-800 text-white px-4 py-2.5 no-print gap-2">
+          <div className="flex flex-wrap items-center justify-between border-b border-[#002160] bg-[#011E58] text-white px-4 py-2 no-print gap-2">
             <div className="flex items-center gap-2.5 flex-wrap">
               <span className="font-bold text-xs">معاينة المستند والطباعة:</span>
-              <div className="flex bg-slate-700 p-0.5 rounded-lg text-xs font-medium">
+              <div className="flex bg-[#001A49] p-0.5 rounded-lg text-xs font-medium">
                 <button
                   type="button"
                   onClick={() => setPrintFormat('a4')}
                   className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
-                    printFormat === 'a4' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-300 hover:text-white'
+                    printFormat === 'a4' ? 'bg-[#003589] text-white shadow-xs' : 'text-slate-300 hover:text-white'
                   }`}
                 >
                   ورق قياسي A4
@@ -181,7 +181,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
                   type="button"
                   onClick={() => setPrintFormat('thermal80')}
                   className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
-                    printFormat === 'thermal80' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-300 hover:text-white'
+                    printFormat === 'thermal80' ? 'bg-[#003589] text-white shadow-xs' : 'text-slate-300 hover:text-white'
                   }`}
                 >
                   حراري 80 مم
@@ -190,7 +190,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
                   type="button"
                   onClick={() => setPrintFormat('thermal58')}
                   className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
-                    printFormat === 'thermal58' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-300 hover:text-white'
+                    printFormat === 'thermal58' ? 'bg-[#003589] text-white shadow-xs' : 'text-slate-300 hover:text-white'
                   }`}
                 >
                   حراري 58 مم
@@ -202,7 +202,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
               <button
                 type="button"
                 onClick={handleExportPdf}
-                className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-xs transition-all active:scale-95 cursor-pointer"
+                className="flex items-center gap-1.5 bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-xs transition-all active:scale-95 cursor-pointer"
               >
                 <FileDown className="w-3.5 h-3.5" />
                 <span>تصدير / حفظ PDF</span>
@@ -210,7 +210,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
               <button
                 type="button"
                 onClick={handlePrint}
-                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-xs transition-all active:scale-95 cursor-pointer"
+                className="flex items-center gap-1.5 bg-white text-[#011E58] hover:bg-[#EEF3FA] text-xs font-black px-3 py-1.5 rounded-lg shadow-xs transition-all active:scale-95 cursor-pointer"
               >
                 <Printer className="w-3.5 h-3.5" />
                 <span>{isNativeCapacitor() ? 'مشاركة / حفظ المستند' : 'طباعة المستند الآن'}</span>

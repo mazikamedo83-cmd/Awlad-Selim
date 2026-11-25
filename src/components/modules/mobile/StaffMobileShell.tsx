@@ -166,7 +166,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         id: 'sales',
         title: 'المبيعات والعملاء',
         icon: ShoppingCart,
-        colorClass: 'bg-blue-50 text-blue-900 border-blue-200',
+        colorClass: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
         permission: 'canManageSales',
         items: [
           { key: 'customer-orders', label: 'طلبات العملاء والمندوبين' },
@@ -182,7 +182,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         id: 'purchases',
         title: 'المشتريات والموردون',
         icon: Truck,
-        colorClass: 'bg-emerald-50 text-[#0F5A33] border-emerald-200',
+        colorClass: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
         permission: ['canManagePurchases', 'canCreatePurchase'],
         items: [
           { key: 'new-purchase', label: 'فاتورة شراء جديدة (+)' },
@@ -195,7 +195,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         id: 'inventory',
         title: 'المخازن والمنتجات',
         icon: Boxes,
-        colorClass: 'bg-amber-50 text-amber-900 border-amber-200',
+        colorClass: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
         permission: 'canManageInventory',
         items: [
           { key: 'products', label: 'المنتجات والأسعار والباركود' },
@@ -223,7 +223,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         id: 'finance',
         title: 'الحسابات والخزائن',
         icon: Wallet,
-        colorClass: 'bg-emerald-50 text-emerald-900 border-emerald-200',
+        colorClass: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
         permission: ['canManageCashboxes', 'canManageAccounts'],
         items: [
           {
@@ -248,7 +248,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         id: 'cheques',
         title: 'الشيكات والأقساط',
         icon: CreditCard,
-        colorClass: 'bg-indigo-50 text-indigo-900 border-indigo-200',
+        colorClass: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
         permission: 'canManageAccounts',
         items: [
           { key: 'cheques', label: 'الشيكات (واردة / صادرة)' },
@@ -259,7 +259,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         id: 'reps',
         title: 'المندوبون والتحويلات',
         icon: Users2,
-        colorClass: 'bg-cyan-50 text-cyan-900 border-cyan-200',
+        colorClass: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
         permission: ['canManageReps', 'canManageTransfers', 'canManageSales', 'canManageAccounts', 'canApprove'],
         items: [
           {
@@ -276,7 +276,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         id: 'hr',
         title: 'الموظفون والرواتب',
         icon: Users,
-        colorClass: 'bg-rose-50 text-rose-900 border-rose-200',
+        colorClass: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
         permission: 'canManageEmployees',
         items: [
           { key: 'employees', label: 'شؤون الموظفين' },
@@ -787,10 +787,10 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
   }, [currentUser, onNavigate]);
 
   return (
-    <div className="min-h-screen bg-[#f5f7f6] dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-['Cairo'] antialiased pb-16">
-      {/* Slim Emerald Top App Header Bar */}
-      <header className="sticky top-0 z-30 bg-[#0F5A33] text-white shadow-sm pt-safe no-print">
-        <div className="max-w-3xl mx-auto px-2.5 h-12 flex items-center justify-between gap-2">
+    <div className="min-h-screen bg-[var(--awlad-surface-page)] dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-['Cairo'] antialiased pb-16">
+      {/* Slim Logo-Navy/Royal Top App Header Bar */}
+      <header className="sticky top-0 z-30 awlad-brand-gradient text-white border-b border-[var(--awlad-royal-500)]/40 pt-safe no-print">
+        <div className="w-full max-w-full mx-auto px-2 h-11 flex items-center justify-between gap-1.5">
           <div className="flex items-center gap-2 min-w-0 shrink">
             <img
               src="/awlad-selim-logo.png"
@@ -799,7 +799,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
             />
             <div className="min-w-0">
               <h1 className="text-xs font-black truncate leading-tight">AWLAD SELIM</h1>
-              <p className="text-[10px] text-emerald-100 truncate">
+              <p className="text-[10px] text-blue-100 truncate">
                 {getRoleArabicLabel(currentUser?.role)} · {currentUser?.fullName}
               </p>
             </div>
@@ -812,13 +812,13 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                 setIsNotificationsOpen(true);
                 data.markNotificationsRead();
               }}
-              className="relative min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg hover:bg-white/15 text-white cursor-pointer"
+              className="relative min-h-[32px] min-w-[32px] flex items-center justify-center rounded-md hover:bg-white/15 text-white cursor-pointer"
               title="الإشعارات"
               aria-label="الإشعارات"
             >
               <Bell className="w-4 h-4" />
               {data.unreadNotificationCount > 0 && (
-                <span className="absolute top-1 right-1 min-w-[15px] h-[15px] px-1 rounded bg-red-600 text-white text-[9px] font-black flex items-center justify-center tabular-nums">
+                <span className="absolute top-0.5 right-0.5 min-w-[14px] h-[14px] px-1 rounded bg-red-600 text-white text-[9px] font-black flex items-center justify-center tabular-nums">
                   {data.unreadNotificationCount}
                 </span>
               )}
@@ -827,7 +827,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
             <button
               type="button"
               onClick={() => setIsServerModalOpen(true)}
-              className="min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg hover:bg-white/15 text-white cursor-pointer"
+              className="min-h-[32px] min-w-[32px] flex items-center justify-center rounded-md hover:bg-white/15 text-white cursor-pointer"
               title="عنوان السيرفر المركزي"
               aria-label="إعدادات السيرفر"
             >
@@ -837,7 +837,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
             <button
               type="button"
               onClick={() => data.triggerManualSync()}
-              className="min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg hover:bg-white/15 text-white cursor-pointer"
+              className="min-h-[32px] min-w-[32px] flex items-center justify-center rounded-md hover:bg-white/15 text-white cursor-pointer"
               title="تحديث ومزامنة"
               aria-label="تحديث ومزامنة"
             >
@@ -847,13 +847,13 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
             <button
               type="button"
               onClick={() => setIsAccountSwitcherOpen(true)}
-              className="relative min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg hover:bg-white/15 text-white cursor-pointer"
+              className="relative min-h-[32px] min-w-[32px] flex items-center justify-center rounded-md hover:bg-white/15 text-white cursor-pointer"
               title="الحسابات المحفوظة"
               aria-label="تبديل الحساب"
             >
               <Users className="w-4 h-4" />
-              {savedAccounts.length > 1 && (
-                <span className="absolute top-1 right-1 min-w-[14px] h-[14px] px-1 rounded bg-emerald-500 text-white text-[9px] font-black flex items-center justify-center tabular-nums">
+                {savedAccounts.length > 1 && (
+                <span className="absolute top-0.5 right-0.5 min-w-[14px] h-[14px] px-1 rounded bg-[var(--awlad-royal-500)] text-white text-[9px] font-black flex items-center justify-center tabular-nums">
                   {savedAccounts.length}
                 </span>
               )}
@@ -865,8 +865,8 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                 setIsMoreViewOpen(false);
                 onNavigate('system-settings');
               }}
-              className={`min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg cursor-pointer ${
-                !isMoreViewOpen && currentPage === 'system-settings' ? 'bg-white text-[#0F5A33]' : 'text-white hover:bg-white/15'
+              className={`min-h-[32px] min-w-[32px] flex items-center justify-center rounded-md cursor-pointer ${
+                !isMoreViewOpen && currentPage === 'system-settings' ? 'bg-white text-[var(--awlad-navy-900)]' : 'text-white hover:bg-white/15'
               }`}
               title="الإعدادات"
               aria-label="الإعدادات"
@@ -877,7 +877,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
             <button
               type="button"
               onClick={() => setShowLogoutConfirm(true)}
-              className="min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg bg-red-600/90 hover:bg-red-700 text-white cursor-pointer"
+              className="min-h-[32px] min-w-[32px] flex items-center justify-center rounded-md bg-red-600/90 hover:bg-red-700 text-white cursor-pointer"
               title="تسجيل الخروج"
               aria-label="تسجيل الخروج"
             >
@@ -888,7 +888,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
       </header>
 
       {/* Main Content */}
-      <main className="max-w-3xl mx-auto p-2.5 space-y-2.5">
+      <main className="w-full max-w-full mx-auto p-1.5 sm:p-2 space-y-2">
         {(data.isUsingOfflineCache || data.networkStatus === 'disconnected') && (
           <div className="px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900 flex items-center justify-between gap-2 no-print">
             <div className="flex items-center gap-2 min-w-0">
@@ -911,7 +911,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         )}
 
         {mobileBanner && (
-          <div className="px-2.5 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-bold flex items-center justify-between gap-2 no-print">
+          <div className="px-2.5 py-1.5 rounded-lg bg-[var(--awlad-blue-tint-50)] border border-[var(--awlad-blue-tint-100)] text-[var(--awlad-navy-900)] text-xs font-bold flex items-center justify-between gap-2 no-print">
             <span>{mobileBanner}</span>
             <button
               type="button"
@@ -923,17 +923,17 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
           </div>
         )}
 
-        {/* WA0007 Searchable Categorized Accordion View ("المزيد") */}
+        {/* Searchable Categorized Accordion View ("المزيد") */}
         {isMoreViewOpen ? (
-          <section aria-label="جميع الأقسام والعمليات" className="space-y-2.5 no-print">
-            <div className="bg-white rounded-lg border border-slate-200 p-2">
+          <section aria-label="جميع الأقسام والعمليات" className="space-y-2 no-print">
+            <div className="bg-white rounded-lg border border-slate-200 p-1.5">
               <div className="relative">
                 <input
                   type="text"
                   value={moreSearchQuery}
                   onChange={(e) => setMoreSearchQuery(e.target.value)}
                   placeholder="ابحث عن قسم أو شاشة..."
-                  className="w-full min-h-[36px] rounded-lg border border-slate-300 pr-8 pl-7 text-xs font-bold bg-slate-50 focus:bg-white focus:outline-hidden focus:border-[#0F5A33]"
+                  className="w-full h-9 rounded-md border border-slate-300 pr-8 pl-7 text-xs font-bold bg-slate-50 focus:bg-white focus:outline-hidden focus:border-[var(--awlad-royal-700)]"
                 />
                 <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2.5" />
                 {moreSearchQuery && (
@@ -950,8 +950,8 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
             </div>
 
             {checkPerm('canManageCashboxes') && !moreSearchQuery.trim() && (
-              <div className="bg-white border border-slate-200 rounded-lg p-2.5 space-y-1.5">
-                <p className="text-[11px] font-black text-slate-900">عمليات الخزينة السريعة</p>
+              <div className="bg-white border border-slate-200 rounded-lg p-2 space-y-1.5">
+                <p className="text-[11px] font-black text-[var(--awlad-navy-900)]">عمليات الخزينة السريعة</p>
                 <div className="grid grid-cols-2 gap-1.5 text-xs font-bold">
                   <button
                     type="button"
@@ -959,9 +959,9 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                       setIsMoreViewOpen(false);
                       onOpenCashOp('cash_deposit');
                     }}
-                    className="min-h-[36px] flex items-center justify-center gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 cursor-pointer"
+                    className="h-9 flex items-center justify-center gap-1.5 rounded-md bg-[var(--awlad-blue-tint-50)] border border-[var(--awlad-blue-tint-100)] text-[var(--awlad-navy-900)] cursor-pointer"
                   >
-                    <ArrowDownCircle className="w-3.5 h-3.5 shrink-0" />
+                    <ArrowDownCircle className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
                     <span>إيداع نقدي</span>
                   </button>
                   <button
@@ -970,9 +970,9 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                       setIsMoreViewOpen(false);
                       onOpenCashOp('cash_withdrawal');
                     }}
-                    className="min-h-[36px] flex items-center justify-center gap-1.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-900 cursor-pointer"
+                    className="h-9 flex items-center justify-center gap-1.5 rounded-md bg-[var(--awlad-blue-tint-50)] border border-[var(--awlad-blue-tint-100)] text-[var(--awlad-navy-900)] cursor-pointer"
                   >
-                    <ArrowUpCircle className="w-3.5 h-3.5 shrink-0" />
+                    <ArrowUpCircle className="w-3.5 h-3.5 text-red-700 shrink-0" />
                     <span>سحب نقدي</span>
                   </button>
                   <button
@@ -981,9 +981,9 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                       setIsMoreViewOpen(false);
                       onOpenCashOp('expense');
                     }}
-                    className="min-h-[36px] flex items-center justify-center gap-1.5 rounded-lg bg-orange-50 border border-orange-200 text-orange-900 cursor-pointer"
+                    className="h-9 flex items-center justify-center gap-1.5 rounded-md bg-[var(--awlad-blue-tint-50)] border border-[var(--awlad-blue-tint-100)] text-[var(--awlad-navy-900)] cursor-pointer"
                   >
-                    <TrendingDown className="w-3.5 h-3.5 shrink-0" />
+                    <TrendingDown className="w-3.5 h-3.5 text-amber-700 shrink-0" />
                     <span>مصروف</span>
                   </button>
                   <button
@@ -992,16 +992,16 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                       setIsMoreViewOpen(false);
                       onOpenCashOp('profit_deposit');
                     }}
-                    className="min-h-[36px] flex items-center justify-center gap-1.5 rounded-lg bg-teal-50 border border-teal-200 text-teal-900 cursor-pointer"
+                    className="h-9 flex items-center justify-center gap-1.5 rounded-md bg-[var(--awlad-blue-tint-50)] border border-[var(--awlad-blue-tint-100)] text-[var(--awlad-navy-900)] cursor-pointer"
                   >
-                    <TrendingUp className="w-3.5 h-3.5 shrink-0" />
+                    <TrendingUp className="w-3.5 h-3.5 text-[var(--awlad-royal-700)] shrink-0" />
                     <span>إيداع ربحي</span>
                   </button>
                 </div>
               </div>
             )}
 
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               {searchableSections.map((sec) => {
                 const SecIcon = sec.icon;
                 const isCollapsed = !moreSearchQuery.trim() && Boolean(collapsedSectionIds[sec.id]);
@@ -1011,10 +1011,10 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                       type="button"
                       onClick={() => toggleSectionCollapse(sec.id)}
                       aria-expanded={!isCollapsed}
-                      className="w-full min-h-[38px] px-3 py-2 flex items-center justify-between gap-2 text-xs font-black bg-slate-50 border-b border-slate-200 text-slate-900 cursor-pointer"
+                      className="w-full min-h-[34px] px-2.5 py-1.5 flex items-center justify-between gap-2 text-xs font-black bg-slate-50 border-b border-slate-200 text-slate-900 cursor-pointer"
                     >
                       <div className="flex items-center gap-2 min-w-0">
-                        <SecIcon className="w-4 h-4 text-[#0F5A33] shrink-0" />
+                        <SecIcon className="w-4 h-4 text-[var(--awlad-royal-700)] shrink-0" />
                         <span className="truncate">{sec.title}</span>
                       </div>
                       <ChevronDown
@@ -1036,12 +1036,12 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                                 setIsMoreViewOpen(false);
                                 onNavigate(item.key);
                               }}
-                              className={`w-full min-h-[36px] px-3.5 py-2 flex items-center justify-between gap-2 text-right text-xs transition-colors cursor-pointer ${
-                                active ? 'bg-emerald-50 text-[#0F5A33] font-black' : 'text-slate-800 hover:bg-slate-50 font-bold'
+                              className={`w-full min-h-[36px] px-2.5 py-1.5 flex items-center justify-between gap-2 text-right text-xs transition-colors cursor-pointer ${
+                                active ? 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] font-black' : 'text-slate-800 hover:bg-slate-50 font-bold'
                               }`}
                             >
                               <span className="truncate">{item.label}</span>
-                              <ChevronLeft className={`w-3.5 h-3.5 shrink-0 ${active ? 'text-[#0F5A33]' : 'text-slate-400'}`} />
+                              <ChevronLeft className={`w-3.5 h-3.5 shrink-0 ${active ? 'text-[var(--awlad-royal-700)]' : 'text-slate-400'}`} />
                             </button>
                           );
                         })}
@@ -1055,26 +1055,26 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         ) : (
           <>
             {currentPage !== 'dashboard' && (
-              <div className="flex items-center justify-between bg-white rounded-lg border border-slate-200 px-2.5 py-1 no-print">
+              <div className="flex items-center justify-between bg-white rounded-lg border border-slate-200 px-2 py-1 no-print">
                 <button
                   type="button"
                   onClick={() => onNavigate('dashboard')}
-                  className="min-h-[34px] px-2 rounded-lg text-[#0F5A33] hover:bg-emerald-50 text-xs font-black flex items-center gap-1.5 cursor-pointer"
+                  className="h-8 px-2 rounded-md text-[var(--awlad-navy-900)] hover:bg-[var(--awlad-blue-tint-50)] text-xs font-black flex items-center gap-1.5 cursor-pointer"
                 >
                   <ArrowRight className="w-3.5 h-3.5 shrink-0" />
                   <span>العودة للرئيسية</span>
                 </button>
-                <span className="text-[11px] font-bold text-slate-500">{data.settings.companyName || 'أولاد سليم'}</span>
+                <span className="text-[11px] font-bold text-slate-500 truncate">{data.settings.companyName || 'أولاد سليم'}</span>
               </div>
             )}
 
             {currentPage === 'dashboard' && (
-              <section aria-label="الاختصارات السريعة" className="space-y-2.5 no-print">
-                {/* Compact Emerald Store Banner */}
-                <div className="rounded-lg bg-[#0F5A33] text-white px-3 py-2.5 flex items-center justify-between gap-2">
+              <section aria-label="الاختصارات السريعة" className="space-y-2 no-print">
+                {/* Compact Logo-Navy Banner */}
+                <div className="rounded-lg awlad-brand-gradient text-white px-2.5 py-2 flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <div className="text-xs font-black truncate">{data.settings.companyName || 'AWLAD SELIM'}</div>
-                    <div className="text-[11px] text-emerald-100 truncate">
+                    <div className="text-[11px] text-blue-100 truncate">
                       {getRoleArabicLabel(currentUser?.role)} · {currentUser?.fullName}
                     </div>
                   </div>
@@ -1082,7 +1082,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                     <button
                       type="button"
                       onClick={() => setIsAddProductModalOpen(true)}
-                      className="min-h-[34px] px-2.5 rounded-lg bg-white text-[#0F5A33] text-xs font-black flex items-center gap-1 shrink-0 cursor-pointer"
+                      className="h-8 px-2.5 rounded-md bg-white text-[var(--awlad-navy-900)] text-xs font-black flex items-center gap-1 shrink-0 cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>أضف صنف</span>
@@ -1092,14 +1092,14 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
 
                 {/* 3-Col Compact Quick Shortcuts Grid */}
                 <div>
-                  <h2 className="text-xs font-black text-slate-700 mb-1.5">الاختصارات السريعة</h2>
-                  <div className="grid grid-cols-3 gap-2">
+                  <h2 className="text-xs font-black text-[var(--awlad-navy-900)] mb-1">الاختصارات السريعة</h2>
+                  <div className="grid grid-cols-3 gap-1.5">
                     {mobileGridTiles.map((tile) => (
                       <button
                         key={tile.id}
                         type="button"
                         onClick={tile.onClick}
-                        className="bg-white rounded-lg border border-slate-200 hover:border-[#0F5A33]/40 active:scale-[0.98] p-2 min-h-[76px] flex flex-col items-center justify-center gap-1 text-center transition-all cursor-pointer"
+                        className="bg-white rounded-lg border border-slate-200 hover:border-[var(--awlad-royal-700)]/50 active:scale-[0.98] p-1.5 min-h-[64px] flex flex-col items-center justify-center gap-0.5 text-center transition-all cursor-pointer"
                       >
                         <div className="flex items-center justify-center scale-90">{tile.icon}</div>
                         <span className="text-[11px] font-black text-slate-800 leading-tight">{tile.label}</span>
@@ -1118,9 +1118,9 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
       {/* Fixed 5-Tab Bottom Navigation Bar */}
       <nav
         aria-label="التنقل السفلي"
-        className="fixed bottom-0 inset-x-0 z-30 bg-white border-t border-slate-200 pb-safe shadow-[0_-2px_10px_rgba(15,23,42,0.06)] no-print"
+        className="fixed bottom-0 inset-x-0 z-30 bg-white border-t border-slate-200 pb-safe shadow-[0_-2px_10px_rgba(1,30,88,0.08)] no-print"
       >
-        <div className="max-w-3xl mx-auto flex items-stretch justify-around">
+        <div className="w-full max-w-3xl mx-auto flex items-stretch justify-around">
           {bottomNavTabs.map((tab) => {
             const TabIcon = tab.icon;
             return (
@@ -1130,14 +1130,14 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                 onClick={tab.onClick}
                 aria-current={tab.active ? 'page' : undefined}
                 className={`flex-1 min-h-[46px] py-1 px-1 flex flex-col items-center justify-center gap-0.5 relative cursor-pointer transition-colors ${
-                  tab.active ? 'text-[#0F5A33] font-black' : 'text-slate-500 hover:text-slate-800 font-bold'
+                  tab.active ? 'text-[var(--awlad-royal-700)] font-black' : 'text-slate-500 hover:text-[var(--awlad-navy-900)] font-bold'
                 }`}
               >
                 {tab.active && (
-                  <span className="absolute top-0 inset-x-4 h-[2.5px] rounded-b bg-[#0F5A33]" aria-hidden="true" />
+                  <span className="absolute top-0 inset-x-3 h-[2.5px] rounded-b bg-[var(--awlad-royal-700)]" aria-hidden="true" />
                 )}
                 <TabIcon className="w-4 h-4 shrink-0" />
-                <span className="text-[10px] leading-tight whitespace-nowrap">{tab.label}</span>
+                <span className="text-[10.5px] leading-tight whitespace-nowrap">{tab.label}</span>
               </button>
             );
           })}

@@ -287,32 +287,32 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <>
-      {/* Top Blue Rectangle Header */}
-      <header className="sticky top-0 z-30 bg-gradient-to-l from-blue-950 via-blue-900 to-blue-950 text-white shadow-md border-b border-blue-800/80 pt-safe no-print">
-        <div className="max-w-full mx-auto px-2.5 sm:px-4">
+      {/* Top Logo-Navy/Royal Header */}
+      <header className="sticky top-0 z-30 awlad-brand-gradient text-white shadow-sm border-b border-[var(--awlad-royal-500)]/40 pt-safe no-print">
+        <div className="max-w-full mx-auto px-2 sm:px-3">
           {/* Top Row: Brand Identity + (Desktop Primary Buttons) + Utility Controls */}
-          <div className="h-12 sm:h-13 flex items-center justify-between gap-2">
+          <div className="h-10 flex items-center justify-between gap-2">
             {/* Brand Logo & Name */}
             <div className="flex items-center gap-2 min-w-0 shrink-0">
               <img
                 src="/awlad-selim-logo.png"
                 alt="AWLAD SELIM"
-                className="h-8 w-8 object-contain bg-white rounded-lg p-0.5 shadow-xs shrink-0"
+                className="h-7 w-7 object-contain bg-white rounded-md p-0.5 shrink-0"
               />
               <div className="min-w-0">
-                <h1 className="text-xs sm:text-sm font-black text-white leading-tight truncate">
+                <h1 className="text-xs font-black text-white leading-tight truncate">
                   AWLAD SELIM
                 </h1>
-                <p className="text-[10px] text-blue-200 font-semibold truncate">
+                <p className="text-[10px] text-blue-100 font-semibold truncate">
                   {currentUser ? `${currentUser.fullName} · ${getRoleLabel(currentUser.role)}` : 'أولاد سليم'}
                 </p>
               </div>
             </div>
 
-            {/* Desktop Center: Primary Navigation Buttons inside Top Blue Rectangle */}
+            {/* Desktop Center: Primary Navigation Buttons inside Top Bar */}
             <nav
               aria-label="التنقل الرئيسي"
-              className="hidden md:flex items-center justify-center gap-1.5 flex-1 min-w-0 overflow-x-auto"
+              className="hidden md:flex items-center justify-center gap-1 flex-1 min-w-0 overflow-x-auto no-scrollbar"
             >
               {primaryNavButtons.map((btn) => {
                 const Icon = btn.icon;
@@ -324,13 +324,13 @@ export const Header: React.FC<HeaderProps> = ({
                     aria-expanded={btn.controlsDrawer ? isSidebarOpen : undefined}
                     aria-controls={btn.controlsDrawer ? 'system-sections-drawer' : undefined}
                     aria-current={!btn.controlsDrawer && btn.active ? 'page' : undefined}
-                    className={`min-h-[38px] px-3 xl:px-4 py-1.5 rounded-lg text-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                    className={`min-h-[30px] px-2 xl:px-2.5 py-0.5 rounded-md text-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
                       btn.active
-                        ? 'bg-white text-blue-950 font-black shadow-xs'
+                        ? 'bg-white text-[var(--awlad-navy-900)] font-black'
                         : 'bg-white/10 text-blue-50 border border-white/15 hover:bg-white/20 hover:text-white font-bold'
                     }`}
                   >
-                    <Icon className="w-4 h-4 shrink-0" />
+                    <Icon className="w-3.5 h-3.5 shrink-0" />
                     <span>{btn.label}</span>
                   </button>
                 );
@@ -346,7 +346,7 @@ export const Header: React.FC<HeaderProps> = ({
                   type="button"
                   onClick={() => onNavigate('customer-orders')}
                   title={`يوجد ${pendingOrdersCount} طلب شراء جديد بانتظار المراجعة`}
-                  className="hidden sm:flex items-center gap-1 px-2 py-1.5 rounded-lg bg-sky-400/20 text-sky-100 border border-sky-300/35 text-[11px] font-black hover:bg-sky-400/30 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                  className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-md bg-sky-400/20 text-sky-100 border border-sky-300/35 text-[11px] font-black hover:bg-sky-400/30 transition-colors cursor-pointer whitespace-nowrap shrink-0"
                 >
                   <Bell className="w-3.5 h-3.5 shrink-0" />
                   <span className="hidden xl:inline">طلبات</span>
@@ -361,7 +361,7 @@ export const Header: React.FC<HeaderProps> = ({
                   type="button"
                   onClick={onNavigateToTransfers}
                   title={`يوجد ${pendingTransfersCount} طلب تحويل معلق`}
-                  className="hidden sm:flex items-center gap-1 px-2 py-1.5 rounded-lg bg-amber-400/20 text-amber-100 border border-amber-300/40 text-[11px] font-bold hover:bg-amber-400/30 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                  className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-md bg-amber-400/20 text-amber-100 border border-amber-300/40 text-[11px] font-bold hover:bg-amber-400/30 transition-colors cursor-pointer whitespace-nowrap shrink-0"
                 >
                   <ArrowLeftRight className="w-3.5 h-3.5 shrink-0" />
                   <span className="px-1.5 py-0.5 rounded bg-amber-300 text-amber-950 text-[10px] font-mono tabular-nums">
@@ -375,7 +375,7 @@ export const Header: React.FC<HeaderProps> = ({
                   type="button"
                   onClick={() => onNavigate('refresh-sync')}
                   title={`يوجد ${incomingDispatchCount} دفعة إرسال من المندوبين بانتظار الاستلام`}
-                  className="hidden sm:flex items-center gap-1 px-2 py-1.5 rounded-lg bg-white/15 text-white border border-white/25 text-[11px] font-bold hover:bg-white/25 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                  className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-md bg-white/15 text-white border border-white/25 text-[11px] font-bold hover:bg-white/25 transition-colors cursor-pointer whitespace-nowrap shrink-0"
                 >
                   <span>REFRESH</span>
                   <span className="px-1.5 py-0.5 rounded bg-white text-blue-950 text-[10px] font-mono tabular-nums font-black">
@@ -390,13 +390,13 @@ export const Header: React.FC<HeaderProps> = ({
                   setIsNotificationsOpen(true);
                   markNotificationsRead();
                 }}
-                className="relative min-h-[38px] min-w-[38px] flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-blue-50 hover:text-white transition-colors cursor-pointer shrink-0"
+                className="relative min-h-[32px] min-w-[32px] flex items-center justify-center rounded-md bg-white/10 hover:bg-white/20 text-blue-50 hover:text-white transition-colors cursor-pointer shrink-0"
                 title="التنبيهات والإشعارات"
                 aria-label="التنبيهات والإشعارات"
               >
                 <Bell className="w-4 h-4" />
                 {unreadNotificationCount > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[17px] h-[17px] px-1 rounded bg-red-600 text-white text-[9px] font-mono tabular-nums font-black flex items-center justify-center">
+                  <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded bg-red-600 text-white text-[9px] font-mono tabular-nums font-black flex items-center justify-center">
                     {unreadNotificationCount}
                   </span>
                 )}
@@ -405,7 +405,7 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={() => setIsServerModalOpen(true)}
-                className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-blue-50 hover:text-white transition-colors cursor-pointer shrink-0"
+                className="min-h-[32px] min-w-[32px] flex items-center justify-center rounded-md bg-white/10 hover:bg-white/20 text-blue-50 hover:text-white transition-colors cursor-pointer shrink-0"
                 title="عنوان وإعدادات السيرفر المركزي"
                 aria-label="إعدادات السيرفر"
               >
@@ -415,13 +415,13 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={() => setIsAccountSwitcherOpen(true)}
-                className="relative min-h-[38px] min-w-[38px] flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-blue-50 hover:text-white transition-colors cursor-pointer shrink-0"
+                className="relative min-h-[32px] min-w-[32px] flex items-center justify-center rounded-md bg-white/10 hover:bg-white/20 text-blue-50 hover:text-white transition-colors cursor-pointer shrink-0"
                 title="الحسابات المحفوظة وتبديل الحساب"
                 aria-label="تبديل الحساب"
               >
                 <Users className="w-4 h-4" />
                 {savedAccounts.length > 1 && (
-                  <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded bg-emerald-500 text-white text-[9px] font-mono tabular-nums font-black flex items-center justify-center">
+                  <span className="absolute -top-1 -right-1 min-w-[15px] h-[15px] px-1 rounded bg-[var(--awlad-royal-500)] text-white text-[9px] font-mono tabular-nums font-black flex items-center justify-center">
                     {savedAccounts.length}
                   </span>
                 )}
@@ -430,7 +430,7 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={() => onNavigate('system-settings')}
-                className="min-h-[38px] min-w-[38px] flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-blue-50 hover:text-white transition-colors cursor-pointer shrink-0"
+                className="min-h-[30px] min-w-[30px] flex items-center justify-center rounded-md bg-white/10 hover:bg-white/20 text-blue-50 hover:text-white transition-colors cursor-pointer shrink-0"
                 title="الإعدادات"
                 aria-label="الإعدادات"
               >
@@ -440,7 +440,7 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={toggleFullscreen}
-                className="hidden md:flex min-h-[38px] min-w-[38px] items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-blue-50 hover:text-white transition-colors cursor-pointer shrink-0"
+                className="hidden md:flex min-h-[30px] min-w-[30px] items-center justify-center rounded-md bg-white/10 hover:bg-white/20 text-blue-50 hover:text-white transition-colors cursor-pointer shrink-0"
                 title="ملء الشاشة"
                 aria-label="ملء الشاشة"
               >
@@ -450,24 +450,24 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={() => setShowLogoutModal(true)}
-                className="min-h-[38px] px-2.5 sm:px-3 flex items-center justify-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                className="min-h-[30px] px-2 flex items-center justify-center gap-1 rounded-md bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-colors cursor-pointer whitespace-nowrap shrink-0"
                 title="تسجيل الخروج من النظام"
                 aria-label="تسجيل الخروج"
               >
-                <LogOut className="w-4 h-4 shrink-0" />
+                <LogOut className="w-3.5 h-3.5 shrink-0" />
                 <span className="hidden sm:inline">خروج</span>
               </button>
             </div>
           </div>
 
-          {/* Permanent Desktop Quick Shortcuts inside the Top Blue Bar */}
+          {/* Permanent Desktop Quick Shortcuts inside Top Header */}
           {quickBarShortcuts.length > 0 && (
             <div
               aria-label="اختصارات العمليات السريعة"
-              className="hidden md:flex items-center justify-between gap-2 border-t border-white/15 py-1.5 overflow-x-auto"
+              className="hidden md:flex items-center justify-between gap-1.5 border-t border-white/15 py-1 overflow-x-auto no-scrollbar"
             >
-              <div className="flex items-center gap-1.5">
-                <span className="text-[11px] font-bold text-blue-200 whitespace-nowrap shrink-0 pl-1">
+              <div className="flex items-center gap-1 min-w-0">
+                <span className="text-[11px] font-bold text-blue-100 whitespace-nowrap shrink-0 pl-1">
                   وصول سريع:
                 </span>
                 {quickBarShortcuts.map((sc) => {
@@ -477,9 +477,9 @@ export const Header: React.FC<HeaderProps> = ({
                       key={sc.key}
                       type="button"
                       onClick={sc.onClick}
-                      className="min-h-[32px] px-2.5 py-1 rounded-md bg-white/12 hover:bg-white/25 border border-white/20 text-white text-[11px] font-bold flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer"
+                      className="h-6 px-2 rounded-md bg-white/12 hover:bg-white/25 border border-white/20 text-white text-[11px] font-bold flex items-center gap-1 whitespace-nowrap shrink-0 transition-colors cursor-pointer"
                     >
-                      <Icon className="w-3.5 h-3.5 shrink-0" />
+                      <Icon className="w-3 h-3 shrink-0" />
                       <span>{sc.label}</span>
                     </button>
                   );
@@ -489,7 +489,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <button
                   type="button"
                   onClick={() => onNavigate('dashboard')}
-                  className="min-h-[32px] px-2.5 py-1 rounded-md text-blue-100 hover:text-white hover:bg-white/10 text-[11px] font-bold whitespace-nowrap shrink-0 transition-colors cursor-pointer"
+                  className="h-6 px-2 rounded-md text-blue-100 hover:text-white hover:bg-white/10 text-[11px] font-bold whitespace-nowrap shrink-0 transition-colors cursor-pointer"
                 >
                   لوحة التحكم
                 </button>
@@ -500,7 +500,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Narrow Viewport (< md): Primary Navigation Buttons Inside Top Blue Rectangle */}
           <nav
             aria-label="التنقل الرئيسي للجوال"
-            className="md:hidden border-t border-white/15 py-1.5 flex items-center gap-1 overflow-x-auto"
+            className="md:hidden border-t border-white/15 py-1 flex items-center gap-1 overflow-x-auto"
           >
             {primaryNavButtons.map((btn) => {
               const Icon = btn.icon;
@@ -512,7 +512,7 @@ export const Header: React.FC<HeaderProps> = ({
                   aria-expanded={btn.controlsDrawer ? isSidebarOpen : undefined}
                   aria-controls={btn.controlsDrawer ? 'system-sections-drawer' : undefined}
                   aria-current={!btn.controlsDrawer && btn.active ? 'page' : undefined}
-                  className={`flex-1 min-h-[36px] px-2 py-1 rounded-lg flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 text-[11px] sm:text-xs whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                  className={`flex-1 min-h-[32px] px-2 py-1 rounded-md flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 text-[11px] sm:text-xs whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
                     btn.active
                       ? 'bg-white text-blue-950 font-black shadow-xs'
                       : 'bg-white/10 text-blue-50 hover:bg-white/20 font-bold'
@@ -548,15 +548,15 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Logout Confirmation Modal */}
       {showLogoutModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-900/60 backdrop-blur-xs no-print">
-          <div className="w-full max-w-sm rounded-xl bg-white p-4 shadow-2xl border border-slate-200 text-right animate-in fade-in zoom-in duration-150">
-            <div className="w-10 h-10 rounded-lg bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-2.5 border border-red-100">
-              <AlertTriangle className="w-5 h-5" />
+          <div className="w-full max-w-sm rounded-lg bg-white p-3 shadow-2xl border border-slate-200 text-right animate-in fade-in zoom-in duration-150">
+            <div className="w-9 h-9 rounded-lg bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-2 border border-red-100">
+              <AlertTriangle className="w-4 h-4" />
             </div>
 
             <h3 className="text-sm font-black text-slate-900 text-center mb-1">
               هل تريد تسجيل الخروج؟
             </h3>
-            <p className="text-xs text-slate-500 text-center mb-4 leading-relaxed">
+            <p className="text-xs text-slate-500 text-center mb-3 leading-relaxed">
               سيتم إنهاء جلستك الحالية والعودة لشاشة الدخول. لن يتم فقد أي بيانات تجارية أو فواتير محفوظة.
             </p>
 
@@ -567,14 +567,14 @@ export const Header: React.FC<HeaderProps> = ({
                   setShowLogoutModal(false);
                   logout();
                 }}
-                className="flex-1 py-2 px-3 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg shadow-xs transition-colors cursor-pointer"
+                className="flex-1 py-1.5 px-3 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-md shadow-xs transition-colors cursor-pointer"
               >
                 نعم، تسجيل الخروج
               </button>
               <button
                 type="button"
                 onClick={() => setShowLogoutModal(false)}
-                className="flex-1 py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                className="flex-1 py-1.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-md transition-colors cursor-pointer"
               >
                 إلغاء والعودة
               </button>

@@ -69,7 +69,7 @@ function deviceTypeLabel(type: string): string {
 
 function DevicePlatformIcon({ type }: { type: string }) {
   if (type === 'windows') return <Monitor className="w-4 h-4 text-blue-800" />;
-  if (type === 'android' || type === 'ios') return <Smartphone className="w-4 h-4 text-emerald-700" />;
+  if (type === 'android' || type === 'ios') return <Smartphone className="w-4 h-4 text-[#003589]" />;
   return <Globe className="w-4 h-4 text-slate-600" />;
 }
 
@@ -327,20 +327,20 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
   const activeUsers = users.filter((u) => u.isActive);
 
   return (
-    <div className="space-y-3.5 text-xs">
+    <div className="space-y-2 text-xs">
       {error && (
-        <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 font-bold flex items-center gap-2">
+        <div className="p-2 rounded-lg bg-red-50 border border-red-200 text-red-700 font-bold flex items-center gap-1.5">
           <AlertCircle className="w-4 h-4 shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
       {/* 1. Direct Invite Link & QR Code Pairing Generator */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-3">
+      <div className="bg-white p-2.5 rounded-lg border border-slate-200 space-y-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-1.5">
           <div>
-            <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
-              <QrCode className="w-4 h-4 text-emerald-700" />
+            <h3 className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5">
+              <QrCode className="w-4 h-4 text-[#003589]" />
               <span>الربط الذكي للأجهزة (رابط دعوة مباشر + QR Code)</span>
             </h3>
             <p className="text-[11px] text-slate-500 mt-0.5">
@@ -351,20 +351,20 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
             type="button"
             onClick={loadAll}
             disabled={loading}
-            className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center gap-1.5 cursor-pointer self-start"
+            className="h-7 px-2 rounded-md text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center gap-1 cursor-pointer self-start"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
             <span>تحديث السجلات</span>
           </button>
         </div>
 
-        <form onSubmit={handleCreatePairing} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+        <form onSubmit={handleCreatePairing} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
           <div>
-            <label className="block font-bold mb-1 text-slate-700">تخصيص لمستخدم (اختياري):</label>
+            <label className="block text-[11px] font-bold mb-0.5 text-slate-700">تخصيص لمستخدم (اختياري):</label>
             <select
               value={targetUserId}
               onChange={(e) => setTargetUserId(e.target.value)}
-              className="w-full border border-slate-300 rounded-xl p-2.5 bg-white font-bold text-slate-800"
+              className="w-full h-8 border border-slate-300 rounded-md px-2 bg-white font-bold text-slate-800"
             >
               <option value="">أي مستخدم لديه حساب</option>
               {activeUsers.map((u) => (
@@ -376,11 +376,11 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
           </div>
 
           <div>
-            <label className="block font-bold mb-1 text-slate-700">نوع الجهاز المستهدف:</label>
+            <label className="block text-[11px] font-bold mb-0.5 text-slate-700">نوع الجهاز المستهدف:</label>
             <select
               value={targetDeviceType}
               onChange={(e) => setTargetDeviceType(e.target.value as any)}
-              className="w-full border border-slate-300 rounded-xl p-2.5 bg-white font-bold text-slate-800"
+              className="w-full h-8 border border-slate-300 rounded-md px-2 bg-white font-bold text-slate-800"
             >
               <option value="any">كل الأنظمة (Android / iOS / Windows)</option>
               <option value="android">هواتف Android فقط</option>
@@ -390,11 +390,11 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
           </div>
 
           <div>
-            <label className="block font-bold mb-1 text-slate-700">وضع الاتصال بالرابط:</label>
+            <label className="block text-[11px] font-bold mb-0.5 text-slate-700">وضع الاتصال بالرابط:</label>
             <select
               value={connectionMode}
               onChange={(e) => setConnectionMode(e.target.value as any)}
-              className="w-full border border-slate-300 rounded-xl p-2.5 bg-white font-bold text-slate-800"
+              className="w-full h-8 border border-slate-300 rounded-md px-2 bg-white font-bold text-slate-800"
             >
               <option value="auto">
                 تلقائي (Auto — {getConnectionModeLabel(autoPairingTarget.effectiveMode)})
@@ -407,11 +407,11 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
           </div>
 
           <div>
-            <label className="block font-bold mb-1 text-slate-700">صلاحية الرابط:</label>
+            <label className="block text-[11px] font-bold mb-0.5 text-slate-700">صلاحية الرابط:</label>
             <select
               value={ttlMinutes}
               onChange={(e) => setTtlMinutes(Number(e.target.value))}
-              className="w-full border border-slate-300 rounded-xl p-2.5 bg-white font-bold text-slate-800"
+              className="w-full h-8 border border-slate-300 rounded-md px-2 bg-white font-bold text-slate-800"
             >
               <option value={15}>15 دقيقة</option>
               <option value={60}>ساعة واحدة</option>
@@ -421,50 +421,50 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
           </div>
 
           <div className="md:col-span-2">
-            <label className="block font-bold mb-1 text-slate-700">ملاحظة إدارية (اختيارية):</label>
+            <label className="block text-[11px] font-bold mb-0.5 text-slate-700">ملاحظة إدارية (اختيارية):</label>
             <input
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="مثال: هاتف مندوب خط القاهرة / موبايل عميل جديد"
-              className="w-full border border-slate-300 rounded-xl p-2.5"
+              className="w-full h-8 border border-slate-300 rounded-md px-2.5"
             />
           </div>
 
-          <div className="md:col-span-2 flex flex-wrap items-center gap-4 pt-3">
-            <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-800">
+          <div className="md:col-span-2 flex flex-wrap items-center gap-3 pt-2">
+            <label className="flex items-center gap-1.5 cursor-pointer font-bold text-slate-800">
               <input
                 type="checkbox"
                 checked={singleUse}
                 onChange={(e) => setSingleUse(e.target.checked)}
-                className="w-4 h-4 rounded text-emerald-700"
+                className="w-3.5 h-3.5 rounded text-[#003589]"
               />
               <span>رابط لمرة واحدة فقط (Single-Use)</span>
             </label>
-            <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-800">
+            <label className="flex items-center gap-1.5 cursor-pointer font-bold text-slate-800">
               <input
                 type="checkbox"
                 checked={requireAdminApproval}
                 onChange={(e) => setRequireAdminApproval(e.target.checked)}
-                className="w-4 h-4 rounded text-emerald-700"
+                className="w-3.5 h-3.5 rounded text-[#003589]"
               />
               <span>يتطلب موافقة الإدارة بعد الربط</span>
             </label>
           </div>
 
           <div
-            className={`md:col-span-2 lg:col-span-4 p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+            className={`md:col-span-2 lg:col-span-4 p-2.5 rounded-lg border flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
               targetUrlValidation.valid
                 ? 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
                 : 'bg-red-50 border-red-200 text-red-900'
             }`}
           >
-            <div className="space-y-1 min-w-0">
+            <div className="space-y-0.5 min-w-0">
               <div className="font-black flex items-center gap-1.5">
                 {targetUrlValidation.valid ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
                 ) : (
-                  <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                  <AlertCircle className="w-3.5 h-3.5 text-red-600 shrink-0" />
                 )}
                 <span>
                   معاينة السيرفر قبل إنشاء الدعوة ({connectionMode === 'auto' ? `تلقائي ← ${getConnectionModeLabel(pairingTarget.effectiveMode)}` : getConnectionModeLabel(pairingTarget.effectiveMode)}):
@@ -472,7 +472,7 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
               </div>
               <div
                 dir="ltr"
-                className={`font-mono text-xs font-bold break-all ${
+                className={`font-mono text-[11px] font-bold break-all ${
                   targetUrlValidation.valid ? 'text-emerald-800' : 'text-red-700'
                 }`}
               >
@@ -488,9 +488,9 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
             <button
               type="submit"
               disabled={creating || !targetUrlValidation.valid}
-              className="px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-black flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0 self-start sm:self-center"
+              className="h-8 px-3 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0 self-start sm:self-center"
             >
-              {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <QrCode className="w-4 h-4" />}
+              {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <QrCode className="w-3.5 h-3.5" />}
               <span>{creating ? 'جاري التوليد...' : 'توليد رابط الربط ورمز QR'}</span>
             </button>
           </div>
@@ -498,7 +498,7 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
 
         {/* Active Generated Invite Display */}
         {createdInvite && (
-          <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 border-2 border-emerald-300 grid grid-cols-1 md:grid-cols-12 gap-5 items-center">
+          <div className="p-2.5 rounded-lg bg-slate-50 border border-[#DCE6F5] grid grid-cols-1 md:grid-cols-12 gap-2.5 items-center">
             <div className="md:col-span-4 flex justify-center">
               <QrCodeDisplay
                 value={createdInvite.qrPayload}
@@ -507,38 +507,38 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
                 filename={`AWLAD_SELIM_QR_${createdInvite.tokenRecord.id}.png`}
               />
             </div>
-            <div className="md:col-span-8 space-y-3">
+            <div className="md:col-span-8 space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h4 className="font-black text-sm text-slate-900 flex items-center gap-2">
-                  <Link2 className="w-4 h-4 text-emerald-700" />
+                <h4 className="font-black text-xs sm:text-sm text-slate-900 flex items-center gap-1.5">
+                  <Link2 className="w-4 h-4 text-[#003589]" />
                   <span>رابط الدعوة المباشر جاهز للإرسال</span>
                 </h4>
-                <span className="px-2.5 py-0.5 rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold text-[11px]">
+                <span className="px-2 py-0.5 rounded bg-[#EEF3FA] text-[#011E58] border border-[#DCE6F5] font-bold text-[10px]">
                   {getConnectionModeLabel(createdInvite.tokenRecord.connectionMode)}
                 </span>
               </div>
 
-              <div className="px-3 py-2 rounded-xl bg-emerald-50/70 border border-emerald-200 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                <span className="font-bold text-emerald-950">عنوان السيرفر المُضمَّن في الدعوة:</span>
-                <span dir="ltr" className="font-mono font-bold text-emerald-800 break-all">
+              <div className="px-2.5 py-1.5 rounded-md bg-[#EEF3FA] border border-[#DCE6F5] flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                <span className="font-bold text-[#011E58]">عنوان السيرفر المُضمَّن في الدعوة:</span>
+                <span dir="ltr" className="font-mono font-bold text-[#003589] break-all">
                   {createdInvite.serverBaseUrl}
                 </span>
               </div>
 
-              <div className="p-3 rounded-xl bg-white border border-slate-200 space-y-1.5">
+              <div className="p-2 rounded-md bg-white border border-slate-200 space-y-1">
                 <span className="text-[11px] font-bold text-slate-500 block">الرابط المباشر (يفتح التطبيق أو صفحة التحميل تلقائياً):</span>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <input
                     type="text"
                     readOnly
                     dir="ltr"
                     value={createdInvite.directInviteUrl}
-                    className="flex-1 font-mono text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-slate-900 select-all"
+                    className="flex-1 h-8 font-mono text-xs bg-slate-50 border border-slate-200 rounded-md px-2 text-slate-900 select-all"
                   />
                   <button
                     type="button"
                     onClick={() => copyText(createdInvite.directInviteUrl, 'رابط الربط المباشر')}
-                    className="px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold flex items-center gap-1 cursor-pointer shrink-0"
+                    className="h-8 px-2.5 rounded-md bg-slate-900 hover:bg-slate-800 text-white font-bold flex items-center gap-1 cursor-pointer shrink-0"
                   >
                     <Copy className="w-3.5 h-3.5" />
                     <span>نسخ</span>
@@ -546,11 +546,11 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
                 </div>
               </div>
 
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-1.5">
                 <button
                   type="button"
                   onClick={() => handleShareInvite(createdInvite)}
-                  className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold flex items-center gap-1.5 cursor-pointer"
+                  className="px-3 py-1.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold flex items-center gap-1.5 cursor-pointer"
                 >
                   <Share2 className="w-3.5 h-3.5" />
                   <span>مشاركة / نسخ رسالة الدعوة الكاملة</span>
@@ -559,7 +559,7 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
                   href={`https://wa.me/?text=${encodeURIComponent(buildWhatsappText(createdInvite))}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-4 py-2 rounded-xl bg-[#25D366]/15 hover:bg-[#25D366]/25 border border-[#25D366]/40 text-emerald-900 font-bold flex items-center gap-1.5"
+                  className="px-3 py-1.5 rounded-md bg-[#25D366]/15 hover:bg-[#25D366]/25 border border-[#25D366]/40 text-emerald-900 font-bold flex items-center gap-1.5"
                 >
                   <Send className="w-3.5 h-3.5" />
                   <span>إرسال عبر WhatsApp</span>
@@ -567,13 +567,13 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
                 <button
                   type="button"
                   onClick={() => copyText(createdInvite.rawToken, 'رمز الربط اليدوي')}
-                  className="px-3 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold cursor-pointer"
+                  className="px-2.5 py-1.5 rounded-md bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold cursor-pointer"
                 >
                   نسخ الرمز فقط
                 </button>
               </div>
 
-              <p className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-xl p-2.5 font-bold">
+              <p className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-md p-2 font-bold">
                 ملاحظة أمنية: هذا الرابط يُجهز إعداد السيرفر فقط، ويلزم بعده إدخال اسم المستخدم وكلمة المرور المعتادة داخل التطبيق.
               </p>
             </div>
@@ -697,7 +697,7 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
                         type="button"
                         disabled={busyId === t.id}
                         onClick={() => handleRevokeToken(t.id)}
-                        className="px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 font-bold cursor-pointer disabled:opacity-50"
+                        className="px-2 py-0.5 rounded-md text-[11px] bg-red-50 hover:bg-red-100 text-red-700 font-bold cursor-pointer disabled:opacity-50"
                       >
                         إلغاء
                       </button>
@@ -712,10 +712,10 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
       </div>
 
       {/* 2. Connected & Paired Device Management */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-3">
+      <div className="bg-white p-2.5 rounded-lg border border-slate-200 space-y-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 border-b pb-1.5">
           <div>
-            <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+            <h3 className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5">
               <Smartphone className="w-4 h-4 text-blue-900" />
               <span>إدارة الأجهزة المرتبطة بالسيرفر (Device Management)</span>
             </h3>
@@ -726,26 +726,26 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
         </div>
 
         {/* Summary Counters */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-slate-200 border border-slate-200 rounded-md overflow-hidden">
+          <div className="px-2 py-1.5 bg-slate-50">
             <span className="text-[10px] text-slate-500 font-bold block">إجمالي الأجهزة</span>
-            <strong className="text-base font-black font-mono text-slate-900">{summary.total}</strong>
+            <strong className="text-xs font-black font-mono tabular-nums text-slate-900">{summary.total}</strong>
           </div>
-          <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200">
+          <div className="px-2 py-1.5 bg-emerald-50/70">
             <span className="text-[10px] text-emerald-700 font-bold block">أجهزة نشطة</span>
-            <strong className="text-base font-black font-mono text-emerald-800">{summary.active}</strong>
+            <strong className="text-xs font-black font-mono tabular-nums text-emerald-800">{summary.active}</strong>
           </div>
-          <div className="p-3 rounded-xl bg-sky-50 border border-sky-200">
+          <div className="px-2 py-1.5 bg-sky-50/70">
             <span className="text-[10px] text-sky-700 font-bold block">متصل حالياً (5 د)</span>
-            <strong className="text-base font-black font-mono text-sky-800">{summary.onlineNow}</strong>
+            <strong className="text-xs font-black font-mono tabular-nums text-sky-800">{summary.onlineNow}</strong>
           </div>
-          <div className="p-3 rounded-xl bg-amber-50 border border-amber-200">
+          <div className="px-2 py-1.5 bg-amber-50/70">
             <span className="text-[10px] text-amber-800 font-bold block">بانتظار الاعتماد</span>
-            <strong className="text-base font-black font-mono text-amber-900">{summary.pendingApproval}</strong>
+            <strong className="text-xs font-black font-mono tabular-nums text-amber-900">{summary.pendingApproval}</strong>
           </div>
-          <div className="p-3 rounded-xl bg-red-50 border border-red-200">
+          <div className="px-2 py-1.5 bg-red-50/70">
             <span className="text-[10px] text-red-700 font-bold block">مفصول / ملغي</span>
-            <strong className="text-base font-black font-mono text-red-800">{summary.revoked}</strong>
+            <strong className="text-xs font-black font-mono tabular-nums text-red-800">{summary.revoked}</strong>
           </div>
         </div>
 
@@ -876,13 +876,13 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
               align: 'center',
               sortable: false,
               render: (dev) => (
-                <div className="flex flex-wrap items-center justify-center gap-1.5">
+                <div className="flex flex-wrap items-center justify-center gap-1">
                   {dev.status === 'pending_approval' && (
                     <button
                       type="button"
                       disabled={busyId === dev.deviceId}
                       onClick={() => handleApproveDevice(dev.deviceId)}
-                      className="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer disabled:opacity-50"
+                      className="px-2 py-0.5 rounded-md text-[11px] bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer disabled:opacity-50"
                     >
                       اعتماد
                     </button>
@@ -891,7 +891,7 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
                     type="button"
                     disabled={busyId === dev.deviceId}
                     onClick={() => handleResendDeviceLink(dev)}
-                    className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold cursor-pointer disabled:opacity-50"
+                    className="px-2 py-0.5 rounded-md text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold cursor-pointer disabled:opacity-50"
                     title="توليد رابط و QR جديد لهذا الجهاز"
                   >
                     إعادة إرسال رابط
@@ -901,7 +901,7 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
                       type="button"
                       disabled={busyId === dev.deviceId}
                       onClick={() => setDeviceToRevoke(dev)}
-                      className="px-2.5 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                      className="px-2 py-0.5 rounded-md text-[11px] bg-red-50 hover:bg-red-100 text-red-700 font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50"
                     >
                       <Trash2 className="w-3 h-3" />
                       <span>فصل</span>

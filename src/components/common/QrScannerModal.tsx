@@ -214,11 +214,11 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-slate-950/75 backdrop-blur-xs p-0 sm:p-3">
-      <div className="w-full max-w-md bg-white rounded-t-xl sm:rounded-xl border border-slate-200 shadow-2xl overflow-hidden text-right pb-safe">
-        <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-slate-100">
-          <div className="flex items-center gap-2">
-            <Camera className="w-4 h-4 text-emerald-700 shrink-0" />
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-slate-950/75 backdrop-blur-xs p-0 sm:p-2.5">
+      <div className="w-full max-w-md bg-white rounded-t-lg sm:rounded-lg border border-slate-200 overflow-hidden text-right pb-safe">
+        <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-slate-100">
+          <div className="flex items-center gap-1.5">
+            <Camera className="w-4 h-4 text-[#003589] shrink-0" />
             <div>
               <h3 className="text-xs font-black text-slate-900">
                 {mode === 'barcode' ? 'مسح باركود الصنف أو إدخال الكود' : 'مسح رمز QR أو إدخال رابط الربط'}
@@ -236,19 +236,19 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
               stopCamera();
               onClose();
             }}
-            className="min-h-[34px] min-w-[34px] flex items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 cursor-pointer"
+            className="h-7 w-7 flex items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="p-3 space-y-2.5">
-          <div className="grid grid-cols-2 gap-1 p-1 rounded-lg bg-slate-100 text-xs font-bold">
+        <div className="p-2.5 space-y-2">
+          <div className="grid grid-cols-2 gap-1 p-0.5 rounded-md bg-slate-100 text-xs font-bold">
             <button
               type="button"
               onClick={() => setTab('camera')}
-              className={`py-1.5 rounded-md flex items-center justify-center gap-1.5 cursor-pointer ${
-                tab === 'camera' ? 'bg-white text-slate-900 shadow-xs font-black' : 'text-slate-600'
+              className={`h-8 rounded-md flex items-center justify-center gap-1 cursor-pointer ${
+                tab === 'camera' ? 'bg-white text-slate-900 border border-slate-200 font-black' : 'text-slate-600'
               }`}
             >
               <Camera className="w-3.5 h-3.5" />
@@ -257,8 +257,8 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
             <button
               type="button"
               onClick={() => setTab('paste')}
-              className={`py-1.5 rounded-md flex items-center justify-center gap-1.5 cursor-pointer ${
-                tab === 'paste' ? 'bg-white text-slate-900 shadow-xs font-black' : 'text-slate-600'
+              className={`h-8 rounded-md flex items-center justify-center gap-1 cursor-pointer ${
+                tab === 'paste' ? 'bg-white text-slate-900 border border-slate-200 font-black' : 'text-slate-600'
               }`}
             >
               <Link2 className="w-3.5 h-3.5" />
@@ -267,8 +267,8 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
           </div>
 
           {tab === 'camera' ? (
-            <div className="space-y-2">
-              <div className="relative rounded-xl overflow-hidden bg-slate-900 aspect-square max-h-60 w-full flex items-center justify-center border border-slate-800">
+            <div className="space-y-1.5">
+              <div className="relative rounded-md overflow-hidden bg-slate-900 aspect-square max-h-56 w-full flex items-center justify-center border border-slate-800">
                 <video
                   ref={videoRef}
                   autoPlay
@@ -279,18 +279,18 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
                 <canvas ref={canvasRef} className="hidden" />
                 {cameraActive && (
                   <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                    <div className="w-44 h-44 border-2 border-emerald-400 rounded-xl shadow-[0_0_0_9999px_rgba(15,23,42,0.45)]" />
+                    <div className="w-40 h-40 border-2 border-[#0053BE] rounded-lg shadow-[0_0_0_9999px_rgba(15,23,42,0.45)]" />
                   </div>
                 )}
                 {cameraError && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center p-3.5 text-center text-white bg-slate-900/95 space-y-2.5">
-                    <AlertCircle className="w-7 h-7 text-amber-400" />
+                  <div className="absolute inset-0 flex flex-col items-center justify-center p-2.5 text-center text-white bg-slate-900/95 space-y-2">
+                    <AlertCircle className="w-6 h-6 text-amber-400" />
                     <p className="text-xs leading-relaxed text-slate-200">{cameraError}</p>
                     <div className="flex flex-wrap items-center justify-center gap-1.5">
                       <button
                         type="button"
                         onClick={() => setCameraRetryKey((k) => k + 1)}
-                        className="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                        className="h-8 px-2.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-bold flex items-center gap-1 cursor-pointer"
                       >
                         <RefreshCw className="w-3.5 h-3.5" />
                         <span>إعادة المحاولة</span>
@@ -301,7 +301,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
                           stopCamera();
                           setTab('paste');
                         }}
-                        className="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                        className="h-8 px-2.5 rounded-md bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold flex items-center gap-1 cursor-pointer"
                       >
                         <Link2 className="w-3.5 h-3.5" />
                         <span>لصق الرابط بدلاً من الكاميرا</span>
@@ -311,23 +311,23 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
                 )}
               </div>
 
-              <label className="w-full min-h-[36px] px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer border border-slate-200">
-                <Upload className="w-4 h-4 text-slate-700" />
+              <label className="w-full h-8 px-2.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer border border-slate-200">
+                <Upload className="w-3.5 h-3.5 text-slate-700" />
                 <span>أو اختيار صورة QR محفوظة من الجهاز</span>
                 <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
               </label>
 
               {fileError && (
-                <div className="p-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs font-bold flex items-center gap-2">
+                <div className="p-2 rounded-md bg-red-50 border border-red-200 text-red-700 text-xs font-bold flex items-center gap-1.5">
                   <AlertCircle className="w-4 h-4 shrink-0" />
                   <span>{fileError}</span>
                 </div>
               )}
             </div>
           ) : (
-            <form onSubmit={handleManualSubmit} className="space-y-2.5">
+            <form onSubmit={handleManualSubmit} className="space-y-2">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
+                <label className="block text-xs font-bold text-slate-700 mb-0.5">
                   {mode === 'barcode'
                     ? 'اكتب رقم الباركود أو كود الصنف:'
                     : 'الصق رابط الدعوة المرسل من الإدارة (WhatsApp أو رابط مباشر):'}
@@ -338,15 +338,15 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
                   value={manualInput}
                   onChange={(e) => setManualInput(e.target.value)}
                   placeholder={mode === 'barcode' ? '6221000000000' : 'https://example.trycloudflare.com/pair/xxxxxx أو awladselim://pair?...'}
-                  className="w-full rounded-lg border border-slate-300 p-2.5 text-xs font-mono text-left focus:border-emerald-600 outline-hidden"
+                  className="w-full rounded-md border border-slate-300 p-2 text-xs font-mono text-left focus:border-[#003589] outline-hidden"
                 />
               </div>
               <button
                 type="submit"
                 disabled={!manualInput.trim()}
-                className="w-full min-h-[38px] rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                className="w-full h-8 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
-                <CheckCircle2 className="w-4 h-4" />
+                <CheckCircle2 className="w-3.5 h-3.5" />
                 <span>{mode === 'barcode' ? 'بحث بالباركود' : 'تطبيق الربط تلقائياً'}</span>
               </button>
             </form>

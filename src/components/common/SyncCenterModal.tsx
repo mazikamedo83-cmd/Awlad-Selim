@@ -182,7 +182,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
       case 'synced':
         return { label: 'تمت المزامنة', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: CheckCircle2 };
       case 'needs_review':
-        return { label: 'تعارض للمراجعة', cls: 'bg-orange-50 text-orange-700 border-orange-200', icon: AlertTriangle };
+        return { label: 'تعارض للمراجعة', cls: 'bg-amber-50 text-amber-800 border-amber-200', icon: AlertTriangle };
       case 'failed':
         return { label: 'فشل مؤقت', cls: 'bg-red-50 text-red-700 border-red-200', icon: XCircle };
       default:
@@ -234,7 +234,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
             type="button"
             disabled={isSyncing}
             onClick={() => triggerManualSync()}
-            className="min-h-[34px] px-3 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-bold flex items-center gap-1.5 disabled:opacity-60 cursor-pointer"
+            className="min-h-[34px] px-3 rounded-lg bg-[#003589] hover:bg-[#011E58] text-white font-bold flex items-center gap-1.5 disabled:opacity-60 cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
             <span>{isSyncing ? 'جاري المزامنة...' : 'مزامنة الآن'}</span>
@@ -328,9 +328,9 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
             <p className="text-[10px] text-red-800 font-bold">فشل إعادة الإرسال</p>
             <p className="text-sm font-black text-red-950 font-mono tabular-nums">{failedSyncCount}</p>
           </div>
-          <div className="bg-orange-50/70 px-3 py-1.5 text-center">
-            <p className="text-[10px] text-orange-800 font-bold">تعارضات للمراجعة</p>
-            <p className="text-sm font-black text-orange-950 font-mono tabular-nums">{conflictsCount}</p>
+          <div className="bg-amber-50/70 px-3 py-1.5 text-center">
+            <p className="text-[10px] text-amber-800 font-bold">تعارضات للمراجعة</p>
+            <p className="text-sm font-black text-amber-950 font-mono tabular-nums">{conflictsCount}</p>
           </div>
         </div>
 
@@ -341,7 +341,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
             onClick={() => setActiveTab('queue')}
             className={`min-h-[32px] px-3 py-1 rounded-lg font-bold transition-colors cursor-pointer ${
               activeTab === 'queue'
-                ? 'bg-blue-900 text-white'
+                ? 'bg-[#011E58] text-white'
                 : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
           >
@@ -352,7 +352,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
             onClick={() => setActiveTab('conflicts')}
             className={`min-h-[32px] px-3 py-1 rounded-lg font-bold transition-colors cursor-pointer ${
               activeTab === 'conflicts'
-                ? 'bg-orange-600 text-white'
+                ? 'bg-[#003589] text-white'
                 : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
           >
@@ -412,7 +412,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
                 <div
                   key={cf.id}
                   className={`p-2.5 rounded-lg border space-y-2 ${
-                    isOpenConflict ? 'border-orange-300 bg-orange-50/40' : 'border-slate-200 bg-slate-50'
+                    isOpenConflict ? 'border-amber-300 bg-amber-50/40' : 'border-slate-200 bg-slate-50'
                   }`}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-2">
@@ -443,7 +443,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
                           type="button"
                           disabled={resolvingId === cf.id}
                           onClick={() => handleResolve(cf.id, 'keep_server')}
-                          className="min-h-[30px] px-2.5 py-1 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-bold cursor-pointer disabled:opacity-50"
+                          className="min-h-[30px] px-2.5 py-1 rounded-lg bg-[#003589] hover:bg-[#011E58] text-white font-bold cursor-pointer disabled:opacity-50"
                         >
                           اعتماد نسخة السيرفر
                         </button>

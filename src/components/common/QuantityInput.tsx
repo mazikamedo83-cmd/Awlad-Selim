@@ -107,7 +107,7 @@ export const QuantityInput: React.FC<QuantityInputProps> = ({
   };
 
   const defaultInputCls =
-    'w-20 min-h-[40px] rounded-xl border border-slate-300 bg-white px-2 text-center text-xs font-bold font-mono text-slate-900 outline-hidden focus:border-blue-700 disabled:opacity-50';
+    'w-16 h-8 rounded-md border border-slate-300 bg-white px-2 text-center text-xs font-bold font-mono text-slate-900 outline-hidden focus:border-blue-700 disabled:opacity-50';
 
   if (!showSteppers) {
     return (
@@ -142,7 +142,7 @@ export const QuantityInput: React.FC<QuantityInputProps> = ({
         onClick={handleDecrement}
         disabled={disabled || ((Number(value) || 0) <= min && !onRemoveWhenZero)}
         aria-label={`إنقاص ${ariaLabel}`}
-        className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold disabled:opacity-40 cursor-pointer"
+        className="min-h-[32px] min-w-[32px] flex items-center justify-center rounded-md border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold disabled:opacity-40 cursor-pointer"
       >
         <Minus className="w-3.5 h-3.5" />
       </button>
@@ -174,7 +174,7 @@ export const QuantityInput: React.FC<QuantityInputProps> = ({
         onClick={handleIncrement}
         disabled={disabled || (max !== undefined && (Number(value) || 0) >= max)}
         aria-label={`زيادة ${ariaLabel}`}
-        className="min-h-[40px] min-w-[40px] flex items-center justify-center rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold disabled:opacity-40 cursor-pointer"
+        className="min-h-[32px] min-w-[32px] flex items-center justify-center rounded-md border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold disabled:opacity-40 cursor-pointer"
       >
         <Plus className="w-3.5 h-3.5" />
       </button>

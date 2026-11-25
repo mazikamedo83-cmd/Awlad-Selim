@@ -326,7 +326,7 @@ export const SuppliersView: React.FC = () => {
           date: inv.date,
           docNumber: inv.invoiceNumber,
           typeLabel: 'فاتورة مشتريات',
-          badgeClass: 'bg-purple-50 text-purple-800',
+          badgeClass: 'bg-[#EEF3FA] text-[#011E58]',
           description: `توريد بضاعة للمستودع (${inv.warehouseName})`,
           credit: inv.grandTotal,
           debit: cashPaidAtInvoice > 0 ? cashPaidAtInvoice : 0,
@@ -375,16 +375,16 @@ export const SuppliersView: React.FC = () => {
   }, [statementSupplier, invoices, invoiceReturns, financialTransactions]);
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 bg-white px-3.5 py-2.5 rounded-lg border border-slate-200 shadow-xs">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0">
-            <SuppliersTruckIcon className="w-6 h-6" />
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-white px-2.5 py-2 rounded-lg border border-slate-200">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-md bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0">
+            <SuppliersTruckIcon className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-base font-black text-slate-900 tracking-tight">دليل الموردين والمطاحن</h2>
-            <p className="text-[11px] text-slate-500 mt-0.5">
+            <h2 className="text-sm font-black text-slate-900 tracking-tight">دليل الموردين والمطاحن</h2>
+            <p className="text-[11px] text-slate-500">
               إدارة حسابات ومستحقات شركات ومصانع الأغذية وسداد الدفعات النقدية
             </p>
           </div>
@@ -392,7 +392,7 @@ export const SuppliersView: React.FC = () => {
 
         <button
           onClick={handleOpenAdd}
-          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white text-xs font-black shadow-xs active:scale-95 transition-all cursor-pointer"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-black transition-colors cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5" />
           <span>إضافة مورد جديد</span>
@@ -442,7 +442,7 @@ export const SuppliersView: React.FC = () => {
             sortValue: (s) => s.code,
             exportValue: (s) => s.code,
             render: (s) => (
-              <span className="font-mono text-[11px] font-bold text-indigo-900 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200 whitespace-nowrap">
+              <span className="font-mono text-[11px] font-bold text-[#011E58] bg-[#EEF3FA] px-2 py-0.5 rounded border border-[#DCE6F5] whitespace-nowrap">
                 {s.code}
               </span>
             ),
@@ -485,7 +485,7 @@ export const SuppliersView: React.FC = () => {
                     supp.currentBalance < 0
                       ? 'text-emerald-700'
                       : supp.currentBalance > 0
-                      ? 'text-purple-900'
+                      ? 'text-red-700'
                       : 'text-slate-600'
                   }`}
                 >
@@ -496,7 +496,7 @@ export const SuppliersView: React.FC = () => {
                     supp.currentBalance < 0
                       ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                       : supp.currentBalance > 0
-                      ? 'bg-purple-50 text-purple-800 border-purple-200'
+                      ? 'bg-red-50 text-red-800 border-red-200'
                       : 'bg-slate-100 text-slate-600 border-slate-200'
                   }`}
                 >
@@ -540,45 +540,45 @@ export const SuppliersView: React.FC = () => {
                       setPaymentSupplier(supp);
                       setPaymentAmount(supp.currentBalance > 0 ? supp.currentBalance : 0);
                     }}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-purple-700 hover:bg-purple-800 text-white rounded-lg font-bold text-[11px] whitespace-nowrap cursor-pointer"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-bold text-[11px] whitespace-nowrap cursor-pointer"
                   >
-                    <ArrowUpRight className="w-3.5 h-3.5" />
+                    <ArrowUpRight className="w-3 h-3" />
                     <span>سداد دفعة</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setStatementSupplier(supp)}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg font-bold text-[11px] whitespace-nowrap cursor-pointer"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-md font-bold text-[11px] whitespace-nowrap cursor-pointer"
                   >
-                    <FileText className="w-3.5 h-3.5" />
+                    <FileText className="w-3 h-3" />
                     <span>كشف الحساب</span>
                   </button>
                   {availableAdvance > 0 && openInvoices.length > 0 && (currentUser?.role === 'admin' || hasPermission('canManageAccounts')) && (
                     <button
                       type="button"
                       onClick={() => handleOpenSettleModal(supp)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg font-bold text-[11px] whitespace-nowrap cursor-pointer"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] border border-[#DCE6F5] rounded-md font-bold text-[11px] whitespace-nowrap cursor-pointer"
                     >
-                      <DollarSign className="w-3.5 h-3.5" />
+                      <DollarSign className="w-3 h-3" />
                       <span>تسوية مقدم</span>
                     </button>
                   )}
                   <button
                     type="button"
                     onClick={() => handleOpenEdit(supp)}
-                    className="p-1.5 text-slate-500 hover:text-blue-900 hover:bg-slate-100 rounded-lg cursor-pointer"
+                    className="p-1 text-slate-500 hover:text-blue-900 hover:bg-slate-100 rounded-md cursor-pointer"
                     title="تعديل بيانات المورد"
                   >
-                    <Edit className="w-4 h-4" />
+                    <Edit className="w-3.5 h-3.5" />
                   </button>
                   {(currentUser?.role === 'admin' || hasPermission('canDelete')) && (
                     <button
                       type="button"
                       onClick={() => setSupplierToDelete(supp)}
-                      className="p-1.5 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded-lg cursor-pointer"
+                      className="p-1 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded-md cursor-pointer"
                       title="حذف المورد"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </div>
@@ -601,14 +601,14 @@ export const SuppliersView: React.FC = () => {
           }
           maxWidth="4xl"
         >
-          <div className="space-y-3 text-xs">
-            <div className="flex flex-wrap items-center justify-between gap-2.5 p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+          <div className="space-y-2 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2 p-2 bg-slate-50 rounded-lg border border-slate-200">
               <div className="flex items-center gap-2.5">
                 <a
                   href={`tel:${statementSupplier.phone}`}
-                  className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-800 rounded-lg font-mono font-bold border border-emerald-200 hover:bg-emerald-100"
+                  className="flex items-center gap-1.5 px-2.5 py-1 bg-[#EEF3FA] text-[#011E58] rounded-md font-mono font-bold border border-[#DCE6F5] hover:bg-[#DCE6F5]"
                 >
-                  <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                  <Phone className="w-3.5 h-3.5 text-[#003589]" />
                   <span>{statementSupplier.phone}</span>
                 </a>
                 <span className="text-slate-600">{statementSupplier.address}</span>
@@ -711,7 +711,7 @@ export const SuppliersView: React.FC = () => {
                   sortValue: (m) => m.runningBalance,
                   exportValue: (m) => m.runningBalance,
                   render: (m) => (
-                    <span className="font-mono font-black text-purple-900 tabular-nums">
+                    <span className="font-mono font-black text-red-700 tabular-nums">
                       {Math.abs(m.runningBalance).toLocaleString()}
                     </span>
                   ),
@@ -725,7 +725,7 @@ export const SuppliersView: React.FC = () => {
                     <span
                       className={`px-2 py-0.5 rounded text-[10px] font-black border ${
                         m.runningBalance > 0.005
-                          ? 'bg-purple-50 text-purple-800 border-purple-200'
+                          ? 'bg-red-50 text-red-800 border-red-200'
                           : m.runningBalance < -0.005
                           ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                           : 'bg-slate-100 text-slate-600 border-slate-200'
@@ -742,7 +742,7 @@ export const SuppliersView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setStatementSupplier(null)}
-                className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-lg cursor-pointer"
+                className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-md cursor-pointer"
               >
                 إغلاق
               </button>
@@ -758,9 +758,9 @@ export const SuppliersView: React.FC = () => {
         title={editingSupplier ? 'تعديل بيانات المورد' : 'إضافة مورد جديد'}
         maxWidth="md"
       >
-        <form onSubmit={handleSaveSupplier} className="space-y-3 text-xs">
+        <form onSubmit={handleSaveSupplier} className="space-y-2 text-xs">
           {supplierFormError && (
-            <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">
+            <div className="p-2 rounded-md bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-1.5">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{supplierFormError}</span>
             </div>
@@ -772,7 +772,7 @@ export const SuppliersView: React.FC = () => {
               required
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold"
+              className="w-full h-8 border border-slate-300 rounded-md px-2 py-1 font-bold"
             />
           </div>
           <div>
@@ -782,7 +782,7 @@ export const SuppliersView: React.FC = () => {
               required
               value={formData.phone}
               onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono"
+              className="w-full h-8 border border-slate-300 rounded-md px-2 py-1 font-mono"
             />
           </div>
           <div>
@@ -791,7 +791,7 @@ export const SuppliersView: React.FC = () => {
               type="text"
               value={formData.address}
               onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-              className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5"
+              className="w-full h-8 border border-slate-300 rounded-md px-2 py-1"
             />
           </div>
           {!editingSupplier && (
@@ -802,13 +802,13 @@ export const SuppliersView: React.FC = () => {
                 placeholder="0.00"
                 value={formData.openingBalance}
                 onChange={(e) => setFormData({ ...formData, openingBalance: e.target.value === '' ? '' : Number(e.target.value) })}
-                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-bold"
+                className="w-full h-8 border border-slate-300 rounded-md px-2 py-1 font-mono font-bold"
               />
             </div>
           )}
-          <div className="flex justify-end gap-2 pt-2.5 border-t">
-            <button type="button" onClick={() => setIsAddModalOpen(false)} className="px-3.5 py-1.5 border border-slate-300 rounded-lg font-bold cursor-pointer">إلغاء</button>
-            <button type="submit" disabled={isSavingSupplier} className="px-4 py-1.5 bg-blue-900 text-white rounded-lg font-bold cursor-pointer disabled:opacity-50">
+          <div className="flex justify-end gap-2 pt-2 border-t">
+            <button type="button" onClick={() => setIsAddModalOpen(false)} className="px-2.5 py-1 border border-slate-300 rounded-md font-bold cursor-pointer">إلغاء</button>
+            <button type="submit" disabled={isSavingSupplier} className="px-3 py-1 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-bold cursor-pointer disabled:opacity-50">
               {isSavingSupplier ? 'جاري الحفظ...' : 'حفظ المورد'}
             </button>
           </div>
@@ -830,9 +830,9 @@ export const SuppliersView: React.FC = () => {
           }
           maxWidth="md"
         >
-          <form onSubmit={handleRecordPayment} className="space-y-3 text-xs">
+          <form onSubmit={handleRecordPayment} className="space-y-2 text-xs">
             {paymentError && (
-              <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">
+              <div className="p-2 rounded-md bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-1.5">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{paymentError}</span>
               </div>
@@ -846,7 +846,7 @@ export const SuppliersView: React.FC = () => {
                 required
                 value={paymentAmount || ''}
                 onChange={(e) => setPaymentAmount(Number(e.target.value))}
-                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-center text-purple-900 font-mono font-black text-sm"
+                className="w-full h-8 border border-slate-300 rounded-md px-2 py-1 text-center text-[#011E58] font-mono font-black text-sm"
               />
             </div>
 
@@ -856,7 +856,7 @@ export const SuppliersView: React.FC = () => {
               if (overpayment <= 0.009) return null;
               return (
                 <div
-                  className={`p-2.5 rounded-lg border font-bold leading-relaxed space-y-1 ${
+                  className={`p-2 rounded-md border font-bold leading-relaxed space-y-1 ${
                     canApproveOverpayment
                       ? 'bg-amber-50 border-amber-200 text-amber-950'
                       : 'bg-red-50 border-red-200 text-red-900'
@@ -887,7 +887,7 @@ export const SuppliersView: React.FC = () => {
               <select
                 value={paymentCashboxId}
                 onChange={(e) => setPaymentCashboxId(e.target.value)}
-                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold bg-white"
+                className="w-full h-8 border border-slate-300 rounded-md px-2 py-1 font-bold bg-white"
               >
                 {cashboxes.map(cb => (
                   <option key={cb.id} value={cb.id}>
@@ -903,11 +903,11 @@ export const SuppliersView: React.FC = () => {
                 value={paymentNotes}
                 onChange={(e) => setPaymentNotes(e.target.value)}
                 placeholder="سداد دفعة من حساب المورد..."
-                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5"
+                className="w-full h-8 border border-slate-300 rounded-md px-2 py-1"
               />
             </div>
-            <div className="flex justify-end gap-2 pt-2.5 border-t">
-              <button type="button" onClick={() => setPaymentSupplier(null)} className="px-3.5 py-1.5 border border-slate-300 rounded-lg font-bold cursor-pointer">إلغاء</button>
+            <div className="flex justify-end gap-2 pt-2 border-t">
+              <button type="button" onClick={() => setPaymentSupplier(null)} className="px-2.5 py-1 border border-slate-300 rounded-md font-bold cursor-pointer">إلغاء</button>
               <button
                 type="submit"
                 disabled={
@@ -915,7 +915,7 @@ export const SuppliersView: React.FC = () => {
                   (paymentAmount - Math.max(0, Number(paymentSupplier.currentBalance || 0)) > 0.009 &&
                     !canApproveOverpayment)
                 }
-                className="px-4 py-1.5 bg-purple-600 text-white rounded-lg font-bold cursor-pointer disabled:opacity-50"
+                className="px-3 py-1 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-bold cursor-pointer disabled:opacity-50"
               >
                 {isSubmittingPayment ? 'جاري الصرف...' : 'تأكيد الصرف'}
               </button>
@@ -960,10 +960,10 @@ export const SuppliersView: React.FC = () => {
               setSettleError(null);
               setIsConfirmingSettle(true);
             }}
-            className="space-y-3 text-xs"
+            className="space-y-2 text-xs"
           >
             {settleError && (
-              <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">
+              <div className="p-2 rounded-md bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-1.5">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{settleError}</span>
               </div>
@@ -981,7 +981,7 @@ export const SuppliersView: React.FC = () => {
                     setSettleAmount(Math.min(availableAdvance, Number(found.remainingAmount || 0)));
                   }
                 }}
-                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold bg-white"
+                className="w-full h-8 border border-slate-300 rounded-md px-2 py-1 font-bold bg-white"
               >
                 {getSupplierAdvanceInfo(settleSupplier).openInvoices.map((inv) => (
                   <option key={inv.id} value={inv.id}>
@@ -1001,7 +1001,7 @@ export const SuppliersView: React.FC = () => {
                 required
                 value={settleAmount || ''}
                 onChange={(e) => setSettleAmount(Number(e.target.value))}
-                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-center font-mono font-black text-emerald-800 text-sm"
+                className="w-full h-8 border border-slate-300 rounded-md px-2 py-1 text-center font-mono font-black text-emerald-800 text-sm"
               />
             </div>
             <div>
@@ -1010,21 +1010,21 @@ export const SuppliersView: React.FC = () => {
                 type="text"
                 value={settleNotes}
                 onChange={(e) => setSettleNotes(e.target.value)}
-                className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5"
+                className="w-full h-8 border border-slate-300 rounded-md px-2 py-1"
               />
             </div>
-            <div className="flex justify-end gap-2 pt-2.5 border-t">
+            <div className="flex justify-end gap-2 pt-2 border-t">
               <button
                 type="button"
                 onClick={() => setSettleSupplier(null)}
-                className="px-3.5 py-1.5 border border-slate-300 rounded-lg font-bold cursor-pointer"
+                className="px-2.5 py-1 border border-slate-300 rounded-md font-bold cursor-pointer"
               >
                 إلغاء
               </button>
               <button
                 type="submit"
                 disabled={isSettlingAdvance}
-                className="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-bold cursor-pointer disabled:opacity-50"
+                className="px-3 py-1 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-bold cursor-pointer disabled:opacity-50"
               >
                 تنفيذ التسوية
               </button>

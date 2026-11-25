@@ -29,17 +29,17 @@ export const SourceDocumentModal: React.FC<SourceDocumentModalProps> = ({
   const isDamaged = data?.docType === 'damaged_voucher';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3" dir="rtl">
-      <div className="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-xl bg-white shadow-2xl border border-slate-200 overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-2.5 bg-slate-800 text-white">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-2" dir="rtl">
+      <div className="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-lg bg-white shadow-xl border border-slate-200 overflow-hidden">
+        <div className="flex items-center justify-between px-3 py-2 awlad-brand-gradient text-white">
           <div className="flex items-center gap-2">
-            <FileText className="w-4 h-4 text-emerald-400" />
+            <FileText className="w-4 h-4 text-[#DCE6F5]" />
             <div>
               <h3 className="font-extrabold text-sm">
                 {isLoading ? 'جاري تحميل المستند الأصلي...' : data?.title || 'تفاصيل المستند الأصلي'}
               </h3>
               {doc.actualDateTime && (
-                <p className="text-[11px] text-slate-300 font-mono">{doc.actualDateTime}</p>
+                <p className="text-[11px] text-[#DCE6F5] font-mono">{doc.actualDateTime}</p>
               )}
             </div>
           </div>
@@ -48,7 +48,7 @@ export const SourceDocumentModal: React.FC<SourceDocumentModalProps> = ({
               <button
                 type="button"
                 onClick={() => onPrint(data)}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer"
+                className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-white text-[#011E58] hover:bg-[#EEF3FA] text-xs font-black cursor-pointer"
               >
                 <Printer className="w-3.5 h-3.5" />
                 <span>طباعة</span>
@@ -57,20 +57,20 @@ export const SourceDocumentModal: React.FC<SourceDocumentModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="p-1 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700 cursor-pointer"
+              className="p-1 rounded-md text-[#DCE6F5] hover:text-white hover:bg-white/15 cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3.5 space-y-3">
+        <div className="flex-1 overflow-y-auto p-2.5 space-y-2">
           {isLoading && (
-            <div className="py-8 text-center text-slate-500 text-xs font-bold">جاري استرجاع بيانات المستند من قاعدة البيانات...</div>
+            <div className="py-6 text-center text-slate-500 text-xs font-bold">جاري استرجاع بيانات المستند من قاعدة البيانات...</div>
           )}
 
           {error && (
-            <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-center gap-2">
+            <div className="p-2 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
               <span>{error}</span>
             </div>
@@ -80,20 +80,20 @@ export const SourceDocumentModal: React.FC<SourceDocumentModalProps> = ({
             <>
               {/* Status Badges */}
               {doc.status === 'cancelled' && (
-                <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-center justify-between">
+                <div className="p-2 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-center justify-between">
                   <span>مستند ملغى بواسطة: {doc.cancelledBy || '-'} ({doc.cancelReason || 'بدون سبب مسجل'})</span>
                   <span className="font-mono">{doc.cancelledAt ? String(doc.cancelledAt).split('T')[0] : ''}</span>
                 </div>
               )}
               {doc.editedBy && (
-                <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold flex items-center justify-between">
+                <div className="p-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold flex items-center justify-between">
                   <span>تم تعديل هذا المستند بواسطة: {doc.editedBy}</span>
                   <span className="font-mono">{doc.editedAt ? String(doc.editedAt).split('T')[0] : ''}</span>
                 </div>
               )}
 
               {/* Metadata Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs">
                 <div>
                   <span className="text-slate-500 block">رقم المستند</span>
                   <strong className="font-mono text-slate-900">{doc.invoiceNumber || doc.returnNumber || doc.docNumber || doc.transactionNumber || doc.movementNumber || '-'}</strong>
@@ -179,7 +179,7 @@ export const SourceDocumentModal: React.FC<SourceDocumentModalProps> = ({
 
               {/* Financial Summary for Invoice/Return/Cash */}
               {(isInvoice || isReturn || data.docType === 'cash_tx') && (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 bg-emerald-50/60 border border-emerald-200 rounded-lg p-2.5 text-xs">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-[#EEF3FA] border border-[#DCE6F5] rounded-lg p-2 text-xs">
                   {doc.subtotal !== undefined && (
                     <div>
                       <span className="text-slate-600 block">الإجمالي الفرعي</span>
@@ -194,7 +194,7 @@ export const SourceDocumentModal: React.FC<SourceDocumentModalProps> = ({
                   )}
                   <div>
                     <span className="text-slate-600 block">المبلغ الصافي</span>
-                    <strong className="font-mono text-sm text-emerald-800">{Number(doc.grandTotal ?? doc.amount ?? 0).toFixed(2)} {currency}</strong>
+                    <strong className="font-mono text-sm text-[#011E58]">{Number(doc.grandTotal ?? doc.amount ?? 0).toFixed(2)} {currency}</strong>
                   </div>
                   {doc.paidAmount !== undefined && (
                     <div>
@@ -209,7 +209,7 @@ export const SourceDocumentModal: React.FC<SourceDocumentModalProps> = ({
 
               {/* Notes & Description */}
               {(doc.notes || doc.description || doc.reason) && (
-                <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-700">
+                <div className="p-2 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-700">
                   <strong className="text-slate-900">البيان والملاحظات: </strong>
                   <span>{doc.description || doc.reason || doc.notes}</span>
                   {doc.notes && doc.description && doc.notes !== doc.description && (
@@ -221,13 +221,13 @@ export const SourceDocumentModal: React.FC<SourceDocumentModalProps> = ({
               {/* Audit Trail for Edits & Cancellations */}
               {Array.isArray(data.auditTrail) && data.auditTrail.length > 0 && (
                 <div className="border border-slate-200 rounded-lg overflow-hidden">
-                  <div className="px-3 py-1.5 bg-slate-100 border-b border-slate-200 flex items-center gap-1.5 text-xs font-extrabold text-slate-700">
+                  <div className="px-2.5 py-1.5 bg-slate-100 border-b border-slate-200 flex items-center gap-1.5 text-xs font-extrabold text-slate-700">
                     <History className="w-3.5 h-3.5 text-blue-600" />
                     <span>سجل التدقيق والتعديلات (Audit Trail)</span>
                   </div>
                   <div className="divide-y divide-slate-100 text-xs">
                     {data.auditTrail.map((log) => (
-                      <div key={log.id} className="p-2.5 flex flex-wrap items-center justify-between gap-2">
+                      <div key={log.id} className="px-2.5 py-1.5 flex flex-wrap items-center justify-between gap-2">
                         <div>
                           <span className="font-bold text-slate-900">{log.action}</span>
                           {log.notes && <span className="text-slate-500 mr-2">({log.notes})</span>}

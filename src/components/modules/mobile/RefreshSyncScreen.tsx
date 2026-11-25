@@ -631,14 +631,14 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
         align: 'center',
         sortable: false,
         render: (b) => (
-          <div className="flex items-center justify-center gap-1.5">
+          <div className="flex items-center justify-center gap-1">
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 handleOpenInspectBatch(b);
               }}
-              className="px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-800 text-[11px] font-bold flex items-center gap-1 cursor-pointer whitespace-nowrap"
+              className="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-800 text-[11px] font-bold flex items-center gap-1 cursor-pointer whitespace-nowrap"
             >
               <Eye className="w-3.5 h-3.5" />
               <span>مراجعة</span>
@@ -651,7 +651,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                   e.stopPropagation();
                   handleRetryBatch(b);
                 }}
-                className="px-2.5 py-1 rounded bg-blue-900 hover:bg-blue-950 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer whitespace-nowrap disabled:opacity-50"
+                className="px-2 py-0.5 rounded-md bg-blue-900 hover:bg-blue-950 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer whitespace-nowrap disabled:opacity-50"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>إعادة إرسال</span>
@@ -665,7 +665,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                   e.stopPropagation();
                   handleConfirmInspectedBatch(b);
                 }}
-                className="px-2.5 py-1 rounded bg-blue-950 hover:bg-blue-900 text-white text-[11px] font-black flex items-center gap-1 cursor-pointer whitespace-nowrap disabled:opacity-50"
+                className="px-2 py-0.5 rounded-md bg-blue-950 hover:bg-blue-900 text-white text-[11px] font-black flex items-center gap-1 cursor-pointer whitespace-nowrap disabled:opacity-50"
               >
                 <ShieldCheck className="w-3.5 h-3.5" />
                 <span>استلام وتأكيد</span>
@@ -814,7 +814,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                 ? handleConfirmCustodyDispatch(r.rawId, r.docNo)
                 : handleConfirmIncomingCash(r.rawId, r.docNo)
             }
-            className="px-3 py-1.5 rounded bg-blue-900 hover:bg-blue-950 text-white text-[11px] font-bold cursor-pointer disabled:opacity-50 whitespace-nowrap"
+            className="px-2.5 py-1 rounded-md bg-blue-900 hover:bg-blue-950 text-white text-[11px] font-bold cursor-pointer disabled:opacity-50 whitespace-nowrap"
           >
             {confirmingId === r.rawId ? 'جاري التأكيد...' : 'تأكيد الاستلام'}
           </button>
@@ -847,15 +847,15 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
   }, [inspectedBatch]);
 
   return (
-    <div className="space-y-2.5">
+    <div className="space-y-2">
       {/* Top Header Strip */}
-      <div className="bg-white rounded-lg border border-slate-200 px-3 py-2 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-lg bg-blue-950 text-white flex items-center justify-center shrink-0">
+      <div className="bg-white rounded-lg border border-slate-200 px-2.5 py-1.5 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-7 h-7 rounded-md bg-blue-950 text-white flex items-center justify-center shrink-0">
             <RefreshCw className={`w-4 h-4 ${isSending || isReceiving ? 'animate-spin' : ''}`} />
           </div>
           <div className="min-w-0">
-            <h2 className="text-sm font-black text-slate-900">
+            <h2 className="text-xs sm:text-sm font-black text-slate-900">
               REFRESH · مركز إرسال واستلام المندوبين
             </h2>
             <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
@@ -890,7 +890,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
             type="button"
             disabled={isReceiving}
             onClick={handleReceiveSyncNow}
-            className="min-h-[34px] px-3 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap"
+            className="h-8 px-2.5 rounded-md bg-blue-900 hover:bg-blue-950 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap"
           >
             <ArrowDownToLine className="w-3.5 h-3.5" />
             <span>{isReceiving ? 'جاري التحديث...' : 'تحديث واستلام من السيرفر'}</span>
@@ -899,7 +899,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
             <button
               type="button"
               onClick={onBack}
-              className="min-h-[34px] px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold cursor-pointer whitespace-nowrap"
+              className="h-8 px-2.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold cursor-pointer whitespace-nowrap"
             >
               رجوع
             </button>
@@ -909,7 +909,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
 
       {actionMsg && (
         <div
-          className={`p-2.5 rounded-lg border text-xs font-bold flex items-center gap-2 ${
+          className={`p-2 rounded-lg border text-xs font-bold flex items-center gap-2 ${
             actionMsg.type === 'success'
               ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
               : 'bg-red-50 border-red-200 text-red-900'
@@ -925,8 +925,8 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
       )}
 
       {/* Compact Hairline KPI Summary Strip */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden">
-        <div className="bg-white px-3 py-2">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-slate-200 border border-slate-200 rounded-md overflow-hidden">
+        <div className="bg-white px-2.5 py-1.5">
           <div className="text-[11px] font-bold text-slate-500">
             {isRepUser ? 'العمليات المعلقة للإرسال' : 'دفعات في انتظار الاستلام'}
           </div>
@@ -934,19 +934,19 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
             {isRepUser ? unsentQueueOps.length : kpiStats.waiting}
           </div>
         </div>
-        <div className="bg-white px-3 py-2">
+        <div className="bg-white px-2.5 py-1.5">
           <div className="text-[11px] font-bold text-slate-500">دفعات تم استلامها اليوم</div>
           <div className="text-sm font-black text-emerald-800 font-mono tabular-nums mt-0.5">
             {kpiStats.confirmedToday}
           </div>
         </div>
-        <div className="bg-white px-3 py-2">
+        <div className="bg-white px-2.5 py-1.5">
           <div className="text-[11px] font-bold text-slate-500">دفعات فشل أو تعذر استلامها</div>
           <div className="text-sm font-black text-red-700 font-mono tabular-nums mt-0.5">
             {kpiStats.failed}
           </div>
         </div>
-        <div className="bg-white px-3 py-2">
+        <div className="bg-white px-2.5 py-1.5">
           <div className="text-[11px] font-bold text-slate-500">إجمالي التحصيلات المستلمة</div>
           <div className="text-sm font-black text-slate-900 font-mono tabular-nums mt-0.5">
             {kpiStats.totalCash.toLocaleString()} {data.settings.currency}
@@ -956,19 +956,19 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
 
       {/* REP DISPATCH BUILDER PANEL */}
       {(isRepUser || unsentQueueOps.length > 0 || failedDraftBatches.length > 0) && (
-        <div className="space-y-2.5">
+        <div className="space-y-2">
           {failedDraftBatches.length > 0 && (
-            <div className="bg-red-50 rounded-lg border border-red-200 p-3 space-y-2">
+            <div className="bg-red-50 rounded-lg border border-red-200 p-2 space-y-1.5">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-black text-red-900">
                   توجد دفعات فشل إرسالها وتحتاج إعادة محاولة ({failedDraftBatches.length})
                 </span>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {failedDraftBatches.map((draft) => (
                   <div
                     key={draft.id}
-                    className="bg-white rounded-lg border border-red-200 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs"
+                    className="bg-white rounded-md border border-red-200 px-2.5 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs"
                   >
                     <div>
                       <span className="font-mono font-bold text-red-900">{draft.batchNumber}</span>
@@ -981,7 +981,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                       type="button"
                       disabled={isSending}
                       onClick={() => handleRetryBatch(draft)}
-                      className="px-3 py-1.5 rounded bg-blue-900 hover:bg-blue-950 text-white font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                      className="px-2.5 py-1 rounded-md bg-blue-900 hover:bg-blue-950 text-white font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50"
                     >
                       <RotateCcw className="w-3.5 h-3.5" />
                       <span>إعادة الإرسال الآن</span>
@@ -1008,12 +1008,12 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
             compact
             headerActions={
               unsentQueueOps.length > 0 ? (
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-1.5">
                   <select
                     value={recipientUserId}
                     onChange={(e) => setRecipientUserId(e.target.value)}
                     aria-label="الموظف المستلم للدفعة"
-                    className="min-h-[38px] px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-bold text-slate-900"
+                    className="h-8 px-2 rounded-md border border-slate-300 bg-white text-xs font-bold text-slate-900"
                   >
                     <option value="">-- اختر المستلم (إدارة / موظف) --</option>
                     {(data.dispatchRecipients || []).map((rec) => (
@@ -1027,13 +1027,13 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                     value={batchNotes}
                     onChange={(e) => setBatchNotes(e.target.value)}
                     placeholder="ملاحظات الإرسال (اختياري)..."
-                    className="min-h-[38px] px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-bold text-slate-900 w-44"
+                    className="h-8 px-2 rounded-md border border-slate-300 bg-white text-xs font-bold text-slate-900 w-44"
                   />
                   <button
                     type="button"
                     disabled={isSending || selectedOpIds.length === 0}
                     onClick={handleSendSelectedDispatchBatch}
-                    className="min-h-[38px] px-4 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white text-xs font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap"
+                    className="h-8 px-3 rounded-md bg-blue-900 hover:bg-blue-950 text-white text-xs font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap"
                   >
                     <Send className="w-3.5 h-3.5" />
                     <span>{isSending ? 'جاري الإرسال...' : `إرسال الدفعة (${selectedOpIds.length})`}</span>
@@ -1070,12 +1070,12 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
         pdfTitle="سجل دفعات إرسال واستلام المندوبين"
         searchPlaceholder="ابحث برقم الدفعة، اسم المندوب، المستلم..."
         toolbarFilters={
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               aria-label="تصفية بحالة الدفعة"
-              className="min-h-[36px] px-2.5 py-1 rounded-lg border border-slate-300 bg-white text-xs font-bold text-slate-800"
+              className="h-8 px-2 rounded-md border border-slate-300 bg-white text-xs font-bold text-slate-800"
             >
               <option value="all">جميع الحالات</option>
               <option value="في انتظار الاستلام">في انتظار الاستلام</option>
@@ -1094,7 +1094,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                 value={senderFilter}
                 onChange={(e) => setSenderFilter(e.target.value)}
                 aria-label="تصفية بالمرسل"
-                className="min-h-[36px] px-2.5 py-1 rounded-lg border border-slate-300 bg-white text-xs font-bold text-slate-800"
+                className="h-8 px-2 rounded-md border border-slate-300 bg-white text-xs font-bold text-slate-800"
               >
                 <option value="all">كل المندوبين</option>
                 {uniqueSenders.map((s) => (
@@ -1108,7 +1108,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                 value={recipientFilter}
                 onChange={(e) => setRecipientFilter(e.target.value)}
                 aria-label="تصفية بالمستلم"
-                className="min-h-[36px] px-2.5 py-1 rounded-lg border border-slate-300 bg-white text-xs font-bold text-slate-800"
+                className="h-8 px-2 rounded-md border border-slate-300 bg-white text-xs font-bold text-slate-800"
               >
                 <option value="all">كل المستلمين</option>
                 {uniqueRecipients.map((r) => (
@@ -1122,7 +1122,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value)}
               aria-label="تصفية بتاريخ الإرسال"
-              className="min-h-[36px] px-2.5 py-1 rounded-lg border border-slate-300 bg-white text-xs font-bold text-slate-800"
+              className="h-8 px-2 rounded-md border border-slate-300 bg-white text-xs font-bold text-slate-800"
             />
 
             {(statusFilter !== 'all' || senderFilter !== 'all' || recipientFilter !== 'all' || dateFilter) && (
@@ -1134,7 +1134,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                   setRecipientFilter('all');
                   setDateFilter('');
                 }}
-                className="min-h-[36px] px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold cursor-pointer"
+                className="h-8 px-2.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold cursor-pointer"
               >
                 إعادة ضبط
               </button>
@@ -1147,15 +1147,15 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
       {inspectedBatch &&
         typeof document !== 'undefined' &&
         ReactDOM.createPortal(
-          <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/60 backdrop-blur-[2px] p-2.5 sm:p-4">
+          <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/60 backdrop-blur-[2px] p-2 sm:p-3">
             <div
               dir="rtl"
-              className="bg-white rounded-xl border border-slate-200 shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden"
+              className="bg-white rounded-lg border border-slate-200 shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden"
             >
               {/* Modal Header */}
-              <div className="px-4 py-2.5 bg-blue-950 text-white flex items-center justify-between gap-2 shrink-0">
+              <div className="px-3 py-2 bg-blue-950 text-white flex items-center justify-between gap-2 shrink-0">
                 <div>
-                  <h3 className="text-sm font-black">
+                  <h3 className="text-xs sm:text-sm font-black">
                     مراجعة دفعة الإرسال · <span className="font-mono">{inspectedBatch.batchNumber}</span>
                   </h3>
                   <p className="text-[11px] text-blue-200">
@@ -1165,7 +1165,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                 <button
                   type="button"
                   onClick={() => setInspectedBatch(null)}
-                  className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+                  className="p-1 rounded-md bg-white/10 hover:bg-white/20 text-white cursor-pointer"
                   aria-label="إغلاق"
                 >
                   <X className="w-4 h-4" />
@@ -1173,24 +1173,24 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
               </div>
 
               {/* Modal Body */}
-              <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3">
+              <div className="flex-1 overflow-y-auto p-2.5 space-y-2">
                 {/* Compact Hairline Summary Strip */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden text-xs">
-                  <div className="px-2.5 py-2 bg-white">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-slate-200 border border-slate-200 rounded-md overflow-hidden text-xs">
+                  <div className="px-2.5 py-1.5 bg-white">
                     <div className="text-[10px] text-slate-500">حالة الإرسال</div>
                     <div className="font-black text-slate-900">{inspectedBatch.sendStatus}</div>
                   </div>
-                  <div className="px-2.5 py-2 bg-white">
+                  <div className="px-2.5 py-1.5 bg-white">
                     <div className="text-[10px] text-slate-500">حالة الاستلام</div>
                     <div className="font-black text-blue-950">{inspectedBatch.receiptStatus}</div>
                   </div>
-                  <div className="px-2.5 py-2 bg-white">
+                  <div className="px-2.5 py-1.5 bg-white">
                     <div className="text-[10px] text-slate-500">إجمالي المبيعات بالدفعة</div>
                     <div className="font-mono font-black text-slate-900 tabular-nums">
                       {Number(inspectedBatch.totalSalesAmount || 0).toLocaleString()} {data.settings.currency}
                     </div>
                   </div>
-                  <div className="px-2.5 py-2 bg-white">
+                  <div className="px-2.5 py-1.5 bg-white">
                     <div className="text-[10px] text-slate-500">إجمالي التحصيلات النقدية</div>
                     <div className="font-mono font-black text-emerald-800 tabular-nums">
                       {Number(inspectedBatch.totalCashAmount || 0).toLocaleString()} {data.settings.currency}
@@ -1199,35 +1199,35 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                 </div>
 
                 {/* Operational Counts Breakdown */}
-                <div className="grid grid-cols-3 sm:grid-cols-6 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden text-center text-xs">
-                  <div className="px-2 py-1.5 bg-white">
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-px bg-slate-200 border border-slate-200 rounded-md overflow-hidden text-center text-xs">
+                  <div className="px-2 py-1 bg-white">
                     <div className="text-[10px] text-slate-500">فواتير بيع</div>
                     <div className="font-mono font-black tabular-nums">{inspectedBatch.salesCount || 0}</div>
                   </div>
-                  <div className="px-2 py-1.5 bg-white">
+                  <div className="px-2 py-1 bg-white">
                     <div className="text-[10px] text-slate-500">تحصيلات</div>
                     <div className="font-mono font-black tabular-nums">{inspectedBatch.collectionsCount || 0}</div>
                   </div>
-                  <div className="px-2 py-1.5 bg-white">
+                  <div className="px-2 py-1 bg-white">
                     <div className="text-[10px] text-slate-500">مرتجعات</div>
                     <div className="font-mono font-black tabular-nums">{inspectedBatch.returnsCount || 0}</div>
                   </div>
-                  <div className="px-2 py-1.5 bg-white">
+                  <div className="px-2 py-1 bg-white">
                     <div className="text-[10px] text-slate-500">فواتير شراء</div>
                     <div className="font-mono font-black tabular-nums">{inspectedBatch.purchasesCount || 0}</div>
                   </div>
-                  <div className="px-2 py-1.5 bg-white">
+                  <div className="px-2 py-1 bg-white">
                     <div className="text-[10px] text-slate-500">عملاء جدد</div>
                     <div className="font-mono font-black tabular-nums">{inspectedBatch.customersCount || 0}</div>
                   </div>
-                  <div className="px-2 py-1.5 bg-white">
+                  <div className="px-2 py-1 bg-white">
                     <div className="text-[10px] text-slate-500">عمليات عهدة</div>
                     <div className="font-mono font-black tabular-nums">{inspectedBatch.custodyOpsCount || 0}</div>
                   </div>
                 </div>
 
                 {(inspectedBatch.notes || inspectedBatch.receiptNotes || inspectedBatch.errorMessage || inspectedBatch.receivedByName) && (
-                  <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs space-y-1">
+                  <div className="p-2 rounded-md bg-slate-50 border border-slate-200 text-xs space-y-1">
                     {inspectedBatch.notes && (
                       <div>
                         <span className="font-bold text-slate-600">ملاحظات المرسل: </span>
@@ -1269,7 +1269,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
 
                 {/* Admin / Staff Confirmation Action Section */}
                 {canConfirmBatch(inspectedBatch) && (
-                  <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-200 space-y-3">
+                  <div className="p-2.5 rounded-lg bg-blue-50/70 border border-blue-200 space-y-2">
                     <div className="text-xs font-black text-blue-950">
                       اعتماد استلام الدفعة إدارياً (تأكيد التوثيق دون تكرار أي ترحيل مالي أو مخزني)
                     </div>
@@ -1278,11 +1278,11 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                       value={receiptNotesInput}
                       onChange={(e) => setReceiptNotesInput(e.target.value)}
                       placeholder="ملاحظات الاستلام والتدقيق (اختياري)..."
-                      className="w-full min-h-[40px] px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-bold text-slate-900"
+                      className="w-full h-8 px-2.5 rounded-md border border-slate-300 bg-white text-xs font-bold text-slate-900"
                     />
 
                     {showFailReasonBox && (
-                      <div className="space-y-2 p-3 rounded-lg bg-white border border-red-200">
+                      <div className="space-y-1.5 p-2 rounded-md bg-white border border-red-200">
                         <label className="block text-xs font-bold text-red-800">
                           سبب تعذر الاستلام:
                         </label>
@@ -1291,21 +1291,21 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                           value={failReasonInput}
                           onChange={(e) => setFailReasonInput(e.target.value)}
                           placeholder="مثال: نقص مستندات أو فرق عهدة..."
-                          className="w-full min-h-[38px] px-3 py-1.5 rounded-lg border border-red-300 text-xs font-bold text-slate-900"
+                          className="w-full h-8 px-2.5 rounded-md border border-red-300 text-xs font-bold text-slate-900"
                         />
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5">
                           <button
                             type="button"
                             disabled={batchActionLoading}
                             onClick={handleFailInspectedBatch}
-                            className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold cursor-pointer disabled:opacity-50"
+                            className="h-8 px-3 rounded-md bg-red-600 hover:bg-red-700 text-white text-xs font-bold cursor-pointer disabled:opacity-50"
                           >
                             حفظ حالة «تعذر الاستلام»
                           </button>
                           <button
                             type="button"
                             onClick={() => setShowFailReasonBox(false)}
-                            className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold cursor-pointer"
+                            className="h-8 px-2.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold cursor-pointer"
                           >
                             إلغاء
                           </button>
@@ -1313,13 +1313,13 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                       </div>
                     )}
 
-                    <div className="flex flex-wrap items-center justify-end gap-2">
+                    <div className="flex flex-wrap items-center justify-end gap-1.5">
                       {!showFailReasonBox && (
                         <button
                           type="button"
                           disabled={batchActionLoading}
                           onClick={() => setShowFailReasonBox(true)}
-                          className="min-h-[42px] px-4 py-2 rounded-xl bg-white border border-red-300 text-red-800 hover:bg-red-50 text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                          className="h-8 px-3 rounded-md bg-white border border-red-300 text-red-800 hover:bg-red-50 text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                         >
                           <XCircle className="w-4 h-4" />
                           <span>تعذر الاستلام</span>
@@ -1329,7 +1329,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                         type="button"
                         disabled={batchActionLoading}
                         onClick={() => handleConfirmInspectedBatch(inspectedBatch)}
-                        className="min-h-[42px] px-6 py-2 rounded-xl bg-blue-950 hover:bg-blue-900 text-white text-xs font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        className="h-8 px-3 rounded-md bg-blue-950 hover:bg-blue-900 text-white text-xs font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                       >
                         <ShieldCheck className="w-4 h-4" />
                         <span>{batchActionLoading ? 'جاري التأكيد...' : 'استلام وتأكيد'}</span>

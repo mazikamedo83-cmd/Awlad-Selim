@@ -130,7 +130,7 @@ const PlacesAutocompleteBox: React.FC<{
               }
             }}
             placeholder="ابحث عن الشارع أو المنطقة أو اسم المعلم..."
-            className="w-full pr-9 pl-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none focus:border-emerald-700"
+            className="w-full pr-8 pl-2.5 py-1.5 h-8 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-bold text-slate-900 dark:text-slate-100 outline-none focus:border-[#003589]"
           />
         </div>
         <button
@@ -140,13 +140,13 @@ const PlacesAutocompleteBox: React.FC<{
             setOpenList(false);
             onSearchFallback(query);
           }}
-          className="px-3.5 py-2 rounded-xl bg-[#0F5A33] hover:bg-[#0B4426] text-white text-xs font-bold disabled:opacity-50 cursor-pointer shrink-0"
+          className="px-3 py-1.5 h-8 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-bold disabled:opacity-50 cursor-pointer shrink-0"
         >
           {searching ? 'بحث...' : 'بحث'}
         </button>
       </div>
       {openList && suggestions.length > 0 && (
-        <div className="absolute left-0 right-0 top-full mt-1 z-30 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+        <div className="absolute left-0 right-0 top-full mt-1 z-30 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg max-h-48 overflow-y-auto">
           {suggestions.map((s, idx) => {
             const label = s?.placePrediction?.text?.text || s?.placePrediction?.structuredFormat?.mainText?.text || 'مكان';
             return (
@@ -154,7 +154,7 @@ const PlacesAutocompleteBox: React.FC<{
                 key={idx}
                 type="button"
                 onClick={() => handleChooseSuggestion(s)}
-                className="w-full text-right px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-700 border-b last:border-b-0 border-slate-100 dark:border-slate-700 cursor-pointer"
+                className="w-full text-right px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-[#EEF3FA] dark:hover:bg-slate-700 border-b last:border-b-0 border-slate-100 dark:border-slate-700 cursor-pointer"
               >
                 {label}
               </button>
@@ -334,58 +334,58 @@ export const CustomerLocationPickerModal: React.FC<CustomerLocationPickerModalPr
 
   return (
     <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-3">
-      <div className="bg-white dark:bg-slate-900 w-full sm:max-w-2xl rounded-t-xl sm:rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
-        <div className="px-3.5 py-2.5 bg-[#0F5A33] text-white flex items-center justify-between gap-2 shrink-0">
-          <div className="flex items-center gap-2">
+      <div className="bg-white dark:bg-slate-900 w-full sm:max-w-2xl rounded-t-lg sm:rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col max-h-[92vh]">
+        <div className="px-2.5 py-2 awlad-brand-gradient text-white flex items-center justify-between gap-2 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
             <MapPin className="w-4 h-4 shrink-0" />
-            <div>
-              <h3 className="text-xs sm:text-sm font-black">{title}</h3>
-              <p className="text-[11px] text-emerald-100">اضغط على الخريطة أو اسحب العلامة لتحديد موقع المحل بدقة</p>
+            <div className="min-w-0">
+              <h3 className="text-xs font-black truncate">{title}</h3>
+              <p className="text-[10.5px] text-[#DCE6F5] truncate">اضغط على الخريطة أو اسحب العلامة لتحديد موقع المحل بدقة</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg bg-white/15 hover:bg-white/25 cursor-pointer"
+            className="h-7 w-7 flex items-center justify-center rounded-md bg-white/15 hover:bg-white/25 cursor-pointer shrink-0"
             aria-label="إغلاق"
           >
-            <X className="w-4 h-4" />
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
 
-        <div className="p-3 space-y-2.5 overflow-y-auto flex-1">
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="p-2.5 space-y-2 overflow-y-auto flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
             <button
               type="button"
               disabled={locatingGps}
               onClick={() => setShowGpsRationale(true)}
-              className="px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs font-black flex items-center gap-1.5 hover:bg-emerald-100 cursor-pointer"
+              className="h-8 px-2.5 rounded-md bg-[#EEF3FA] dark:bg-slate-800 border border-[#DCE6F5] dark:border-slate-700 text-[#011E58] dark:text-[#DCE6F5] text-xs font-black flex items-center gap-1.5 hover:bg-[#DCE6F5] cursor-pointer"
             >
               <LocateFixed className={`w-3.5 h-3.5 ${locatingGps ? 'animate-spin' : ''}`} />
               <span>{locatingGps ? 'جاري التحديد...' : 'تحديد موقعي الحالي (GPS)'}</span>
             </button>
             {pinPos && (
-              <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md awlad-tabular" dir="ltr">
+              <span className="h-8 inline-flex items-center text-[11px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 rounded-md awlad-tabular" dir="ltr">
                 {pinPos.lat.toFixed(6)}, {pinPos.lng.toFixed(6)}
               </span>
             )}
           </div>
 
           {showGpsRationale && (
-            <div className="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-100 flex flex-wrap items-center justify-between gap-2">
+            <div className="p-2 rounded-md bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-100 flex flex-wrap items-center justify-between gap-1.5">
               <span className="font-bold">سيطلب التطبيق الوصول لموقع الجهاز (GPS) لتحديد إحداثيات المحل وتسهيل التوصيل.</span>
               <div className="flex items-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => setShowGpsRationale(false)}
-                  className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-amber-300 text-slate-700 dark:text-slate-200 font-bold cursor-pointer"
+                  className="h-7 px-2 rounded-md bg-white dark:bg-slate-800 border border-amber-300 text-slate-700 dark:text-slate-200 text-[11px] font-bold cursor-pointer"
                 >
                   إلغاء
                 </button>
                 <button
                   type="button"
                   onClick={runGpsCapture}
-                  className="px-2.5 py-1 rounded-lg bg-[#0F5A33] text-white font-bold cursor-pointer"
+                  className="h-7 px-2 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-[11px] font-bold cursor-pointer"
                 >
                   موافق، حدّد موقعي
                 </button>
@@ -395,7 +395,7 @@ export const CustomerLocationPickerModal: React.FC<CustomerLocationPickerModalPr
 
           {canRenderGoogleMap ? (
             <APIProvider apiKey={mapsKey} language="ar" region="EG">
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <PlacesAutocompleteBox
                   searching={searchingAddr}
                   onSearchFallback={handleServerGeocodeSearch}
@@ -438,7 +438,7 @@ export const CustomerLocationPickerModal: React.FC<CustomerLocationPickerModalPr
                           }
                         }}
                       >
-                        <Pin background="#0F5A33" borderColor="#FFFFFF" glyphColor="#FFFFFF" />
+                        <Pin background="#011E58" borderColor="#FFFFFF" glyphColor="#FFFFFF" />
                       </AdvancedMarker>
                     )}
                   </GoogleMap>
@@ -446,8 +446,8 @@ export const CustomerLocationPickerModal: React.FC<CustomerLocationPickerModalPr
               </div>
             </APIProvider>
           ) : (
-            <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs space-y-2">
-              <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300 font-black">
+            <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs space-y-1.5">
+              <div className="flex items-center gap-1.5 text-amber-700 dark:text-amber-300 font-black">
                 <AlertTriangle className="w-4 h-4 shrink-0" />
                 <span>
                   {!mapsKey
@@ -455,7 +455,7 @@ export const CustomerLocationPickerModal: React.FC<CustomerLocationPickerModalPr
                     : 'الاتصال بالإنترنت غير متاح لعرض الخريطة — يمكنك التقاط موقع GPS أو كتابة العنوان يدوياً.'}
                 </span>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-1.5">
                 <input
                   type="text"
                   value={address}
@@ -467,13 +467,13 @@ export const CustomerLocationPickerModal: React.FC<CustomerLocationPickerModalPr
                     }
                   }}
                   placeholder="ابحث بالعنوان أو اكتب تفاصيل الموقع..."
-                  className="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs font-bold"
+                  className="flex-1 h-8 px-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-xs font-bold"
                 />
                 <button
                   type="button"
                   disabled={searchingAddr}
                   onClick={() => handleServerGeocodeSearch(address)}
-                  className="px-3 py-1.5 rounded-lg bg-[#0F5A33] text-white text-xs font-bold cursor-pointer"
+                  className="h-8 px-2.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-bold cursor-pointer"
                 >
                   بحث
                 </button>
@@ -482,17 +482,17 @@ export const CustomerLocationPickerModal: React.FC<CustomerLocationPickerModalPr
           )}
 
           {statusMsg && (
-            <p className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1.5 rounded-lg border border-emerald-200 dark:border-emerald-800">
+            <p className="text-[11px] font-bold text-[#011E58] dark:text-[#DCE6F5] bg-[#EEF3FA] dark:bg-slate-800 px-2 py-1 rounded-md border border-[#DCE6F5] dark:border-slate-700">
               {statusMsg}
             </p>
           )}
           {errorMsg && (
-            <p className="text-[11px] font-bold text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/40 px-2.5 py-1.5 rounded-lg border border-red-200 dark:border-red-800">
+            <p className="text-[11px] font-bold text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/40 px-2 py-1 rounded-md border border-red-200 dark:border-red-800">
               {errorMsg}
             </p>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-0.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-0.5">
             <div>
               <label className="block text-[11px] font-black text-slate-600 dark:text-slate-300 mb-0.5">المحافظة</label>
               <input
@@ -500,7 +500,7 @@ export const CustomerLocationPickerModal: React.FC<CustomerLocationPickerModalPr
                 value={governorate}
                 onChange={(e) => setGovernorate(e.target.value)}
                 placeholder="مثال: القاهرة / الجيزة"
-                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-bold"
+                className="w-full h-8 px-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-bold"
               />
             </div>
             <div>
@@ -513,7 +513,7 @@ export const CustomerLocationPickerModal: React.FC<CustomerLocationPickerModalPr
                   if (!area) setArea(e.target.value);
                 }}
                 placeholder="المدينة أو الحي"
-                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-bold"
+                className="w-full h-8 px-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-bold"
               />
             </div>
             <div className="sm:col-span-2">
@@ -523,24 +523,24 @@ export const CustomerLocationPickerModal: React.FC<CustomerLocationPickerModalPr
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
                 placeholder="اسم الشارع، رقم المحل، أقرب علامة مميزة..."
-                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-bold"
+                className="w-full h-8 px-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs font-bold"
               />
             </div>
           </div>
         </div>
 
-        <div className="px-3.5 py-2.5 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 flex items-center justify-end gap-2 shrink-0">
+        <div className="px-2.5 py-2 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/70 flex items-center justify-end gap-1.5 shrink-0">
           <button
             type="button"
             onClick={onClose}
-            className="px-3.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 text-xs font-bold text-slate-700 dark:text-slate-200 cursor-pointer"
+            className="h-8 px-3 rounded-md border border-slate-300 dark:border-slate-600 text-xs font-bold text-slate-700 dark:text-slate-200 cursor-pointer"
           >
             إلغاء
           </button>
           <button
             type="button"
             onClick={handleSave}
-            className="px-4 py-1.5 rounded-lg bg-[#0F5A33] hover:bg-[#0B4426] text-white text-xs font-black flex items-center gap-1.5 cursor-pointer"
+            className="h-8 px-3 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-black flex items-center gap-1.5 cursor-pointer"
           >
             <Check className="w-3.5 h-3.5" />
             <span>تأكيد حفظ الموقع</span>

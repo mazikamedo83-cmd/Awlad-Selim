@@ -21,18 +21,18 @@ import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 
 const STATUS_META: Record<string, { label: string; cls: string }> = {
   pending: { label: 'طلب جديد', cls: 'bg-amber-50 text-amber-800 border-amber-200' },
-  under_review: { label: 'قيد المراجعة', cls: 'bg-blue-50 text-blue-800 border-blue-200' },
+  under_review: { label: 'قيد المراجعة', cls: 'bg-[#EEF3FA] text-[#011E58] border-[#DCE6F5]' },
   approved: { label: 'معتمد', cls: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
-  invoiced: { label: 'تمت الفوترة', cls: 'bg-sky-50 text-sky-900 border-sky-200' },
-  preparing: { label: 'قيد التجهيز', cls: 'bg-cyan-50 text-cyan-800 border-cyan-200' },
-  rep_assigned: { label: 'مُسند لمندوب', cls: 'bg-indigo-50 text-indigo-800 border-indigo-200' },
-  out_for_delivery: { label: 'خرج للتوصيل', cls: 'bg-purple-50 text-purple-800 border-purple-200' },
-  delivered: { label: 'تم التسليم', cls: 'bg-teal-50 text-teal-800 border-teal-200' },
+  invoiced: { label: 'تمت الفوترة', cls: 'bg-[#DCE6F5] text-[#011E58] border-[#B8CAE8]' },
+  preparing: { label: 'قيد التجهيز', cls: 'bg-[#EEF3FA] text-[#003589] border-[#B8CAE8]' },
+  rep_assigned: { label: 'مُسند لمندوب', cls: 'bg-[#DCE6F5] text-[#002160] border-[#B8CAE8]' },
+  out_for_delivery: { label: 'خرج للتوصيل', cls: 'bg-[#003589]/10 text-[#003589] border-[#003589]/30' },
+  delivered: { label: 'تم التسليم', cls: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
   collected: { label: 'تم التحصيل', cls: 'bg-emerald-100 text-emerald-900 border-emerald-300' },
   closed: { label: 'مغلق', cls: 'bg-slate-200 text-slate-900 border-slate-300' },
   rejected: { label: 'مرفوض', cls: 'bg-red-50 text-red-700 border-red-200' },
   cancelled: { label: 'ملغي', cls: 'bg-slate-100 text-slate-500 border-slate-200' },
-  needs_review: { label: 'يحتاج مراجعة', cls: 'bg-orange-50 text-orange-800 border-orange-200' },
+  needs_review: { label: 'يحتاج مراجعة', cls: 'bg-amber-50 text-amber-900 border-amber-300' },
 };
 
 export const CustomerRepOrdersView: React.FC = () => {
@@ -157,10 +157,10 @@ export const CustomerRepOrdersView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-3">
-      <div className="bg-white px-3.5 py-2.5 rounded-lg border border-slate-200 flex flex-wrap items-center justify-between gap-2">
+    <div className="space-y-2">
+      <div className="bg-white px-2.5 py-2 rounded-lg border border-slate-200 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h1 className="text-sm sm:text-base font-black text-slate-900">طلبات العملاء والمندوبين</h1>
+          <h1 className="text-sm font-black text-slate-900">طلبات العملاء والمندوبين</h1>
           <p className="text-[11px] text-slate-500">
             مراجعة واعتماد طلبات الأصناف، إسناد مناديب التوصيل، الدفعات المقدمة، والتحويل لفواتير مبيعات
           </p>
@@ -168,7 +168,7 @@ export const CustomerRepOrdersView: React.FC = () => {
         <button
           type="button"
           onClick={() => triggerManualSync()}
-          className="px-3 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 text-xs font-bold text-slate-700 flex items-center gap-1.5 cursor-pointer"
+          className="px-2.5 py-1 rounded-md bg-white border border-slate-300 hover:bg-slate-50 text-xs font-bold text-slate-700 flex items-center gap-1.5 cursor-pointer"
         >
           <RefreshCw className="w-3.5 h-3.5" />
           <span>تحديث الطلبات</span>
@@ -177,7 +177,7 @@ export const CustomerRepOrdersView: React.FC = () => {
 
       {feedback && (
         <div
-          className={`px-3 py-2 rounded-lg border text-xs font-bold ${
+          className={`px-2.5 py-1.5 rounded-md border text-xs font-bold ${
             feedback.type === 'ok'
               ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
               : 'bg-red-50 border-red-200 text-red-800'
@@ -188,30 +188,30 @@ export const CustomerRepOrdersView: React.FC = () => {
       )}
 
       {/* Compact Summary Ledger Strip */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden">
-        <div className="bg-white px-3 py-2 flex items-center justify-between">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-slate-200 border border-slate-200 rounded-md overflow-hidden">
+        <div className="bg-white px-2.5 py-1.5 flex items-center justify-between">
           <span className="text-[11px] text-amber-800 font-bold flex items-center gap-1">
             <Clock className="w-3.5 h-3.5" /> طلبات جديدة
           </span>
-          <span className="text-base font-black text-amber-950 font-mono tabular-nums">{stats.pending}</span>
+          <span className="text-sm font-black text-amber-950 font-mono tabular-nums">{stats.pending}</span>
         </div>
-        <div className="bg-white px-3 py-2 flex items-center justify-between">
+        <div className="bg-white px-2.5 py-1.5 flex items-center justify-between">
           <span className="text-[11px] text-blue-800 font-bold flex items-center gap-1">
             <ClipboardList className="w-3.5 h-3.5" /> مراجعة واعتماد
           </span>
-          <span className="text-base font-black text-blue-950 font-mono tabular-nums">{stats.inProgress}</span>
+          <span className="text-sm font-black text-blue-950 font-mono tabular-nums">{stats.inProgress}</span>
         </div>
-        <div className="bg-white px-3 py-2 flex items-center justify-between">
-          <span className="text-[11px] text-indigo-800 font-bold flex items-center gap-1">
+        <div className="bg-white px-2.5 py-1.5 flex items-center justify-between">
+          <span className="text-[11px] text-[#003589] font-bold flex items-center gap-1">
             <Truck className="w-3.5 h-3.5" /> قيد التوصيل
           </span>
-          <span className="text-base font-black text-indigo-950 font-mono tabular-nums">{stats.delivery}</span>
+          <span className="text-sm font-black text-[#011E58] font-mono tabular-nums">{stats.delivery}</span>
         </div>
-        <div className="bg-white px-3 py-2 flex items-center justify-between">
+        <div className="bg-white px-2.5 py-1.5 flex items-center justify-between">
           <span className="text-[11px] text-emerald-800 font-bold flex items-center gap-1">
             <CheckCircle2 className="w-3.5 h-3.5" /> مسلمة / مفوترة
           </span>
-          <span className="text-base font-black text-emerald-950 font-mono tabular-nums">{stats.done}</span>
+          <span className="text-sm font-black text-emerald-950 font-mono tabular-nums">{stats.done}</span>
         </div>
       </div>
 
@@ -233,7 +233,7 @@ export const CustomerRepOrdersView: React.FC = () => {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="py-1.5 px-3 rounded-lg border border-slate-300 font-bold bg-white text-xs"
+              className="h-8 py-1 px-2 rounded-md border border-slate-300 font-bold bg-white text-xs"
             >
               <option value="all">كل الحالات</option>
               {Object.entries(STATUS_META).map(([key, meta]) => (
@@ -245,7 +245,7 @@ export const CustomerRepOrdersView: React.FC = () => {
             <select
               value={requesterFilter}
               onChange={(e) => setRequesterFilter(e.target.value as any)}
-              className="py-1.5 px-3 rounded-lg border border-slate-300 font-bold bg-white text-xs"
+              className="h-8 py-1 px-2 rounded-md border border-slate-300 font-bold bg-white text-xs"
             >
               <option value="all">كل المصادر</option>
               <option value="customer">طلبات العملاء</option>
@@ -407,7 +407,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                       type="button"
                       disabled={busy}
                       onClick={() => runAction(() => approveCustomerItemOrder(ord.id), 'تم اعتماد الطلب')}
-                      className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer"
+                      className="px-2 py-1 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
                     >
                       اعتماد
                     </button>
@@ -418,7 +418,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                         setRejectModalOrder(ord);
                         setRejectReason('');
                       }}
-                      className="px-2 py-1 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 font-bold cursor-pointer"
+                      className="px-2 py-1 rounded-md bg-red-50 hover:bg-red-100 text-red-700 font-bold cursor-pointer"
                     >
                       رفض
                     </button>
@@ -437,7 +437,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                           onClick={() =>
                             runAction(() => advanceOrderStage(ord.id, { status: 'preparing' }), 'تم بدء تجهيز الطلب')
                           }
-                          className="px-2 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white font-bold cursor-pointer"
+                          className="px-2 py-1 rounded-md bg-[#0049B0] hover:bg-[#003589] text-white font-bold cursor-pointer"
                         >
                           بدء التجهيز
                         </button>
@@ -452,7 +452,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                               'تم إخراج الطلب للتوصيل'
                             )
                           }
-                          className="px-2 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold cursor-pointer"
+                          className="px-2 py-1 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
                         >
                           خروج للتوصيل
                         </button>
@@ -464,7 +464,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                           onClick={() =>
                             runAction(() => advanceOrderStage(ord.id, { status: 'delivered' }), 'تم تسليم الطلب بنجاح')
                           }
-                          className="px-2 py-1 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold cursor-pointer"
+                          className="px-2 py-1 rounded-md bg-[#011E58] hover:bg-[#003589] text-white font-bold cursor-pointer"
                         >
                           تم التسليم
                         </button>
@@ -479,7 +479,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                             setCollectMethod('cash');
                             setCollectNotes('');
                           }}
-                          className="px-2 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer"
+                          className="px-2 py-1 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
                         >
                           تحصيل الدفعة
                         </button>
@@ -491,7 +491,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                           onClick={() =>
                             runAction(() => advanceOrderStage(ord.id, { status: 'closed' }), 'تم إغلاق دورة الطلب بنجاح')
                           }
-                          className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-black text-white font-bold cursor-pointer"
+                          className="px-2 py-1 rounded-md bg-slate-800 hover:bg-slate-900 text-white font-bold cursor-pointer"
                         >
                           إغلاق الطلب
                         </button>
@@ -504,7 +504,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                             setAssignRepId(ord.deliveryRepId || representatives[0]?.id || '');
                             setAssignNotes('');
                           }}
-                          className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 cursor-pointer"
+                          className="p-1.5 rounded-md bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] cursor-pointer"
                           title="تعيين مندوب توصيل"
                         >
                           <UserCheck className="w-4 h-4" />
@@ -520,7 +520,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                               setAdvanceCashboxId(cashboxes[0]?.id || 'cb-main');
                               setAdvanceNotes('');
                             }}
-                            className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 cursor-pointer"
+                            className="p-1.5 rounded-md bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#003589] cursor-pointer"
                             title="تسجيل دفعة مقدمة"
                           >
                             <DollarSign className="w-4 h-4" />
@@ -536,7 +536,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                               setConvertPaymentType('cash');
                               setConvertNotes(ord.notes || '');
                             }}
-                            className="px-2 py-1 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-bold flex items-center gap-1 cursor-pointer"
+                            className="px-2 py-1 rounded-md bg-[#011E58] hover:bg-[#003589] text-white font-bold flex items-center gap-1 cursor-pointer"
                           >
                             <FileText className="w-3.5 h-3.5" />
                             <span>تحويل لفاتورة</span>
@@ -560,8 +560,8 @@ export const CustomerRepOrdersView: React.FC = () => {
         maxWidth="4xl"
       >
         {selectedOrder && (
-          <div className="space-y-3 text-xs">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-2.5 rounded-lg bg-slate-50 border border-slate-200">
+          <div className="space-y-2 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2 rounded-md bg-slate-50 border border-slate-200">
               <div>
                 <p className="text-slate-500">العميل:</p>
                 <p className="font-bold text-slate-900">{selectedOrder.customerName}</p>
@@ -576,13 +576,13 @@ export const CustomerRepOrdersView: React.FC = () => {
                     href={`https://maps.google.com/?q=${encodeURIComponent(selectedOrder.geoCoordinates)}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-blue-700 font-bold mt-1"
+                    className="inline-flex items-center gap-1 text-[#003589] hover:text-[#0049B0] font-bold mt-1"
                   >
                     <MapPin className="w-3.5 h-3.5" /> عرض الموقع الجغرافي
                   </a>
                 )}
                 {selectedOrder.deliveryRepName && (
-                  <p className="text-indigo-800 font-bold mt-1">مندوب التوصيل: {selectedOrder.deliveryRepName}</p>
+                  <p className="text-[#011E58] font-bold mt-1">مندوب التوصيل: {selectedOrder.deliveryRepName}</p>
                 )}
               </div>
             </div>
@@ -635,14 +635,14 @@ export const CustomerRepOrdersView: React.FC = () => {
             />
 
             {selectedOrder.notes && (
-              <div className="px-2.5 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-900">
+              <div className="px-2.5 py-1.5 rounded-md bg-amber-50 border border-amber-200 text-amber-900">
                 <strong>ملاحظات:</strong> {selectedOrder.notes}
               </div>
             )}
 
             {/* Linked Invoice Payment Summary & History */}
             {(selectedOrder.invoiceId || (selectedOrder.paymentsHistory && selectedOrder.paymentsHistory.length > 0)) && (
-              <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 space-y-2">
+              <div className="p-2 rounded-md bg-slate-50 border border-slate-200 space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-black text-slate-900">
                     ملخص سداد الفاتورة {selectedOrder.invoiceNumber ? `(${selectedOrder.invoiceNumber})` : ''}
@@ -657,16 +657,16 @@ export const CustomerRepOrdersView: React.FC = () => {
                     {selectedOrder.paymentStatus === 'paid' ? 'مسدد بالكامل' : selectedOrder.paymentStatus === 'partial' ? 'مدفوع جزئياً' : 'غير مسدد'}
                   </span>
                 </div>
-                <div className="grid grid-cols-3 gap-px text-center bg-slate-200 rounded-lg overflow-hidden border border-slate-200 tabular-nums">
-                  <div className="bg-white p-2">
+                <div className="grid grid-cols-3 gap-px text-center bg-slate-200 rounded-md overflow-hidden border border-slate-200 tabular-nums">
+                  <div className="bg-white px-2 py-1.5">
                     <span className="block text-[10px] text-slate-500">إجمالي الفاتورة</span>
                     <strong className="font-mono text-slate-900">{Number(selectedOrder.invoiceTotal ?? getOrderTotal(selectedOrder)).toLocaleString()} {settings.currency}</strong>
                   </div>
-                  <div className="bg-white p-2">
+                  <div className="bg-white px-2 py-1.5">
                     <span className="block text-[10px] text-slate-500">المدفوع</span>
                     <strong className="font-mono text-emerald-700">{Number(selectedOrder.invoicePaidAmount ?? selectedOrder.advancePaidAmount ?? 0).toLocaleString()} {settings.currency}</strong>
                   </div>
-                  <div className="bg-white p-2">
+                  <div className="bg-white px-2 py-1.5">
                     <span className="block text-[10px] text-slate-500">المتبقي</span>
                     <strong className="font-mono text-red-600">{Number(selectedOrder.invoiceRemainingAmount ?? selectedOrder.remainingAmount ?? 0).toLocaleString()} {settings.currency}</strong>
                   </div>
@@ -728,7 +728,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                           'تم تحديث الحالة إلى قيد التجهيز'
                         )
                       }
-                      className="px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white font-bold cursor-pointer"
+                      className="h-8 px-2.5 rounded-md bg-[#0049B0] hover:bg-[#003589] text-white font-bold cursor-pointer"
                     >
                       بدء التجهيز
                     </button>
@@ -743,7 +743,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                           'تم تحديث الحالة إلى خرج للتوصيل'
                         )
                       }
-                      className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold cursor-pointer"
+                      className="h-8 px-2.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
                     >
                       خروج للتوصيل
                     </button>
@@ -758,7 +758,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                           'تم تأكيد تسليم الطلب'
                         )
                       }
-                      className="px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white font-bold cursor-pointer"
+                      className="h-8 px-2.5 rounded-md bg-[#011E58] hover:bg-[#003589] text-white font-bold cursor-pointer"
                     >
                       تم التسليم
                     </button>
@@ -773,7 +773,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                         setCollectMethod('cash');
                         setCollectNotes('');
                       }}
-                      className="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer"
+                      className="h-8 px-2.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
                     >
                       تحصيل الدفعة
                     </button>
@@ -788,7 +788,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                           'تم إغلاق الطلب'
                         )
                       }
-                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-black text-white font-bold cursor-pointer"
+                      className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-black text-white font-bold cursor-pointer"
                     >
                       إغلاق الطلب
                     </button>
@@ -823,7 +823,7 @@ export const CustomerRepOrdersView: React.FC = () => {
             );
             if (ok) setCollectStageOrder(null);
           }}
-          className="space-y-2.5 text-xs"
+          className="space-y-2 text-xs"
         >
           <div>
             <label className="block font-bold text-slate-700 mb-0.5">المبلغ المحصل ({settings.currency}):</label>
@@ -835,7 +835,7 @@ export const CustomerRepOrdersView: React.FC = () => {
               placeholder="0.00"
               value={collectAmount || ''}
               onChange={(e) => setCollectAmount(e.target.value === '' ? 0 : Number(e.target.value))}
-              className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 font-mono font-bold"
+              className="w-full h-8 py-1 px-2 rounded-md border border-slate-300 font-mono font-bold"
             />
           </div>
           <div className={hasTreasuryAccess ? 'grid grid-cols-2 gap-2' : 'grid grid-cols-1 gap-2'}>
@@ -845,7 +845,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                 <select
                   value={collectCashboxId}
                   onChange={(e) => setCollectCashboxId(e.target.value)}
-                  className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 bg-white font-bold"
+                  className="w-full h-8 py-1 px-2 rounded-md border border-slate-300 bg-white font-bold"
                 >
                   {cashboxes.map((cb) => (
                     <option key={cb.id} value={cb.id}>{cb.name}</option>
@@ -858,7 +858,7 @@ export const CustomerRepOrdersView: React.FC = () => {
               <select
                 value={collectMethod}
                 onChange={(e) => setCollectMethod(e.target.value as any)}
-                className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 bg-white font-bold"
+                className="w-full h-8 py-1 px-2 rounded-md border border-slate-300 bg-white font-bold"
               >
                 <option value="cash">نقدي</option>
                 <option value="bank">تحويل بنكي</option>
@@ -872,14 +872,14 @@ export const CustomerRepOrdersView: React.FC = () => {
               type="text"
               value={collectNotes}
               onChange={(e) => setCollectNotes(e.target.value)}
-              className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300"
+              className="w-full h-8 py-1 px-2 rounded-md border border-slate-300"
             />
           </div>
-          <div className="flex justify-end gap-2 pt-1">
-            <button type="button" onClick={() => setCollectStageOrder(null)} className="px-3.5 py-1.5 rounded-lg bg-slate-100 font-bold cursor-pointer">
+          <div className="flex justify-end gap-2 pt-2 border-t">
+            <button type="button" onClick={() => setCollectStageOrder(null)} className="px-2.5 py-1 rounded-md bg-slate-100 font-bold cursor-pointer">
               إلغاء
             </button>
-            <button type="submit" disabled={busy} className="px-3.5 py-1.5 rounded-lg bg-emerald-700 text-white font-bold cursor-pointer">
+            <button type="submit" disabled={busy} className="h-8 px-3 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer">
               تأكيد التحصيل
             </button>
           </div>
@@ -903,7 +903,7 @@ export const CustomerRepOrdersView: React.FC = () => {
             );
             if (ok) setRejectModalOrder(null);
           }}
-          className="space-y-2.5 text-xs"
+          className="space-y-2 text-xs"
         >
           <label className="block font-bold text-slate-700">سبب الرفض:</label>
           <textarea
@@ -911,21 +911,21 @@ export const CustomerRepOrdersView: React.FC = () => {
             rows={3}
             value={rejectReason}
             onChange={(e) => setRejectReason(e.target.value)}
-            className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300"
+            className="w-full py-1.5 px-2 rounded-md border border-slate-300"
             placeholder="اكتب سبب الرفض ليظهر للعميل أو المندوب..."
           />
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-2 pt-2 border-t">
             <button
               type="button"
               onClick={() => setRejectModalOrder(null)}
-              className="px-3.5 py-1.5 rounded-lg bg-slate-100 font-bold cursor-pointer"
+              className="px-2.5 py-1 rounded-md bg-slate-100 font-bold cursor-pointer"
             >
               إلغاء
             </button>
             <button
               type="submit"
               disabled={busy}
-              className="px-3.5 py-1.5 rounded-lg bg-red-600 text-white font-bold flex items-center gap-1 cursor-pointer"
+              className="px-3 py-1 rounded-md bg-red-600 text-white font-bold flex items-center gap-1 cursor-pointer"
             >
               <XCircle className="w-3.5 h-3.5" /> تأكيد الرفض
             </button>
@@ -950,7 +950,7 @@ export const CustomerRepOrdersView: React.FC = () => {
             );
             if (ok) setAssignModalOrder(null);
           }}
-          className="space-y-2.5 text-xs"
+          className="space-y-2 text-xs"
         >
           <div>
             <label className="block font-bold text-slate-700 mb-0.5">اختر المندوب:</label>
@@ -958,7 +958,7 @@ export const CustomerRepOrdersView: React.FC = () => {
               required
               value={assignRepId}
               onChange={(e) => setAssignRepId(e.target.value)}
-              className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 bg-white font-bold"
+              className="w-full h-8 py-1 px-2 rounded-md border border-slate-300 bg-white font-bold"
             >
               <option value="">-- اختر مندوباً --</option>
               {representatives.map((r) => (
@@ -974,21 +974,21 @@ export const CustomerRepOrdersView: React.FC = () => {
               type="text"
               value={assignNotes}
               onChange={(e) => setAssignNotes(e.target.value)}
-              className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300"
+              className="w-full h-8 py-1 px-2 rounded-md border border-slate-300"
             />
           </div>
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-2 pt-2 border-t">
             <button
               type="button"
               onClick={() => setAssignModalOrder(null)}
-              className="px-3.5 py-1.5 rounded-lg bg-slate-100 font-bold cursor-pointer"
+              className="px-2.5 py-1 rounded-md bg-slate-100 font-bold cursor-pointer"
             >
               إلغاء
             </button>
             <button
               type="submit"
               disabled={busy || !assignRepId}
-              className="px-3.5 py-1.5 rounded-lg bg-indigo-600 text-white font-bold cursor-pointer"
+              className="h-8 px-3 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
             >
               حفظ الإسناد
             </button>
@@ -1019,7 +1019,7 @@ export const CustomerRepOrdersView: React.FC = () => {
             );
             if (ok) setAdvanceModalOrder(null);
           }}
-          className="space-y-2.5 text-xs"
+          className="space-y-2 text-xs"
         >
           <div>
             <label className="block font-bold text-slate-700 mb-0.5">المبلغ ({settings.currency}):</label>
@@ -1031,7 +1031,7 @@ export const CustomerRepOrdersView: React.FC = () => {
               placeholder="0.00"
               value={advanceAmount || ''}
               onChange={(e) => setAdvanceAmount(e.target.value === '' ? 0 : Number(e.target.value))}
-              className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 font-mono font-bold"
+              className="w-full h-8 py-1 px-2 rounded-md border border-slate-300 font-mono font-bold"
             />
           </div>
           <div className={hasTreasuryAccess ? 'grid grid-cols-2 gap-2' : 'grid grid-cols-1 gap-2'}>
@@ -1041,7 +1041,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                 <select
                   value={advanceCashboxId}
                   onChange={(e) => setAdvanceCashboxId(e.target.value)}
-                  className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 bg-white font-bold"
+                  className="w-full h-8 py-1 px-2 rounded-md border border-slate-300 bg-white font-bold"
                 >
                   {cashboxes.map((cb) => (
                     <option key={cb.id} value={cb.id}>
@@ -1056,7 +1056,7 @@ export const CustomerRepOrdersView: React.FC = () => {
               <select
                 value={advanceMethod}
                 onChange={(e) => setAdvanceMethod(e.target.value as any)}
-                className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 bg-white font-bold"
+                className="w-full h-8 py-1 px-2 rounded-md border border-slate-300 bg-white font-bold"
               >
                 <option value="cash">نقدي</option>
                 <option value="bank">تحويل بنكي</option>
@@ -1070,21 +1070,21 @@ export const CustomerRepOrdersView: React.FC = () => {
               type="text"
               value={advanceNotes}
               onChange={(e) => setAdvanceNotes(e.target.value)}
-              className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300"
+              className="w-full h-8 py-1 px-2 rounded-md border border-slate-300"
             />
           </div>
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-2 pt-2 border-t">
             <button
               type="button"
               onClick={() => setAdvanceModalOrder(null)}
-              className="px-3.5 py-1.5 rounded-lg bg-slate-100 font-bold cursor-pointer"
+              className="px-2.5 py-1 rounded-md bg-slate-100 font-bold cursor-pointer"
             >
               إلغاء
             </button>
             <button
               type="submit"
               disabled={busy || advanceAmount <= 0}
-              className="px-3.5 py-1.5 rounded-lg bg-emerald-600 text-white font-bold cursor-pointer"
+              className="h-8 px-3 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
             >
               تسجيل الدفعة
             </button>
@@ -1124,7 +1124,7 @@ export const CustomerRepOrdersView: React.FC = () => {
             );
             if (ok) setConvertModalOrder(null);
           }}
-          className="space-y-2.5 text-xs"
+          className="space-y-2 text-xs"
         >
           <div className={hasTreasuryAccess ? 'grid grid-cols-2 gap-2' : 'grid grid-cols-1 gap-2'}>
             <div>
@@ -1132,7 +1132,7 @@ export const CustomerRepOrdersView: React.FC = () => {
               <select
                 value={convertWarehouseId}
                 onChange={(e) => setConvertWarehouseId(e.target.value)}
-                className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 bg-white font-bold"
+                className="w-full h-8 py-1 px-2 rounded-md border border-slate-300 bg-white font-bold"
               >
                 {warehouses.map((w) => (
                   <option key={w.id} value={w.id}>
@@ -1147,7 +1147,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                 <select
                   value={convertCashboxId}
                   onChange={(e) => setConvertCashboxId(e.target.value)}
-                  className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 bg-white font-bold"
+                  className="w-full h-8 py-1 px-2 rounded-md border border-slate-300 bg-white font-bold"
                 >
                   {cashboxes.map((cb) => (
                     <option key={cb.id} value={cb.id}>
@@ -1166,7 +1166,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                   <select
                     value={convertPaymentType}
                     onChange={(e) => setConvertPaymentType(e.target.value as any)}
-                    className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 bg-white font-bold"
+                    className="w-full h-8 py-1 px-2 rounded-md border border-slate-300 bg-white font-bold"
                   >
                     <option value="cash">نقدي</option>
                     <option value="partial">جزئي</option>
@@ -1182,7 +1182,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                     placeholder="0.00"
                     value={convertPaid || ''}
                     onChange={(e) => setConvertPaid(e.target.value === '' ? 0 : Number(e.target.value))}
-                    className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 font-mono font-bold"
+                    className="w-full h-8 py-1 px-2 rounded-md border border-slate-300 font-mono font-bold"
                   />
                 </div>
               </>
@@ -1196,7 +1196,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                 placeholder="0.00"
                 value={convertDiscount || ''}
                 onChange={(e) => setConvertDiscount(e.target.value === '' ? 0 : Number(e.target.value))}
-                className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 font-mono font-bold"
+                className="w-full h-8 py-1 px-2 rounded-md border border-slate-300 font-mono font-bold"
               />
             </div>
           </div>
@@ -1206,21 +1206,21 @@ export const CustomerRepOrdersView: React.FC = () => {
               type="text"
               value={convertNotes}
               onChange={(e) => setConvertNotes(e.target.value)}
-              className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300"
+              className="w-full h-8 py-1 px-2 rounded-md border border-slate-300"
             />
           </div>
-          <div className="flex justify-end gap-2 pt-1">
+          <div className="flex justify-end gap-2 pt-2 border-t">
             <button
               type="button"
               onClick={() => setConvertModalOrder(null)}
-              className="px-3.5 py-1.5 rounded-lg bg-slate-100 font-bold cursor-pointer"
+              className="px-2.5 py-1 rounded-md bg-slate-100 font-bold cursor-pointer"
             >
               إلغاء
             </button>
             <button
               type="submit"
               disabled={busy}
-              className="px-3.5 py-1.5 rounded-lg bg-blue-900 text-white font-bold cursor-pointer"
+              className="h-8 px-3 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
             >
               اعتماد وتحويل لفاتورة
             </button>

@@ -516,16 +516,16 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
       }
       maxWidth="6xl"
     >
-      <div className="space-y-2.5">
+      <div className="space-y-2">
         {error && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-xs font-bold text-red-700">
+          <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-red-50 border border-red-200 text-xs font-bold text-red-700">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{error}</span>
           </div>
         )}
 
         {/* Top Controls: Customer, Warehouse, Rep, Date */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 bg-slate-50 p-2 rounded-lg border border-slate-200 text-xs">
           <div>
             <SearchableFilterSelect
               id="sale-modal-customer"
@@ -545,7 +545,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
               searchPlaceholder="ابحث باسم العميل أو المحل أو الهاتف..."
               allowClear={!sourceOrder}
               minPanelWidth={270}
-              buttonClassName="rounded-lg"
+              buttonClassName="rounded-md"
             />
           </div>
 
@@ -554,7 +554,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
             <select
               value={selectedWarehouseId}
               onChange={(e) => setSelectedWarehouseId(e.target.value)}
-              className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:border-blue-600 outline-hidden"
+              className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 text-xs font-semibold focus:border-blue-600 outline-hidden"
             >
               {warehouses.map((w) => (
                 <option key={w.id} value={w.id}>{w.name}</option>
@@ -578,7 +578,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
               allOptionValue=""
               searchPlaceholder="ابحث باسم المندوب..."
               allowClear
-              buttonClassName="rounded-lg"
+              buttonClassName="rounded-md"
             />
           </div>
 
@@ -588,24 +588,24 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
               type="date"
               value={invoiceDate}
               onChange={(e) => setInvoiceDate(e.target.value)}
-              className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-mono font-semibold focus:border-blue-600 outline-hidden"
+              className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 text-xs font-mono font-semibold focus:border-blue-600 outline-hidden"
             />
           </div>
         </div>
 
         {/* Product Picker & Barcode & Customer Price History Box */}
-        <div className="bg-blue-50/50 border border-blue-200 rounded-lg p-2.5 space-y-2">
-          <div className="flex flex-col sm:flex-row items-center gap-2">
-            <form onSubmit={handleBarcodeSubmit} className="w-full sm:w-60">
+        <div className="bg-[#EEF3FA] border border-[#DCE6F5] rounded-lg p-2 space-y-1.5">
+          <div className="flex flex-col sm:flex-row items-center gap-1.5">
+            <form onSubmit={handleBarcodeSubmit} className="w-full sm:w-56">
               <div className="relative">
                 <input
                   type="text"
                   placeholder="امسح الباركود أو الكود..."
                   value={barcodeInput}
                   onChange={(e) => setBarcodeInput(e.target.value)}
-                  className="w-full bg-white border border-blue-300 rounded-lg py-1.5 pr-8 pl-2.5 text-xs font-mono focus:border-blue-700 outline-hidden"
+                  className="w-full h-8 bg-white border border-[#B8CAE8] rounded-md py-1 pr-7 pl-2 text-xs font-mono focus:border-[#003589] outline-hidden"
                 />
-                <Barcode className="w-3.5 h-3.5 text-blue-600 absolute right-2.5 top-2" />
+                <Barcode className="w-3.5 h-3.5 text-[#003589] absolute right-2 top-2" />
               </div>
             </form>
 
@@ -629,15 +629,15 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
           </div>
 
           {selectedProduct && selectedCustomer && (
-            <div className="bg-white rounded-xl p-3 border border-blue-200 text-xs flex flex-wrap items-center justify-between gap-2 shadow-xs">
-              <div className="flex items-center gap-2">
-                <History className="w-4 h-4 text-blue-700 shrink-0" />
+            <div className="bg-white rounded-md p-2 border border-blue-200 text-xs flex flex-wrap items-center justify-between gap-1.5">
+              <div className="flex items-center gap-1.5">
+                <History className="w-3.5 h-3.5 text-blue-700 shrink-0" />
                 <span className="font-bold text-slate-800">
                   آخر 3 أسعار بيع فعلية لهذا العميل ({selectedCustomer.name}) للصنف ({selectedProduct.name}) — من الأقدم للأحدث:
                 </span>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1.5">
                 {lastThreePrices.length > 0 ? (
                   lastThreePrices.map((entry, idx) => {
                     const priceVal = typeof entry === 'number' ? entry : Number(entry.price || 0);
@@ -660,7 +660,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                         type="button"
                         onClick={() => setInputUnitPrice(normalizedPerSelectedUnit ?? priceVal)}
                         title="انقر لتطبيق هذا السعر يدوياً (مع ضبط الوحدة الحالية عند الحاجة)"
-                        className="px-2.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-300 text-right transition-colors cursor-pointer"
+                        className="px-2 py-1 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-300 text-right transition-colors cursor-pointer"
                       >
                         <span className="font-mono font-bold text-xs block">
                           {priceVal} {settings.currency}
@@ -685,13 +685,13 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
           )}
 
           {selectedProduct && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-blue-100 text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 pt-1.5 border-t border-blue-100 text-xs">
               <div>
                 <label className="block font-bold text-slate-700 mb-0.5">وحدة البيع:</label>
                 <select
                   value={selectedUnitName}
                   onChange={(e) => handleUnitChange(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1.5 text-xs font-bold outline-hidden"
+                  className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 text-xs font-bold outline-hidden"
                 >
                   {selectedProduct.units.map((u) => (
                     <option key={u.id} value={u.name}>
@@ -719,7 +719,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                     }
                   }}
                   ariaLabel="الكمية"
-                  inputClassName="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-center font-mono outline-hidden focus:border-blue-700"
+                  inputClassName="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 text-xs font-bold text-center font-mono outline-hidden focus:border-blue-700"
                 />
               </div>
 
@@ -737,7 +737,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                       handleAddItem();
                     }
                   }}
-                  className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-black text-center text-blue-900 font-mono outline-hidden focus:border-blue-700"
+                  className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 text-xs font-black text-center text-blue-900 font-mono outline-hidden focus:border-blue-700"
                 />
               </div>
 
@@ -745,7 +745,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                 <button
                   type="button"
                   onClick={handleAddItem}
-                  className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 bg-blue-900 hover:bg-blue-950 text-white rounded-lg font-bold shadow-xs transition-all active:scale-95 cursor-pointer"
+                  className="w-full h-8 flex items-center justify-center gap-1.5 px-2.5 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-bold transition-all active:scale-95 cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>إضافة للصنف بالفاتورة</span>
@@ -756,60 +756,60 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
         </div>
 
         {/* Invoice Items Table */}
-        <div className="border border-slate-200 rounded-lg overflow-hidden shadow-xs awlad-table-scroll">
+        <div className="border border-slate-200 rounded-lg overflow-hidden awlad-table-scroll">
           <table className="w-full text-right text-xs">
             <thead>
               <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
-                <th className="p-2 w-8 text-center">#</th>
-                <th className="p-2">اسم الصنف</th>
-                <th className="p-2 text-center">الوحدة</th>
-                <th className="p-2 text-center w-24">الكمية</th>
-                <th className="p-2 text-center w-24">سعر الوحدة</th>
-                <th className="p-2 text-center">الإجمالي</th>
-                <th className="p-2 text-center w-10">حذف</th>
+                <th className="px-2 py-1.5 w-8 text-center">#</th>
+                <th className="px-2 py-1.5">اسم الصنف</th>
+                <th className="px-2 py-1.5 text-center">الوحدة</th>
+                <th className="px-2 py-1.5 text-center w-24">الكمية</th>
+                <th className="px-2 py-1.5 text-center w-24">سعر الوحدة</th>
+                <th className="px-2 py-1.5 text-center">الإجمالي</th>
+                <th className="px-2 py-1.5 text-center w-10">حذف</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {items.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-4 text-center text-slate-400">
+                  <td colSpan={7} className="p-3 text-center text-slate-400">
                     لم يتم إضافة أصناف إلى الفاتورة بعد. استخدم البحث أو قارئ الباركود أعلاه لإضافة سلع.
                   </td>
                 </tr>
               ) : (
                 items.map((it, idx) => (
                   <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                    <td className="p-2 text-center font-bold text-slate-400">{idx + 1}</td>
-                    <td className="p-2 font-bold text-slate-800">{it.productName}</td>
-                    <td className="p-2 text-center text-slate-600">{it.unit}</td>
-                    <td className="p-2 text-center">
+                    <td className="px-2 py-1 text-center font-bold text-slate-400">{idx + 1}</td>
+                    <td className="px-2 py-1 font-bold text-slate-800">{it.productName}</td>
+                    <td className="px-2 py-1 text-center text-slate-600">{it.unit}</td>
+                    <td className="px-2 py-1 text-center">
                       <QuantityInput
                         allowDecimals
                         min={0.001}
                         value={it.quantity}
                         onChange={(q) => handleUpdateRowQty(idx, q)}
                         ariaLabel={`كمية ${it.productName}`}
-                        inputClassName="w-20 border border-slate-300 rounded-lg px-2 py-1 text-center font-bold font-mono outline-hidden focus:border-blue-700"
+                        inputClassName="w-20 border border-slate-300 rounded-md px-1.5 py-0.5 text-center font-bold font-mono outline-hidden focus:border-blue-700"
                       />
                     </td>
-                    <td className="p-2 text-center">
+                    <td className="px-2 py-1 text-center">
                       <input
                         type="number"
                         min="0"
                         step="0.5"
                         value={it.unitPrice}
                         onChange={(e) => handleUpdateRowPrice(idx, Number(e.target.value))}
-                        className="w-22 border border-slate-300 rounded-lg px-2 py-1 text-center font-bold font-mono text-blue-900"
+                        className="w-22 border border-slate-300 rounded-md px-1.5 py-0.5 text-center font-bold font-mono text-blue-900"
                       />
                     </td>
-                    <td className="p-2 text-center font-black font-mono text-blue-950 text-xs">
+                    <td className="px-2 py-1 text-center font-black font-mono text-blue-950 text-xs tabular-nums">
                       {it.total.toFixed(2)} {settings.currency}
                     </td>
-                    <td className="p-2 text-center">
+                    <td className="px-2 py-1 text-center">
                       <button
                         type="button"
                         onClick={() => handleRemoveItem(idx)}
-                        className="text-red-500 hover:text-red-700 p-1 rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
+                        className="text-red-500 hover:text-red-700 p-1 rounded-md hover:bg-red-50 transition-colors cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -822,14 +822,14 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
         </div>
 
         {shortageItems.length > 0 && invoiceStatusMode === 'confirmed' && (
-          <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs space-y-1 shadow-xs">
+          <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg text-xs space-y-1">
             <div className="flex items-center gap-1.5 font-black text-amber-900">
               <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
               <span>تنبيه المخزون: عجز في ({shortageItems.length}) أصناف</span>
             </div>
-            <div className="flex flex-wrap gap-1.5 pt-0.5">
+            <div className="flex flex-wrap gap-1 pt-0.5">
               {shortageItems.map((sh, i) => (
-                <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-amber-300 rounded-md text-[10px] font-bold text-amber-900">
+                <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-amber-300 rounded text-[10px] font-bold text-amber-900">
                   <span>{sh.productName}:</span>
                   <span className="text-red-600 font-mono">عجز {sh.shortageQty} {sh.unit}</span>
                   <span className="text-slate-400 font-mono">(المتاح: {sh.availableInVanQty})</span>
@@ -840,17 +840,17 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
         )}
 
         {/* Invoice Summary, Status Mode, and Payment Config */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-xs">
-          <div className="space-y-2">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 bg-slate-50 p-2 rounded-lg border border-slate-200 text-xs">
+          <div className="space-y-1.5">
             <div>
               <label className="block font-bold text-slate-700 mb-0.5">وضع حفظ الفاتورة:</label>
               <div className="grid grid-cols-2 gap-1.5 font-bold">
                 <button
                   type="button"
                   onClick={() => setInvoiceStatusMode('confirmed')}
-                  className={`py-1.5 px-2 rounded-lg border text-center transition-all cursor-pointer ${
+                  className={`py-1 px-2 rounded-md border text-center transition-all cursor-pointer ${
                     invoiceStatusMode === 'confirmed'
-                      ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs'
+                      ? 'bg-[#011E58] text-white border-[#011E58]'
                       : 'bg-white text-slate-700 border-slate-300'
                   }`}
                 >
@@ -859,9 +859,9 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setInvoiceStatusMode('draft')}
-                  className={`py-1.5 px-2 rounded-lg border text-center transition-all cursor-pointer ${
+                  className={`py-1 px-2 rounded-md border text-center transition-all cursor-pointer ${
                     invoiceStatusMode === 'draft'
-                      ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                      ? 'bg-amber-600 text-white border-amber-600'
                       : 'bg-white text-slate-700 border-slate-300'
                   }`}
                 >
@@ -876,8 +876,8 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setPaymentType('cash')}
-                  className={`py-1.5 px-2 rounded-lg border text-center transition-all cursor-pointer ${
-                    paymentType === 'cash' ? 'bg-blue-900 text-white border-blue-900 shadow-xs' : 'bg-white text-slate-700 border-slate-300'
+                  className={`py-1 px-2 rounded-md border text-center transition-all cursor-pointer ${
+                    paymentType === 'cash' ? 'bg-[#011E58] text-white border-[#011E58]' : 'bg-white text-slate-700 border-slate-300'
                   }`}
                 >
                   نقدي كامل
@@ -885,8 +885,8 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setPaymentType('credit')}
-                  className={`py-1.5 px-2 rounded-lg border text-center transition-all cursor-pointer ${
-                    paymentType === 'credit' ? 'bg-blue-900 text-white border-blue-900 shadow-xs' : 'bg-white text-slate-700 border-slate-300'
+                  className={`py-1 px-2 rounded-md border text-center transition-all cursor-pointer ${
+                    paymentType === 'credit' ? 'bg-[#011E58] text-white border-[#011E58]' : 'bg-white text-slate-700 border-slate-300'
                   }`}
                 >
                   آجل بالكامل
@@ -894,8 +894,8 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setPaymentType('partial')}
-                  className={`py-1.5 px-2 rounded-lg border text-center transition-all cursor-pointer ${
-                    paymentType === 'partial' ? 'bg-blue-900 text-white border-blue-900 shadow-xs' : 'bg-white text-slate-700 border-slate-300'
+                  className={`py-1 px-2 rounded-md border text-center transition-all cursor-pointer ${
+                    paymentType === 'partial' ? 'bg-[#011E58] text-white border-[#011E58]' : 'bg-white text-slate-700 border-slate-300'
                   }`}
                 >
                   دفعة نقدية + آجل
@@ -909,7 +909,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                 <select
                   value={selectedCashboxId}
                   onChange={(e) => setSelectedCashboxId(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:border-blue-600 outline-hidden"
+                  className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 text-xs font-semibold focus:border-blue-600 outline-hidden"
                 >
                   {cashboxes.map((cb) => (
                     <option key={cb.id} value={cb.id}>
@@ -927,38 +927,38 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="أدخل أي ملاحظات خاصة بالتسليم أو الدفع..."
-                className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs outline-hidden focus:border-blue-600"
+                className="w-full bg-white border border-slate-300 rounded-md px-2 py-1 text-xs outline-hidden focus:border-blue-600"
               />
             </div>
           </div>
 
-          <div className="space-y-2 bg-white p-2.5 rounded-lg border border-slate-200">
+          <div className="space-y-1.5 bg-white p-2 rounded-lg border border-slate-200">
             <div className="flex justify-between text-slate-600 font-bold">
               <span>المجموع الفرعي:</span>
-              <span className="font-mono text-xs">{subtotal.toFixed(2)} {settings.currency}</span>
+              <span className="font-mono text-xs tabular-nums">{subtotal.toFixed(2)} {settings.currency}</span>
             </div>
 
             <div className="flex items-center justify-between">
               <span className="text-slate-600 font-bold">خصم إضافي:</span>
-              <div className="w-32">
+              <div className="w-28">
                 <input
                   type="number"
                   min="0"
                   placeholder="0.00"
                   value={discountTotal}
                   onChange={(e) => setDiscountTotal(e.target.value === '' ? '' : Number(e.target.value))}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 text-center font-mono font-bold text-red-600 text-xs"
+                  className="w-full h-7 bg-slate-50 border border-slate-300 rounded-md px-2 py-0.5 text-center font-mono font-bold text-red-600 text-xs"
                 />
               </div>
             </div>
 
-            <div className="flex justify-between text-sm font-black text-blue-950 pt-1.5 border-t border-slate-200">
+            <div className="flex justify-between text-sm font-black text-blue-950 pt-1 border-t border-slate-200">
               <span>صافي الفاتورة الإجمالي:</span>
-              <span className="font-mono">{grandTotal.toFixed(2)} {settings.currency}</span>
+              <span className="font-mono tabular-nums">{grandTotal.toFixed(2)} {settings.currency}</span>
             </div>
 
             {appliedAdvance > 0 && (
-              <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 space-y-0.5 text-xs">
+              <div className="p-1.5 rounded-md bg-emerald-50 border border-emerald-200 space-y-0.5 text-xs">
                 <div className="flex justify-between font-black text-emerald-900">
                   <span>الدفعة المقدمة المدفوعة مسبقاً على الطلب:</span>
                   <span className="font-mono">- {appliedAdvance.toFixed(2)} {settings.currency}</span>
@@ -970,11 +970,11 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
             )}
 
             {paymentType === 'partial' && (
-              <div className="flex items-center justify-between pt-1">
+              <div className="flex items-center justify-between pt-0.5">
                 <span className="font-bold text-emerald-700">
                   {appliedAdvance > 0 ? 'المحصل نقداً عند الفوترة:' : 'المدفوع نقداً:'}
                 </span>
-                <div className="w-32">
+                <div className="w-28">
                   <input
                     type="number"
                     min="0"
@@ -982,45 +982,45 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                     placeholder="0.00"
                     value={paidAmount}
                     onChange={(e) => setPaidAmount(e.target.value === '' ? '' : Math.min(maxCashAtInvoice, Math.max(0, Number(e.target.value))))}
-                    className="w-full bg-emerald-50 border border-emerald-300 rounded-lg px-2 py-1 text-center font-mono font-bold text-emerald-800 text-xs"
+                    className="w-full h-7 bg-emerald-50 border border-emerald-300 rounded-md px-2 py-0.5 text-center font-mono font-bold text-emerald-800 text-xs"
                   />
                 </div>
               </div>
             )}
 
             {paymentType === 'cash' && appliedAdvance > 0 && (
-              <div className="flex justify-between text-xs font-bold text-emerald-700 pt-1">
+              <div className="flex justify-between text-xs font-bold text-emerald-700 pt-0.5">
                 <span>المحصل نقداً بالخزينة عند الفوترة:</span>
-                <span className="font-mono">{effectivePaidAtInvoice.toFixed(2)} {settings.currency}</span>
+                <span className="font-mono tabular-nums">{effectivePaidAtInvoice.toFixed(2)} {settings.currency}</span>
               </div>
             )}
 
-            <div className="flex justify-between text-xs font-bold text-red-600 pt-1">
+            <div className="flex justify-between text-xs font-bold text-red-600 pt-0.5">
               <span>المتبقي في ذمة العميل (آجل):</span>
-              <span className="font-mono">{remainingAmount.toFixed(2)} {settings.currency}</span>
+              <span className="font-mono tabular-nums">{remainingAmount.toFixed(2)} {settings.currency}</span>
             </div>
           </div>
         </div>
 
         {/* Action Buttons */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-200">
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-1.5 rounded-lg border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-100 transition-colors cursor-pointer"
+            className="px-3 py-1 rounded-md border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-100 transition-colors cursor-pointer"
           >
             إلغاء
           </button>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
             <button
               type="button"
               disabled={isSubmitting || items.length === 0}
               onClick={() => handleSubmitInvoice(false)}
-              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-white text-xs font-black shadow-xs transition-all active:scale-95 disabled:opacity-50 cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-white text-xs font-black transition-all active:scale-95 disabled:opacity-50 cursor-pointer ${
                 invoiceStatusMode === 'draft'
                   ? 'bg-amber-600 hover:bg-amber-700'
-                  : 'bg-emerald-700 hover:bg-emerald-800'
+                  : 'bg-[#011E58] hover:bg-[#002160]'
               }`}
             >
               <Save className="w-3.5 h-3.5" />
@@ -1037,7 +1037,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
               type="button"
               disabled={isSubmitting || items.length === 0}
               onClick={() => handleSubmitInvoice(true)}
-              className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white text-xs font-black shadow-xs transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-black transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
             >
               <Printer className="w-3.5 h-3.5" />
               <span>{invoiceStatusMode === 'draft' ? 'حفظ كمسودة وطباعة' : 'حفظ وطباعة الفاتورة'}</span>

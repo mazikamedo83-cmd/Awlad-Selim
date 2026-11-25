@@ -313,7 +313,7 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           autoComplete="off"
-          className="w-full pr-9 pl-14 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 placeholder:text-slate-400 placeholder:font-normal focus:outline-hidden focus:border-blue-700 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100 disabled:cursor-not-allowed"
+          className="w-full pr-8 pl-12 py-1.5 h-8 bg-white border border-slate-300 rounded-md text-xs font-bold text-slate-900 placeholder:text-slate-400 placeholder:font-normal focus:outline-hidden focus:border-[#003589] focus:ring-1 focus:ring-[#DCE6F5] disabled:bg-slate-100 disabled:cursor-not-allowed"
         />
         <div className="absolute left-2 flex items-center gap-1">
           {(query || selectedProductId) && !disabled && (
@@ -388,9 +388,9 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
                   }}
                   className={`w-full px-3 py-1.5 text-right flex items-center justify-between gap-2 transition-colors cursor-pointer ${
                     isHighlighted
-                      ? 'bg-blue-50 text-blue-950'
+                      ? 'bg-[#EEF3FA] text-[#011E58]'
                       : isSelected
-                      ? 'bg-emerald-50/70'
+                      ? 'bg-[#DCE6F5]/70'
                       : 'hover:bg-slate-50'
                   }`}
                 >

@@ -271,32 +271,34 @@ export const LoginView: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 relative overflow-hidden font-sans pt-safe pb-safe">
+    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-2.5 sm:p-4 relative overflow-hidden font-sans pt-safe pb-safe">
       <div className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 rounded-full bg-blue-600/10 blur-3xl pointer-events-none"></div>
       <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-96 h-96 rounded-full bg-sky-500/10 blur-3xl pointer-events-none"></div>
 
-      <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden relative z-10 text-right animate-in fade-in duration-300">
+      <div className="w-full max-w-lg bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden relative z-10 text-right animate-in fade-in duration-300">
         {/* Header / Logo banner */}
-        <div className="bg-gradient-to-b from-blue-950 to-slate-900 p-5 text-center text-white relative">
+        <div className="awlad-brand-gradient p-3.5 text-center text-white relative">
           <button
             type="button"
             onClick={() => setShowServerModal(true)}
-            className="absolute top-3 left-3 px-2 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-blue-100 text-[11px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+            className="absolute top-2.5 left-2.5 px-2 py-1 rounded-md bg-white/15 hover:bg-white/25 text-white text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
             title={activeModeLabel}
           >
             <Server className="w-3.5 h-3.5" />
             <span>{serverMissing ? 'إعداد السيرفر' : 'أوضاع الاتصال'}</span>
           </button>
 
-          <img
-            src="/awlad-selim-logo.png"
-            alt="أولاد سليم AWLAD SELIM"
-            className="max-h-16 mx-auto object-contain drop-shadow-md mb-2"
-          />
-          <h2 className="text-lg font-black tracking-tight text-white">
+          <div className="bg-white rounded-lg px-3 py-1.5 inline-flex items-center justify-center border border-white/80 mb-1.5">
+            <img
+              src="/awlad-selim-logo.png"
+              alt="أولاد سليم AWLAD SELIM"
+              className="max-h-11 mx-auto object-contain"
+            />
+          </div>
+          <h2 className="text-base font-black tracking-tight text-white">
             نظام أولاد سليم للمحاسبة وإدارة الأعمال
           </h2>
-          <p className="text-[11px] text-blue-200 mt-0.5 font-medium">
+          <p className="text-[11px] text-blue-100 mt-0.5 font-medium">
             {needsAdminSetup
               ? 'الإعداد الأولي: إنشاء حساب المالك والمدير العام للنظام'
               : 'بوابة تسجيل الدخول الآمن لتجارة المواد الغذائية بالجملة'}
@@ -304,7 +306,7 @@ export const LoginView: React.FC = () => {
         </div>
 
         {/* Form Body */}
-        <div className="p-4 sm:p-5 space-y-3">
+        <div className="p-3 sm:p-4 space-y-2">
           {pairingBanner && (
             <div
               className={`p-2.5 rounded-lg border text-xs font-bold flex items-start gap-2 ${
@@ -338,7 +340,7 @@ export const LoginView: React.FC = () => {
                   type="button"
                   disabled={isClaimingQr}
                   onClick={() => setShowQrScanner(true)}
-                  className="px-2.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+                  className="px-2.5 py-1.5 rounded-lg bg-[var(--awlad-royal-700)] hover:bg-[var(--awlad-royal-600)] text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer"
                 >
                   <QrCode className="w-3.5 h-3.5" />
                   <span>{isClaimingQr ? 'جاري الربط...' : 'مسح QR أو لصق رابط دعوة'}</span>
@@ -347,7 +349,7 @@ export const LoginView: React.FC = () => {
                   type="button"
                   disabled={isDiscovering}
                   onClick={handleQuickDiscover}
-                  className="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+                  className="px-2.5 py-1.5 rounded-lg bg-[var(--awlad-navy-900)] hover:bg-[var(--awlad-navy-950)] text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer"
                 >
                   {isDiscovering ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
                   <span>{isDiscovering ? 'جاري الاكتشاف...' : 'اكتشاف السيرفر تلقائياً'}</span>
@@ -362,9 +364,9 @@ export const LoginView: React.FC = () => {
               </div>
             </div>
           ) : (
-            <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-[11px]">
-              <div className="flex items-center gap-1.5 text-slate-600 font-bold truncate">
-                <Server className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+            <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-[#EEF3FA] border border-[#DCE6F5] text-[11px]">
+              <div className="flex items-center gap-1.5 text-[var(--awlad-navy-950)] font-bold truncate">
+                <Server className="w-3.5 h-3.5 text-[var(--awlad-royal-700)] shrink-0" />
                 <span className="truncate">{activeModeLabel}</span>
               </div>
               <div className="flex items-center gap-1">
@@ -372,16 +374,16 @@ export const LoginView: React.FC = () => {
                   type="button"
                   disabled={isClaimingQr}
                   onClick={() => setShowQrScanner(true)}
-                  className="px-2 py-1 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold flex items-center gap-1 cursor-pointer"
+                  className="px-2 py-1 rounded bg-white hover:bg-[#DCE6F5] text-[var(--awlad-navy-900)] border border-slate-300 font-bold flex items-center gap-1 cursor-pointer"
                 >
-                  <QrCode className="w-3 h-3" />
+                  <QrCode className="w-3 h-3 text-[var(--awlad-royal-700)]" />
                   <span>ربط بـ QR / رابط</span>
                 </button>
                 <button
                   type="button"
                   disabled={isDiscovering}
                   onClick={handleQuickDiscover}
-                  className="px-2 py-1 rounded bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold flex items-center gap-1 cursor-pointer"
+                  className="px-2 py-1 rounded bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-bold flex items-center gap-1 cursor-pointer"
                 >
                   {isDiscovering ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
                   <span>بحث تلقائي</span>
@@ -434,7 +436,7 @@ export const LoginView: React.FC = () => {
           )}
 
           {!needsAdminSetup && savedAccounts.length > 0 && (
-            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
+            <div className="p-2 rounded-lg bg-slate-50 border border-slate-200 space-y-1.5">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-black text-slate-900 flex items-center gap-1.5">
                   <Users className="w-3.5 h-3.5 text-blue-800" />
@@ -442,14 +444,14 @@ export const LoginView: React.FC = () => {
                 </span>
                 <span className="text-[10px] font-bold text-slate-500">تبديل ودخول سريع آمن</span>
               </div>
-              <div className="divide-y divide-slate-200 border border-slate-200 rounded-lg bg-white max-h-44 overflow-y-auto">
+              <div className="divide-y divide-slate-200 border border-slate-200 rounded-md bg-white max-h-40 overflow-y-auto">
                 {savedAccounts.map((acc) => {
                   const isResuming = resumingUserId === acc.userId;
                   const quickReady = acc.sessionStatus === 'active' && Boolean(acc.refreshToken || acc.accessToken);
                   return (
                     <div
                       key={acc.userId}
-                      className="px-2.5 py-2 flex items-center justify-between gap-2"
+                      className="px-2 py-1.5 flex items-center justify-between gap-2"
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         {acc.avatarPhoto ? (
@@ -515,7 +517,7 @@ export const LoginView: React.FC = () => {
           )}
 
           {!needsAdminSetup && (
-            <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200">
+            <div className="grid grid-cols-3 gap-1 p-1 rounded-lg bg-[#EEF3FA] border border-[#DCE6F5]">
               <button
                 type="button"
                 onClick={() => {
@@ -523,9 +525,9 @@ export const LoginView: React.FC = () => {
                   setError(null);
                   setInfoNotice(null);
                 }}
-                className={`min-h-[36px] px-2 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                className={`h-8 px-2 rounded-md text-xs font-bold transition-all cursor-pointer ${
                   authMode === 'login'
-                    ? 'bg-blue-900 text-white shadow-xs font-black'
+                    ? 'bg-[var(--awlad-navy-900)] text-white font-black'
                     : 'text-slate-700 hover:bg-white'
                 }`}
               >
@@ -540,9 +542,9 @@ export const LoginView: React.FC = () => {
                   setPassword('');
                   setConfirmPassword('');
                 }}
-                className={`min-h-[36px] px-2 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                className={`h-8 px-2 rounded-md text-xs font-bold transition-all cursor-pointer ${
                   authMode === 'register_customer'
-                    ? 'bg-blue-900 text-white shadow-xs font-black'
+                    ? 'bg-[var(--awlad-navy-900)] text-white font-black'
                     : 'text-slate-700 hover:bg-white'
                 }`}
               >
@@ -557,9 +559,9 @@ export const LoginView: React.FC = () => {
                   setPassword('');
                   setConfirmPassword('');
                 }}
-                className={`min-h-[36px] px-2 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                className={`h-8 px-2 rounded-md text-xs font-bold transition-all cursor-pointer ${
                   authMode === 'register_rep'
-                    ? 'bg-blue-900 text-white shadow-xs font-black'
+                    ? 'bg-[var(--awlad-navy-900)] text-white font-black'
                     : 'text-slate-700 hover:bg-white'
                 }`}
               >
@@ -568,11 +570,11 @@ export const LoginView: React.FC = () => {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-3">
+          <form onSubmit={handleSubmit} className="space-y-2">
             {needsAdminSetup && (
               <>
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
                     اسم الشركة / النشاط (اختياري):
                   </label>
                   <input
@@ -580,11 +582,11 @@ export const LoginView: React.FC = () => {
                     value={companyName}
                     onChange={(e) => setCompanyName(e.target.value)}
                     placeholder="أدخل اسم الشركة أو المؤسسة"
-                    className="w-full min-h-[38px] rounded-lg border border-slate-300 py-2 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
+                    className="w-full h-8 sm:h-9 rounded-md border border-slate-300 px-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
                     الاسم الكامل للمالك / المدير:
                   </label>
                   <input
@@ -593,11 +595,11 @@ export const LoginView: React.FC = () => {
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder="أدخل الاسم الكامل للمالك أو المدير العام"
-                    className="w-full min-h-[38px] rounded-lg border border-slate-300 py-2 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
+                    className="w-full h-8 sm:h-9 rounded-md border border-slate-300 px-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
                     رقم الهاتف (اختياري):
                   </label>
                   <input
@@ -605,20 +607,20 @@ export const LoginView: React.FC = () => {
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="01xxxxxxxxx"
-                    className="w-full min-h-[38px] rounded-lg border border-slate-300 py-2 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
+                    className="w-full h-8 sm:h-9 rounded-md border border-slate-300 px-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
                   />
                 </div>
               </>
             )}
 
             {!needsAdminSetup && (authMode === 'register_customer' || authMode === 'register_rep') && (
-              <div className="space-y-2 p-3 rounded-xl bg-blue-50/60 border border-blue-200/80">
+              <div className="space-y-1.5 p-2.5 rounded-lg bg-blue-50/60 border border-blue-200/80">
                 <p className="text-xs font-black text-blue-950">
                   {authMode === 'register_customer'
                     ? 'بيانات العميل الجديد (تُفعّل مباشرة للدخول والطلب)'
                     : 'بيانات المندوب الجديد (تُفعّل مباشرة مع مخزن سيارة خاص)'}
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 mb-0.5">الاسم الكامل *</label>
                     <input
@@ -627,7 +629,7 @@ export const LoginView: React.FC = () => {
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
                       placeholder={authMode === 'register_customer' ? 'اسم العميل أو المسؤول' : 'اسم المندوب الثلاثي'}
-                      className="w-full min-h-[36px] rounded-lg border border-slate-300 bg-white py-1.5 px-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                      className="w-full h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
                     />
                   </div>
                   <div>
@@ -638,7 +640,7 @@ export const LoginView: React.FC = () => {
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       placeholder="01xxxxxxxxx"
-                      className="w-full min-h-[36px] rounded-lg border border-slate-300 bg-white py-1.5 px-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                      className="w-full h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
                     />
                   </div>
                   {authMode === 'register_customer' ? (
@@ -650,7 +652,7 @@ export const LoginView: React.FC = () => {
                           value={shopName}
                           onChange={(e) => setShopName(e.target.value)}
                           placeholder="مثال: سوبر ماركت النور"
-                          className="w-full min-h-[36px] rounded-lg border border-slate-300 bg-white py-1.5 px-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                          className="w-full h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
                         />
                       </div>
                       <div>
@@ -660,7 +662,7 @@ export const LoginView: React.FC = () => {
                           value={governorate}
                           onChange={(e) => setGovernorate(e.target.value)}
                           placeholder="مثال: القاهرة / الجيزة"
-                          className="w-full min-h-[36px] rounded-lg border border-slate-300 bg-white py-1.5 px-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                          className="w-full h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
                         />
                       </div>
                       <div>
@@ -670,7 +672,7 @@ export const LoginView: React.FC = () => {
                           value={area}
                           onChange={(e) => setArea(e.target.value)}
                           placeholder="مثال: شبرا / المعادي"
-                          className="w-full min-h-[36px] rounded-lg border border-slate-300 bg-white py-1.5 px-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                          className="w-full h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
                         />
                       </div>
                     </>
@@ -682,7 +684,7 @@ export const LoginView: React.FC = () => {
                         value={vehicleNumber}
                         onChange={(e) => setVehicleNumber(e.target.value)}
                         placeholder="مثال: أ ب ج 1234"
-                        className="w-full min-h-[36px] rounded-lg border border-slate-300 bg-white py-1.5 px-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                        className="w-full h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
                       />
                     </div>
                   )}
@@ -694,13 +696,13 @@ export const LoginView: React.FC = () => {
                         value={address}
                         onChange={(e) => setAddress(e.target.value)}
                         placeholder="العنوان التفصيلي"
-                        className="flex-1 min-w-[160px] min-h-[36px] rounded-lg border border-slate-300 bg-white py-1.5 px-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-[#0F5A33] outline-hidden text-right"
+                        className="flex-1 min-w-[160px] h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-[var(--awlad-royal-700)] outline-hidden text-right"
                       />
                       {authMode === 'register_customer' && (
                         <button
                           type="button"
                           onClick={() => setShowLocationPicker(true)}
-                          className="min-h-[36px] px-2.5 py-1.5 rounded-lg bg-[#0F5A33] hover:bg-[#0B4426] text-white text-xs font-black flex items-center gap-1.5 cursor-pointer shrink-0"
+                          className="h-8 px-2.5 rounded-md bg-[var(--awlad-royal-700)] hover:bg-[var(--awlad-royal-600)] text-white text-xs font-black flex items-center gap-1 cursor-pointer shrink-0"
                         >
                           <MapPin className="w-3.5 h-3.5" />
                           <span>{latitude !== undefined ? 'تعديل الموقع على الخريطة' : 'تحديد الموقع على الخريطة'}</span>
@@ -718,7 +720,7 @@ export const LoginView: React.FC = () => {
             )}
 
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
                 اسم المستخدم (أو رقم الهاتف):
               </label>
               <div className="relative">
@@ -728,14 +730,14 @@ export const LoginView: React.FC = () => {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="أدخل اسم المستخدم"
-                  className="w-full min-h-[38px] rounded-lg border border-slate-300 py-2 pr-9 pl-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
+                  className="w-full h-8 sm:h-9 rounded-md border border-slate-300 pr-8 pl-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
                 />
-                <User className="w-4 h-4 text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
+                <User className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2.5 pointer-events-none" />
               </div>
             </div>
 
             <div>
-              <div className="flex justify-between items-center mb-1">
+              <div className="flex justify-between items-center mb-0.5">
                 <label className="block text-[11px] font-bold text-slate-700">
                   كلمة المرور:
                 </label>
@@ -758,13 +760,13 @@ export const LoginView: React.FC = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="أدخل كلمة المرور"
-                  className="w-full min-h-[38px] rounded-lg border border-slate-300 py-2 pr-9 pl-9 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
+                  className="w-full h-8 sm:h-9 rounded-md border border-slate-300 pr-8 pl-8 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
                 />
-                <Lock className="w-4 h-4 text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
+                <Lock className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2.5 pointer-events-none" />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute left-3 top-2.5 text-slate-400 hover:text-slate-600 focus:outline-hidden"
+                  className="absolute left-2.5 top-2 text-slate-400 hover:text-slate-600 focus:outline-hidden"
                   title={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -774,7 +776,7 @@ export const LoginView: React.FC = () => {
 
             {(needsAdminSetup || authMode === 'register_customer' || authMode === 'register_rep') && (
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
                   تأكيد كلمة المرور:
                 </label>
                 <input
@@ -783,7 +785,7 @@ export const LoginView: React.FC = () => {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="أعد إدخال كلمة المرور"
-                  className="w-full min-h-[38px] rounded-lg border border-slate-300 py-2 px-3 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
+                  className="w-full h-8 sm:h-9 rounded-md border border-slate-300 px-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
                 />
               </div>
             )}
@@ -791,7 +793,7 @@ export const LoginView: React.FC = () => {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-2.5 px-4 bg-blue-900 hover:bg-blue-950 text-white font-bold text-xs sm:text-sm rounded-xl shadow-md shadow-blue-900/20 transition-all active:scale-98 disabled:opacity-60 flex items-center justify-center gap-2 cursor-pointer min-h-[42px]"
+              className="w-full min-h-[36px] py-2 px-3 bg-[var(--awlad-royal-700)] hover:bg-[var(--awlad-royal-600)] text-white font-bold text-xs rounded-lg shadow-sm transition-all active:scale-98 disabled:opacity-60 flex items-center justify-center gap-1.5 cursor-pointer"
             >
               {needsAdminSetup || authMode !== 'login' ? (
                 <UserPlus className="w-4 h-4" />
@@ -813,7 +815,7 @@ export const LoginView: React.FC = () => {
           </form>
         </div>
 
-        <div className="bg-slate-50 border-t border-slate-100 px-4 py-2.5 text-center text-[11px] text-slate-500 font-medium">
+        <div className="bg-slate-50 border-t border-slate-100 px-3 py-2 text-center text-[11px] text-slate-500 font-medium">
           مؤسسة أولاد سليم لتجارة المواد الغذائية بالجملة • جميع الحقوق محفوظة 2026
         </div>
       </div>
@@ -821,14 +823,14 @@ export const LoginView: React.FC = () => {
       {/* Forgot Password Modal */}
       {showForgotModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-950/70 backdrop-blur-xs">
-          <div className="w-full max-w-sm bg-white rounded-xl p-4 text-right shadow-2xl border border-slate-200">
-            <h4 className="text-sm font-bold text-slate-900 mb-1.5">استعادة كلمة المرور</h4>
-            <p className="text-xs text-slate-600 leading-relaxed mb-3">
+          <div className="w-full max-w-sm bg-white rounded-lg p-3.5 text-right shadow-2xl border border-slate-200">
+            <h4 className="text-sm font-bold text-slate-900 mb-1">استعادة كلمة المرور</h4>
+            <p className="text-xs text-slate-600 leading-relaxed mb-2.5">
               لأسباب أمنية، يتم إعادة ضبط كلمات المرور حصرياً من خلال مسؤول النظام داخل إدارة المستخدمين.
             </p>
             <button
               onClick={() => setShowForgotModal(false)}
-              className="w-full py-2 bg-blue-900 text-white text-xs font-bold rounded-lg hover:bg-blue-950 cursor-pointer"
+              className="w-full h-8 bg-[var(--awlad-navy-900)] text-white text-xs font-bold rounded-md hover:bg-[var(--awlad-navy-950)] cursor-pointer"
             >
               حسناً، فهمت
             </button>

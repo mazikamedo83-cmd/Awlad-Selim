@@ -492,7 +492,7 @@ export const StorefrontManagerView: React.FC = () => {
         <select
           value={targetId}
           onChange={(e) => onChangeId(e.target.value)}
-          className="w-full min-h-[40px] px-3 rounded-xl border border-slate-300 bg-white text-xs font-bold"
+          className="w-full min-h-[32px] h-8 px-2.5 rounded-md border border-slate-300 bg-white text-xs font-bold"
         >
           <option value="">-- اختر الصنف --</option>
           {activeProducts.map((p) => (
@@ -508,7 +508,7 @@ export const StorefrontManagerView: React.FC = () => {
         <select
           value={targetId}
           onChange={(e) => onChangeId(e.target.value)}
-          className="w-full min-h-[40px] px-3 rounded-xl border border-slate-300 bg-white text-xs font-bold"
+          className="w-full min-h-[32px] h-8 px-2.5 rounded-md border border-slate-300 bg-white text-xs font-bold"
         >
           <option value="">-- اختر القسم --</option>
           {categories.map((c) => (
@@ -529,7 +529,7 @@ export const StorefrontManagerView: React.FC = () => {
         <select
           value={targetId}
           onChange={(e) => onChangeId(e.target.value)}
-          className="w-full min-h-[40px] px-3 rounded-xl border border-slate-300 bg-white text-xs font-bold"
+          className="w-full min-h-[32px] h-8 px-2.5 rounded-md border border-slate-300 bg-white text-xs font-bold"
         >
           <option value="">-- اختر الشاشة --</option>
           {INTERNAL_PAGE_OPTIONS.map((opt) => (
@@ -545,81 +545,81 @@ export const StorefrontManagerView: React.FC = () => {
         type="text"
         disabled
         value="توجيه تلقائي"
-        className="w-full min-h-[40px] px-3 rounded-xl border border-slate-200 bg-slate-100 text-xs text-slate-400"
+        className="w-full min-h-[32px] h-8 px-2.5 rounded-md border border-slate-200 bg-slate-100 text-xs text-slate-400"
       />
     );
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2.5">
       {/* Top Toolbar */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+      <div className="bg-white rounded-lg border border-slate-200 p-2.5 sm:p-3 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
         <div className="space-y-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <div className="w-10 h-10 rounded-xl bg-[#0F5A33] text-white flex items-center justify-center shrink-0">
-              <Smartphone className="w-5 h-5" />
+            <div className="w-8 h-8 rounded-lg bg-[#011E58] text-white flex items-center justify-center shrink-0">
+              <Smartphone className="w-4 h-4" />
             </div>
             <div>
-              <h1 className="text-base font-black text-slate-900">
+              <h1 className="text-sm font-black text-slate-900">
                 إدارة واجهة المتجر والعروض (تطبيق العملاء)
               </h1>
-              <p className="text-xs text-slate-500">
+              <p className="text-[11px] text-slate-500">
                 تحكم في البانرات، العروض والأسعار المخفضة، الاختصارات، والأقسام المصورة عبر مسودة قابلة للمعاينة قبل النشر.
               </p>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px] font-bold">
-            <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 border border-slate-200">
+          <div className="flex flex-wrap items-center gap-1.5 pt-0.5 text-[11px] font-bold">
+            <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
               إصدار المسودة: {draft.version || 1}
             </span>
-            <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-[#0F5A33] border border-emerald-200">
+            <span className="px-2 py-0.5 rounded bg-[#EEF3FA] text-[#011E58] border border-[#DCE6F5]">
               المنشور حالياً: {publishedSource.publishedAt ? new Date(publishedSource.publishedAt).toLocaleString('ar-EG') : 'الافتراضي'}
             </span>
-            <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 border border-slate-200">
+            <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
               بانرات نشطة: {activeBannerCount} · عروض نشطة: {activeOfferCount}
             </span>
             {hasUnsavedEdits && (
-              <span className="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 border border-amber-300">
+              <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-300">
                 يوجد تعديلات غير محفوظة في المسودة
               </span>
             )}
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
           <button
             type="button"
             onClick={() => setShowMobilePreview((v) => !v)}
-            className="min-h-[40px] px-3.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-black flex items-center gap-1.5 cursor-pointer"
+            className="min-h-[32px] px-2.5 rounded-md border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-black flex items-center gap-1.5 cursor-pointer"
           >
-            {showMobilePreview ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            {showMobilePreview ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
             <span>{showMobilePreview ? 'إخفاء المعاينة' : 'معاينة الموبايل'}</span>
           </button>
           <button
             type="button"
             disabled={isLoadingCms}
             onClick={handleRefresh}
-            className="min-h-[40px] px-3.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            className="min-h-[32px] px-2.5 rounded-md border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
           >
-            <RefreshCw className={`w-4 h-4 ${isLoadingCms ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoadingCms ? 'animate-spin' : ''}`} />
             <span>تحديث</span>
           </button>
           <button
             type="button"
             disabled={isSavingDraft || isPublishing}
             onClick={handleSaveDraft}
-            className="min-h-[40px] px-4 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            className="min-h-[32px] px-3 rounded-md bg-slate-800 hover:bg-slate-900 text-white text-xs font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
           >
-            <Save className="w-4 h-4" />
+            <Save className="w-3.5 h-3.5" />
             <span>{isSavingDraft ? 'جاري الحفظ...' : 'حفظ المسودة'}</span>
           </button>
           <button
             type="button"
             disabled={isPublishing || isSavingDraft}
             onClick={handlePublish}
-            className="min-h-[40px] px-4 rounded-xl bg-[#0F5A33] hover:bg-[#0B4426] text-white text-xs font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-xs"
+            className="min-h-[32px] px-3 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-xs"
           >
-            <Send className="w-4 h-4" />
+            <Send className="w-3.5 h-3.5" />
             <span>{isPublishing ? 'جاري النشر...' : 'نشر للتطبيق الآن'}</span>
           </button>
         </div>
@@ -627,7 +627,7 @@ export const StorefrontManagerView: React.FC = () => {
 
       {feedback && (
         <div
-          className={`p-3.5 rounded-2xl border text-xs font-bold flex items-center gap-2 ${
+          className={`px-3 py-2 rounded-lg border text-xs font-bold flex items-center gap-2 ${
             feedback.type === 'success'
               ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
               : 'bg-red-50 border-red-200 text-red-700'
@@ -643,7 +643,7 @@ export const StorefrontManagerView: React.FC = () => {
       )}
 
       {/* Navigation Tabs */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-1.5 flex flex-wrap gap-1.5 shadow-2xs">
+      <div className="bg-white rounded-lg border border-slate-200 p-1 flex flex-wrap gap-1 shadow-2xs">
         {(
           [
             { key: 'banners', label: `البانرات الإعلانية (${draft.banners.length})`, icon: ImageIcon },
@@ -660,13 +660,13 @@ export const StorefrontManagerView: React.FC = () => {
               key={tab.key}
               type="button"
               onClick={() => setActiveTab(tab.key)}
-              className={`min-h-[40px] px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition-colors ${
+              className={`min-h-[32px] px-2.5 py-1 rounded-md text-xs font-black flex items-center gap-1.5 cursor-pointer transition-colors ${
                 active
-                  ? 'bg-[#0F5A33] text-white'
+                  ? 'bg-[#011E58] text-white'
                   : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
               }`}
             >
-              <Icon className="w-4 h-4" />
+              <Icon className="w-3.5 h-3.5" />
               <span>{tab.label}</span>
             </button>
           );
@@ -674,12 +674,12 @@ export const StorefrontManagerView: React.FC = () => {
       </div>
 
       {/* Main Editor + Optional Live Mobile Preview */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
-        <div className={showMobilePreview ? 'xl:col-span-7 space-y-4' : 'xl:col-span-12 space-y-4'}>
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 items-start">
+        <div className={showMobilePreview ? 'xl:col-span-7 space-y-2.5' : 'xl:col-span-12 space-y-2.5'}>
           {/* TAB 1: BANNERS */}
           {activeTab === 'banners' && (
-            <div className="space-y-4">
-              <form onSubmit={handleAddBanner} className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3 shadow-xs">
+            <div className="space-y-2.5">
+              <form onSubmit={handleAddBanner} className="bg-white rounded-lg border border-slate-200 p-2.5 sm:p-3 space-y-2 shadow-xs">
                 <h2 className="text-sm font-black text-slate-900">إضافة بانر إعلاني جديد</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
@@ -689,7 +689,7 @@ export const StorefrontManagerView: React.FC = () => {
                       value={bannerTitle}
                       onChange={(e) => setBannerTitle(e.target.value)}
                       placeholder="مثال: عروض أول الشهر على الزيوت"
-                      className="w-full min-h-[40px] px-3 rounded-xl border border-slate-300 text-xs font-bold"
+                      className="w-full min-h-[32px] h-8 px-2.5 rounded-md border border-slate-300 text-xs font-bold"
                     />
                   </div>
                   <div>
@@ -699,7 +699,7 @@ export const StorefrontManagerView: React.FC = () => {
                       value={bannerSubtitle}
                       onChange={(e) => setBannerSubtitle(e.target.value)}
                       placeholder="مثال: خصومات حصرية لطلبات الجملة"
-                      className="w-full min-h-[40px] px-3 rounded-xl border border-slate-300 text-xs font-bold"
+                      className="w-full min-h-[32px] h-8 px-2.5 rounded-md border border-slate-300 text-xs font-bold"
                     />
                   </div>
                 </div>
@@ -713,9 +713,9 @@ export const StorefrontManagerView: React.FC = () => {
                         value={bannerImageUrl}
                         onChange={(e) => setBannerImageUrl(e.target.value)}
                         placeholder="https://... أو ارفع صورة"
-                        className="flex-1 min-h-[40px] px-3 rounded-xl border border-slate-300 text-xs"
+                        className="flex-1 min-h-[32px] h-8 px-2.5 rounded-md border border-slate-300 text-xs"
                       />
-                      <label className="min-h-[40px] px-3 rounded-xl bg-emerald-50 border border-emerald-200 text-[#0F5A33] text-xs font-black flex items-center gap-1 cursor-pointer shrink-0">
+                      <label className="min-h-[32px] h-8 px-2.5 rounded-md bg-[#EEF3FA] border border-[#DCE6F5] text-[#011E58] text-xs font-black flex items-center gap-1 cursor-pointer shrink-0">
                         <Upload className="w-4 h-4" />
                         <span>رفع</span>
                         <input
@@ -741,7 +741,7 @@ export const StorefrontManagerView: React.FC = () => {
                           setBannerTargetType(e.target.value as StorefrontTargetType);
                           setBannerTargetId('');
                         }}
-                        className="w-full min-h-[40px] px-2.5 rounded-xl border border-slate-300 bg-white text-xs font-bold"
+                        className="w-full min-h-[32px] h-8 px-2 rounded-md border border-slate-300 bg-white text-xs font-bold"
                       >
                         {TARGET_TYPE_OPTIONS.map((opt) => (
                           <option key={opt.value} value={opt.value}>
@@ -764,7 +764,7 @@ export const StorefrontManagerView: React.FC = () => {
                       type="datetime-local"
                       value={bannerStartsAt}
                       onChange={(e) => setBannerStartsAt(e.target.value)}
-                      className="w-full min-h-[40px] px-3 rounded-xl border border-slate-300 text-xs"
+                      className="w-full min-h-[32px] h-8 px-2.5 rounded-md border border-slate-300 text-xs"
                     />
                   </div>
                   <div>
@@ -773,14 +773,14 @@ export const StorefrontManagerView: React.FC = () => {
                       type="datetime-local"
                       value={bannerEndsAt}
                       onChange={(e) => setBannerEndsAt(e.target.value)}
-                      className="w-full min-h-[40px] px-3 rounded-xl border border-slate-300 text-xs"
+                      className="w-full min-h-[32px] h-8 px-2.5 rounded-md border border-slate-300 text-xs"
                     />
                   </div>
                 </div>
 
                 <button
                   type="submit"
-                  className="min-h-[40px] px-4 rounded-xl bg-[#0F5A33] hover:bg-[#0B4426] text-white text-xs font-black flex items-center gap-1.5 cursor-pointer"
+                  className="min-h-[32px] h-8 px-3 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-black flex items-center gap-1.5 cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
                   <span>إضافة البانر للمسودة</span>
@@ -857,19 +857,19 @@ export const StorefrontManagerView: React.FC = () => {
 
           {/* TAB 2: OFFERS */}
           {activeTab === 'offers' && (
-            <div className="space-y-4">
-              <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-2 shadow-xs">
+            <div className="space-y-2.5">
+              <div className="bg-white rounded-lg border border-slate-200 p-2.5 sm:p-3 space-y-1.5 shadow-xs">
                 <label className="block text-[11px] font-bold text-slate-600">عنوان قسم العروض في الصفحة الرئيسية</label>
                 <input
                   type="text"
                   value={draft.offersSectionTitle || ''}
                   onChange={(e) => updateDraft((prev) => ({ ...prev, offersSectionTitle: e.target.value }))}
                   placeholder="عروض مخصصة عشانك"
-                  className="w-full min-h-[40px] px-3 rounded-xl border border-slate-300 text-xs font-bold"
+                  className="w-full min-h-[32px] h-8 px-2.5 rounded-md border border-slate-300 text-xs font-bold"
                 />
               </div>
 
-              <form onSubmit={handleAddOffer} className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3 shadow-xs">
+              <form onSubmit={handleAddOffer} className="bg-white rounded-lg border border-slate-200 p-2.5 sm:p-3 space-y-2 shadow-xs">
                 <h2 className="text-sm font-black text-slate-900">إضافة عرض بسعر مخفض حقيقي</h2>
                 <p className="text-[11px] text-slate-500">
                   يتم تطبيق سعر العرض تلقائياً من السيرفر عند إنشاء الطلب، ولا يمكن إدخال سعر عرض مساوٍ أو أعلى من السعر الأصلي.
@@ -879,19 +879,19 @@ export const StorefrontManagerView: React.FC = () => {
                   <div>
                     <label className="block text-[11px] font-bold text-slate-600 mb-1">ابحث عن الصنف</label>
                     <div className="relative mb-1.5">
-                      <Search className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-3" />
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2.5" />
                       <input
                         type="text"
                         value={offerProductSearch}
                         onChange={(e) => setOfferProductSearch(e.target.value)}
                         placeholder="بحث بالاسم أو الكود أو الباركود..."
-                        className="w-full min-h-[38px] pr-8 pl-3 rounded-xl border border-slate-300 text-xs"
+                        className="w-full h-8 pr-8 pl-2.5 rounded-md border border-slate-300 text-xs"
                       />
                     </div>
                     <select
                       value={offerProductId}
                       onChange={(e) => setOfferProductId(e.target.value)}
-                      className="w-full min-h-[40px] px-3 rounded-xl border border-slate-300 bg-white text-xs font-bold"
+                      className="w-full min-h-[32px] h-8 px-2.5 rounded-md border border-slate-300 bg-white text-xs font-bold"
                     >
                       <option value="">-- اختر الصنف --</option>
                       {filteredOfferSearchProducts.map((p) => (
@@ -909,7 +909,7 @@ export const StorefrontManagerView: React.FC = () => {
                         value={offerUnit}
                         onChange={(e) => setOfferUnit(e.target.value)}
                         disabled={!selectedOfferProduct}
-                        className="w-full min-h-[40px] px-2.5 rounded-xl border border-slate-300 bg-white text-xs font-bold"
+                        className="w-full min-h-[32px] h-8 px-2 rounded-md border border-slate-300 bg-white text-xs font-bold"
                       >
                         {selectedOfferProductUnits.map((u) => (
                           <option key={u.name} value={u.name}>
@@ -929,7 +929,7 @@ export const StorefrontManagerView: React.FC = () => {
                         value={offerPromoPrice}
                         onChange={(e) => setOfferPromoPrice(e.target.value)}
                         placeholder="أدخل سعر العرض"
-                        className="w-full min-h-[40px] px-3 rounded-xl border border-slate-300 text-xs font-black awlad-tabular"
+                        className="w-full min-h-[32px] h-8 px-2.5 rounded-md border border-slate-300 text-xs font-black awlad-tabular"
                       />
                     </div>
                   </div>
@@ -943,7 +943,7 @@ export const StorefrontManagerView: React.FC = () => {
                       value={offerTitle}
                       onChange={(e) => setOfferTitle(e.target.value)}
                       placeholder="اختياري (يملأ تلقائياً باسم الصنف)"
-                      className="w-full min-h-[40px] px-3 rounded-xl border border-slate-300 text-xs font-bold"
+                      className="w-full min-h-[32px] h-8 px-2.5 rounded-md border border-slate-300 text-xs font-bold"
                     />
                   </div>
                   <div>
@@ -953,7 +953,7 @@ export const StorefrontManagerView: React.FC = () => {
                       value={offerBadgeText}
                       onChange={(e) => setOfferBadgeText(e.target.value)}
                       placeholder="عرض عشانك"
-                      className="w-full min-h-[40px] px-3 rounded-xl border border-slate-300 text-xs font-bold"
+                      className="w-full min-h-[32px] h-8 px-2.5 rounded-md border border-slate-300 text-xs font-bold"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-2">
@@ -963,7 +963,7 @@ export const StorefrontManagerView: React.FC = () => {
                         type="datetime-local"
                         value={offerStartsAt}
                         onChange={(e) => setOfferStartsAt(e.target.value)}
-                        className="w-full min-h-[40px] px-2 rounded-xl border border-slate-300 text-[11px]"
+                        className="w-full min-h-[32px] h-8 px-2 rounded-md border border-slate-300 text-[11px]"
                       />
                     </div>
                     <div>
@@ -972,7 +972,7 @@ export const StorefrontManagerView: React.FC = () => {
                         type="datetime-local"
                         value={offerEndsAt}
                         onChange={(e) => setOfferEndsAt(e.target.value)}
-                        className="w-full min-h-[40px] px-2 rounded-xl border border-slate-300 text-[11px]"
+                        className="w-full min-h-[32px] h-8 px-2 rounded-md border border-slate-300 text-[11px]"
                       />
                     </div>
                   </div>
@@ -980,7 +980,7 @@ export const StorefrontManagerView: React.FC = () => {
 
                 <button
                   type="submit"
-                  className="min-h-[40px] px-4 rounded-xl bg-[#0F5A33] hover:bg-[#0B4426] text-white text-xs font-black flex items-center gap-1.5 cursor-pointer"
+                  className="min-h-[32px] h-8 px-3 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-black flex items-center gap-1.5 cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
                   <span>إضافة العرض للمسودة</span>
@@ -1034,7 +1034,7 @@ export const StorefrontManagerView: React.FC = () => {
                       const validPrice = regular > 0 && off.promoPrice < regular;
                       return (
                         <div className="font-mono tabular-nums">
-                          <span className="text-[#0F5A33] font-black">{off.promoPrice.toLocaleString()} {settings.currency}</span>
+                          <span className="text-[#003589] font-black">{off.promoPrice.toLocaleString()} {settings.currency}</span>
                           {!validPrice && regular > 0 && <span className="block text-[10px] text-red-600 font-sans">ليس أقل من الأصلي!</span>}
                         </div>
                       );
@@ -1089,8 +1089,8 @@ export const StorefrontManagerView: React.FC = () => {
 
           {/* TAB 3: SHORTCUTS */}
           {activeTab === 'shortcuts' && (
-            <div className="space-y-4">
-              <form onSubmit={handleAddShortcut} className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3 shadow-xs">
+            <div className="space-y-2.5">
+              <form onSubmit={handleAddShortcut} className="bg-white rounded-lg border border-slate-200 p-2.5 sm:p-3 space-y-2 shadow-xs">
                 <h2 className="text-sm font-black text-slate-900">إضافة اختصار سريع لشريط "إختصاراتك"</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   <div>
@@ -1100,7 +1100,7 @@ export const StorefrontManagerView: React.FC = () => {
                       value={scLabel}
                       onChange={(e) => setScLabel(e.target.value)}
                       placeholder="مثال: عروض اليوم"
-                      className="w-full min-h-[40px] px-3 rounded-xl border border-slate-300 text-xs font-bold"
+                      className="w-full min-h-[32px] h-8 px-2.5 rounded-md border border-slate-300 text-xs font-bold"
                     />
                   </div>
                   <div>
@@ -1108,7 +1108,7 @@ export const StorefrontManagerView: React.FC = () => {
                     <select
                       value={scIconKey}
                       onChange={(e) => setScIconKey(e.target.value)}
-                      className="w-full min-h-[40px] px-2.5 rounded-xl border border-slate-300 bg-white text-xs font-bold"
+                      className="w-full min-h-[32px] h-8 px-2 rounded-md border border-slate-300 bg-white text-xs font-bold"
                     >
                       {ICON_OPTIONS.map((ic) => (
                         <option key={ic.value} value={ic.value}>
@@ -1125,7 +1125,7 @@ export const StorefrontManagerView: React.FC = () => {
                         setScTargetType(e.target.value as StorefrontTargetType);
                         setScTargetId('');
                       }}
-                      className="w-full min-h-[40px] px-2.5 rounded-xl border border-slate-300 bg-white text-xs font-bold"
+                      className="w-full min-h-[32px] h-8 px-2 rounded-md border border-slate-300 bg-white text-xs font-bold"
                     >
                       {TARGET_TYPE_OPTIONS.map((opt) => (
                         <option key={opt.value} value={opt.value}>
@@ -1141,7 +1141,7 @@ export const StorefrontManagerView: React.FC = () => {
                 </div>
                 <button
                   type="submit"
-                  className="min-h-[40px] px-4 rounded-xl bg-[#0F5A33] hover:bg-[#0B4426] text-white text-xs font-black flex items-center gap-1.5 cursor-pointer"
+                  className="min-h-[32px] h-8 px-3 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-black flex items-center gap-1.5 cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
                   <span>إضافة الاختصار</span>
@@ -1199,15 +1199,15 @@ export const StorefrontManagerView: React.FC = () => {
 
           {/* TAB 4: IMAGE CATEGORIES & APP DISPLAY CATEGORIES */}
           {activeTab === 'categories' && (
-            <div className="space-y-4">
-              <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-2 shadow-xs">
+            <div className="space-y-2.5">
+              <div className="bg-white rounded-lg border border-slate-200 p-2.5 sm:p-3 space-y-1.5 shadow-xs">
                 <label className="block text-[11px] font-bold text-slate-600">عنوان شاشة الأقسام المصورة</label>
                 <input
                   type="text"
                   value={draft.categoriesSectionTitle || ''}
                   onChange={(e) => updateDraft((prev) => ({ ...prev, categoriesSectionTitle: e.target.value }))}
                   placeholder="الأقسام المصورة"
-                  className="w-full min-h-[40px] px-3 rounded-xl border border-slate-300 text-xs font-bold"
+                  className="w-full min-h-[32px] h-8 px-2.5 rounded-md border border-slate-300 text-xs font-bold"
                 />
               </div>
 
@@ -1229,7 +1229,7 @@ export const StorefrontManagerView: React.FC = () => {
                       const ov = draft.imageCategorySettings.find((c) => c.categoryId === cat.id);
                       return (
                         <div className="w-11 h-11 rounded-lg bg-white border border-slate-200 overflow-hidden flex items-center justify-center">
-                          {ov?.imageUrl ? <img src={ov.imageUrl} alt={cat.name} className="w-full h-full object-cover" /> : <LayoutGrid className="w-5 h-5 text-[#0F5A33]/60" />}
+                          {ov?.imageUrl ? <img src={ov.imageUrl} alt={cat.name} className="w-full h-full object-cover" /> : <LayoutGrid className="w-5 h-5 text-[#003589]/60" />}
                         </div>
                       );
                     },
@@ -1265,7 +1265,7 @@ export const StorefrontManagerView: React.FC = () => {
                             placeholder="رابط الصورة أو ارفع..."
                             className="flex-1 min-w-[130px] min-h-[34px] px-2 rounded-lg border border-slate-300 bg-white text-xs"
                           />
-                          <label className="min-h-[34px] px-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-[#0F5A33] text-xs font-black flex items-center cursor-pointer">
+                          <label className="min-h-[34px] px-2.5 rounded-lg bg-[#EEF3FA] border border-[#DCE6F5] text-[#011E58] text-xs font-black flex items-center cursor-pointer">
                             <Upload className="w-3.5 h-3.5" />
                             <input
                               type="file"
@@ -1303,7 +1303,7 @@ export const StorefrontManagerView: React.FC = () => {
               />
 
               {/* App-only Display Categories */}
-              <form onSubmit={handleAddDisplayCategory} className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3 shadow-xs">
+              <form onSubmit={handleAddDisplayCategory} className="bg-white rounded-lg border border-slate-200 p-2.5 sm:p-3 space-y-2 shadow-xs">
                 <h2 className="text-sm font-black text-slate-900">إضافة تصنيف عرض إضافي خاص بالتطبيق فقط</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
@@ -1313,7 +1313,7 @@ export const StorefrontManagerView: React.FC = () => {
                       value={dispName}
                       onChange={(e) => setDispName(e.target.value)}
                       placeholder="مثال: تجهيزات رمضان / الأكثر طلباً"
-                      className="w-full min-h-[40px] px-3 rounded-xl border border-slate-300 text-xs font-bold"
+                      className="w-full min-h-[32px] h-8 px-2.5 rounded-md border border-slate-300 text-xs font-bold"
                     />
                   </div>
                   <div>
@@ -1324,9 +1324,9 @@ export const StorefrontManagerView: React.FC = () => {
                         value={dispImageUrl}
                         onChange={(e) => setDispImageUrl(e.target.value)}
                         placeholder="رابط الصورة أو ارفع..."
-                        className="flex-1 min-h-[40px] px-3 rounded-xl border border-slate-300 text-xs"
+                        className="flex-1 min-h-[32px] h-8 px-2.5 rounded-md border border-slate-300 text-xs"
                       />
-                      <label className="min-h-[40px] px-3 rounded-xl bg-emerald-50 border border-emerald-200 text-[#0F5A33] text-xs font-black flex items-center gap-1 cursor-pointer">
+                      <label className="min-h-[32px] h-8 px-2.5 rounded-md bg-[#EEF3FA] border border-[#DCE6F5] text-[#011E58] text-xs font-black flex items-center gap-1 cursor-pointer">
                         <Upload className="w-4 h-4" />
                         <span>رفع</span>
                         <input
@@ -1354,16 +1354,16 @@ export const StorefrontManagerView: React.FC = () => {
                     value={dispProductSearch}
                     onChange={(e) => setDispProductSearch(e.target.value)}
                     placeholder="بحث عن منتجات لضمها..."
-                    className="w-full min-h-[36px] px-3 rounded-xl border border-slate-300 text-xs"
+                    className="w-full h-8 px-2.5 rounded-md border border-slate-300 text-xs"
                   />
-                  <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-xl p-2 grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                  <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-lg p-1.5 grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                     {filteredDisplayCatProducts.map((p) => {
                       const checked = dispSelectedProductIds.includes(p.id);
                       return (
                         <label
                           key={p.id}
                           className={`p-1.5 rounded-lg border text-xs font-bold flex items-center gap-2 cursor-pointer ${
-                            checked ? 'bg-emerald-50 border-[#0F5A33] text-[#0F5A33]' : 'bg-white border-slate-200 text-slate-700'
+                            checked ? 'bg-[#EEF3FA] border-[#003589] text-[#011E58]' : 'bg-white border-slate-200 text-slate-700'
                           }`}
                         >
                           <input
@@ -1384,7 +1384,7 @@ export const StorefrontManagerView: React.FC = () => {
 
                 <button
                   type="submit"
-                  className="min-h-[40px] px-4 rounded-xl bg-[#0F5A33] hover:bg-[#0B4426] text-white text-xs font-black flex items-center gap-1.5 cursor-pointer"
+                  className="min-h-[32px] h-8 px-3 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-black flex items-center gap-1.5 cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
                   <span>إضافة تصنيف العرض</span>
@@ -1405,7 +1405,7 @@ export const StorefrontManagerView: React.FC = () => {
                           width: '56px',
                           render: (dc) => (
                             <div className="w-9 h-9 rounded-lg bg-white border border-slate-200 overflow-hidden flex items-center justify-center">
-                              {dc.imageUrl ? <img src={dc.imageUrl} alt={dc.name} className="w-full h-full object-cover" /> : <LayoutGrid className="w-4 h-4 text-[#0F5A33]" />}
+                              {dc.imageUrl ? <img src={dc.imageUrl} alt={dc.name} className="w-full h-full object-cover" /> : <LayoutGrid className="w-4 h-4 text-[#003589]" />}
                             </div>
                           ),
                         },
@@ -1435,7 +1435,7 @@ export const StorefrontManagerView: React.FC = () => {
 
           {/* TAB 5: FEATURED / HIDDEN PRODUCTS & HOMEPAGE SECTIONS */}
           {activeTab === 'products_sections' && (
-            <div className="space-y-4">
+            <div className="space-y-2.5">
               <UnifiedDataTable
                 compact
                 searchable={false}
@@ -1592,23 +1592,25 @@ export const StorefrontManagerView: React.FC = () => {
         {showMobilePreview && (
           <div className="xl:col-span-5 xl:sticky xl:top-20 flex flex-col items-center">
             <div className="w-full max-w-[390px] bg-slate-900 rounded-[2.2rem] p-3 shadow-2xl border-4 border-slate-800">
-              <div className="bg-[#0F5A33] text-white rounded-t-[1.6rem] px-4 py-3 flex items-center justify-between">
+              <div className="bg-[#011E58] text-white rounded-t-[1.6rem] px-4 py-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <img
-                    src="/awlad-selim-logo.png"
-                    alt="أولاد سليم"
-                    className="w-8 h-8 rounded-lg object-cover bg-white/10"
-                  />
+                  <div className="w-8 h-8 rounded-lg bg-white p-0.5 flex items-center justify-center shrink-0">
+                    <img
+                      src="/awlad-selim-logo.png"
+                      alt="أولاد سليم"
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
                   <div>
                     <p className="text-xs font-black leading-none">أولاد سليم</p>
-                    <p className="text-[10px] text-emerald-100 mt-0.5">معاينة المسودة المباشرة</p>
+                    <p className="text-[10px] text-[#DCE6F5] mt-0.5">معاينة المسودة المباشرة</p>
                   </div>
                 </div>
                 <span className="px-2 py-0.5 rounded bg-white/15 text-[10px] font-bold">
                   {hasUnsavedEdits ? 'مسودة معدلة' : 'محدث'}
                 </span>
               </div>
-              <div className="bg-[#f5f7f6] rounded-b-[1.6rem] p-3 max-h-[640px] overflow-y-auto">
+              <div className="bg-[#F4F6FA] rounded-b-[1.6rem] p-3 max-h-[640px] overflow-y-auto">
                 <CustomerStorefrontHome
                   storefront={draft}
                   products={activeProducts}

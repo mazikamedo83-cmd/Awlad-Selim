@@ -108,12 +108,12 @@ export const AccountSwitcherModal: React.FC = () => {
         subtitle="التبديل الآمن بين الحسابات المسجلة مسبقاً دون حفظ كلمات مرور نصية"
         maxWidth="lg"
       >
-        <div className="space-y-2.5 text-xs">
-          <div className="p-2.5 rounded-lg bg-blue-50/80 border border-blue-200 flex items-center gap-2.5">
-            <SavedAccountsIcon className="w-8 h-8 shrink-0" />
-            <div className="text-blue-950 leading-snug">
+        <div className="space-y-2 text-xs">
+          <div className="p-2 rounded-lg bg-[#EEF3FA] border border-[#DCE6F5] flex items-center gap-2">
+            <SavedAccountsIcon className="w-7 h-7 shrink-0" />
+            <div className="text-[#011E58] leading-snug">
               <p className="font-black">خزنة الحسابات المشفرة على الجهاز</p>
-              <p className="text-[11px] text-blue-800">
+              <p className="text-[11px] text-[#003589]">
                 كل حساب يحتفظ بجلسة وبيانات محلية معزولة تماماً، ولا تُحفظ كلمات المرور بشكل مكشوف مطلقاً.
               </p>
             </div>
@@ -152,19 +152,19 @@ export const AccountSwitcherModal: React.FC = () => {
                 return (
                   <div
                     key={acc.userId}
-                    className={`px-3 py-2 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
-                      isCurrent ? 'bg-blue-50/70' : 'bg-white hover:bg-slate-50'
+                    className={`px-2.5 py-1.5 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
+                      isCurrent ? 'bg-[#EEF3FA]/80' : 'bg-white hover:bg-slate-50'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
                       {acc.avatarPhoto ? (
                         <img
                           src={acc.avatarPhoto}
                           alt={acc.fullName}
-                          className="w-9 h-9 rounded-lg object-cover border border-slate-200 shrink-0"
+                          className="w-8 h-8 rounded-md object-cover border border-slate-200 shrink-0"
                         />
                       ) : (
-                        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-800 to-indigo-900 text-white font-black text-xs flex items-center justify-center shrink-0">
+                        <div className="w-8 h-8 rounded-md awlad-brand-gradient text-white font-black text-xs flex items-center justify-center shrink-0">
                           {(acc.fullName || acc.username || '؟').trim().charAt(0)}
                         </div>
                       )}
@@ -172,7 +172,7 @@ export const AccountSwitcherModal: React.FC = () => {
                       <div className="min-w-0 space-y-0.5">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="font-black text-xs text-slate-900 truncate">{acc.fullName}</span>
-                          <span className="text-[11px] font-bold text-blue-900">
+                          <span className="text-[11px] font-bold text-[#011E58]">
                             · {getRoleArabicBadge(acc.role)}
                           </span>
                           {isCurrent && (
@@ -211,9 +211,9 @@ export const AccountSwitcherModal: React.FC = () => {
                           type="button"
                           disabled={Boolean(switchingUserId)}
                           onClick={() => handleSwitch(acc)}
-                          className={`min-h-[34px] px-2.5 rounded-lg font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${
+                          className={`h-8 px-2.5 rounded-md font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${
                             canQuickResume
-                              ? 'bg-blue-900 hover:bg-blue-950 text-white'
+                              ? 'bg-[#003589] hover:bg-[#011E58] text-white'
                               : 'bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300'
                           }`}
                         >
@@ -233,7 +233,7 @@ export const AccountSwitcherModal: React.FC = () => {
                           type="button"
                           disabled={Boolean(switchingUserId)}
                           onClick={() => setAccountToRemove(acc)}
-                          className="min-h-[34px] px-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 flex items-center gap-1 font-bold cursor-pointer"
+                          className="h-8 px-2 rounded-md bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 flex items-center gap-1 font-bold cursor-pointer"
                           title="إزالة هذا الحساب من الجهاز فقط"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -247,11 +247,11 @@ export const AccountSwitcherModal: React.FC = () => {
             </div>
           )}
 
-          <div className="pt-2.5 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2">
+          <div className="pt-2 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2">
             <button
               type="button"
               onClick={handleAddAccountLogin}
-              className="min-h-[36px] px-3 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-black flex items-center gap-1.5 cursor-pointer"
+              className="h-8 px-2.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-black flex items-center gap-1.5 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>إضافة / دخول بحساب آخر</span>
@@ -259,7 +259,7 @@ export const AccountSwitcherModal: React.FC = () => {
             <button
               type="button"
               onClick={() => setIsAccountSwitcherOpen(false)}
-              className="min-h-[36px] px-3 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+              className="h-8 px-3 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
             >
               إغلاق
             </button>

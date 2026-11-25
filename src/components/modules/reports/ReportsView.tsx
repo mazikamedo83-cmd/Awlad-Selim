@@ -181,7 +181,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [recordId, setRecordId] = useState('');
   const [search, setSearch] = useState('');
-  const [showMoreFilters, setShowMoreFilters] = useState(true);
+  const [showMoreFilters, setShowMoreFilters] = useState(false);
   const [inlineTableSearch, setInlineTableSearch] = useState('');
 
   const [debouncedTextFilters, setDebouncedTextFilters] = useState({
@@ -547,15 +547,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
     };
   }, [reportType, isRepRole, hasPermission]);
 
-  const activeDetailedFiltersCount = useMemo(() => {
+  const extraDetailedFiltersCount = useMemo(() => {
     let count = 0;
-    if (filterVisibility.showParty && partyKey !== 'all') count++;
-    if (movementType !== 'all') count++;
+    if (filterVisibility.showWarehouse && warehouseId !== 'all') count++;
+    if (filterVisibility.showCashbox && cashboxId !== 'all') count++;
     if (filterVisibility.showRepresentative && representativeId !== 'all') count++;
     if (filterVisibility.showEmployee && employeeId !== 'all') count++;
-    if (filterVisibility.showCashbox && cashboxId !== 'all') count++;
     if (filterVisibility.showUser && userId !== 'all') count++;
-    if (filterVisibility.showWarehouse && warehouseId !== 'all') count++;
     if (filterVisibility.showProductFilters && productId !== 'all') count++;
     if (filterVisibility.showProductFilters && productSearch.trim()) count++;
     if (filterVisibility.showProductFilters && barcode.trim()) count++;
@@ -564,21 +562,17 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
     return count;
   }, [
     filterVisibility,
-    partyKey,
-    movementType,
+    warehouseId,
+    cashboxId,
     representativeId,
     employeeId,
-    cashboxId,
     userId,
-    warehouseId,
     productId,
     productSearch,
     barcode,
     invoiceNumber,
     recordId,
   ]);
-
-  const mobileDetailedItemClass = showMoreFilters ? '' : 'hidden md:block';
 
   // Apply optional inline search + sorting within each section
   const processedSections = useMemo(() => {
@@ -1019,16 +1013,16 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
   }, [isRepRole, hasPermission]);
 
   return (
-    <div className="flex flex-col text-slate-900 select-none sm:select-text" dir="rtl">
-      {/* Slim Top Mode + Quick Period Presets + Export Strip (Brand-Store-compact, no floating white cards) */}
-      <div className="bg-[#e8ebef] border border-slate-300 border-b-slate-300/80 rounded-t-md px-2 py-1 flex flex-wrap items-center justify-between gap-1.5">
+    <div className="flex-1 flex flex-col min-h-0 text-slate-900 select-none sm:select-text" dir="rtl">
+      {/* Slim Top Mode + Quick Period Presets + Export Strip */}
+      <div className="bg-[#EEF3FA] border border-slate-300 border-b-slate-300/80 rounded-t-md px-2 py-1 flex flex-wrap items-center justify-between gap-1.5">
         <div className="flex flex-wrap items-center gap-1">
           <button
             type="button"
             onClick={() => setViewMode('unified_grid')}
-            className={`flex items-center gap-1 h-6 px-2 rounded-sm text-[11px] font-extrabold transition-colors cursor-pointer ${
+            className={`flex items-center gap-1 h-7 px-2.5 rounded-sm text-[11px] font-extrabold transition-colors cursor-pointer ${
               viewMode === 'unified_grid'
-                ? 'bg-[#22b14c] text-white'
+                ? 'bg-[var(--awlad-royal-700)] text-white'
                 : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-100'
             }`}
           >
@@ -1039,9 +1033,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
           <button
             type="button"
             onClick={() => setViewMode('item_lifecycle')}
-            className={`flex items-center gap-1 h-6 px-2 rounded-sm text-[11px] font-extrabold transition-colors cursor-pointer ${
+            className={`flex items-center gap-1 h-7 px-2.5 rounded-sm text-[11px] font-extrabold transition-colors cursor-pointer ${
               viewMode === 'item_lifecycle'
-                ? 'bg-slate-800 text-white'
+                ? 'bg-[var(--awlad-navy-900)] text-white'
                 : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-100'
             }`}
           >
@@ -1065,10 +1059,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                 key={p.id}
                 type="button"
                 onClick={() => applyPeriodPreset(p.id as any)}
-                className={`h-6 px-2 rounded-sm font-bold border transition-colors cursor-pointer ${
+                className={`h-7 px-2 rounded-sm font-bold border transition-colors cursor-pointer ${
                   periodPreset === p.id
-                    ? 'bg-emerald-700 text-white border-emerald-700'
-                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                    ? 'bg-[var(--awlad-navy-900)] text-white border-[var(--awlad-navy-900)]'
+                    : 'bg-white text-slate-700 border-slate-300 hover:bg-[#DCE6F5]'
                 }`}
               >
                 {p.label}
@@ -1077,27 +1071,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
           </div>
         </div>
 
-        {/* Print, Export & Mobile-Only Filter Toggle */}
+        {/* Print & Export Strip */}
         <div className="flex flex-wrap items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setShowMoreFilters((p) => !p)}
-            aria-expanded={showMoreFilters}
-            className={`md:hidden flex items-center gap-1 h-6 px-2 rounded-sm border text-[11px] font-bold cursor-pointer ${
-              showMoreFilters
-                ? 'bg-blue-900 text-white border-blue-900'
-                : 'bg-white text-slate-700 border-slate-300'
-            }`}
-          >
-            <SlidersHorizontal className="w-3 h-3" />
-            <span>فلاتر{activeDetailedFiltersCount > 0 ? ` (${activeDetailedFiltersCount})` : ''}</span>
-          </button>
-
           <select
             value={exportScope}
             onChange={(e) => setExportScope(e.target.value as 'filtered' | 'all')}
             aria-label="نطاق التصدير"
-            className="h-6 px-1.5 text-[11px] font-bold bg-white border border-slate-300 rounded-sm text-slate-700"
+            className="h-7 px-1.5 text-[11px] font-bold bg-white border border-slate-300 rounded-sm text-slate-700 focus:border-[var(--awlad-royal-700)] focus:outline-none"
           >
             <option value="filtered">تصدير المعروض المفلتر</option>
             <option value="all">تصدير كامل التقرير</option>
@@ -1108,7 +1088,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
               <button
                 type="button"
                 onClick={handleOpenThermalOrA4Print}
-                className="flex items-center gap-1 h-6 px-2 rounded-sm bg-slate-700 hover:bg-slate-800 text-white text-[11px] font-bold cursor-pointer"
+                className="flex items-center gap-1 h-7 px-2 rounded-sm bg-[var(--awlad-silver-600)] hover:bg-slate-700 text-white text-[11px] font-bold cursor-pointer"
                 title="طباعة A4 أو حراري 80/58 مم"
               >
                 <Printer className="w-3 h-3" />
@@ -1117,7 +1097,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
               <button
                 type="button"
                 onClick={handleExportPdf}
-                className="flex items-center gap-1 h-6 px-2 rounded-sm bg-blue-700 hover:bg-blue-800 text-white text-[11px] font-bold cursor-pointer"
+                className="flex items-center gap-1 h-7 px-2 rounded-sm bg-[var(--awlad-royal-700)] hover:bg-[var(--awlad-royal-600)] text-white text-[11px] font-bold cursor-pointer"
               >
                 <FileText className="w-3 h-3" />
                 <span>PDF</span>
@@ -1128,7 +1108,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
             <button
               type="button"
               onClick={handleExportExcel}
-              className="flex items-center gap-1 h-6 px-2 rounded-sm bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-bold cursor-pointer"
+              className="flex items-center gap-1 h-7 px-2 rounded-sm bg-[var(--awlad-navy-900)] hover:bg-[var(--awlad-navy-950)] text-white text-[11px] font-bold cursor-pointer"
             >
               <FileSpreadsheet className="w-3 h-3" />
               <span>Excel</span>
@@ -1137,16 +1117,16 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
         </div>
       </div>
 
-      {/* Brand-Store Top Filter Band (Zone 2 & 3 & 4) Connected Directly Above «عرض» */}
+      {/* Compact Structured Filters: Row 1 (Core), Row 2 (Search + Actions + Extra Toggle), Row 3 (Collapsible Extra Filters) */}
       <form
         onSubmit={handleApplySearchSubmit}
         aria-label="فلاتر البحث والتصفية للتقارير"
-        className="w-full bg-[#f4f6f8] border-x border-b border-slate-300 px-2.5 py-2 space-y-2 text-xs"
+        className="w-full bg-[#F8FAFC] border-x border-b border-slate-300 px-2.5 py-1.5 space-y-1.5 text-xs"
       >
-        {/* Zone 2: Structured Selectors & Date Range (No cramping, no clipping, Portal dropdowns) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-2 items-end">
+        {/* Row 1: Core Filters Only (Branch, Date From/To, Party, Movement Type) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-1.5 items-end">
           {/* الفرع */}
-          <div className="min-w-0">
+          <div className="min-w-0 lg:col-span-2">
             <SearchableFilterSelect
               id="rpt-filter-branch"
               label="الفرع"
@@ -1161,11 +1141,11 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
             />
           </div>
 
-          {/* التاريخ الموحد (من -/+ و ☑ إلى) */}
-          <div className="sm:col-span-2 md:col-span-2 xl:col-span-2 grid grid-cols-2 gap-1.5 min-w-0">
+          {/* التاريخ الموحد: يتكدس على الهاتف الضيق (<640px) لمنع قص التاريخ */}
+          <div className="sm:col-span-2 lg:col-span-4 grid grid-cols-1 sm:grid-cols-2 gap-1.5 min-w-0">
             <div className="min-w-0">
-              <label htmlFor="rpt-filter-date-from" className="flex items-center gap-1 text-[11.5px] font-semibold text-slate-700 leading-tight mb-1 whitespace-nowrap">
-                <Calendar className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+              <label htmlFor="rpt-filter-date-from" className="flex items-center gap-1 text-[11px] font-bold text-slate-700 leading-tight mb-0.5 whitespace-nowrap">
+                <Calendar className="w-3 h-3 text-[var(--awlad-royal-700)] shrink-0" />
                 <span>من تاريخ</span>
               </label>
               <div className="flex items-center gap-0.5">
@@ -1176,7 +1156,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                     setPage(1);
                     setDateFrom((prev) => addDaysYmd(prev || todayYmd(), -1));
                   }}
-                  className="h-[34px] w-7 shrink-0 bg-white border border-slate-300 rounded-md hover:bg-slate-100 text-slate-700 font-bold leading-none cursor-pointer"
+                  className="h-8 w-7 shrink-0 bg-white border border-slate-300 rounded-md hover:bg-[#EEF3FA] text-slate-700 font-bold leading-none cursor-pointer"
                   title="يوم سابق"
                   aria-label="يوم سابق"
                 >
@@ -1191,7 +1171,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                     setPage(1);
                     setDateFrom(e.target.value);
                   }}
-                  className="w-full min-w-0 h-[34px] bg-white border border-slate-300 rounded-md px-2 text-xs font-mono tabular-nums text-slate-800 focus:border-emerald-600 focus:outline-none"
+                  className="w-full min-w-0 h-8 bg-white border border-slate-300 rounded-md px-1.5 text-xs font-mono tabular-nums text-slate-800 focus:border-[var(--awlad-royal-700)] focus:outline-none"
                 />
                 <button
                   type="button"
@@ -1200,7 +1180,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                     setPage(1);
                     setDateFrom((prev) => addDaysYmd(prev || todayYmd(), 1));
                   }}
-                  className="h-[34px] w-7 shrink-0 bg-white border border-slate-300 rounded-md hover:bg-slate-100 text-slate-700 font-bold leading-none cursor-pointer"
+                  className="h-8 w-7 shrink-0 bg-white border border-slate-300 rounded-md hover:bg-[#EEF3FA] text-slate-700 font-bold leading-none cursor-pointer"
                   title="يوم تالٍ"
                   aria-label="يوم تالٍ"
                 >
@@ -1210,7 +1190,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
             </div>
 
             <div className="min-w-0">
-              <label htmlFor="rpt-filter-use-date-to" className="flex items-center gap-1.5 text-[11.5px] font-semibold text-slate-700 leading-tight mb-1 cursor-pointer whitespace-nowrap">
+              <label htmlFor="rpt-filter-use-date-to" className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700 leading-tight mb-0.5 cursor-pointer whitespace-nowrap">
                 <input
                   id="rpt-filter-use-date-to"
                   type="checkbox"
@@ -1220,7 +1200,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                     setPage(1);
                     setUseDateTo(e.target.checked);
                   }}
-                  className="accent-emerald-700 w-3.5 h-3.5 shrink-0"
+                  className="accent-[var(--awlad-royal-700)] w-3.5 h-3.5 shrink-0"
                 />
                 <span>إلى تاريخ</span>
               </label>
@@ -1235,14 +1215,14 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                   setDateTo(e.target.value);
                 }}
                 aria-label="إلى تاريخ"
-                className="w-full min-w-0 h-[34px] bg-white border border-slate-300 rounded-md px-2 text-xs font-mono tabular-nums text-slate-800 disabled:opacity-45 focus:border-emerald-600 focus:outline-none"
+                className="w-full min-w-0 h-8 bg-white border border-slate-300 rounded-md px-2 text-xs font-mono tabular-nums text-slate-800 disabled:opacity-45 focus:border-[var(--awlad-royal-700)] focus:outline-none"
               />
             </div>
           </div>
 
-          {/* العميل / المورد الموحد (مقسم إلى مجموعات داخل القائمة) */}
+          {/* العميل / المورد */}
           {filterVisibility.showParty && (
-            <div className={`min-w-0 sm:col-span-2 md:col-span-2 xl:col-span-2 ${mobileDetailedItemClass}`}>
+            <div className="min-w-0 lg:col-span-3">
               <SearchableFilterSelect
                 id="rpt-filter-party"
                 label={filterVisibility.showSupplier ? 'العميل / المورد' : 'العميل'}
@@ -1262,7 +1242,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
 
           {/* نوع الحركة */}
           {filterVisibility.showMovementType && (
-            <div className={`min-w-0 ${mobileDetailedItemClass}`}>
+            <div className="min-w-0 lg:col-span-3">
               <SearchableFilterSelect
                 id="rpt-filter-movement-type"
                 label="نوع الحركة"
@@ -1277,234 +1257,249 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
               />
             </div>
           )}
-
-          {/* المخزن */}
-          {filterVisibility.showWarehouse && (
-            <div className={`min-w-0 ${mobileDetailedItemClass}`}>
-              <SearchableFilterSelect
-                id="rpt-filter-warehouse"
-                label="المخزن"
-                value={warehouseId}
-                onChange={(val) => {
-                  setWarehouseId(val);
-                  setPage(1);
-                }}
-                options={warehouseOptions}
-                allOptionLabel="كل المخازن"
-                allowClear
-              />
-            </div>
-          )}
-
-          {/* الخزنة */}
-          {filterVisibility.showCashbox && (
-            <div className={`min-w-0 ${mobileDetailedItemClass}`}>
-              <SearchableFilterSelect
-                id="rpt-filter-cashbox"
-                label="الخزنة"
-                value={cashboxId}
-                onChange={(val) => {
-                  setCashboxId(val);
-                  setPage(1);
-                }}
-                options={cashboxOptions}
-                allOptionLabel="كل الخزائن"
-                allowClear
-              />
-            </div>
-          )}
-
-          {/* المندوب */}
-          {filterVisibility.showRepresentative && (
-            <div className={`min-w-0 ${mobileDetailedItemClass}`}>
-              <SearchableFilterSelect
-                id="rpt-filter-rep"
-                label="المندوب"
-                value={representativeId}
-                onChange={(val) => {
-                  setRepresentativeId(val);
-                  setPage(1);
-                }}
-                options={representativeOptions}
-                allOptionLabel="كل المندوبين"
-                allowClear
-              />
-            </div>
-          )}
-
-          {/* الموظف (منفصل تماماً عن المستخدم) */}
-          {filterVisibility.showEmployee && (
-            <div className={`min-w-0 ${mobileDetailedItemClass}`}>
-              <SearchableFilterSelect
-                id="rpt-filter-employee"
-                label="الموظف"
-                value={employeeId}
-                onChange={(val) => {
-                  setEmployeeId(val);
-                  setPage(1);
-                }}
-                options={employeeOptions}
-                allOptionLabel="كل الموظفين"
-                searchPlaceholder="بحث في الموظفين..."
-                allowClear
-              />
-            </div>
-          )}
-
-          {/* المستخدم (منفصل تماماً عن الموظف) */}
-          {filterVisibility.showUser && (
-            <div className={`min-w-0 ${mobileDetailedItemClass}`}>
-              <SearchableFilterSelect
-                id="rpt-filter-user"
-                label="المستخدم"
-                value={userId}
-                onChange={(val) => {
-                  setUserId(val);
-                  setPage(1);
-                }}
-                options={userOptions}
-                allOptionLabel="كل المستخدمين"
-                searchPlaceholder="بحث في حسابات المستخدمين..."
-                allowClear
-              />
-            </div>
-          )}
-
-          {/* الصنف */}
-          {filterVisibility.showProductFilters && (
-            <div className={`min-w-0 sm:col-span-2 md:col-span-2 xl:col-span-2 ${mobileDetailedItemClass}`}>
-              <div className="flex items-center justify-between gap-2 mb-1">
-                <label htmlFor="rpt-filter-product" className="block text-[11.5px] font-semibold text-slate-700 leading-tight whitespace-nowrap">
-                  الصنف
-                </label>
-                {productId !== 'all' && viewMode === 'unified_grid' && (
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('item_lifecycle')}
-                    className="text-[11px] font-bold text-blue-700 hover:underline leading-none shrink-0 cursor-pointer"
-                    title="عرض تاريخ وربح الصنف"
-                  >
-                    عرض تاريخ الصنف
-                  </button>
-                )}
-              </div>
-              <SearchableFilterSelect
-                id="rpt-filter-product"
-                value={productId}
-                onChange={(val) => {
-                  setProductId(val);
-                  setPage(1);
-                }}
-                options={productOptions}
-                allOptionLabel="كل الأصناف"
-                searchPlaceholder="ابحث بالاسم أو الكود أو الباركود..."
-                allowClear
-                minPanelWidth={290}
-              />
-            </div>
-          )}
         </div>
 
-        {/* Zone 3 & Zone 4: Text Search Inputs + Search / Reset Actions */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-2 items-end pt-1.5 border-t border-slate-200/90">
-          {filterVisibility.showProductFilters && (
-            <>
-              <div className={`min-w-0 ${mobileDetailedItemClass}`}>
-                <label htmlFor="rpt-filter-product-search" className="block text-[11.5px] font-semibold text-slate-700 leading-tight mb-1 whitespace-nowrap">
-                  اسم الصنف
-                </label>
-                <input
-                  id="rpt-filter-product-search"
-                  type="text"
-                  value={productSearch}
-                  onChange={(e) => setProductSearch(e.target.value)}
-                  placeholder="جزء من اسم الصنف..."
-                  className="w-full min-w-0 h-[34px] bg-white border border-slate-300 rounded-md px-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-emerald-600 focus:outline-none"
-                />
-              </div>
-
-              <div className={`min-w-0 ${mobileDetailedItemClass}`}>
-                <label htmlFor="rpt-filter-barcode" className="block text-[11.5px] font-semibold text-slate-700 leading-tight mb-1 whitespace-nowrap">
-                  الباركود
-                </label>
-                <input
-                  id="rpt-filter-barcode"
-                  type="text"
-                  value={barcode}
-                  onChange={(e) => setBarcode(e.target.value)}
-                  placeholder="الباركود أو الكود..."
-                  className="w-full min-w-0 h-[34px] bg-white border border-slate-300 rounded-md px-2.5 text-xs font-mono tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-emerald-600 focus:outline-none"
-                />
-              </div>
-            </>
-          )}
-
-          {filterVisibility.showInvoiceNumber && (
-            <div className={`min-w-0 ${mobileDetailedItemClass}`}>
-              <label htmlFor="rpt-filter-invoice-no" className="block text-[11.5px] font-semibold text-slate-700 leading-tight mb-1 whitespace-nowrap">
-                رقم الفاتورة
-              </label>
-              <input
-                id="rpt-filter-invoice-no"
-                type="text"
-                value={invoiceNumber}
-                onChange={(e) => setInvoiceNumber(e.target.value)}
-                placeholder="رقم الفاتورة..."
-                className="w-full min-w-0 h-[34px] bg-white border border-slate-300 rounded-md px-2.5 text-xs font-mono tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-emerald-600 focus:outline-none"
-              />
-            </div>
-          )}
-
-          {filterVisibility.showRecordId && (
-            <div className={`min-w-0 ${mobileDetailedItemClass}`}>
-              <label htmlFor="rpt-filter-record-id" className="block text-[11.5px] font-semibold text-slate-700 leading-tight mb-1 whitespace-nowrap">
-                كود السجل
-              </label>
-              <input
-                id="rpt-filter-record-id"
-                type="text"
-                value={recordId}
-                onChange={(e) => setRecordId(e.target.value)}
-                placeholder="ID السجل..."
-                className="w-full min-w-0 h-[34px] bg-white border border-slate-300 rounded-md px-2.5 text-xs font-mono tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-emerald-600 focus:outline-none"
-              />
-            </div>
-          )}
-
-          {/* Zone 4: بحث عام + زر البحث الأخضر وإعادة الضبط */}
-          <div className="sm:col-span-2 md:col-span-2 xl:col-span-2 min-w-0">
-            <label htmlFor="rpt-filter-search" className="block text-[11.5px] font-semibold text-slate-700 leading-tight mb-1 whitespace-nowrap">
-              بحث عام
-            </label>
-            <div className="flex items-center gap-1.5 min-w-0">
-              <input
-                id="rpt-filter-search"
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="بحث شامل بالاسم أو الملاحظات أو المستند..."
-                className="flex-1 min-w-0 h-[34px] bg-white border border-slate-300 rounded-md px-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-emerald-600 focus:outline-none"
-              />
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="h-[34px] px-3.5 rounded-md bg-[#22b14c] hover:bg-[#1a963f] disabled:opacity-60 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer"
-              >
-                <Search className="w-3.5 h-3.5 shrink-0" />
-                <span>بحث</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleResetFilters}
-                className="h-[34px] px-2.5 rounded-md bg-white border border-slate-300 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 text-slate-700 font-bold text-xs flex items-center justify-center gap-1 whitespace-nowrap shrink-0 transition-colors cursor-pointer"
-                title="عرض الكل / إعادة ضبط الفلاتر"
-              >
-                <RotateCcw className="w-3.5 h-3.5 shrink-0" />
-                <span>إعادة ضبط</span>
-              </button>
-            </div>
+        {/* Row 2: Search Input + Execute Search + Reset + Extra Filters Toggle (Visible on ALL Screens) */}
+        <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-200/80">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2.5 pointer-events-none" />
+            <input
+              id="rpt-filter-search"
+              type="text"
+              aria-label="بحث عام"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="بحث عام بالاسم أو رقم المستند أو الملاحظات..."
+              className="w-full min-w-0 h-8 bg-white border border-slate-300 rounded-md pr-8 pl-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-[var(--awlad-royal-700)] focus:outline-none"
+            />
           </div>
+
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="h-8 px-3.5 rounded-md bg-[var(--awlad-royal-700)] hover:bg-[var(--awlad-royal-600)] disabled:opacity-60 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer"
+          >
+            <Search className="w-3.5 h-3.5 shrink-0" />
+            <span>بحث</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleResetFilters}
+            className="h-8 px-2.5 rounded-md bg-white border border-slate-300 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 text-slate-700 font-bold text-xs flex items-center justify-center gap-1 whitespace-nowrap shrink-0 transition-colors cursor-pointer"
+            title="عرض الكل / إعادة ضبط الفلاتر"
+          >
+            <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+            <span>إعادة ضبط</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowMoreFilters((p) => !p)}
+            aria-expanded={showMoreFilters}
+            className={`h-8 px-2.5 rounded-md border text-xs font-bold flex items-center gap-1 whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+              showMoreFilters
+                ? 'bg-[var(--awlad-navy-900)] text-white border-[var(--awlad-navy-900)]'
+                : 'bg-white text-[var(--awlad-navy-900)] border-slate-300 hover:bg-[#EEF3FA]'
+            }`}
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
+            <span>
+              {showMoreFilters ? 'إخفاء الفلاتر الإضافية' : 'فلاتر إضافية'}
+              {extraDetailedFiltersCount > 0 ? ` (${extraDetailedFiltersCount})` : ''}
+            </span>
+            {showMoreFilters ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          </button>
         </div>
+
+        {/* Row 3 (Collapsible): Secondary Detailed Selectors & Code Inputs */}
+        {showMoreFilters && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-1.5 items-end pt-1.5 border-t border-slate-200/90">
+            {filterVisibility.showWarehouse && (
+              <div className="min-w-0">
+                <SearchableFilterSelect
+                  id="rpt-filter-warehouse"
+                  label="المخزن"
+                  value={warehouseId}
+                  onChange={(val) => {
+                    setWarehouseId(val);
+                    setPage(1);
+                  }}
+                  options={warehouseOptions}
+                  allOptionLabel="كل المخازن"
+                  allowClear
+                />
+              </div>
+            )}
+
+            {filterVisibility.showCashbox && (
+              <div className="min-w-0">
+                <SearchableFilterSelect
+                  id="rpt-filter-cashbox"
+                  label="الخزنة"
+                  value={cashboxId}
+                  onChange={(val) => {
+                    setCashboxId(val);
+                    setPage(1);
+                  }}
+                  options={cashboxOptions}
+                  allOptionLabel="كل الخزائن"
+                  allowClear
+                />
+              </div>
+            )}
+
+            {filterVisibility.showRepresentative && (
+              <div className="min-w-0">
+                <SearchableFilterSelect
+                  id="rpt-filter-rep"
+                  label="المندوب"
+                  value={representativeId}
+                  onChange={(val) => {
+                    setRepresentativeId(val);
+                    setPage(1);
+                  }}
+                  options={representativeOptions}
+                  allOptionLabel="كل المندوبين"
+                  allowClear
+                />
+              </div>
+            )}
+
+            {filterVisibility.showEmployee && (
+              <div className="min-w-0">
+                <SearchableFilterSelect
+                  id="rpt-filter-employee"
+                  label="الموظف"
+                  value={employeeId}
+                  onChange={(val) => {
+                    setEmployeeId(val);
+                    setPage(1);
+                  }}
+                  options={employeeOptions}
+                  allOptionLabel="كل الموظفين"
+                  searchPlaceholder="بحث في الموظفين..."
+                  allowClear
+                />
+              </div>
+            )}
+
+            {filterVisibility.showUser && (
+              <div className="min-w-0">
+                <SearchableFilterSelect
+                  id="rpt-filter-user"
+                  label="المستخدم"
+                  value={userId}
+                  onChange={(val) => {
+                    setUserId(val);
+                    setPage(1);
+                  }}
+                  options={userOptions}
+                  allOptionLabel="كل المستخدمين"
+                  searchPlaceholder="بحث في حسابات المستخدمين..."
+                  allowClear
+                />
+              </div>
+            )}
+
+            {filterVisibility.showProductFilters && (
+              <div className="min-w-0 sm:col-span-2 md:col-span-2 xl:col-span-1">
+                <div className="flex items-center justify-between gap-2 mb-0.5">
+                  <label htmlFor="rpt-filter-product" className="block text-[11px] font-bold text-slate-700 leading-tight whitespace-nowrap">
+                    الصنف
+                  </label>
+                  {productId !== 'all' && viewMode === 'unified_grid' && (
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('item_lifecycle')}
+                      className="text-[11px] font-bold text-[var(--awlad-royal-700)] hover:underline leading-none shrink-0 cursor-pointer"
+                      title="عرض تاريخ وربح الصنف"
+                    >
+                      تاريخ الصنف
+                    </button>
+                  )}
+                </div>
+                <SearchableFilterSelect
+                  id="rpt-filter-product"
+                  value={productId}
+                  onChange={(val) => {
+                    setProductId(val);
+                    setPage(1);
+                  }}
+                  options={productOptions}
+                  allOptionLabel="كل الأصناف"
+                  searchPlaceholder="ابحث بالاسم أو الكود أو الباركود..."
+                  allowClear
+                  minPanelWidth={290}
+                />
+              </div>
+            )}
+
+            {filterVisibility.showProductFilters && (
+              <>
+                <div className="min-w-0">
+                  <label htmlFor="rpt-filter-product-search" className="block text-[11px] font-bold text-slate-700 leading-tight mb-0.5 whitespace-nowrap">
+                    اسم الصنف
+                  </label>
+                  <input
+                    id="rpt-filter-product-search"
+                    type="text"
+                    value={productSearch}
+                    onChange={(e) => setProductSearch(e.target.value)}
+                    placeholder="جزء من اسم الصنف..."
+                    className="w-full min-w-0 h-8 bg-white border border-slate-300 rounded-md px-2 text-xs text-slate-900 placeholder:text-slate-400 focus:border-[var(--awlad-royal-700)] focus:outline-none"
+                  />
+                </div>
+
+                <div className="min-w-0">
+                  <label htmlFor="rpt-filter-barcode" className="block text-[11px] font-bold text-slate-700 leading-tight mb-0.5 whitespace-nowrap">
+                    الباركود
+                  </label>
+                  <input
+                    id="rpt-filter-barcode"
+                    type="text"
+                    value={barcode}
+                    onChange={(e) => setBarcode(e.target.value)}
+                    placeholder="الباركود أو الكود..."
+                    className="w-full min-w-0 h-8 bg-white border border-slate-300 rounded-md px-2 text-xs font-mono tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[var(--awlad-royal-700)] focus:outline-none"
+                  />
+                </div>
+              </>
+            )}
+
+            {filterVisibility.showInvoiceNumber && (
+              <div className="min-w-0">
+                <label htmlFor="rpt-filter-invoice-no" className="block text-[11px] font-bold text-slate-700 leading-tight mb-0.5 whitespace-nowrap">
+                  رقم الفاتورة
+                </label>
+                <input
+                  id="rpt-filter-invoice-no"
+                  type="text"
+                  value={invoiceNumber}
+                  onChange={(e) => setInvoiceNumber(e.target.value)}
+                  placeholder="رقم الفاتورة..."
+                  className="w-full min-w-0 h-8 bg-white border border-slate-300 rounded-md px-2 text-xs font-mono tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[var(--awlad-royal-700)] focus:outline-none"
+                />
+              </div>
+            )}
+
+            {filterVisibility.showRecordId && (
+              <div className="min-w-0">
+                <label htmlFor="rpt-filter-record-id" className="block text-[11px] font-bold text-slate-700 leading-tight mb-0.5 whitespace-nowrap">
+                  كود السجل
+                </label>
+                <input
+                  id="rpt-filter-record-id"
+                  type="text"
+                  value={recordId}
+                  onChange={(e) => setRecordId(e.target.value)}
+                  placeholder="ID السجل..."
+                  className="w-full min-w-0 h-8 bg-white border border-slate-300 rounded-md px-2 text-xs font-mono tabular-nums text-slate-900 placeholder:text-slate-400 focus:border-[var(--awlad-royal-700)] focus:outline-none"
+                />
+              </div>
+            )}
+          </div>
+        )}
       </form>
 
       {/* Error State */}
@@ -1514,9 +1509,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
         </div>
       )}
 
-      {/* MAIN CONTENT: Either Reference 19-Column Unified Table OR Item Lifecycle & P&L Panel */}
+      {/* MAIN CONTENT: Stretches via flex-1 to eliminate bottom viewport whitespace */}
       {viewMode === 'item_lifecycle' && reportData ? (
-        <div className="mt-1.5">
+        <div className="mt-1.5 flex-1 flex flex-col min-h-0">
           <ItemLifecycleAndPnlPanel
             lifecycle={reportData.itemLifecycle}
             selectedPnl={reportData.itemPnl.selectedItem}
@@ -1528,39 +1523,39 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
           />
         </div>
       ) : (
-        <div className="bg-white border border-t-0 border-slate-300 rounded-b-xl overflow-hidden shadow-xs">
-          {/* Unified Royal Blue Header Strip: عرض + in-table search */}
-          <div className="bg-blue-900 text-white px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs font-extrabold">
-            <div className="flex items-center gap-3">
+        <div className="flex-1 flex flex-col min-h-[260px] bg-white border border-t-0 border-slate-300 rounded-b-lg overflow-hidden">
+          {/* Unified Logo Navy Header Strip: عرض + in-table search */}
+          <div className="bg-[var(--awlad-navy-900)] text-white px-2.5 py-1 flex flex-wrap items-center justify-between gap-2 text-xs font-extrabold">
+            <div className="flex items-center gap-2">
               <span>عرض — {activeReportOption.label}</span>
-              <span className="bg-white/15 px-2 py-0.5 rounded font-mono text-[11px] tabular-nums">
+              <span className="bg-white/15 px-1.5 py-0.5 rounded font-mono text-[11px] tabular-nums">
                 {processedSections.reduce((s, sec) => s + sec.rows.length, 0)} حركة
               </span>
               {isLoading && <span className="text-[11px] opacity-90">جاري التحديث...</span>}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
               <input
                 type="text"
                 value={inlineTableSearch}
                 onChange={(e) => setInlineTableSearch(e.target.value)}
                 placeholder="تصفية سريعة داخل الجدول..."
-                className="h-7 px-2.5 rounded-lg bg-white text-slate-900 placeholder-slate-400 text-[11px] font-normal w-48 focus:outline-none"
+                className="h-7 px-2 rounded-md bg-white text-slate-900 placeholder-slate-400 text-[11px] font-normal w-full sm:w-48 focus:outline-none"
               />
             </div>
           </div>
 
-          {/* Scrollable 19-Column Table Container */}
-          <div className="overflow-auto max-h-[54vh] bg-white">
+          {/* Scrollable 19-Column Table Container (flex-1 eliminates artificial height cap / dead void) */}
+          <div className="flex-1 overflow-auto bg-white">
             <table className="w-full border-collapse text-[11.5px] min-w-[1680px]">
-              <thead className="sticky top-0 z-20 bg-blue-950 text-white border-b border-blue-900">
+              <thead className="sticky top-0 z-20 bg-[var(--awlad-navy-950)] text-white border-b border-[var(--awlad-blue-800)]">
                 <tr>
-                  {visibleColumns.map((col) => (
+                  {visibleColumns.map((col, idx) => (
                     <th
                       key={col.key}
                       onClick={() => handleSort(col.key)}
-                      className={`px-2.5 py-2.5 border-l border-blue-900/60 font-extrabold whitespace-nowrap cursor-pointer hover:bg-blue-900/80 transition-colors ${
+                      className={`px-2 py-1.5 border-l border-[var(--awlad-blue-800)] font-extrabold whitespace-nowrap cursor-pointer hover:bg-[var(--awlad-navy-900)] transition-colors ${
                         col.align === 'center' ? 'text-center' : 'text-right'
-                      }`}
+                      } ${idx === 0 ? 'sticky right-0 z-30 bg-[var(--awlad-navy-950)]' : ''}`}
                     >
                       <span className="inline-flex items-center gap-1">
                         <span>{col.label}</span>
@@ -1574,7 +1569,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
               <tbody>
                 {processedSections.length === 0 && !isLoading && (
                   <tr>
-                    <td colSpan={visibleColSpan} className="p-10 text-center text-slate-500 font-bold text-sm">
+                    <td colSpan={visibleColSpan} className="p-6 text-center text-slate-500 font-bold text-xs">
                       لا توجد حركات مطابقة لمعايير البحث والتصفية الحالية.
                     </td>
                   </tr>
@@ -1582,13 +1577,15 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
 
                 {processedSections.map((section) => {
                   const isSlate = section.theme === 'slate';
-                  const headerBg = isSlate ? 'bg-[#4f5d6b] text-white' : 'bg-[#8d9973] text-white';
+                  const headerBg = isSlate
+                    ? 'bg-[var(--awlad-silver-600)] text-white'
+                    : 'bg-[var(--awlad-royal-700)] text-white';
 
                   return (
                     <React.Fragment key={section.key}>
                       {/* Section Header Banner Row */}
                       <tr className={`${headerBg} font-extrabold text-xs`}>
-                        <td colSpan={visibleColSpan} className="px-3 py-1.5 border-y border-slate-400">
+                        <td colSpan={visibleColSpan} className="px-3 py-1.5 border-y border-slate-300">
                           <div className="flex items-center justify-between">
                             <span>{section.title}</span>
                             <span className="text-[11px] opacity-90 font-mono">({section.rows.length})</span>
@@ -1596,16 +1593,16 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                         </td>
                       </tr>
 
-                      {/* Secondary Sub-header for Invoice Sections matching Reference (اجمالى / مدفوع / آجل) */}
+                      {/* Secondary Sub-header for Invoice Sections (اجمالى / مدفوع / آجل) */}
                       {section.isInvoiceLayout && (
-                        <tr className="bg-[#f1f3f5] text-slate-700 font-bold text-[11px] border-b border-slate-300">
+                        <tr className="bg-[#EEF3FA] text-[var(--awlad-navy-950)] font-bold text-[11px] border-b border-slate-300">
+                          <td className="sticky right-0 z-10 bg-[#EEF3FA] px-2 py-1 border-l border-slate-300" />
                           <td className="px-2 py-1 border-l border-slate-300" />
                           <td className="px-2 py-1 border-l border-slate-300" />
                           <td className="px-2 py-1 border-l border-slate-300" />
-                          <td className="px-2 py-1 border-l border-slate-300" />
-                          <td className="px-2 py-1 border-l border-slate-300 text-center bg-slate-200/70">اجمالى</td>
-                          <td className="px-2 py-1 border-l border-slate-300 text-center bg-slate-200/70">مدفوع</td>
-                          <td className="px-2 py-1 border-l border-slate-300 text-center bg-slate-200/70">آجل</td>
+                          <td className="px-2 py-1 border-l border-slate-300 text-center bg-[#DCE6F5]">اجمالى</td>
+                          <td className="px-2 py-1 border-l border-slate-300 text-center bg-[#DCE6F5]">مدفوع</td>
+                          <td className="px-2 py-1 border-l border-slate-300 text-center bg-[#DCE6F5]">آجل</td>
                           <td colSpan={isRepRole ? 9 : 12} className="px-2 py-1" />
                         </tr>
                       )}
@@ -1621,13 +1618,19 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                         section.rows.map((r) => {
                           const rowBg =
                             r.rowTone === 'invoice_blue'
-                              ? 'bg-[#e8eff8] hover:bg-[#d8e5f6]'
+                              ? 'bg-[#EEF3FA] hover:bg-[#DCE6F5]'
                               : r.rowTone === 'warning_rose'
                               ? 'bg-[#fff5f6] hover:bg-[#ffe8eb]'
                               : 'bg-white hover:bg-slate-50';
+                          const stickyCellBg =
+                            r.rowTone === 'invoice_blue'
+                              ? 'bg-[#EEF3FA]'
+                              : r.rowTone === 'warning_rose'
+                              ? 'bg-[#fff5f6]'
+                              : 'bg-white';
 
                           const valueCellHighlight = section.cashHighlightCol
-                            ? 'bg-[#dff2d8] font-black text-emerald-900'
+                            ? 'bg-[#EEF3FA] font-black text-[var(--awlad-navy-950)]'
                             : 'font-bold text-slate-900';
 
                           return (
@@ -1637,10 +1640,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                               title="اضغط لعرض المستند الأصلي والتدقيق"
                               className={`${rowBg} border-b border-slate-200 transition-colors cursor-pointer`}
                             >
-                              {/* 1. العملية */}
-                              <td className="px-2 py-1.5 border-l border-slate-200 font-bold text-slate-900 whitespace-nowrap">
+                              {/* 1. العملية (مثبت أفقياً على الشاشات الصغيرة) */}
+                              <td className={`sticky right-0 z-10 ${stickyCellBg} px-2 py-1.5 border-l border-slate-200 font-bold text-slate-900 whitespace-nowrap`}>
                                 <span className="inline-flex items-center gap-1">
-                                  <Receipt className="w-3 h-3 text-slate-400 shrink-0" />
+                                  <Receipt className="w-3 h-3 text-[var(--awlad-silver-600)] shrink-0" />
                                   <span>{r.operationLabel}</span>
                                 </span>
                               </td>
@@ -1682,7 +1685,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                               <td className="px-2 py-1.5 border-l border-slate-200 text-center font-mono whitespace-nowrap">
                                 {r.businessDate}
                               </td>
-                              {/* 11. الربح */}
+                              {/* 11. الربح (لون دلالي للقيمة الموجبة/السايبة) */}
                               {!isRepRole && (
                                 <td
                                   className={`px-2 py-1.5 border-l border-slate-200 text-center font-mono font-bold whitespace-nowrap ${
@@ -1705,7 +1708,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                                 {r.displayId}
                               </td>
                               {/* 14. رقم الفاتورة */}
-                              <td className="px-2 py-1.5 border-l border-slate-200 text-center font-mono font-bold text-blue-800 whitespace-nowrap">
+                              <td className="px-2 py-1.5 border-l border-slate-200 text-center font-mono font-bold text-[var(--awlad-royal-700)] whitespace-nowrap">
                                 {r.invoiceNumber || '-'}
                               </td>
                               {/* 15. الفرع */}
@@ -1738,15 +1741,17 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                       )}
 
                       {/* Section Total Row (الإجمالي) */}
-                      <tr className="bg-[#e3e7ec] border-y-2 border-slate-400 font-black text-slate-900">
-                        <td className="px-2 py-1.5 border-l border-slate-300">الإجمالي ({section.totals.count})</td>
+                      <tr className="bg-[#EEF3FA] border-y-2 border-slate-300 font-black text-[var(--awlad-navy-950)]">
+                        <td className="sticky right-0 z-10 bg-[#EEF3FA] px-2 py-1.5 border-l border-slate-300">
+                          الإجمالي ({section.totals.count})
+                        </td>
                         <td className="px-2 py-1.5 border-l border-slate-300 text-center font-mono">{fmtNum(section.totals.quantity)}</td>
                         <td className="px-2 py-1.5 border-l border-slate-300" />
                         <td className="px-2 py-1.5 border-l border-slate-300" />
                         <td className="px-2 py-1.5 border-l border-slate-300 text-center font-mono">
                           {section.totals.priceOrTotal !== null ? fmtMoney(section.totals.priceOrTotal) : ''}
                         </td>
-                        <td className="px-2 py-1.5 border-l border-slate-300 text-center font-mono bg-[#d4e8cb]">
+                        <td className="px-2 py-1.5 border-l border-slate-300 text-center font-mono bg-[#DCE6F5] text-[var(--awlad-navy-950)]">
                           {fmtMoney(section.totals.valueOrPaid)}
                         </td>
                         <td className="px-2 py-1.5 border-l border-slate-300 text-center font-mono">
@@ -1820,70 +1825,70 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
       )}
 
       {/* FIXED BOTTOM BAR: Cashbox Balances + Report Selector («نوع التقرير») + عرض التقرير */}
-      <div className="mt-1.5 bg-[#eef0f3] border border-slate-400 rounded-md p-2 shadow-xs flex flex-wrap items-center justify-between gap-2">
-        {/* 4 Summary Boxes matching Brand Store Reference (hidden financial/profit boxes for rep role) */}
+      <div className="mt-1.5 bg-[#EEF3FA] border border-slate-300 rounded-md p-1.5 flex flex-wrap items-center justify-between gap-2">
+        {/* 4 Summary Boxes */}
         {!isRepRole ? (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 flex-1 min-w-[280px]">
-            <div className="bg-white border border-slate-300 rounded px-3 py-1.5 text-center shadow-2xs">
-              <span className="block text-[11px] font-bold text-slate-600">رصيد الدرج</span>
-              <strong className="text-sm sm:text-base font-black font-mono text-slate-900">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 flex-1 min-w-0 sm:min-w-[280px]">
+            <div className="bg-white border border-slate-300 rounded px-2.5 py-1 text-center">
+              <span className="block text-[10px] font-bold text-slate-600">رصيد الدرج</span>
+              <strong className="text-xs sm:text-sm font-black font-mono text-[var(--awlad-navy-950)] tabular-nums">
                 {fmtMoney(summary?.drawerBalance)}
               </strong>
             </div>
 
-            <div className="bg-white border border-slate-300 rounded px-3 py-1.5 text-center shadow-2xs">
-              <span className="block text-[11px] font-bold text-slate-600">رصيد التقرير</span>
-              <strong className={`text-sm sm:text-base font-black font-mono ${(summary?.reportBalance ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+            <div className="bg-white border border-slate-300 rounded px-2.5 py-1 text-center">
+              <span className="block text-[10px] font-bold text-slate-600">رصيد التقرير</span>
+              <strong className={`text-xs sm:text-sm font-black font-mono tabular-nums ${(summary?.reportBalance ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
                 {fmtMoney(summary?.reportBalance)}
               </strong>
             </div>
 
-            <div className="bg-white border border-slate-300 rounded px-3 py-1.5 text-center shadow-2xs">
-              <span className="block text-[11px] font-bold text-slate-600">مرحل من الأمس</span>
-              <strong className="text-sm sm:text-base font-black font-mono text-blue-900">
+            <div className="bg-white border border-slate-300 rounded px-2.5 py-1 text-center">
+              <span className="block text-[10px] font-bold text-slate-600">مرحل من الأمس</span>
+              <strong className="text-xs sm:text-sm font-black font-mono text-[var(--awlad-navy-900)] tabular-nums">
                 {fmtMoney(summary?.carriedFromYesterday)}
               </strong>
             </div>
 
-            <div className="bg-white border border-slate-300 rounded px-3 py-1.5 text-center shadow-2xs">
-              <span className="block text-[11px] font-bold text-slate-600">ربح التقرير</span>
-              <strong className={`text-sm sm:text-base font-black font-mono ${(summary?.reportProfit ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+            <div className="bg-white border border-slate-300 rounded px-2.5 py-1 text-center">
+              <span className="block text-[10px] font-bold text-slate-600">ربح التقرير</span>
+              <strong className={`text-xs sm:text-sm font-black font-mono tabular-nums ${(summary?.reportProfit ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
                 {fmtMoney(summary?.reportProfit)}
                 <span className="text-[10px] text-slate-500 mr-1">({summary?.reportProfitPercent ?? 0}%)</span>
               </strong>
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-2 flex-1 min-w-[240px]">
-            <div className="bg-white border border-slate-300 rounded px-3 py-1.5 text-center shadow-2xs">
-              <span className="block text-[11px] font-bold text-slate-600">صافي المبيعات</span>
-              <strong className="text-sm font-black font-mono text-emerald-700">
+          <div className="grid grid-cols-2 gap-1.5 flex-1 min-w-0 sm:min-w-[240px]">
+            <div className="bg-white border border-slate-300 rounded px-2.5 py-1 text-center">
+              <span className="block text-[10px] font-bold text-slate-600">صافي المبيعات</span>
+              <strong className="text-xs sm:text-sm font-black font-mono text-[var(--awlad-royal-700)] tabular-nums">
                 {fmtMoney(summary?.filteredSalesNet)}
               </strong>
             </div>
-            <div className="bg-white border border-slate-300 rounded px-3 py-1.5 text-center shadow-2xs">
-              <span className="block text-[11px] font-bold text-slate-600">عدد الحركات</span>
-              <strong className="text-sm font-black font-mono text-blue-900">
+            <div className="bg-white border border-slate-300 rounded px-2.5 py-1 text-center">
+              <span className="block text-[10px] font-bold text-slate-600">عدد الحركات</span>
+              <strong className="text-xs sm:text-sm font-black font-mono text-[var(--awlad-navy-900)] tabular-nums">
                 {summary?.totalRows ?? 0}
               </strong>
             </div>
           </div>
         )}
 
-        {/* Single Unified Dropdown «نوع التقرير» with Exact Order & Dividers + عرض التقرير */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-1.5 relative" ref={dropdownRef}>
-            <span className="text-xs font-extrabold text-slate-800 whitespace-nowrap">نوع التقرير</span>
+        {/* Single Unified Dropdown «نوع التقرير» + عرض التقرير */}
+        <div className="flex items-center gap-1.5 flex-wrap w-full sm:w-auto">
+          <div className="flex items-center gap-1.5 relative flex-1 min-w-0 sm:flex-initial" ref={dropdownRef}>
+            <span className="text-xs font-extrabold text-[var(--awlad-navy-950)] whitespace-nowrap">نوع التقرير</span>
             <button
               ref={reportDropdownBtnRef}
               type="button"
               onClick={() => setIsReportDropdownOpen((o) => !o)}
               aria-haspopup="listbox"
               aria-expanded={isReportDropdownOpen}
-              className="h-9 min-w-[230px] sm:min-w-[260px] bg-white border border-slate-400 rounded px-3 text-xs font-extrabold text-slate-900 flex items-center justify-between gap-2 shadow-2xs hover:border-emerald-600 cursor-pointer"
+              className="h-8 min-w-0 flex-1 sm:min-w-[230px] bg-white border border-slate-400 rounded px-2.5 text-xs font-extrabold text-slate-900 flex items-center justify-between gap-2 hover:border-[var(--awlad-royal-700)] cursor-pointer"
             >
               <span className="truncate">{activeReportOption.label}</span>
-              {isReportDropdownOpen ? <ChevronUp className="w-4 h-4 text-slate-600" /> : <ChevronDown className="w-4 h-4 text-slate-600" />}
+              {isReportDropdownOpen ? <ChevronUp className="w-4 h-4 text-slate-600 shrink-0" /> : <ChevronDown className="w-4 h-4 text-slate-600 shrink-0" />}
             </button>
 
             {isReportDropdownOpen &&
@@ -1925,8 +1930,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                           }}
                           className={`w-full text-right px-3 py-1.5 text-xs transition-colors cursor-pointer ${
                             isSelected
-                              ? 'bg-[#22b14c] text-white font-extrabold'
-                              : 'text-slate-800 font-semibold hover:bg-emerald-50'
+                              ? 'bg-[var(--awlad-royal-700)] text-white font-extrabold'
+                              : 'text-slate-800 font-semibold hover:bg-[#EEF3FA]'
                           }`}
                         >
                           {opt.label}
@@ -1945,7 +1950,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
               setViewMode('unified_grid');
               loadReport();
             }}
-            className="h-9 px-4 rounded bg-[#22b14c] hover:bg-[#1a963f] text-white font-black text-xs shadow-xs transition-colors cursor-pointer"
+            className="h-8 px-3.5 rounded bg-[var(--awlad-royal-700)] hover:bg-[var(--awlad-royal-600)] text-white font-black text-xs transition-colors cursor-pointer shrink-0"
           >
             عرض التقرير
           </button>

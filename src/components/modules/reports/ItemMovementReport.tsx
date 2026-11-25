@@ -40,15 +40,15 @@ const SECTION_META: Array<{
     key: 'sales',
     title: '1. فواتير المبيعات المعتمدة',
     subtitle: 'المبيعات الفعلية واحتساب الربحية بناءً على التكلفة',
-    bannerCls: 'bg-blue-950 text-white border-blue-900',
-    badgeCls: 'bg-blue-800 text-blue-100',
+    bannerCls: 'bg-[#011E58] text-white border-[#002160]',
+    badgeCls: 'bg-[#003589] text-[#DCE6F5]',
   },
   {
     key: 'purchases',
     title: '2. فواتير المشتريات والتوريدات',
     subtitle: 'الكميات المضافة للمخزون من الموردين وتكلفة الشراء',
-    bannerCls: 'bg-purple-900 text-white border-purple-800',
-    badgeCls: 'bg-purple-800 text-purple-100',
+    bannerCls: 'bg-[#002160] text-white border-[#011E58]',
+    badgeCls: 'bg-[#003589] text-[#DCE6F5]',
   },
   {
     key: 'sales_returns',
@@ -61,36 +61,36 @@ const SECTION_META: Array<{
     key: 'purchase_returns',
     title: '4. مرتجعات المشتريات',
     subtitle: 'الكميات المرتجعة للموردين وخصمها من المخزن',
-    bannerCls: 'bg-orange-800 text-white border-orange-700',
-    badgeCls: 'bg-orange-700 text-orange-100',
+    bannerCls: 'bg-amber-900 text-white border-amber-800',
+    badgeCls: 'bg-amber-800 text-amber-100',
   },
   {
     key: 'transfers',
     title: '5. التحويلات المخزنية بين المستودعات',
     subtitle: 'حركات نقل داخلي مستبعدة من إجمالي المبيعات',
-    bannerCls: 'bg-indigo-900 text-white border-indigo-800',
-    badgeCls: 'bg-indigo-800 text-indigo-100',
+    bannerCls: 'bg-[#003589] text-white border-[#002160]',
+    badgeCls: 'bg-[#011E58] text-[#DCE6F5]',
   },
   {
     key: 'custody_sent',
     title: '6. صرف عهدة البضاعة من المخزن للمندوب',
     subtitle: 'أذونات الصرف الصادرة من المستودع الرئيسي للمناديب',
-    bannerCls: 'bg-cyan-900 text-white border-cyan-800',
-    badgeCls: 'bg-cyan-800 text-cyan-100',
+    bannerCls: 'bg-[#0049B0] text-white border-[#003589]',
+    badgeCls: 'bg-[#011E58] text-[#DCE6F5]',
   },
   {
     key: 'custody_received',
     title: '7. استلام العهدة في سيارات المناديب',
     subtitle: 'الأذونات المؤكد استلامها فعلياً في عهدة سيارة المندوب',
-    bannerCls: 'bg-emerald-900 text-white border-emerald-800',
-    badgeCls: 'bg-emerald-800 text-emerald-100',
+    bannerCls: 'bg-[#011E58] text-white border-[#003589]',
+    badgeCls: 'bg-[#0049B0] text-white',
   },
   {
     key: 'custody_deliveries',
     title: '8. تسليمات وإرجاعات عهدة المناديب',
     subtitle: 'التسليم الجزئي للعملاء أو الإرجاع من السيارة للمخزن',
-    bannerCls: 'bg-sky-900 text-white border-sky-800',
-    badgeCls: 'bg-sky-800 text-sky-100',
+    bannerCls: 'bg-slate-800 text-white border-slate-700',
+    badgeCls: 'bg-slate-700 text-slate-100',
   },
   {
     key: 'adjustments',
@@ -478,11 +478,11 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {/* Header & Exports */}
-      <div className="bg-white px-3.5 py-2.5 rounded-lg border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-2.5">
+      <div className="bg-white px-2.5 py-2 rounded-lg border border-slate-200 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="text-base font-black text-slate-900">تقرير حركة الصنف المفصل والشامل</h3>
+          <h3 className="text-sm font-black text-slate-900">تقرير حركة الصنف المفصل والشامل</h3>
           <p className="text-[11px] text-slate-500">
             متابعة المبيعات والمشتريات والمرتجعات والتحويلات وعهد المناديب والتسويات مع احتساب الأرباح على التكلفة وتقييم المخزون
           </p>
@@ -492,7 +492,7 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
             type="button"
             onClick={handleExportExcel}
             disabled={!report}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 font-bold text-slate-700 cursor-pointer disabled:opacity-50"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-300 bg-white hover:bg-slate-50 font-bold text-slate-700 cursor-pointer disabled:opacity-50"
           >
             <Download className="w-3.5 h-3.5 text-emerald-600" />
             <span>Excel</span>
@@ -501,7 +501,7 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
             type="button"
             onClick={handleExportPdf}
             disabled={!report}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 font-bold text-red-800 cursor-pointer disabled:opacity-50"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-md border border-red-200 bg-red-50 hover:bg-red-100 font-bold text-red-800 cursor-pointer disabled:opacity-50"
           >
             <FileDown className="w-3.5 h-3.5 text-red-700" />
             <span>PDF</span>
@@ -510,7 +510,7 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
             type="button"
             onClick={handlePrint}
             disabled={!report}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#003589] hover:bg-[#011E58] text-white font-black cursor-pointer disabled:opacity-50"
           >
             <Printer className="w-3.5 h-3.5" />
             <span>طباعة التقرير</span>
@@ -519,8 +519,8 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
       </div>
 
       {/* Multi-Filter Toolbar */}
-      <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs space-y-2.5 text-xs">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 items-end">
+      <div className="bg-white p-2 rounded-lg border border-slate-200 space-y-1.5 text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 items-end">
           <div>
             <SearchableFilterSelect
               id="imr-filter-product"
@@ -533,7 +533,7 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
               searchPlaceholder="ابحث باسم الصنف أو الكود أو الباركود..."
               allowClear
               minPanelWidth={280}
-              buttonClassName="rounded-lg min-h-[32px]"
+              buttonClassName="rounded-md h-8"
             />
           </div>
           <div>
@@ -546,7 +546,7 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
               allOptionLabel="جميع المستودعات"
               allOptionValue="all"
               allowClear
-              buttonClassName="rounded-lg min-h-[32px]"
+              buttonClassName="rounded-md h-8"
             />
           </div>
           <div>
@@ -559,7 +559,7 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
               allOptionLabel="جميع المناديب"
               allOptionValue="all"
               allowClear
-              buttonClassName="rounded-lg min-h-[32px]"
+              buttonClassName="rounded-md h-8"
             />
           </div>
           <div>
@@ -573,32 +573,32 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
               allOptionValue="all"
               allowClear
               minPanelWidth={270}
-              buttonClassName="rounded-lg min-h-[32px]"
+              buttonClassName="rounded-md h-8"
             />
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 items-end">
           <div>
-            <label className="block text-[11px] font-bold text-slate-600 mb-1">من تاريخ:</label>
+            <label className="block text-[11px] font-bold text-slate-600 mb-0.5">من تاريخ:</label>
             <input
               type="date"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="w-full h-8 px-2.5 py-1 rounded-lg border border-slate-300 font-mono text-xs bg-slate-50"
+              className="w-full h-8 px-2.5 py-1 rounded-md border border-slate-300 font-mono text-xs bg-slate-50"
             />
           </div>
           <div>
-            <label className="block text-[11px] font-bold text-slate-600 mb-1">إلى تاريخ:</label>
+            <label className="block text-[11px] font-bold text-slate-600 mb-0.5">إلى تاريخ:</label>
             <input
               type="date"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              className="w-full h-8 px-2.5 py-1 rounded-lg border border-slate-300 font-mono text-xs bg-slate-50"
+              className="w-full h-8 px-2.5 py-1 rounded-md border border-slate-300 font-mono text-xs bg-slate-50"
             />
           </div>
           <div className="lg:col-span-2 relative">
-            <label className="block text-[11px] font-bold text-slate-600 mb-1">بحث في المستندات أو الأطراف:</label>
+            <label className="block text-[11px] font-bold text-slate-600 mb-0.5">بحث في المستندات أو الأطراف:</label>
             <div className="relative">
               <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2" />
               <input
@@ -606,7 +606,7 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="رقم فاتورة، عميل، مورد، أو ملاحظات..."
-                className="w-full h-8 pr-8 pl-2.5 py-1 rounded-lg border border-slate-300 text-xs bg-slate-50 focus:bg-white"
+                className="w-full h-8 pr-8 pl-2.5 py-1 rounded-md border border-slate-300 text-xs bg-slate-50 focus:bg-white"
               />
             </div>
           </div>
@@ -615,7 +615,7 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
               type="button"
               onClick={fetchReport}
               disabled={isLoading}
-              className="flex-1 flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-bold cursor-pointer disabled:opacity-50"
+              className="flex-1 flex items-center justify-center gap-1.5 h-8 px-3 rounded-md bg-[#003589] hover:bg-[#011E58] text-white font-bold cursor-pointer disabled:opacity-50"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
               <span>تحديث</span>
@@ -623,7 +623,7 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
             <button
               type="button"
               onClick={handleResetFilters}
-              className="flex items-center justify-center gap-1 h-8 px-2.5 rounded-lg border border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+              className="flex items-center justify-center gap-1 h-8 px-2.5 rounded-md border border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
               title="إعادة ضبط الفلاتر"
             >
               <RotateCcw className="w-3.5 h-3.5" />
@@ -642,19 +642,19 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
       {report && (
         <>
           {report.product && (
-            <div className="bg-slate-900 text-white px-3.5 py-2.5 rounded-lg flex flex-wrap items-center justify-between gap-3 text-xs">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-blue-800 flex items-center justify-center shrink-0">
-                  <Package className="w-4 h-4 text-white" />
+            <div className="awlad-brand-gradient text-white px-2.5 py-2 rounded-lg flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-md bg-white/15 flex items-center justify-center shrink-0">
+                  <Package className="w-3.5 h-3.5 text-white" />
                 </div>
                 <div>
-                  <h4 className="font-black text-sm">{report.product.name}</h4>
-                  <p className="text-slate-300 font-mono text-[11px]">
+                  <h4 className="font-black text-xs sm:text-sm">{report.product.name}</h4>
+                  <p className="text-slate-300 font-mono text-[10px]">
                     كود: {report.product.code} {report.product.barcode ? `| باركود: ${report.product.barcode}` : ''} | الوحدة الأساسية: {report.product.baseUnit}
                   </p>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-4 tabular-nums">
+              <div className="flex flex-wrap gap-3 tabular-nums">
                 <div>
                   <span className="text-slate-400 block text-[10px]">سعر الشراء</span>
                   <strong className="font-mono text-xs">{report.product.purchasePrice.toLocaleString()} {settings.currency}</strong>
@@ -673,18 +673,18 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
 
           {/* Warehouse & Rep Custody Breakdown */}
           {(report.warehouseBreakdown.length > 0 || report.repCustodyBreakdown.length > 0) && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5 text-xs">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 text-xs">
               {report.warehouseBreakdown.length > 0 && (
-                <div className="bg-white p-2.5 rounded-lg border border-slate-200 shadow-xs">
-                  <h4 className="font-black text-slate-900 mb-1.5 flex items-center gap-1.5">
-                    <WarehouseIcon className="w-4 h-4 text-blue-800" />
+                <div className="bg-white p-2 rounded-lg border border-slate-200">
+                  <h4 className="font-black text-slate-900 mb-1 flex items-center gap-1.5">
+                    <WarehouseIcon className="w-3.5 h-3.5 text-blue-800" />
                     <span>توزيع الأرصدة بالمستودعات ({report.warehouseBreakdown.length})</span>
                   </h4>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 tabular-nums">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-px bg-slate-200 border border-slate-200 rounded-md overflow-hidden tabular-nums">
                     {report.warehouseBreakdown.map((wh) => (
-                      <div key={wh.warehouseId} className="p-2 rounded-lg bg-slate-50 border border-slate-200">
+                      <div key={wh.warehouseId} className="px-2 py-1.5 bg-slate-50">
                         <div className="font-bold text-slate-800 truncate">{wh.warehouseName}</div>
-                        <div className="font-mono font-black text-blue-950 text-xs mt-0.5">{wh.quantity}</div>
+                        <div className="font-mono font-black text-blue-950 text-xs">{wh.quantity}</div>
                         <div className="text-[10px] text-slate-500 font-mono">تكلفة: {wh.costValue.toLocaleString()} {settings.currency}</div>
                       </div>
                     ))}
@@ -693,16 +693,16 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
               )}
 
               {report.repCustodyBreakdown.length > 0 && (
-                <div className="bg-white p-2.5 rounded-lg border border-slate-200 shadow-xs">
-                  <h4 className="font-black text-slate-900 mb-1.5 flex items-center gap-1.5">
-                    <Truck className="w-4 h-4 text-emerald-700" />
+                <div className="bg-white p-2 rounded-lg border border-slate-200">
+                  <h4 className="font-black text-slate-900 mb-1 flex items-center gap-1.5">
+                    <Truck className="w-3.5 h-3.5 text-[#003589]" />
                     <span>أرصدة عهد سيارات المناديب ({report.repCustodyBreakdown.length})</span>
                   </h4>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 tabular-nums">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-px bg-[#DCE6F5] border border-[#DCE6F5] rounded-md overflow-hidden tabular-nums">
                     {report.repCustodyBreakdown.map((rep) => (
-                      <div key={rep.representativeId} className="p-2 rounded-lg bg-emerald-50/60 border border-emerald-200">
+                      <div key={rep.representativeId} className="px-2 py-1.5 bg-[#EEF3FA]/70">
                         <div className="font-bold text-slate-900 truncate">{rep.representativeName}</div>
-                        <div className="font-mono font-black text-emerald-800 text-xs mt-0.5">{rep.quantity}</div>
+                        <div className="font-mono font-black text-[#011E58] text-xs">{rep.quantity}</div>
                         <div className="text-[10px] text-slate-600 font-mono">تكلفة: {rep.costValue.toLocaleString()} {settings.currency}</div>
                       </div>
                     ))}
@@ -714,11 +714,11 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
 
           {/* Grouped Movement Sections */}
           {visibleSections.length === 0 ? (
-            <div className="bg-white p-6 rounded-lg border border-slate-200 text-center text-xs text-slate-500 font-bold">
+            <div className="bg-white p-2.5 rounded-lg border border-slate-200 text-center text-xs text-slate-500 font-bold">
               لا توجد حركات مسجلة تطابق الفلاتر الحالية.
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2">
               {visibleSections.map((sec) => {
                 const rows = report.sections[sec.key] || [];
                 const secTotalQty = rows.reduce((s, r) => s + Number(r.quantity || 0), 0);
@@ -814,7 +814,7 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
                   exportValue: (r) => `${r.direction === 'in' ? '+' : r.direction === 'out' ? '-' : ''}${r.quantity} ${r.unit}`,
                   render: (r) => (
                     <span className="font-mono font-bold whitespace-nowrap tabular-nums">
-                      <span className={r.direction === 'in' ? 'text-emerald-700' : r.direction === 'out' ? 'text-rose-700' : 'text-indigo-800'}>
+                      <span className={r.direction === 'in' ? 'text-emerald-700' : r.direction === 'out' ? 'text-rose-700' : 'text-[#003589]'}>
                         {r.direction === 'in' ? '+' : r.direction === 'out' ? '-' : ''}
                         {r.quantity}
                       </span>{' '}
@@ -893,12 +893,12 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
 
                 return (
                   <div key={sec.key} className="space-y-1.5">
-                    <div className={`px-3 py-2 rounded-lg border flex flex-wrap items-center justify-between gap-2 ${sec.bannerCls}`}>
+                    <div className={`px-2.5 py-1.5 rounded-lg border flex flex-wrap items-center justify-between gap-2 ${sec.bannerCls}`}>
                       <div>
                         <h4 className="font-black text-xs sm:text-sm">{sec.title}</h4>
                         <p className="text-[11px] opacity-85">{sec.subtitle}</p>
                       </div>
-                      <div className="flex items-center gap-3 text-[11px] font-mono tabular-nums">
+                      <div className="flex items-center gap-2 text-[11px] font-mono tabular-nums">
                         <span className={`px-2 py-0.5 rounded font-bold ${sec.badgeCls}`}>
                           {rows.length} حركة | كمية: {secTotalQty}
                         </span>
@@ -931,16 +931,16 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
           )}
 
           {/* Fixed Bottom Summary Bar */}
-          <div className="sticky bottom-0 z-20 bg-slate-950 text-white px-3.5 py-2.5 rounded-lg shadow-lg border border-slate-800 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 text-xs tabular-nums">
+          <div className="sticky bottom-0 z-20 bg-[#001A49] text-white px-2.5 py-1.5 rounded-lg border border-[#002160] grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-xs tabular-nums">
             <div>
-              <span className="text-slate-400 text-[10px] block">إجمالي المبيعات (كمية: {report.totals.totalSalesQty})</span>
-              <strong className="text-xs font-mono font-black text-blue-300">
+              <span className="text-slate-300 text-[10px] block">إجمالي المبيعات (كمية: {report.totals.totalSalesQty})</span>
+              <strong className="text-xs font-mono font-black text-sky-200">
                 {report.totals.totalSalesValue.toLocaleString()} {settings.currency}
               </strong>
             </div>
             <div>
-              <span className="text-slate-400 text-[10px] block">إجمالي المشتريات (كمية: {report.totals.totalPurchaseQty})</span>
-              <strong className="text-xs font-mono font-black text-purple-300">
+              <span className="text-slate-300 text-[10px] block">إجمالي المشتريات (كمية: {report.totals.totalPurchaseQty})</span>
+              <strong className="text-xs font-mono font-black text-[#DCE6F5]">
                 {report.totals.totalPurchaseValue.toLocaleString()} {settings.currency}
               </strong>
             </div>
@@ -990,8 +990,8 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
         maxWidth="2xl"
       >
         {selectedRow && (
-          <div className="space-y-3 text-xs">
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 p-2.5 bg-slate-50 rounded-lg border border-slate-200 tabular-nums">
+          <div className="space-y-2 text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-2 bg-slate-50 rounded-lg border border-slate-200 tabular-nums">
               <div>
                 <span className="text-slate-500 block">الصنف:</span>
                 <strong className="text-slate-900">{selectedRow.productName}</strong>
@@ -1019,7 +1019,7 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
             </div>
 
             {selectedRow.notes && (
-              <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-950">
+              <div className="p-2 rounded-md bg-amber-50 border border-amber-200 text-amber-950">
                 <strong>ملاحظات:</strong> {selectedRow.notes}
               </div>
             )}
@@ -1112,11 +1112,11 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
               </div>
             )}
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+            <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-slate-100">
               <button
                 type="button"
                 onClick={handlePrintSelectedSourceDoc}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-bold cursor-pointer"
+                className="flex items-center gap-1 h-8 px-2.5 rounded-md bg-[#003589] hover:bg-[#011E58] text-white font-bold cursor-pointer"
               >
                 <Printer className="w-3.5 h-3.5" />
                 <span>طباعة المستند</span>
@@ -1124,7 +1124,7 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
               <button
                 type="button"
                 onClick={() => setSelectedRow(null)}
-                className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+                className="h-8 px-2.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
               >
                 إغلاق
               </button>

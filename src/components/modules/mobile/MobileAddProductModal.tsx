@@ -239,8 +239,8 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-[#f5f7fb] flex flex-col overflow-hidden" dir="rtl">
-      {/* Emerald Top Bar */}
-      <header className="bg-[#0F5A33] text-white px-3 py-2 flex items-center justify-between gap-2 pt-safe shrink-0 shadow-sm">
+      {/* Brand Top Bar */}
+      <header className="awlad-brand-gradient text-white px-3 py-2 flex items-center justify-between gap-2 pt-safe shrink-0 shadow-sm">
         <button
           type="button"
           onClick={onClose}
@@ -253,34 +253,34 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
         <div className="w-[36px]" aria-hidden="true" />
       </header>
 
-      <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-2.5 space-y-2 text-xs pb-20">
+      <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-2 space-y-1.5 text-xs pb-16">
         {error && (
-          <div className="p-2.5 rounded-lg bg-red-50 border border-red-300 text-red-800 font-bold">
+          <div className="p-2 rounded-lg bg-red-50 border border-red-300 text-red-800 font-bold">
             {error}
           </div>
         )}
 
         {/* Compact Photo Picker */}
-        <div className="bg-white rounded-lg border border-slate-200 p-2.5 flex items-center justify-center gap-3">
+        <div className="bg-white rounded-lg border border-slate-200 p-2 flex items-center justify-center gap-2">
           <div className="relative">
             {image ? (
               <>
                 <img
                   src={image}
                   alt="صورة الصنف"
-                  className="w-14 h-14 rounded-full object-cover border-2 border-[#0F5A33]/30"
+                  className="w-12 h-12 rounded-full object-cover border-2 border-[#003589]/30"
                 />
                 <button
                   type="button"
                   onClick={() => setImage('')}
-                  className="absolute -top-1 -left-1 w-6 h-6 rounded-full bg-red-600 text-white flex items-center justify-center shadow cursor-pointer"
+                  className="absolute -top-1 -left-1 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center shadow cursor-pointer"
                   aria-label="إزالة الصورة"
                 >
                   <X className="w-3 h-3" />
                 </button>
               </>
             ) : (
-              <label className="w-14 h-14 rounded-full bg-emerald-50 border-2 border-dashed border-[#0F5A33]/40 flex flex-col items-center justify-center text-[#0F5A33] cursor-pointer active:scale-95 transition-transform">
+              <label className="w-12 h-12 rounded-full bg-[#EEF3FA] border-2 border-dashed border-[#003589]/40 flex flex-col items-center justify-center text-[#003589] cursor-pointer active:scale-95 transition-transform">
                 <Camera className="w-4 h-4" />
                 <span className="text-[9px] font-bold mt-0.5">صورة</span>
                 <input type="file" accept="image/*" onChange={handleImagePick} className="hidden" />
@@ -288,7 +288,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
             )}
           </div>
           {image && (
-            <label className="text-[11px] font-bold text-[#0F5A33] underline cursor-pointer">
+            <label className="text-[11px] font-bold text-[#003589] underline cursor-pointer">
               تغيير الصورة
               <input type="file" accept="image/*" onChange={handleImagePick} className="hidden" />
             </label>
@@ -296,7 +296,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
         </div>
 
         {/* Core Product Fields */}
-        <div className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-2">
+        <div className="bg-white rounded-lg border border-slate-200 p-2 space-y-1.5">
           <div>
             <label className="block font-bold text-slate-700 mb-0.5">اسم المنتج بالمواصفات تفصيلي *</label>
             <input
@@ -305,11 +305,11 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
               placeholder="أدخل اسم المنتج والمواصفات..."
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full min-h-[36px] border border-slate-300 rounded-lg px-2.5 font-bold bg-white focus:outline-hidden focus:border-[#0F5A33]"
+              className="w-full h-8 border border-slate-300 rounded-md px-2 font-bold bg-white focus:outline-hidden focus:border-[#003589]"
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
             <div>
               <label className="block font-bold text-slate-700 mb-0.5">ملاحظات على المنتج</label>
               <input
@@ -317,7 +317,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                 placeholder="ملاحظات اختيارية..."
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                className="w-full min-h-[36px] border border-slate-300 rounded-lg px-2.5 bg-white focus:outline-hidden focus:border-[#0F5A33]"
+                className="w-full h-8 border border-slate-300 rounded-md px-2 bg-white focus:outline-hidden focus:border-[#003589]"
               />
             </div>
 
@@ -329,7 +329,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                 placeholder="اختر أو اكتب التصنيف..."
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                className="w-full min-h-[36px] border border-slate-300 rounded-lg px-2.5 font-bold bg-white focus:outline-hidden focus:border-[#0F5A33]"
+                className="w-full h-8 border border-slate-300 rounded-md px-2 font-bold bg-white focus:outline-hidden focus:border-[#003589]"
               />
               <datalist id="mobile-add-prod-categories">
                 {categoryOptions.map((c) => (
@@ -339,7 +339,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-1.5">
             <div>
               <label className="block font-bold text-slate-700 mb-0.5">الكمية المتاحة</label>
               <input
@@ -351,7 +351,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                 onChange={(e) =>
                   setAvailableQty(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))
                 }
-                className="w-full min-h-[36px] border border-slate-300 rounded-lg px-2.5 font-mono font-bold text-center tabular-nums bg-white focus:outline-hidden focus:border-[#0F5A33]"
+                className="w-full h-8 border border-slate-300 rounded-md px-2 font-mono font-bold text-center tabular-nums bg-white focus:outline-hidden focus:border-[#003589]"
               />
             </div>
 
@@ -360,7 +360,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
               <select
                 value={qtyEntryUnit}
                 onChange={(e) => setQtyEntryUnit(e.target.value as '1' | '2' | '3')}
-                className="w-full min-h-[36px] border border-slate-300 rounded-lg px-2 font-bold bg-white"
+                className="w-full h-8 border border-slate-300 rounded-md px-2 font-bold bg-white"
               >
                 <option value="1">{baseUnit.trim() || 'الوحدة الأساسية (1)'}</option>
                 {unit2Name.trim() && <option value="2">{unit2Name.trim()}</option>}
@@ -369,9 +369,9 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-[11px]">
+          <div className="flex items-center justify-between px-2 py-1 rounded-md bg-slate-50 border border-slate-200 text-[11px]">
             <span className="text-slate-600 font-bold">الكمية بالوحدة الأساسية:</span>
-            <span className="font-mono font-black text-[#0F5A33] tabular-nums">
+            <span className="font-mono font-black text-[#011E58] tabular-nums">
               {computedBaseQty.toLocaleString()} {baseUnit.trim() || 'وحدة'}
             </span>
           </div>
@@ -382,7 +382,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
               <select
                 value={selectedWarehouseId}
                 onChange={(e) => setSelectedWarehouseId(e.target.value)}
-                className="w-full min-h-[36px] border border-slate-300 rounded-lg px-2.5 font-bold bg-white"
+                className="w-full h-8 border border-slate-300 rounded-md px-2 font-bold bg-white"
               >
                 {warehouses.map((w) => (
                   <option key={w.id} value={w.id}>
@@ -399,13 +399,13 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
           <button
             type="button"
             onClick={() => setUnit1Open((p) => !p)}
-            className="w-full min-h-[38px] px-3 py-1.5 flex items-center justify-between bg-slate-50 border-b border-slate-200 font-black text-slate-900 cursor-pointer"
+            className="w-full min-h-[34px] px-2.5 py-1 flex items-center justify-between bg-slate-50 border-b border-slate-200 font-black text-slate-900 cursor-pointer"
           >
             <span>الوحدة الأساسية (1) *</span>
             {unit1Open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
           {unit1Open && (
-            <div className="p-2.5 space-y-2">
+            <div className="p-2 space-y-1.5">
               <div>
                 <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">اسم الوحدة الأساسية *</label>
                 <input
@@ -414,7 +414,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                   placeholder="قطعة / كيس / كيلو / علبة"
                   value={baseUnit}
                   onChange={(e) => setBaseUnit(e.target.value)}
-                  className="w-full min-h-[36px] border border-slate-300 rounded-lg px-2.5 font-bold"
+                  className="w-full h-8 border border-slate-300 rounded-md px-2 font-bold"
                 />
               </div>
 
@@ -426,12 +426,12 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                     placeholder="أدخل أو ولّد الباركود"
                     value={barcode1}
                     onChange={(e) => setBarcode1(e.target.value)}
-                    className="flex-1 min-h-[36px] border border-slate-300 rounded-lg px-2.5 font-mono font-bold"
+                    className="flex-1 h-8 border border-slate-300 rounded-md px-2 font-mono font-bold"
                   />
                   <button
                     type="button"
                     onClick={() => setBarcode1(generateBarcode())}
-                    className="min-h-[36px] min-w-[36px] rounded-lg border border-slate-300 bg-slate-50 flex items-center justify-center text-slate-700 cursor-pointer"
+                    className="h-8 w-8 rounded-md border border-slate-300 bg-slate-50 flex items-center justify-center text-slate-700 cursor-pointer"
                     title="توليد باركود"
                   >
                     <RefreshCw className="w-4 h-4" />
@@ -439,7 +439,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                   <button
                     type="button"
                     onClick={() => handlePrintBarcode(barcode1, baseUnit, sellingPrice1)}
-                    className="min-h-[36px] min-w-[36px] rounded-lg border border-slate-300 bg-slate-50 flex items-center justify-center text-[#0F5A33] cursor-pointer"
+                    className="h-8 w-8 rounded-md border border-slate-300 bg-slate-50 flex items-center justify-center text-[#003589] cursor-pointer"
                     title="طباعة باركود"
                   >
                     <Printer className="w-4 h-4" />
@@ -447,7 +447,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-1.5">
                 <div>
                   <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">سعر الشراء</label>
                   <input
@@ -459,7 +459,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                     onChange={(e) =>
                       setPurchasePrice1(e.target.value === '' ? '' : Number(e.target.value))
                     }
-                    className="w-full min-h-[36px] border border-slate-300 rounded-lg px-2.5 font-mono font-bold tabular-nums"
+                    className="w-full h-8 border border-slate-300 rounded-md px-2 font-mono font-bold tabular-nums"
                   />
                 </div>
                 <div>
@@ -473,7 +473,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                     onChange={(e) =>
                       setSellingPrice1(e.target.value === '' ? '' : Number(e.target.value))
                     }
-                    className="w-full min-h-[36px] border border-slate-300 rounded-lg px-2.5 font-mono font-black text-[#0F5A33] tabular-nums"
+                    className="w-full h-8 border border-slate-300 rounded-md px-2 font-mono font-black text-[#011E58] tabular-nums"
                   />
                 </div>
               </div>
@@ -486,14 +486,14 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
           <button
             type="button"
             onClick={() => setUnit2Open((p) => !p)}
-            className="w-full min-h-[38px] px-3 py-1.5 flex items-center justify-between bg-slate-50 border-b border-slate-200 font-black text-slate-800 cursor-pointer"
+            className="w-full min-h-[34px] px-2.5 py-1 flex items-center justify-between bg-slate-50 border-b border-slate-200 font-black text-slate-800 cursor-pointer"
           >
             <span>الوحدة الثانية (2)</span>
             {unit2Open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
           {unit2Open && (
-            <div className="p-2.5 space-y-2">
-              <div className="grid grid-cols-2 gap-2">
+            <div className="p-2 space-y-1.5">
+              <div className="grid grid-cols-2 gap-1.5">
                 <div>
                   <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">اسم الوحدة</label>
                   <input
@@ -501,7 +501,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                     placeholder="كرتونة / باكت"
                     value={unit2Name}
                     onChange={(e) => setUnit2Name(e.target.value)}
-                    className="w-full min-h-[36px] border border-slate-300 rounded-lg px-2.5 font-bold"
+                    className="w-full h-8 border border-slate-300 rounded-md px-2 font-bold"
                   />
                 </div>
                 <div>
@@ -515,7 +515,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                     onChange={(e) =>
                       setUnit2Factor(e.target.value === '' ? '' : Number(e.target.value))
                     }
-                    className="w-full min-h-[36px] border border-slate-300 rounded-lg px-2.5 font-mono font-bold tabular-nums"
+                    className="w-full h-8 border border-slate-300 rounded-md px-2 font-mono font-bold tabular-nums"
                   />
                 </div>
               </div>
@@ -525,18 +525,18 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                   placeholder="باركود الوحدة الثانية"
                   value={barcode2}
                   onChange={(e) => setBarcode2(e.target.value)}
-                  className="flex-1 min-h-[36px] border border-slate-300 rounded-lg px-2.5 font-mono font-bold"
+                  className="flex-1 h-8 border border-slate-300 rounded-md px-2 font-mono font-bold"
                 />
                 <button
                   type="button"
                   onClick={() => setBarcode2(generateBarcode())}
-                  className="min-h-[36px] min-w-[36px] rounded-lg border border-slate-300 bg-slate-50 flex items-center justify-center text-slate-700 cursor-pointer"
+                  className="h-8 w-8 rounded-md border border-slate-300 bg-slate-50 flex items-center justify-center text-slate-700 cursor-pointer"
                   title="توليد باركود"
                 >
                   <Barcode className="w-4 h-4" />
                 </button>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-1.5">
                 <div>
                   <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">سعر الشراء</label>
                   <input
@@ -548,7 +548,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                     onChange={(e) =>
                       setPurchasePrice2(e.target.value === '' ? '' : Number(e.target.value))
                     }
-                    className="w-full min-h-[36px] border border-slate-300 rounded-lg px-2.5 font-mono font-bold tabular-nums"
+                    className="w-full h-8 border border-slate-300 rounded-md px-2 font-mono font-bold tabular-nums"
                   />
                 </div>
                 <div>
@@ -562,7 +562,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                     onChange={(e) =>
                       setSellingPrice2(e.target.value === '' ? '' : Number(e.target.value))
                     }
-                    className="w-full min-h-[36px] border border-slate-300 rounded-lg px-2.5 font-mono font-black text-[#0F5A33] tabular-nums"
+                    className="w-full h-8 border border-slate-300 rounded-md px-2 font-mono font-black text-[#011E58] tabular-nums"
                   />
                 </div>
               </div>
@@ -575,14 +575,14 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
           <button
             type="button"
             onClick={() => setUnit3Open((p) => !p)}
-            className="w-full min-h-[38px] px-3 py-1.5 flex items-center justify-between bg-slate-50 border-b border-slate-200 font-black text-slate-800 cursor-pointer"
+            className="w-full min-h-[34px] px-2.5 py-1 flex items-center justify-between bg-slate-50 border-b border-slate-200 font-black text-slate-800 cursor-pointer"
           >
             <span>الوحدة الثالثة (3)</span>
             {unit3Open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
           {unit3Open && (
-            <div className="p-2.5 space-y-2">
-              <div className="grid grid-cols-2 gap-2">
+            <div className="p-2 space-y-1.5">
+              <div className="grid grid-cols-2 gap-1.5">
                 <div>
                   <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">اسم الوحدة</label>
                   <input
@@ -590,7 +590,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                     placeholder="بالة / طرد"
                     value={unit3Name}
                     onChange={(e) => setUnit3Name(e.target.value)}
-                    className="w-full min-h-[36px] border border-slate-300 rounded-lg px-2.5 font-bold"
+                    className="w-full h-8 border border-slate-300 rounded-md px-2 font-bold"
                   />
                 </div>
                 <div>
@@ -604,7 +604,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                     onChange={(e) =>
                       setUnit3Factor(e.target.value === '' ? '' : Number(e.target.value))
                     }
-                    className="w-full min-h-[36px] border border-slate-300 rounded-lg px-2.5 font-mono font-bold tabular-nums"
+                    className="w-full h-8 border border-slate-300 rounded-md px-2 font-mono font-bold tabular-nums"
                   />
                 </div>
               </div>
@@ -614,18 +614,18 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                   placeholder="باركود الوحدة الثالثة"
                   value={barcode3}
                   onChange={(e) => setBarcode3(e.target.value)}
-                  className="flex-1 min-h-[36px] border border-slate-300 rounded-lg px-2.5 font-mono font-bold"
+                  className="flex-1 h-8 border border-slate-300 rounded-md px-2 font-mono font-bold"
                 />
                 <button
                   type="button"
                   onClick={() => setBarcode3(generateBarcode())}
-                  className="min-h-[36px] min-w-[36px] rounded-lg border border-slate-300 bg-slate-50 flex items-center justify-center text-slate-700 cursor-pointer"
+                  className="h-8 w-8 rounded-md border border-slate-300 bg-slate-50 flex items-center justify-center text-slate-700 cursor-pointer"
                   title="توليد باركود"
                 >
                   <Barcode className="w-4 h-4" />
                 </button>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-1.5">
                 <div>
                   <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">سعر الشراء</label>
                   <input
@@ -637,7 +637,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                     onChange={(e) =>
                       setPurchasePrice3(e.target.value === '' ? '' : Number(e.target.value))
                     }
-                    className="w-full min-h-[36px] border border-slate-300 rounded-lg px-2.5 font-mono font-bold tabular-nums"
+                    className="w-full h-8 border border-slate-300 rounded-md px-2 font-mono font-bold tabular-nums"
                   />
                 </div>
                 <div>
@@ -651,7 +651,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                     onChange={(e) =>
                       setSellingPrice3(e.target.value === '' ? '' : Number(e.target.value))
                     }
-                    className="w-full min-h-[36px] border border-slate-300 rounded-lg px-2.5 font-mono font-black text-[#0F5A33] tabular-nums"
+                    className="w-full h-8 border border-slate-300 rounded-md px-2 font-mono font-black text-[#011E58] tabular-nums"
                   />
                 </div>
               </div>
@@ -660,11 +660,11 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
         </div>
 
         {/* Sticky Bottom Save Button */}
-        <div className="pt-1">
+        <div className="pt-0.5">
           <button
             type="submit"
             disabled={isSaving}
-            className="w-full min-h-[42px] rounded-xl bg-[#0F5A33] hover:bg-[#0B4426] text-white font-black text-xs sm:text-sm shadow-sm disabled:opacity-50 cursor-pointer"
+            className="w-full h-9 rounded-lg bg-[#003589] hover:bg-[#011E58] text-white font-black text-xs sm:text-sm disabled:opacity-50 cursor-pointer"
           >
             {isSaving ? 'جاري الحفظ...' : 'حفظ البيانات'}
           </button>

@@ -263,9 +263,9 @@ export const MobilePortal: React.FC = () => {
       ];
 
   return (
-    <div className="min-h-screen bg-[#f5f7f6] dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-sans antialiased pb-16 pb-safe">
-      {/* Slim Emerald Mobile App Header (#0F5A33) */}
-      <header className="sticky top-0 z-30 bg-[#0F5A33] text-white shadow-sm border-b border-[#0B4426] pt-safe">
+    <div className="min-h-screen bg-[#F4F6FA] dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-sans antialiased pb-16 pb-safe">
+      {/* Slim Brand Mobile App Header */}
+      <header className="sticky top-0 z-30 awlad-brand-gradient text-white shadow-sm border-b border-[var(--awlad-navy-950)] pt-safe">
         <div className="max-w-5xl mx-auto px-3 sm:px-4">
           <div className="h-12 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
@@ -287,7 +287,7 @@ export const MobilePortal: React.FC = () => {
               />
               <div className="min-w-0">
                 <h1 className="text-xs sm:text-sm font-black truncate leading-tight">أولاد سليم</h1>
-                <p className="text-[10px] text-emerald-100 truncate">
+                <p className="text-[10px] text-blue-100 truncate">
                   {isRep ? 'بوابة المندوب' : 'متجر العملاء'} · {currentUser?.fullName}
                 </p>
               </div>
@@ -383,7 +383,7 @@ export const MobilePortal: React.FC = () => {
           isDrawerOpen ? 'translate-x-0 pointer-events-auto' : 'translate-x-full pointer-events-none'
         }`}
       >
-        <div className="h-12 flex items-center justify-between px-3 bg-blue-950 text-white border-b border-blue-900 shrink-0">
+        <div className="h-12 flex items-center justify-between px-3 bg-[var(--awlad-navy-950)] text-white border-b border-[var(--awlad-navy-900)] shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <img
               src="/awlad-selim-logo.png"
@@ -418,14 +418,14 @@ export const MobilePortal: React.FC = () => {
                   item.onSelect();
                   setIsDrawerOpen(false);
                 }}
-                className={`w-full min-h-[38px] px-2.5 py-1.5 rounded-lg flex items-center justify-between gap-2 text-xs border transition-colors cursor-pointer ${
+                className={`w-full min-h-[34px] px-2.5 py-1 rounded-md flex items-center justify-between gap-2 text-xs border transition-colors cursor-pointer ${
                   item.active
-                    ? 'bg-blue-900 text-white border-blue-900 font-black'
-                    : 'bg-white text-slate-800 border-slate-200 hover:bg-slate-50 font-bold'
+                    ? 'bg-[var(--awlad-navy-900)] text-white border-[var(--awlad-navy-900)] font-black'
+                    : 'bg-white text-slate-800 border-slate-200 hover:bg-[#EEF3FA] font-bold'
                 }`}
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <Icon className="w-4 h-4 shrink-0" />
+                  <Icon className="w-3.5 h-3.5 shrink-0" />
                   <span className="truncate">{item.label}</span>
                 </div>
                 <ChevronLeft className={`w-3.5 h-3.5 shrink-0 ${item.active ? 'text-blue-200' : 'text-slate-400'}`} />
@@ -436,15 +436,15 @@ export const MobilePortal: React.FC = () => {
       </aside>
       )}
 
-      <main className="max-w-5xl mx-auto p-2.5 sm:p-3 space-y-2.5">
+      <main className="max-w-5xl mx-auto p-2 space-y-2">
         {linkWarning && (
-          <div className="px-3 py-2 rounded-lg bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900">
+          <div className="px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900">
             {linkWarning}
           </div>
         )}
 
         {(isDatabaseUnavailable || (data.networkStatus === 'error' && data.lastError)) && (
-          <div className="px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-xs font-bold text-red-800 flex items-center justify-between gap-2">
+          <div className="px-2.5 py-1.5 rounded-lg bg-red-50 border border-red-200 text-xs font-bold text-red-800 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
               <span>
@@ -460,7 +460,7 @@ export const MobilePortal: React.FC = () => {
                 refreshAuthContext().catch(() => {});
                 data.triggerManualSync();
               }}
-              className="px-2.5 py-1 rounded-lg bg-red-600 text-white text-[11px] font-bold shrink-0 disabled:opacity-50 cursor-pointer"
+              className="px-2 py-1 rounded-md bg-red-600 text-white text-[11px] font-bold shrink-0 disabled:opacity-50 cursor-pointer"
             >
               {data.isSyncing ? 'جاري الفحص...' : 'إعادة المحاولة'}
             </button>
@@ -468,7 +468,7 @@ export const MobilePortal: React.FC = () => {
         )}
 
         {!isDatabaseUnavailable && (isOfflineSession || permissionsMayBeStale) && (
-          <div className="px-3 py-2 rounded-lg bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900 flex items-center gap-2">
+          <div className="px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900 flex items-center gap-2">
             <ShieldAlert className="w-4 h-4 text-amber-700 shrink-0" />
             <span>
               وضع الدخول المحلي الموثق — يتم تطبيق آخر صلاحيات موثقة من السيرفر وقد تتحدث فور عودة الاتصال.
@@ -479,7 +479,7 @@ export const MobilePortal: React.FC = () => {
         {!isDatabaseUnavailable &&
           data.networkStatus !== 'error' &&
           (data.isUsingOfflineCache || data.networkStatus === 'disconnected') && (
-            <div className="px-3 py-2 rounded-lg bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900 flex items-center justify-between gap-2">
+            <div className="px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <WifiOff className="w-4 h-4 text-amber-700 shrink-0" />
                 <span>
@@ -490,7 +490,7 @@ export const MobilePortal: React.FC = () => {
               <button
                 type="button"
                 onClick={() => data.triggerManualSync()}
-                className="px-2.5 py-1 rounded-lg bg-amber-600 text-white text-[11px] font-bold shrink-0 cursor-pointer"
+                className="px-2 py-1 rounded-md bg-amber-600 text-white text-[11px] font-bold shrink-0 cursor-pointer"
               >
                 إعادة المحاولة
               </button>
@@ -498,24 +498,24 @@ export const MobilePortal: React.FC = () => {
           )}
 
         {(data.pendingSyncCount > 0 || data.conflictsCount > 0) && (
-          <div className="px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 text-xs font-bold text-blue-900 flex items-center justify-between gap-2">
+          <div className="px-2.5 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-xs font-bold text-blue-900 flex items-center justify-between gap-2">
             <span>
               {data.conflictsCount > 0
                 ? `توجد (${data.conflictsCount}) تعارضات مزامنة تحتاج مراجعة و(${data.pendingSyncCount}) عمليات محلية بانتظار الاعتماد المركزي.`
                 : `توجد (${data.pendingSyncCount}) عمليات محلية بانتظار المزامنة (الأرصدة الحالية مبدئية لحين الاعتماد المركزي).`}
             </span>
-            <div className="flex items-center gap-1.5 shrink-0">
+            <div className="flex items-center gap-1 shrink-0">
               <button
                 type="button"
                 onClick={() => setIsSyncCenterOpen(true)}
-                className="px-2 py-1 rounded-lg bg-white border border-blue-300 text-blue-900 text-[11px] font-bold cursor-pointer"
+                className="px-2 py-1 rounded-md bg-white border border-blue-300 text-blue-900 text-[11px] font-bold cursor-pointer"
               >
                 مركز المزامنة
               </button>
               <button
                 type="button"
                 onClick={() => data.triggerManualSync()}
-                className="px-2.5 py-1 rounded-lg bg-blue-900 text-white text-[11px] font-bold cursor-pointer"
+                className="px-2 py-1 rounded-md bg-blue-900 text-white text-[11px] font-bold cursor-pointer"
               >
                 مزامنة الآن
               </button>
@@ -563,17 +563,17 @@ export const MobilePortal: React.FC = () => {
                 aria-current={item.active ? 'page' : undefined}
                 className={`relative min-h-[48px] py-1 px-1 flex flex-col items-center justify-center gap-0.5 transition-colors cursor-pointer ${
                   item.active
-                    ? 'text-[#0F5A33] dark:text-emerald-400 font-black'
+                    ? 'text-[var(--awlad-royal-700)] dark:text-[#60A5FA] font-black'
                     : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 font-bold'
                 }`}
               >
                 {item.active && (
-                  <span className="absolute top-0 inset-x-3 h-[2.5px] rounded-b bg-[#0F5A33] dark:bg-emerald-400" />
+                  <span className="absolute top-0 inset-x-3 h-[2.5px] rounded-b bg-[var(--awlad-royal-700)] dark:bg-[#60A5FA]" />
                 )}
                 <div className="relative">
                   <Icon className="w-4 h-4 shrink-0" />
                   {item.badge > 0 && (
-                    <span className="absolute -top-1.5 -left-2 min-w-[15px] h-[15px] px-1 rounded bg-[#0F5A33] text-white text-[9px] font-black flex items-center justify-center tabular-nums">
+                    <span className="absolute -top-1.5 -left-2 min-w-[15px] h-[15px] px-1 rounded bg-[var(--awlad-royal-700)] text-white text-[9px] font-black flex items-center justify-center tabular-nums">
                       {item.badge}
                     </span>
                   )}
@@ -586,20 +586,20 @@ export const MobilePortal: React.FC = () => {
       </nav>
 
       {pendingRepTab && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-950/60 backdrop-blur-xs">
-          <div className="w-full max-w-sm bg-white rounded-xl p-3.5 shadow-2xl border border-slate-200 space-y-2.5 text-xs">
-            <div className="flex items-center gap-2 font-black text-sm text-amber-800">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 bg-slate-950/60 backdrop-blur-xs">
+          <div className="w-full max-w-sm bg-white rounded-lg p-3 shadow-2xl border border-slate-200 space-y-2 text-xs">
+            <div className="flex items-center gap-1.5 font-black text-sm text-amber-800">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>توجد أصناف غير محفوظة في الفاتورة</span>
             </div>
-            <p className="text-slate-600 leading-relaxed">
+            <p className="text-slate-600 leading-snug">
               توجد أصناف مضافة في شاشة فاتورة البيع لم تُحفظ بعد. هل تود البقاء لإكمال الفاتورة أم الانتقال مع الاحتفاظ بالبيانات مؤقتاً؟
             </p>
-            <div className="grid grid-cols-2 gap-2 pt-0.5">
+            <div className="grid grid-cols-2 gap-1.5 pt-0.5">
               <button
                 type="button"
                 onClick={() => setPendingRepTab(null)}
-                className="min-h-[38px] rounded-lg bg-blue-900 text-white font-black cursor-pointer"
+                className="h-8 rounded-md bg-blue-900 text-white font-black cursor-pointer"
               >
                 البقاء في الفاتورة
               </button>
@@ -610,7 +610,7 @@ export const MobilePortal: React.FC = () => {
                   setPendingRepTab(null);
                   setRepTab(target);
                 }}
-                className="min-h-[38px] rounded-lg bg-slate-100 text-slate-800 font-bold cursor-pointer"
+                className="h-8 rounded-md bg-slate-100 text-slate-800 font-bold cursor-pointer"
               >
                 الانتقال مؤقتاً
               </button>
@@ -645,15 +645,15 @@ export const MobilePortal: React.FC = () => {
       />
 
       {isSettingsModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-950/60 backdrop-blur-xs">
-          <div className="w-full max-w-sm bg-white rounded-xl p-3.5 shadow-2xl border border-slate-200 space-y-2.5 text-xs">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 bg-slate-950/60 backdrop-blur-xs">
+          <div className="w-full max-w-sm bg-white rounded-lg p-3 shadow-2xl border border-slate-200 space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-800 flex items-center justify-center">
+                <div className="w-7 h-7 rounded-md bg-blue-50 text-blue-800 flex items-center justify-center">
                   <Settings className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-black text-sm text-slate-900">إعدادات التطبيق والحساب</h3>
+                  <h3 className="font-black text-xs text-slate-900">إعدادات التطبيق والحساب</h3>
                   <p className="text-[11px] text-slate-500">
                     {isRep ? 'بوابة المندوب' : 'بوابة العميل'} · {currentUser?.fullName}
                   </p>
@@ -662,7 +662,7 @@ export const MobilePortal: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setIsSettingsModalOpen(false)}
-                className="min-h-[32px] min-w-[32px] rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-700 cursor-pointer"
+                className="h-8 w-8 rounded-md bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-700 cursor-pointer"
                 aria-label="إغلاق"
               >
                 <X className="w-4 h-4" />
@@ -671,17 +671,17 @@ export const MobilePortal: React.FC = () => {
 
             <div className="space-y-1.5 max-h-[72vh] overflow-y-auto pr-0.5">
               {/* Scoped Permissions Summary */}
-              <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
+              <div className="p-2 rounded-md bg-slate-50 border border-slate-200 space-y-1">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5 font-black text-slate-800">
-                    <ShieldCheck className="w-4 h-4 text-emerald-700 shrink-0" />
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
                     <span>حالة الحساب والصلاحيات</span>
                   </div>
                   <span className="text-[10px] text-slate-500 font-mono">
                     @{currentUser?.username} · {isRep ? 'مندوب' : 'عميل'}
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-700 font-bold leading-relaxed">
+                <p className="text-[11px] text-slate-700 font-bold leading-snug">
                   {Object.entries(currentUser?.permissions || {})
                     .filter(([, ok]) => Boolean(ok))
                     .slice(0, 8)
@@ -717,13 +717,13 @@ export const MobilePortal: React.FC = () => {
                   setShowPasswordBox((prev) => !prev);
                   setPwdFeedback(null);
                 }}
-                className="w-full min-h-[38px] px-3 rounded-lg bg-slate-50 hover:bg-blue-50 border border-slate-200 flex items-center justify-between font-bold text-slate-800 cursor-pointer"
+                className="w-full min-h-[34px] px-2.5 rounded-md bg-slate-50 hover:bg-[#EEF3FA] border border-slate-200 flex items-center justify-between font-bold text-slate-800 cursor-pointer"
               >
                 <span className="flex items-center gap-2">
-                  <Lock className="w-4 h-4 text-indigo-700" />
+                  <Lock className="w-3.5 h-3.5 text-[var(--awlad-royal-700)]" />
                   <span>تغيير كلمة المرور</span>
                 </span>
-                <ChevronLeft className={`w-4 h-4 text-slate-400 transition-transform ${showPasswordBox ? '-rotate-90' : ''}`} />
+                <ChevronLeft className={`w-3.5 h-3.5 text-slate-400 transition-transform ${showPasswordBox ? '-rotate-90' : ''}`} />
               </button>
 
               {showPasswordBox && (
@@ -751,7 +751,7 @@ export const MobilePortal: React.FC = () => {
                       setPwdFeedback({ type: 'error', text: res.error || 'تعذر تغيير كلمة المرور.' });
                     }
                   }}
-                  className="p-2.5 rounded-lg bg-indigo-50/70 border border-indigo-200 space-y-1.5"
+                  className="p-2 rounded-md bg-[#EEF3FA] border border-[#DCE6F5] space-y-1.5"
                 >
                   {pwdFeedback && (
                     <p className={`text-[11px] font-bold ${pwdFeedback.type === 'success' ? 'text-emerald-800' : 'text-red-700'}`}>
@@ -764,7 +764,7 @@ export const MobilePortal: React.FC = () => {
                     value={currPwd}
                     onChange={(e) => setCurrPwd(e.target.value)}
                     placeholder="كلمة المرور الحالية"
-                    className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 bg-white font-mono"
+                    className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-mono"
                   />
                   <input
                     type="password"
@@ -773,7 +773,7 @@ export const MobilePortal: React.FC = () => {
                     value={newPwd}
                     onChange={(e) => setNewPwd(e.target.value)}
                     placeholder="كلمة المرور الجديدة"
-                    className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 bg-white font-mono"
+                    className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-mono"
                   />
                   <input
                     type="password"
@@ -782,12 +782,12 @@ export const MobilePortal: React.FC = () => {
                     value={confirmPwd}
                     onChange={(e) => setConfirmPwd(e.target.value)}
                     placeholder="تأكيد كلمة المرور الجديدة"
-                    className="w-full min-h-[36px] rounded-lg border border-slate-300 px-2.5 bg-white font-mono"
+                    className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-mono"
                   />
                   <button
                     type="submit"
                     disabled={isSavingPwd}
-                    className="w-full min-h-[36px] rounded-lg bg-indigo-900 text-white font-black cursor-pointer disabled:opacity-50"
+                    className="w-full h-8 rounded-md bg-[var(--awlad-royal-700)] hover:bg-[var(--awlad-royal-600)] text-white font-black cursor-pointer disabled:opacity-50"
                   >
                     {isSavingPwd ? 'جاري التحديث...' : 'حفظ كلمة المرور'}
                   </button>
@@ -800,13 +800,13 @@ export const MobilePortal: React.FC = () => {
                   setIsSettingsModalOpen(false);
                   setIsServerModalOpen(true);
                 }}
-                className="w-full min-h-[38px] px-3 rounded-lg bg-slate-50 hover:bg-blue-50 border border-slate-200 flex items-center justify-between font-bold text-slate-800 cursor-pointer"
+                className="w-full min-h-[34px] px-2.5 rounded-md bg-slate-50 hover:bg-[#EEF3FA] border border-slate-200 flex items-center justify-between font-bold text-slate-800 cursor-pointer"
               >
                 <span className="flex items-center gap-2">
-                  <Server className="w-4 h-4 text-blue-700" />
+                  <Server className="w-3.5 h-3.5 text-[var(--awlad-royal-700)]" />
                   <span>عنوان السيرفر والاتصال المركزي</span>
                 </span>
-                <ChevronLeft className="w-4 h-4 text-slate-400" />
+                <ChevronLeft className="w-3.5 h-3.5 text-slate-400" />
               </button>
 
               <button
@@ -815,10 +815,10 @@ export const MobilePortal: React.FC = () => {
                   setIsSettingsModalOpen(false);
                   setIsSyncCenterOpen(true);
                 }}
-                className="w-full min-h-[38px] px-3 rounded-lg bg-slate-50 hover:bg-blue-50 border border-slate-200 flex items-center justify-between font-bold text-slate-800 cursor-pointer"
+                className="w-full min-h-[34px] px-2.5 rounded-md bg-slate-50 hover:bg-[#EEF3FA] border border-slate-200 flex items-center justify-between font-bold text-slate-800 cursor-pointer"
               >
                 <span className="flex items-center gap-2">
-                  <CloudOff className="w-4 h-4 text-amber-600" />
+                  <CloudOff className="w-3.5 h-3.5 text-amber-600" />
                   <span>مركز المزامنة والعمليات المعلقة</span>
                 </span>
                 <span className="font-mono font-black text-slate-800 tabular-nums">
@@ -832,9 +832,9 @@ export const MobilePortal: React.FC = () => {
                   setIsSettingsModalOpen(false);
                   data.triggerManualSync();
                 }}
-                className="w-full min-h-[38px] px-3 rounded-lg bg-blue-900 hover:bg-blue-950 text-white flex items-center justify-center gap-2 font-black cursor-pointer"
+                className="w-full min-h-[34px] px-2.5 rounded-md bg-[var(--awlad-navy-900)] hover:bg-[var(--awlad-navy-950)] text-white flex items-center justify-center gap-1.5 font-black cursor-pointer"
               >
-                <RefreshCw className={`w-4 h-4 ${data.networkStatus === 'synchronizing' ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-3.5 h-3.5 ${data.networkStatus === 'synchronizing' ? 'animate-spin' : ''}`} />
                 <span>مزامنة البيانات الآن</span>
               </button>
 
@@ -844,9 +844,9 @@ export const MobilePortal: React.FC = () => {
                   setIsSettingsModalOpen(false);
                   logout();
                 }}
-                className="w-full min-h-[38px] px-3 rounded-lg bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 flex items-center justify-center gap-2 font-black cursor-pointer"
+                className="w-full min-h-[34px] px-2.5 rounded-md bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 flex items-center justify-center gap-1.5 font-black cursor-pointer"
               >
-                <LogOut className="w-4 h-4" />
+                <LogOut className="w-3.5 h-3.5" />
                 <span>تسجيل الخروج من الحساب</span>
               </button>
             </div>

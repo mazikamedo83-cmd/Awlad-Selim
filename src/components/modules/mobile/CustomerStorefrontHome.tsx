@@ -284,7 +284,7 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
     return (
       <div
         key={`${prod.id}-${activeUnit}`}
-        className="relative bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-2 shadow-2xs flex flex-col justify-between gap-1.5 transition-colors"
+        className="relative bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 p-1.5 flex flex-col justify-between gap-1 transition-colors"
       >
         {/* Promo rectangular corner ribbon (zero pill) */}
         {promo.hasPromo && (
@@ -365,7 +365,7 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
 
           {allowPriceView ? (
             <div className="pt-0.5 flex items-baseline flex-wrap gap-1 awlad-tabular">
-              <strong className="text-xs sm:text-sm font-black text-[#0F5A33] dark:text-emerald-400">
+              <strong className="text-xs sm:text-sm font-black text-[var(--awlad-royal-700)] dark:text-blue-400">
                 {promo.effectivePrice.toLocaleString()} {currency}
               </strong>
               {promo.hasPromo && (
@@ -379,16 +379,16 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
           )}
 
           {cartEntry ? (
-            <div className="flex items-center justify-between gap-1 bg-emerald-50 dark:bg-emerald-950/60 border border-[#0F5A33]/30 rounded-lg p-0.5">
+            <div className="flex items-center justify-between gap-1 bg-[#EEF3FA] dark:bg-slate-800 border border-[#DCE6F5] dark:border-slate-700 rounded-lg p-0.5">
               <button
                 type="button"
                 onClick={() => onUpdateCartItemQty(prod.id, activeUnit, 1)}
-                className="w-7 h-7 rounded-md bg-[#0F5A33] text-white flex items-center justify-center cursor-pointer"
+                className="w-7 h-7 rounded-md bg-[var(--awlad-royal-700)] text-white flex items-center justify-center cursor-pointer"
                 aria-label="زيادة الكمية"
               >
                 <Plus className="w-3.5 h-3.5" />
               </button>
-              <span className="text-xs font-black text-[#0F5A33] dark:text-emerald-300 awlad-tabular">
+              <span className="text-xs font-black text-[var(--awlad-navy-950)] dark:text-blue-300 awlad-tabular">
                 {cartEntry.quantity}
               </span>
               <button
@@ -408,7 +408,7 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
                 const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                 onAddToCart(prod, activeUnit, 1, rect);
               }}
-              className="w-full min-h-[34px] rounded-lg bg-[#0F5A33] hover:bg-[#0B4426] disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-400 text-white text-[11px] font-black flex items-center justify-center gap-1 cursor-pointer transition-colors"
+              className="w-full h-8 rounded-md bg-[var(--awlad-royal-700)] hover:bg-[var(--awlad-royal-600)] disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-400 text-white text-[11px] font-black flex items-center justify-center gap-1 cursor-pointer transition-colors"
             >
               <ShoppingCart className="w-3.5 h-3.5" />
               <span>{available ? t('إضافة للسلة', 'Add to cart') : t('نفد المخزون', 'Out of stock')}</span>
@@ -434,7 +434,7 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
   }, [storefront.sections]);
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {orderedSections.map((sec) => {
         if (sec.key === 'banners') {
           if (activeBanners.length === 0) return null;
@@ -462,7 +462,7 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
                   }
                 }}
                 onClick={() => handleNavigationTarget(activeBanner.targetType, activeBanner.targetId)}
-                className="relative w-full aspect-[16/7] sm:aspect-[16/5] rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-[#0F5A33] shadow-sm cursor-pointer"
+                className="relative w-full aspect-[16/7] sm:aspect-[16/5] rounded-lg overflow-hidden border border-slate-200 dark:border-slate-800 bg-[var(--awlad-navy-900)] cursor-pointer"
               >
                 {activeBanner.imageUrl ? (
                   <img
@@ -471,10 +471,10 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full flex flex-col justify-center px-4 bg-gradient-to-l from-[#0B4426] via-[#0F5A33] to-[#166534] text-white">
+                  <div className="w-full h-full flex flex-col justify-center px-4 awlad-brand-gradient text-white">
                     <h2 className="text-base sm:text-lg font-black">{activeBanner.title}</h2>
                     {activeBanner.subtitle && (
-                      <p className="text-[11px] text-emerald-100 mt-0.5">{activeBanner.subtitle}</p>
+                      <p className="text-[11px] text-blue-100 mt-0.5">{activeBanner.subtitle}</p>
                     )}
                   </div>
                 )}
@@ -502,7 +502,7 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
                       aria-label={`بانر ${idx + 1}`}
                       className={`h-1.5 rounded transition-all cursor-pointer ${
                         idx === activeBannerIdx
-                          ? 'w-5 bg-[#0F5A33] dark:bg-emerald-400'
+                          ? 'w-5 bg-[var(--awlad-royal-700)] dark:bg-blue-400'
                           : 'w-2 bg-slate-300 dark:bg-slate-700'
                       }`}
                     />
@@ -528,9 +528,9 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
                       key={sc.id}
                       type="button"
                       onClick={() => handleNavigationTarget(sc.targetType, sc.targetId)}
-                      className="min-w-[76px] flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-[#0F5A33] rounded-xl p-2 flex flex-col items-center justify-center gap-1 text-center shadow-2xs cursor-pointer transition-colors"
+                      className="min-w-[72px] flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-[var(--awlad-royal-700)] rounded-lg p-1.5 flex flex-col items-center justify-center gap-1 text-center cursor-pointer transition-colors"
                     >
-                      <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-[#0F5A33] dark:text-emerald-400 flex items-center justify-center">
+                      <div className="w-7 h-7 rounded-md bg-[#EEF3FA] dark:bg-slate-800 text-[var(--awlad-royal-700)] dark:text-blue-400 flex items-center justify-center">
                         <Icon className="w-4 h-4" />
                       </div>
                       <span className="text-[10px] font-black text-slate-800 dark:text-slate-200 whitespace-nowrap">
@@ -555,14 +555,14 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
                 <button
                   type="button"
                   onClick={() => onNavigateTab('offers')}
-                  className="text-[11px] font-black text-[#0F5A33] dark:text-emerald-400 flex items-center gap-0.5 cursor-pointer"
+                  className="text-[11px] font-black text-[var(--awlad-royal-700)] dark:text-blue-400 flex items-center gap-0.5 cursor-pointer"
                 >
                   <span>{t('عرض الكل', 'View all')}</span>
                   <ChevronLeft className="w-3.5 h-3.5" />
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
                 {offerProductPairs.slice(0, 6).map(({ product, unitName }) => renderProductCard(product, unitName))}
               </div>
             </section>
@@ -580,7 +580,7 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
                 <button
                   type="button"
                   onClick={() => onNavigateTab('categories')}
-                  className="text-[11px] font-black text-[#0F5A33] dark:text-emerald-400 flex items-center gap-0.5 cursor-pointer"
+                  className="text-[11px] font-black text-[var(--awlad-royal-700)] dark:text-blue-400 flex items-center gap-0.5 cursor-pointer"
                 >
                   <span>{t('عرض الكل', 'View all')}</span>
                   <ChevronLeft className="w-3.5 h-3.5" />
@@ -593,13 +593,13 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
                     key={tile.id}
                     type="button"
                     onClick={() => onOpenCategory(tile.rawCategoryName, tile.productIds)}
-                    className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-[#0F5A33] p-1.5 flex flex-col items-center justify-between gap-1 text-center shadow-2xs cursor-pointer transition-colors"
+                    className="bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 hover:border-[var(--awlad-royal-700)] p-1.5 flex flex-col items-center justify-between gap-1 text-center cursor-pointer transition-colors"
                   >
-                    <div className="w-full aspect-square rounded-lg bg-slate-50 dark:bg-slate-800 overflow-hidden flex items-center justify-center">
+                    <div className="w-full aspect-square rounded-md bg-slate-50 dark:bg-slate-800 overflow-hidden flex items-center justify-center">
                       {tile.imageUrl ? (
                         <img src={tile.imageUrl} alt={tile.name} className="w-full h-full object-cover" loading="lazy" />
                       ) : (
-                        <LayoutGrid className="w-5 h-5 text-[#0F5A33]/70 dark:text-emerald-400" />
+                        <LayoutGrid className="w-5 h-5 text-[var(--awlad-royal-700)]/70 dark:text-blue-400" />
                       )}
                     </div>
                     <span className="text-[10px] font-black text-slate-800 dark:text-slate-200 line-clamp-2 leading-tight">
@@ -623,13 +623,13 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
                 <button
                   type="button"
                   onClick={() => onNavigateTab('categories')}
-                  className="text-[11px] font-black text-[#0F5A33] dark:text-emerald-400 flex items-center gap-0.5 cursor-pointer"
+                  className="text-[11px] font-black text-[var(--awlad-royal-700)] dark:text-blue-400 flex items-center gap-0.5 cursor-pointer"
                 >
                   <span>{t('تصفح الكل', 'Browse all')}</span>
                   <ChevronLeft className="w-3.5 h-3.5" />
                 </button>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
                 {featuredProducts.map((p) => renderProductCard(p))}
               </div>
             </section>
@@ -641,24 +641,24 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
 
       {/* Quick Product Detail Sheet */}
       {quickProduct && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="bg-white dark:bg-slate-900 w-full sm:max-w-md rounded-t-2xl sm:rounded-xl border border-slate-200 dark:border-slate-800 p-3.5 space-y-2.5 shadow-2xl pb-safe">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-3">
+          <div className="bg-white dark:bg-slate-900 w-full sm:max-w-md rounded-t-xl sm:rounded-lg border border-slate-200 dark:border-slate-800 p-2.5 space-y-2 shadow-xl pb-safe">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">{quickProduct.name}</h3>
+                <h3 className="text-xs sm:text-sm font-black text-slate-900 dark:text-slate-100">{quickProduct.name}</h3>
                 <p className="text-[11px] text-slate-500">{quickProduct.category} · {quickProduct.code}</p>
               </div>
               <button
                 type="button"
                 onClick={() => setQuickProduct(null)}
-                className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer"
+                className="p-1 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer"
                 aria-label="إغلاق"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="w-full h-44 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 flex items-center justify-center overflow-hidden">
+            <div className="w-full h-36 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 flex items-center justify-center overflow-hidden">
               {cachedMediaMap?.[quickProduct.id] || quickProduct.image ? (
                 <img
                   src={cachedMediaMap?.[quickProduct.id] || quickProduct.image}
@@ -666,7 +666,7 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
                   className="h-full object-contain p-2"
                 />
               ) : (
-                <Package className="w-12 h-12 text-slate-300" />
+                <Package className="w-10 h-10 text-slate-300" />
               )}
             </div>
 
@@ -676,12 +676,12 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
               const promo = resolveActiveStorefrontOffer(quickProduct, unitName, storefront);
               const available = isProductInStock(quickProduct);
               return (
-                <div className="space-y-3">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between gap-2">
                     <select
                       value={unitName}
                       onChange={(e) => onSelectUnit(quickProduct.id, e.target.value)}
-                      className="min-h-[40px] px-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold"
+                      className="h-8 px-2.5 rounded-md border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-bold"
                     >
                       {units.map((u) => (
                         <option key={u.name} value={u.name}>
@@ -691,7 +691,7 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
                     </select>
                     {allowPriceView && (
                       <div className="text-left awlad-tabular">
-                        <strong className="text-base font-black text-[#0F5A33] dark:text-emerald-400">
+                        <strong className="text-sm font-black text-[var(--awlad-royal-700)] dark:text-blue-400">
                           {promo.effectivePrice.toLocaleString()} {currency}
                         </strong>
                         {promo.hasPromo && (
@@ -703,21 +703,21 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
                     )}
                   </div>
 
-                  <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center justify-between gap-2">
                     <span className="text-xs font-bold text-slate-600 dark:text-slate-300">الكمية:</span>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       <button
                         type="button"
                         onClick={() => setQuickQty((q) => q + 1)}
-                        className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 font-black flex items-center justify-center cursor-pointer"
+                        className="w-8 h-8 rounded-md bg-slate-100 dark:bg-slate-800 font-black flex items-center justify-center cursor-pointer"
                       >
                         <Plus className="w-4 h-4" />
                       </button>
-                      <span className="w-10 text-center text-sm font-black awlad-tabular">{quickQty}</span>
+                      <span className="w-9 text-center text-sm font-black awlad-tabular">{quickQty}</span>
                       <button
                         type="button"
                         onClick={() => setQuickQty((q) => Math.max(1, q - 1))}
-                        className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 font-black flex items-center justify-center cursor-pointer"
+                        className="w-8 h-8 rounded-md bg-slate-100 dark:bg-slate-800 font-black flex items-center justify-center cursor-pointer"
                       >
                         <Minus className="w-4 h-4" />
                       </button>
@@ -732,7 +732,7 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
                       onAddToCart(quickProduct, unitName, quickQty, rect);
                       setQuickProduct(null);
                     }}
-                    className="w-full min-h-[44px] rounded-xl bg-[#0F5A33] hover:bg-[#0B4426] disabled:bg-slate-300 text-white text-xs font-black flex items-center justify-center gap-2 cursor-pointer"
+                    className="w-full h-9 rounded-lg bg-[var(--awlad-royal-700)] hover:bg-[var(--awlad-royal-600)] disabled:bg-slate-300 text-white text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer"
                   >
                     <Check className="w-4 h-4" />
                     <span>{available ? 'إضافة الكمية للسلة' : 'غير متوفر حالياً'}</span>

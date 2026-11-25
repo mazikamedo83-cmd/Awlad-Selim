@@ -850,42 +850,42 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
   };
 
   return (
-    <div className="space-y-3.5 max-w-5xl mx-auto">
+    <div className="space-y-2.5 w-full">
       {/* Header */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+      <div className="bg-white px-3 py-2 rounded-lg border border-slate-200 shadow-xs flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-black text-slate-900 tracking-tight">إعدادات منظومة أولاد سليم الشاملة</h2>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <h2 className="text-sm font-black text-slate-900 tracking-tight">إعدادات منظومة أولاد سليم الشاملة</h2>
+          <p className="text-[11px] text-slate-500">
             إدارة المنشأة، ربط السيرفر المركزي، استيراد الملفات، والنسخ الاحتياطي
           </p>
         </div>
         <img
           src="/awlad-selim-logo.png"
           alt="أولاد سليم"
-          className="h-10 w-auto object-contain"
+          className="h-8 w-auto object-contain"
         />
       </div>
 
       {/* Tabs Navigation */}
-      <div className="flex items-center gap-1.5 p-1.5 bg-slate-200/80 rounded-2xl overflow-x-auto text-xs font-bold no-print">
+      <div className="flex items-center gap-1 p-1 bg-slate-200/80 rounded-lg overflow-x-auto text-xs font-bold no-print">
         {[
-          { key: 'account', label: 'حسابي وكلمة المرور والصلاحيات', icon: User, color: 'text-blue-800', allowAllStaff: true },
-          { key: 'general', label: 'المنشأة والطباعة', icon: Building2, color: 'text-blue-700', perm: 'canManageSettings' },
-          { key: 'branches', label: 'الفروع', icon: GitBranch, color: 'text-indigo-700', perm: 'canManageSettings' },
+          { key: 'account', label: 'حسابي وكلمة المرور والصلاحيات', icon: User, color: 'text-[#011E58]', allowAllStaff: true },
+          { key: 'general', label: 'المنشأة والطباعة', icon: Building2, color: 'text-[#003589]', perm: 'canManageSettings' },
+          { key: 'branches', label: 'الفروع', icon: GitBranch, color: 'text-[#003589]', perm: 'canManageSettings' },
           { key: 'barcode', label: 'إعدادات الباركود', icon: Barcode, color: 'text-slate-700', perm: 'canManageSettings' },
-          { key: 'printers', label: 'الطابعات المتعددة', icon: Printer, color: 'text-blue-800', perm: 'canManageSettings' },
-          { key: 'invoice-design', label: 'إعدادات الفاتورة', icon: FileText, color: 'text-cyan-700', perm: 'canManageSettings' },
-          { key: 'mobile-config', label: 'إعدادات الموبايل', icon: Smartphone, color: 'text-emerald-700', perm: 'canManageSettings' },
-          { key: 'online-sync', label: 'مزامنة أونلاين', icon: Wifi, color: 'text-teal-700', perm: 'canManageSettings' },
+          { key: 'printers', label: 'الطابعات المتعددة', icon: Printer, color: 'text-[#011E58]', perm: 'canManageSettings' },
+          { key: 'invoice-design', label: 'إعدادات الفاتورة', icon: FileText, color: 'text-[#0049B0]', perm: 'canManageSettings' },
+          { key: 'mobile-config', label: 'إعدادات الموبايل', icon: Smartphone, color: 'text-[#003589]', perm: 'canManageSettings' },
+          { key: 'online-sync', label: 'مزامنة أونلاين', icon: Wifi, color: 'text-[#0049B0]', perm: 'canManageSettings' },
           ...(!isMobilePlatform
-            ? [{ key: 'shortcuts', label: 'اختصارات لوحة المفاتيح', icon: Keyboard, color: 'text-purple-700', allowAllStaff: true }]
+            ? [{ key: 'shortcuts', label: 'اختصارات لوحة المفاتيح', icon: Keyboard, color: 'text-[#011E58]', allowAllStaff: true }]
             : []),
           { key: 'services', label: 'الخدمات', icon: Wrench, color: 'text-amber-700', perm: 'canManageSettings' },
-          { key: 'server', label: 'Server & Connection Settings', icon: Server, color: 'text-emerald-600', perm: 'canManageSettings' },
+          { key: 'server', label: 'Server & Connection Settings', icon: Server, color: 'text-[#003589]', perm: 'canManageSettings' },
           { key: 'diagnostics', label: 'سجل التشخيص والأخطاء', icon: Activity, color: 'text-rose-700', perm: 'canManageSettings' },
           { key: 'abu-selim', label: 'استيراد الملفات', icon: FileSpreadsheet, color: 'text-amber-600', perm: 'canManageInventory' },
-          { key: 'backup', label: 'النسخ الاحتياطي', icon: Database, color: 'text-purple-600', perm: 'canManageSettings' },
-          { key: 'migration', label: 'الترحيل و PostgreSQL', icon: Layers, color: 'text-indigo-600', perm: 'canManageSettings' },
+          { key: 'backup', label: 'النسخ الاحتياطي', icon: Database, color: 'text-[#011E58]', perm: 'canManageSettings' },
+          { key: 'migration', label: 'الترحيل و PostgreSQL', icon: Layers, color: 'text-[#003589]', perm: 'canManageSettings' },
         ]
           .filter((t: any) => t.allowAllStaff || !t.perm || currentUser?.role === 'admin' || hasPermission(t.perm as any))
           .map((tab) => {
@@ -894,11 +894,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key as SettingsTabKey)}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all cursor-pointer whitespace-nowrap ${
-                  activeTab === tab.key ? 'bg-white text-blue-950 shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md transition-all cursor-pointer whitespace-nowrap ${
+                  activeTab === tab.key ? 'bg-white text-[#011E58] shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <TabIcon className={`w-4 h-4 ${tab.color}`} />
+                <TabIcon className={`w-3.5 h-3.5 ${tab.color}`} />
                 <span>{tab.label}</span>
               </button>
             );
@@ -906,72 +906,72 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
       </div>
 
       {isSaved && (
-        <div className="p-3 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold flex items-center gap-2">
-          <Check className="w-4 h-4" />
+        <div className="px-2.5 py-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-md text-xs font-bold flex items-center gap-1.5">
+          <Check className="w-3.5 h-3.5" />
           <span>{savedNotice}</span>
         </div>
       )}
 
       {restoreSuccess && (
-        <div className="p-3 bg-emerald-50 text-emerald-900 border border-emerald-300 rounded-xl text-xs font-bold flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+        <div className="px-2.5 py-1.5 bg-emerald-50 text-emerald-900 border border-emerald-300 rounded-md text-xs font-bold flex items-center gap-1.5">
+          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
           <span>{restoreSuccess}</span>
         </div>
       )}
 
       {/* TAB 0: Staff Account, Password Change & Permissions Summary (Available to All Authenticated Staff) */}
       {activeTab === 'account' && (
-        <div className="space-y-3.5 text-xs">
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-900">
-                  <User className="w-5 h-5" />
+        <div className="space-y-2.5 text-xs">
+          <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-900">
+                  <User className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-black text-slate-900">{currentUser?.fullName}</h3>
+                  <h3 className="text-xs sm:text-sm font-black text-slate-900">{currentUser?.fullName}</h3>
                   <p className="text-[11px] text-slate-500 font-mono">
                     @{currentUser?.username} · {currentUser?.jobTitle || currentUser?.role}
                   </p>
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => setIsAccountSwitcherOpen(true)}
-                  className="min-h-[40px] px-4 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 font-black flex items-center gap-1.5 cursor-pointer"
+                  className="min-h-[32px] px-3 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 font-black flex items-center gap-1.5 cursor-pointer"
                 >
-                  <Users className="w-4 h-4" />
+                  <Users className="w-3.5 h-3.5" />
                   <span>الحسابات المحفوظة على الجهاز ({savedAccounts.length})</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => logout()}
-                  className="min-h-[40px] px-4 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-black flex items-center gap-1.5 cursor-pointer"
+                  className="min-h-[32px] px-3 rounded-md bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-black flex items-center gap-1.5 cursor-pointer"
                 >
-                  <Power className="w-4 h-4" />
+                  <Power className="w-3.5 h-3.5" />
                   <span>تسجيل الخروج</span>
                 </button>
               </div>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <h4 className="font-black text-slate-800 flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-emerald-700" />
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" />
                 <span>الصلاحيات النشطة لحسابك:</span>
               </h4>
               {currentUser?.role === 'admin' ? (
-                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 font-bold">
+                <div className="px-2.5 py-1.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-900 font-bold">
                   حساب مدير عام بصلاحيات إدارية ومالية وتشغيلية كاملة على جميع أقسام المنظومة.
                 </div>
               ) : (
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-1">
                   {Object.entries(currentUser?.permissions || {})
                     .filter(([, allowed]) => Boolean(allowed))
                     .map(([key]) => (
                       <span
                         key={key}
-                        className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-900 border border-blue-200 font-bold text-[11px]"
+                        className="px-2 py-0.5 rounded bg-blue-50 text-blue-900 border border-blue-200 font-bold text-[11px]"
                       >
                         {PERMISSION_LABELS_AR[key] || key}
                       </span>
@@ -1005,57 +1005,57 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                 setAccountPasswordFeedback({ type: 'error', text: res.error || 'تعذر تغيير كلمة المرور.' });
               }
             }}
-            className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5"
+            className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs space-y-2.5"
           >
-            <h3 className="text-sm font-black text-slate-900 border-b pb-2 flex items-center gap-2">
+            <h3 className="text-xs sm:text-sm font-black text-slate-900 border-b pb-1.5 flex items-center gap-1.5">
               <Lock className="w-4 h-4 text-blue-900" />
               <span>تغيير كلمة المرور الشخصية</span>
             </h3>
 
             {accountPasswordFeedback && (
               <div
-                className={`p-3 rounded-xl border font-bold flex items-center gap-2 ${
+                className={`px-2.5 py-1.5 rounded-md border font-bold flex items-center gap-1.5 ${
                   accountPasswordFeedback.type === 'success'
                     ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
                     : 'bg-red-50 border-red-200 text-red-900'
                 }`}
               >
-                <AlertCircle className="w-4 h-4 shrink-0" />
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                 <span>{accountPasswordFeedback.text}</span>
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <div>
-                <label className="block font-bold mb-1">كلمة المرور الحالية:</label>
+                <label className="block text-[11px] font-bold mb-0.5">كلمة المرور الحالية:</label>
                 <input
                   type="password"
                   required
                   value={accountCurrentPassword}
                   onChange={(e) => setAccountCurrentPassword(e.target.value)}
-                  className="w-full min-h-[42px] border border-slate-300 rounded-xl px-3 font-mono"
+                  className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono"
                 />
               </div>
               <div>
-                <label className="block font-bold mb-1">كلمة المرور الجديدة:</label>
+                <label className="block text-[11px] font-bold mb-0.5">كلمة المرور الجديدة:</label>
                 <input
                   type="password"
                   required
                   minLength={4}
                   value={accountNewPassword}
                   onChange={(e) => setAccountNewPassword(e.target.value)}
-                  className="w-full min-h-[42px] border border-slate-300 rounded-xl px-3 font-mono"
+                  className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono"
                 />
               </div>
               <div>
-                <label className="block font-bold mb-1">تأكيد كلمة المرور الجديدة:</label>
+                <label className="block text-[11px] font-bold mb-0.5">تأكيد كلمة المرور الجديدة:</label>
                 <input
                   type="password"
                   required
                   minLength={4}
                   value={accountConfirmPassword}
                   onChange={(e) => setAccountConfirmPassword(e.target.value)}
-                  className="w-full min-h-[42px] border border-slate-300 rounded-xl px-3 font-mono"
+                  className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono"
                 />
               </div>
             </div>
@@ -1064,9 +1064,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               <button
                 type="submit"
                 disabled={isUpdatingAccountPassword}
-                className="min-h-[44px] px-6 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-black flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                className="min-h-[32px] px-4 bg-blue-900 hover:bg-blue-950 text-white rounded-md font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
-                <Save className="w-4 h-4" />
+                <Save className="w-3.5 h-3.5" />
                 <span>{isUpdatingAccountPassword ? 'جاري التحديث...' : 'حفظ كلمة المرور الجديدة'}</span>
               </button>
             </div>
@@ -1076,112 +1076,112 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
       {/* TAB 1: General Company & Print Settings */}
       {activeTab === 'general' && (
-        <form onSubmit={handleSaveGeneral} className="space-y-3.5 text-xs">
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5">
-            <h3 className="text-sm font-black text-slate-900 border-b pb-2 flex items-center gap-2">
+        <form onSubmit={handleSaveGeneral} className="space-y-2.5 text-xs">
+          <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs space-y-2.5">
+            <h3 className="text-xs sm:text-sm font-black text-slate-900 border-b pb-1.5 flex items-center gap-1.5">
               <Building2 className="w-4 h-4 text-blue-900" />
               <span>بيانات منشأة أولاد سليم ورأس الفواتير</span>
             </h3>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
               <div>
-                <label className="block font-bold mb-1">اسم المنشأة التجاري:</label>
+                <label className="block text-[11px] font-bold mb-0.5">اسم المنشأة التجاري:</label>
                 <input
                   type="text"
                   required
                   value={formData.companyName}
                   onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
-                  className="w-full border rounded-xl p-2.5"
+                  className="w-full h-8 border border-slate-300 rounded-md px-2.5"
                 />
               </div>
 
               <div>
-                <label className="block font-bold mb-1">الشعار والوصف الفرعي:</label>
+                <label className="block text-[11px] font-bold mb-0.5">الشعار والوصف الفرعي:</label>
                 <input
                   type="text"
                   value={formData.companySubtitle}
                   onChange={(e) => setFormData({ ...formData, companySubtitle: e.target.value })}
-                  className="w-full border rounded-xl p-2.5"
+                  className="w-full h-8 border border-slate-300 rounded-md px-2.5"
                 />
               </div>
 
               <div>
-                <label className="block font-bold mb-1">رقم هاتف المحل / الإدارة 1:</label>
+                <label className="block text-[11px] font-bold mb-0.5">رقم هاتف المحل / الإدارة 1:</label>
                 <input
                   type="text"
                   value={formData.phone1}
                   onChange={(e) => setFormData({ ...formData, phone1: e.target.value })}
-                  className="w-full border rounded-xl p-2.5 font-mono"
+                  className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono"
                 />
               </div>
 
               <div>
-                <label className="block font-bold mb-1">رقم هاتف إضافي 2:</label>
+                <label className="block text-[11px] font-bold mb-0.5">رقم هاتف إضافي 2:</label>
                 <input
                   type="text"
                   value={formData.phone2}
                   onChange={(e) => setFormData({ ...formData, phone2: e.target.value })}
-                  className="w-full border rounded-xl p-2.5 font-mono"
+                  className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono"
                 />
               </div>
 
               <div>
-                <label className="block font-bold mb-1">رقم الفرع الرئيسي (يظهر بالمستندات المطبوعة):</label>
+                <label className="block text-[11px] font-bold mb-0.5">رقم الفرع الرئيسي:</label>
                 <input
                   type="text"
                   placeholder="مثال: 01 أو BR-01 (اختياري)"
                   value={formData.branchNumber || ''}
                   onChange={(e) => setFormData({ ...formData, branchNumber: e.target.value })}
-                  className="w-full border rounded-xl p-2.5 font-mono"
+                  className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono"
                 />
               </div>
 
               <div>
-                <label className="block font-bold mb-1">عنوان المحل / المقر الرئيسي:</label>
+                <label className="block text-[11px] font-bold mb-0.5">عنوان المحل / المقر الرئيسي:</label>
                 <input
                   type="text"
                   value={formData.address}
                   onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  className="w-full border rounded-xl p-2.5"
+                  className="w-full h-8 border border-slate-300 rounded-md px-2.5"
                 />
               </div>
 
               <div>
-                <label className="block font-bold mb-1">السجل التجاري:</label>
+                <label className="block text-[11px] font-bold mb-0.5">السجل التجاري:</label>
                 <input
                   type="text"
                   value={formData.commercialRegistration}
                   onChange={(e) => setFormData({ ...formData, commercialRegistration: e.target.value })}
-                  className="w-full border rounded-xl p-2.5"
+                  className="w-full h-8 border border-slate-300 rounded-md px-2.5"
                 />
               </div>
 
               <div>
-                <label className="block font-bold mb-1">الرقم الضريبي:</label>
+                <label className="block text-[11px] font-bold mb-0.5">الرقم الضريبي:</label>
                 <input
                   type="text"
                   value={formData.taxNumber}
                   onChange={(e) => setFormData({ ...formData, taxNumber: e.target.value })}
-                  className="w-full border rounded-xl p-2.5"
+                  className="w-full h-8 border border-slate-300 rounded-md px-2.5"
                 />
               </div>
             </div>
           </div>
 
           {/* Printing & Operation Settings */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5">
-            <h3 className="text-sm font-black text-slate-900 border-b pb-2 flex items-center gap-2">
+          <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs space-y-2.5">
+            <h3 className="text-xs sm:text-sm font-black text-slate-900 border-b pb-1.5 flex items-center gap-1.5">
               <Printer className="w-4 h-4 text-blue-900" />
               <span>إعدادات الفواتير والطباعة والعمليات</span>
             </h3>
 
             <div>
-              <label className="block font-bold mb-2">نوع الطباعة الافتراضي عند إصدار الفاتورة:</label>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <label className="block text-[11px] font-bold mb-1">نوع الطباعة الافتراضي عند إصدار الفاتورة:</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <button
                   type="button"
                   onClick={() => setFormData({ ...formData, defaultPrintMode: 'a4' })}
-                  className={`p-3 border rounded-xl font-bold transition-all cursor-pointer ${
+                  className={`py-1.5 px-2.5 border rounded-md font-bold transition-all cursor-pointer ${
                     formData.defaultPrintMode === 'a4' ? 'bg-blue-900 text-white shadow-xs' : 'bg-slate-50 text-slate-700'
                   }`}
                 >
@@ -1190,7 +1190,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                 <button
                   type="button"
                   onClick={() => setFormData({ ...formData, defaultPrintMode: 'thermal80' })}
-                  className={`p-3 border rounded-xl font-bold transition-all cursor-pointer ${
+                  className={`py-1.5 px-2.5 border rounded-md font-bold transition-all cursor-pointer ${
                     formData.defaultPrintMode === 'thermal80' ? 'bg-blue-900 text-white shadow-xs' : 'bg-slate-50 text-slate-700'
                   }`}
                 >
@@ -1199,7 +1199,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                 <button
                   type="button"
                   onClick={() => setFormData({ ...formData, defaultPrintMode: 'thermal58' })}
-                  className={`p-3 border rounded-xl font-bold transition-all cursor-pointer ${
+                  className={`py-1.5 px-2.5 border rounded-md font-bold transition-all cursor-pointer ${
                     formData.defaultPrintMode === 'thermal58' ? 'bg-blue-900 text-white shadow-xs' : 'bg-slate-50 text-slate-700'
                   }`}
                 >
@@ -1209,35 +1209,33 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             </div>
 
             <div>
-              <label className="block font-bold mb-1">الشروط والملاحظات المطبوعة أسفل الفاتورة:</label>
+              <label className="block text-[11px] font-bold mb-0.5">الشروط والملاحظات المطبوعة أسفل الفاتورة:</label>
               <textarea
                 rows={2}
                 value={formData.invoiceNotes}
                 onChange={(e) => setFormData({ ...formData, invoiceNotes: e.target.value })}
-                className="w-full border rounded-xl p-2.5"
+                className="w-full border border-slate-300 rounded-md p-2"
               />
             </div>
 
-            <div className="pt-2">
-              <label className="flex items-center gap-2 cursor-pointer">
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+              <label className="flex items-center gap-1.5 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={formData.allowNegativeStock}
                   onChange={(e) => setFormData({ ...formData, allowNegativeStock: e.target.checked })}
-                  className="w-4 h-4 rounded text-blue-900"
+                  className="w-3.5 h-3.5 rounded text-blue-900"
                 />
                 <span className="font-bold text-slate-800">
                   السماح بالبيع بالسالب (تجاوز رصيد المخزن في حالات الطوارئ)
                 </span>
               </label>
-            </div>
 
-            <div className="flex justify-end pt-3">
               <button
                 type="submit"
-                className="flex items-center gap-2 px-6 py-2.5 bg-blue-900 hover:bg-blue-950 text-white font-black rounded-xl shadow-md cursor-pointer"
+                className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-900 hover:bg-blue-950 text-white font-black rounded-md shadow-xs cursor-pointer"
               >
-                <Save className="w-4 h-4" />
+                <Save className="w-3.5 h-3.5" />
                 <span>حفظ الإعدادات</span>
               </button>
             </div>
@@ -1270,7 +1268,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             title: 'Local Network',
             subtitle: 'الشبكة المحلية داخل المحل عبر IP والمنفذ 3000',
             badge: 'مجاني • LAN',
-            badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+            badgeClass: 'bg-[#EEF3FA] text-[#011E58] border-[#DCE6F5]',
             icon: Wifi,
             urlPreview: resolveModeEndpointUrl('local_network', connProfiles) || 'http://192.168.1.100:3000',
           },
@@ -1279,7 +1277,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             title: 'Free Remote Connection',
             subtitle: 'اتصال خارجي مجاني عبر Cloudflare Quick Tunnel',
             badge: 'مجاني • trycloudflare',
-            badgeClass: 'bg-sky-100 text-sky-800 border-sky-200',
+            badgeClass: 'bg-sky-100 text-sky-900 border-sky-200',
             icon: Radio,
             urlPreview: connProfiles.freeRemote.tunnelUrl || 'https://xxxx.trycloudflare.com',
           },
@@ -1288,7 +1286,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             title: 'Professional Remote Connection',
             subtitle: 'دومين ثابت وشهادة HTTPS (Named Tunnel / Proxy)',
             badge: 'احترافي • HTTPS ثابت',
-            badgeClass: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+            badgeClass: 'bg-[#DCE6F5] text-[#011E58] border-[#003589]/30',
             icon: Globe,
             urlPreview: connProfiles.proRemote.domainUrl || 'https://erp.yourdomain.com',
           },
@@ -1297,70 +1295,67 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             title: 'Cloud VPS Connection',
             subtitle: 'الانتقال مستقبلاً إلى سيرفر سحابي دائم 24/7',
             badge: 'مستقبلي • Cloud VPS',
-            badgeClass: 'bg-purple-100 text-purple-800 border-purple-200',
+            badgeClass: 'bg-slate-100 text-slate-800 border-slate-300',
             icon: Cloud,
             urlPreview: connProfiles.cloudVps.vpsUrl || 'https://vps.yourdomain.com',
           },
         ];
 
         return (
-          <div className="space-y-3.5 text-xs">
+          <div className="space-y-2.5 text-xs">
             {/* Section Title & Live Status Banner */}
-            <div className="bg-slate-900 text-white p-4 sm:p-5 rounded-xl shadow-xl border border-slate-800 space-y-3.5">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="bg-[#001A49] text-white p-3 rounded-lg shadow-sm border border-[#011E58] space-y-2.5">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
                 <div>
-                  <span className="text-[10px] uppercase tracking-wider text-emerald-400 font-bold block mb-1">
+                  <span className="text-[10px] uppercase tracking-wider text-[#DCE6F5] font-bold block mb-0.5">
                     Server & Connection Settings — إدارة أوضاع الاتصال بالسيرفر المركزي
                   </span>
-                  <h3 className="text-base font-black flex items-center gap-2.5">
-                    <span className="relative flex h-3 w-3 shrink-0">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-                    </span>
+                  <h3 className="text-sm font-black flex items-center gap-2">
+                    <span className="inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 shrink-0"></span>
                     <span>{getConnectionModeLabel(connProfiles.activeMode)}</span>
                   </h3>
-                  <p className="text-[11px] text-slate-300 mt-1 font-mono" dir="ltr">
+                  <p className="text-[11px] text-slate-300 mt-0.5 font-mono" dir="ltr">
                     {isCurrentDeviceSameOrigin
                       ? `Current Device: Same-Origin (Port ${activePort}) | Target Profile: ${activeEndpoint || '-'}`
                       : currentDeviceUrl || activeEndpoint || 'Not configured'}
                   </p>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-1.5">
                   <button
                     type="button"
                     onClick={() => handleTestConnection()}
                     disabled={isTestingServer}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-xs cursor-pointer disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-bold shadow-xs cursor-pointer disabled:opacity-50"
                   >
-                    <RefreshCw className={`w-4 h-4 ${isTestingServer && testingModeKey === 'active' ? 'animate-spin' : ''}`} />
+                    <RefreshCw className={`w-3.5 h-3.5 ${isTestingServer && testingModeKey === 'active' ? 'animate-spin' : ''}`} />
                     <span>{isTestingServer && testingModeKey === 'active' ? 'جاري الفحص...' : 'اختبار الاتصال الحالي'}</span>
                   </button>
                   <button
                     type="button"
                     onClick={handlePushConfigUpdate}
                     disabled={isPushingUpdate}
-                    className="flex items-center gap-1.5 px-3 py-2.5 bg-sky-700 hover:bg-sky-800 text-white rounded-xl font-bold cursor-pointer disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-sky-700 hover:bg-sky-800 text-white rounded-md font-bold cursor-pointer disabled:opacity-50"
                   >
-                    <RefreshCw className={`w-4 h-4 ${isPushingUpdate ? 'animate-spin' : ''}`} />
+                    <RefreshCw className={`w-3.5 h-3.5 ${isPushingUpdate ? 'animate-spin' : ''}`} />
                     <span>{isPushingUpdate ? 'جاري التعميم...' : 'تحديث/تعميم العنوان للأجهزة'}</span>
                   </button>
                   <button
                     type="button"
                     onClick={loadLiveServerInfo}
                     disabled={isLoadingServerInfo}
-                    className="flex items-center gap-1.5 px-3 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold cursor-pointer"
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md font-bold cursor-pointer"
                   >
-                    <Activity className={`w-4 h-4 ${isLoadingServerInfo ? 'animate-pulse' : ''}`} />
+                    <Activity className={`w-3.5 h-3.5 ${isLoadingServerInfo ? 'animate-pulse' : ''}`} />
                     <span>تحديث حالة المنفذ</span>
                   </button>
                 </div>
               </div>
 
               {serverInfo?.tunnelStatus && (
-                <div className="p-3 rounded-xl bg-slate-800/80 border border-slate-700 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                  <div className="flex items-center gap-2">
-                    <Radio className={`w-4 h-4 ${serverInfo.tunnelStatus.status === 'online' ? 'text-emerald-400' : 'text-slate-400'}`} />
+                <div className="px-2.5 py-1.5 rounded-md bg-slate-800/80 border border-slate-700 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                  <div className="flex items-center gap-1.5">
+                    <Radio className={`w-3.5 h-3.5 ${serverInfo.tunnelStatus.status === 'online' ? 'text-emerald-400' : 'text-slate-400'}`} />
                     <span className="font-bold text-slate-200">
                       حالة النفق السريع/الخارجي:
                       <strong className={`mr-1.5 ${serverInfo.tunnelStatus.status === 'online' ? 'text-emerald-400' : 'text-amber-300'}`}>
@@ -1378,7 +1373,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     <button
                       type="button"
                       onClick={() => copyCommandOrUrl(serverInfo.tunnelStatus!.tunnelUrl, 'رابط النفق التلقائي')}
-                      className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-600 text-sky-300 font-mono flex items-center gap-1.5 cursor-pointer"
+                      className="px-2 py-0.5 rounded bg-slate-900 border border-slate-600 text-sky-300 font-mono flex items-center gap-1 cursor-pointer"
                       dir="ltr"
                     >
                       <span>{serverInfo.tunnelStatus.tunnelUrl}</span>
@@ -1388,37 +1383,37 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                 </div>
               )}
 
-              <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 pt-4 border-t border-slate-800 text-[11px]">
-                <div className="p-3 rounded-xl bg-slate-800/70">
+              <div className="grid grid-cols-2 lg:grid-cols-6 gap-px bg-slate-800 border border-slate-700 rounded-md overflow-hidden text-[11px]">
+                <div className="px-2.5 py-1.5 bg-slate-900/90">
                   <span className="text-slate-400 block text-[10px]">نوع الاتصال النشط:</span>
-                  <strong className="text-emerald-400 font-bold block mt-0.5">{getConnectionModeLabel(connProfiles.activeMode)}</strong>
+                  <strong className="text-emerald-400 font-bold block">{getConnectionModeLabel(connProfiles.activeMode)}</strong>
                 </div>
-                <div className="p-3 rounded-xl bg-slate-800/70">
+                <div className="px-2.5 py-1.5 bg-slate-900/90">
                   <span className="text-slate-400 block text-[10px]">حالة السيرفر والمنفذ:</span>
-                  <strong className="text-white font-bold font-mono block mt-0.5" dir="ltr">
+                  <strong className="text-white font-bold font-mono block" dir="ltr">
                     {serverTestResult?.success === false ? 'Check Failed' : 'Online'} • :{activePort}
                   </strong>
                 </div>
-                <div className="p-3 rounded-xl bg-slate-800/70">
+                <div className="px-2.5 py-1.5 bg-slate-900/90">
                   <span className="text-slate-400 block text-[10px]">حالة الإنترنت والنفق:</span>
-                  <strong className={`font-bold block mt-0.5 ${typeof navigator !== 'undefined' && navigator.onLine === false ? 'text-amber-300' : 'text-emerald-300'}`}>
+                  <strong className={`font-bold block ${typeof navigator !== 'undefined' && navigator.onLine === false ? 'text-amber-300' : 'text-emerald-300'}`}>
                     {typeof navigator !== 'undefined' && navigator.onLine === false ? 'بدون إنترنت (LAN متاح)' : 'الإنترنت متصل'}
                     {serverInfo?.tunnelStatus?.status === 'online' ? ' • النفق نشط' : ''}
                   </strong>
                 </div>
-                <div className="p-3 rounded-xl bg-slate-800/70">
+                <div className="px-2.5 py-1.5 bg-slate-900/90">
                   <span className="text-slate-400 block text-[10px]">بروتوكول الاتصال:</span>
-                  <strong className={`font-bold block mt-0.5 ${(serverInfo?.httpsActive || /^https:\/\//i.test(activeEndpoint)) ? 'text-sky-400' : 'text-amber-300'}`}>
+                  <strong className={`font-bold block ${(serverInfo?.httpsActive || /^https:\/\//i.test(activeEndpoint)) ? 'text-sky-400' : 'text-amber-300'}`}>
                     {serverInfo?.httpsActive || /^https:\/\//i.test(activeEndpoint) ? 'HTTPS (مشفر نشط)' : 'HTTP محلي (LAN)'}
                   </strong>
                 </div>
-                <div className="p-3 rounded-xl bg-slate-800/70">
+                <div className="px-2.5 py-1.5 bg-slate-900/90">
                   <span className="text-slate-400 block text-[10px]">قاعدة البيانات الموحدة:</span>
-                  <strong className="text-emerald-300 font-bold block mt-0.5">{dbLabel}</strong>
+                  <strong className="text-emerald-300 font-bold block">{dbLabel}</strong>
                 </div>
-                <div className="p-3 rounded-xl bg-slate-800/70">
-                  <span className="text-slate-400 block text-[10px]">زمن الاستجابة (Latency):</span>
-                  <strong className="font-mono text-white font-bold block mt-0.5">
+                <div className="px-2.5 py-1.5 bg-slate-900/90">
+                  <span className="text-slate-400 block text-[10px]">زمن الاستجابة:</span>
+                  <strong className="font-mono text-white font-bold block tabular-nums">
                     {serverTestResult ? `${serverTestResult.latencyMs} ms` : `${serverForm.latencyMs || 0} ms`}
                   </strong>
                 </div>
@@ -1426,8 +1421,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
               {/* Detected LAN IPs from live /api/admin/server-info */}
               {serverInfo?.lanUrls && serverInfo.lanUrls.length > 0 && (
-                <div className="p-3.5 rounded-xl bg-slate-800/60 border border-slate-700/80 flex flex-wrap items-center gap-2">
-                  <span className="text-slate-300 font-bold">عناوين الشبكة المحلية المكتشفة على السيرفر:</span>
+                <div className="px-2.5 py-1.5 rounded-md bg-slate-800/60 border border-slate-700/80 flex flex-wrap items-center gap-1.5">
+                  <span className="text-slate-300 font-bold">عناوين الشبكة المحلية:</span>
                   {serverInfo.lanUrls.map((entry) => (
                     <button
                       key={entry.url}
@@ -1439,7 +1434,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                         }));
                         copyCommandOrUrl(entry.url, 'عنوان LAN');
                       }}
-                      className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-blue-950 border border-slate-600 text-sky-300 font-mono font-bold cursor-pointer flex items-center gap-1.5"
+                      className="px-2 py-0.5 rounded bg-slate-900 hover:bg-blue-950 border border-slate-600 text-sky-300 font-mono font-bold cursor-pointer flex items-center gap-1"
                       dir="ltr"
                       title="اضغط لاعتماد العنوان ونسخه"
                     >
@@ -1457,7 +1452,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
               {serverTestResult && (
                 <div
-                  className={`p-3.5 rounded-xl border flex items-center gap-2.5 ${
+                  className={`px-2.5 py-2 rounded-md border flex items-center gap-2 ${
                     serverTestResult.success
                       ? 'bg-emerald-950/70 border-emerald-500/50 text-emerald-200'
                       : 'bg-red-950/70 border-red-500/50 text-red-200'
@@ -1480,28 +1475,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
             {/* Electron desktop quick folder controls (unchanged, zero secrets) */}
             {desktopInfo?.isElectron && (
-              <div className="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="bg-[#EEF3FA] border border-[#DCE6F5] rounded-lg p-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
-                  <h4 className="font-black text-slate-900 flex items-center gap-2 text-sm">
-                    <Monitor className="w-4 h-4 text-emerald-700" />
+                  <h4 className="font-black text-slate-900 flex items-center gap-1.5 text-xs sm:text-sm">
+                    <Monitor className="w-4 h-4 text-[#003589]" />
                     <span>بيئة تطبيق سطح المكتب (Windows Desktop + Embedded Server)</span>
                   </h4>
-                  <p className="text-slate-600 text-[11px] mt-1">
+                  <p className="text-slate-600 text-[11px] mt-0.5">
                     مجلد قاعدة البيانات الموحدة: <span className="font-mono font-bold text-slate-900" dir="ltr">{desktopInfo.dataDir}</span>
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-1.5">
                   <button
                     type="button"
                     onClick={() => window.awladDesktop?.openDataFolder()}
-                    className="px-3 py-1.5 bg-white border border-emerald-300 text-emerald-800 rounded-xl font-bold hover:bg-emerald-100 cursor-pointer"
+                    className="px-2.5 py-1 bg-white border border-[#DCE6F5] text-[#011E58] rounded-md font-bold hover:bg-[#DCE6F5] cursor-pointer"
                   >
                     فتح مجلد البيانات
                   </button>
                   <button
                     type="button"
                     onClick={() => window.awladDesktop?.openBackupsFolder()}
-                    className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-xl font-bold hover:bg-slate-100 cursor-pointer"
+                    className="px-2.5 py-1 bg-white border border-slate-300 text-slate-700 rounded-md font-bold hover:bg-slate-100 cursor-pointer"
                   >
                     فتح النسخ الاحتياطية
                   </button>
@@ -1510,22 +1505,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             )}
 
             {/* Main 4-Mode Configuration Form */}
-            <form onSubmit={handleSaveServer} className="space-y-5">
+            <form onSubmit={handleSaveServer} className="space-y-2.5">
               {/* 1. Connection Mode Selector */}
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-3">
+              <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs space-y-2.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 border-b pb-1.5">
                   <div>
-                    <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                      <Server className="w-4 h-4 text-emerald-700" />
+                    <h3 className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5">
+                      <Server className="w-4 h-4 text-[#003589]" />
                       <span>اختيار وضع الاتصال بالسيرفر (Multi-Connection Mode)</span>
                     </h3>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
+                    <p className="text-[11px] text-slate-500">
                       جميع الأوضاع تتصل بنفس السيرفر المركزي ونفس قاعدة البيانات المالية — يمكن التبديل بينها في أي وقت دون ترحيل أو فقدان بيانات.
                     </p>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
                   {modeCards.map((card) => {
                     const CardIcon = card.icon;
                     const isSelected = connProfiles.activeMode === card.key;
@@ -1537,31 +1532,31 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                           setConnProfiles((prev) => ({ ...prev, activeMode: card.key }));
                           setServerError(null);
                         }}
-                        className={`text-right p-4 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                        className={`text-right p-2.5 rounded-lg border transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
                           isSelected
-                            ? 'border-blue-900 bg-blue-50/70 shadow-sm'
+                            ? 'border-blue-900 bg-blue-50/70 shadow-2xs ring-1 ring-blue-900/20'
                             : 'border-slate-200 bg-slate-50/50 hover:border-slate-300'
                         }`}
                       >
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className={`p-2 rounded-xl ${isSelected ? 'bg-blue-900 text-white' : 'bg-white text-slate-700 border border-slate-200'}`}>
-                              <CardIcon className="w-4 h-4" />
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between gap-1.5">
+                            <span className={`p-1.5 rounded-md ${isSelected ? 'bg-blue-900 text-white' : 'bg-white text-slate-700 border border-slate-200'}`}>
+                              <CardIcon className="w-3.5 h-3.5" />
                             </span>
-                            <span className={`px-2 py-0.5 rounded-lg border text-[10px] font-bold ${card.badgeClass}`}>
+                            <span className={`px-1.5 py-0.5 rounded border text-[10px] font-bold ${card.badgeClass}`}>
                               {card.badge}
                             </span>
                           </div>
                           <div>
                             <div className="font-black text-slate-900 text-xs">{card.title}</div>
-                            <div className="text-[11px] text-slate-600 mt-0.5 leading-relaxed">{card.subtitle}</div>
+                            <div className="text-[11px] text-slate-600 mt-0.5 leading-snug">{card.subtitle}</div>
                           </div>
                         </div>
-                        <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between gap-1">
+                        <div className="pt-1.5 border-t border-slate-200/80 flex items-center justify-between gap-1">
                           <span className="font-mono text-[10px] text-slate-500 truncate" dir="ltr">
                             {card.urlPreview}
                           </span>
-                          {isSelected && <CheckCircle2 className="w-4 h-4 text-blue-900 shrink-0" />}
+                          {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-blue-900 shrink-0" />}
                         </div>
                       </button>
                     );
@@ -1570,34 +1565,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               </div>
 
               {serverError && (
-                <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 font-bold flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
+                <div className="px-2.5 py-2 rounded-md bg-red-50 border border-red-200 text-red-700 font-bold flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                   <span>{serverError}</span>
                 </div>
               )}
 
               {/* 2. Per-Mode Configuration Cards */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5">
                 {/* Mode 1: Local Network */}
-                <div className={`bg-white p-5 rounded-2xl border shadow-xs space-y-4 ${connProfiles.activeMode === 'local_network' ? 'border-emerald-500 ring-2 ring-emerald-500/15' : 'border-slate-200'}`}>
-                  <div className="flex items-center justify-between border-b pb-2.5">
-                    <div className="flex items-center gap-2">
-                      <Wifi className="w-4 h-4 text-emerald-700" />
-                      <h4 className="font-black text-slate-900 text-sm">1. الشبكة المحلية (Local Network)</h4>
+                <div className={`bg-white p-3 rounded-lg border shadow-xs space-y-2.5 ${connProfiles.activeMode === 'local_network' ? 'border-[#003589] ring-1 ring-[#003589]/20' : 'border-slate-200'}`}>
+                  <div className="flex items-center justify-between border-b pb-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <Wifi className="w-4 h-4 text-[#003589]" />
+                      <h4 className="font-black text-slate-900 text-xs sm:text-sm">1. الشبكة المحلية (Local Network)</h4>
                     </div>
                     <button
                       type="button"
                       disabled={isTestingServer}
                       onClick={() => handleTestConnection('local_network')}
-                      className="px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[11px] cursor-pointer"
+                      className="px-2.5 py-1 rounded-md bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] font-bold text-[11px] cursor-pointer"
                     >
                       اختبار المحلي
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <div className="sm:col-span-2">
-                      <label className="block font-bold mb-1">Server IP (عنوان اللابتوب):</label>
+                      <label className="block text-[11px] font-bold mb-0.5">Server IP (عنوان اللابتوب):</label>
                       <input
                         type="text"
                         dir="ltr"
@@ -1610,11 +1605,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                             localNetwork: { ...prev.localNetwork, ip: e.target.value },
                           }))
                         }
-                        className="w-full border rounded-xl p-2.5 font-mono text-blue-900 font-bold text-left"
+                        className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono text-blue-900 font-bold text-left"
                       />
                     </div>
                     <div>
-                      <label className="block font-bold mb-1">Port (المنفذ):</label>
+                      <label className="block text-[11px] font-bold mb-0.5">Port (المنفذ):</label>
                       <input
                         type="number"
                         required
@@ -1627,12 +1622,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                             localNetwork: { ...prev.localNetwork, port: parseInt(e.target.value, 10) || 3000 },
                           }))
                         }
-                        className="w-full border rounded-xl p-2.5 font-mono text-left"
+                        className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono text-left"
                         dir="ltr"
                       />
                     </div>
                     <div className="sm:col-span-3">
-                      <label className="block font-bold mb-1">Hostname (اسم الجهاز):</label>
+                      <label className="block text-[11px] font-bold mb-0.5">Hostname (اسم الجهاز):</label>
                       <input
                         type="text"
                         dir="ltr"
@@ -1643,12 +1638,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                             localNetwork: { ...prev.localNetwork, hostname: e.target.value },
                           }))
                         }
-                        className="w-full border rounded-xl p-2.5 font-mono text-left"
+                        className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono text-left"
                       />
                     </div>
                   </div>
 
-                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-[11px] flex items-center justify-between gap-2">
+                  <div className="px-2.5 py-1.5 rounded-md bg-slate-50 border border-slate-200 text-[11px] flex items-center justify-between gap-2">
                     <span className="text-slate-600 font-bold">الرابط المحلي المعتمد:</span>
                     <span className="font-mono font-bold text-slate-900" dir="ltr">
                       {resolveModeEndpointUrl('local_network', connProfiles)}
@@ -1657,24 +1652,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                 </div>
 
                 {/* Mode 2: Free Remote Connection (Cloudflare Quick Tunnel) */}
-                <div className={`bg-white p-5 rounded-2xl border shadow-xs space-y-4 ${connProfiles.activeMode === 'free_remote' ? 'border-sky-500 ring-2 ring-sky-500/15' : 'border-slate-200'}`}>
-                  <div className="flex items-center justify-between border-b pb-2.5">
-                    <div className="flex items-center gap-2">
+                <div className={`bg-white p-3 rounded-lg border shadow-xs space-y-2.5 ${connProfiles.activeMode === 'free_remote' ? 'border-sky-500 ring-1 ring-sky-500/20' : 'border-slate-200'}`}>
+                  <div className="flex items-center justify-between border-b pb-1.5">
+                    <div className="flex items-center gap-1.5">
                       <Radio className="w-4 h-4 text-sky-600" />
-                      <h4 className="font-black text-slate-900 text-sm">2. الرابط الخارجي المجاني (Cloudflare Quick Tunnel)</h4>
+                      <h4 className="font-black text-slate-900 text-xs sm:text-sm">2. الرابط الخارجي المجاني (Cloudflare Quick Tunnel)</h4>
                     </div>
                     <button
                       type="button"
                       disabled={isTestingServer || !connProfiles.freeRemote.tunnelUrl}
                       onClick={() => handleTestConnection('free_remote')}
-                      className="px-3 py-1.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-800 font-bold text-[11px] cursor-pointer disabled:opacity-40"
+                      className="px-2.5 py-1 rounded-md bg-sky-50 hover:bg-sky-100 text-sky-800 font-bold text-[11px] cursor-pointer disabled:opacity-40"
                     >
                       اختبار الرابط
                     </button>
                   </div>
 
                   <div>
-                    <label className="block font-bold mb-1">رابط Quick Tunnel (HTTPS):</label>
+                    <label className="block text-[11px] font-bold mb-0.5">رابط Quick Tunnel (HTTPS):</label>
                     <input
                       type="url"
                       dir="ltr"
@@ -1686,14 +1681,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                           freeRemote: { ...prev.freeRemote, tunnelUrl: e.target.value },
                         }))
                       }
-                      className="w-full border rounded-xl p-2.5 font-mono text-sky-900 font-bold text-left"
+                      className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono text-sky-900 font-bold text-left"
                     />
                     <span className="text-[10px] text-slate-500 mt-1 block">
                       يعمل فوراً بدون دومين أو اشتراك مدفوع؛ يلتقطه السيرفر تلقائياً من <span className="font-mono" dir="ltr">scripts/start-free-tunnel.bat</span> أو يمكنك لصقه يدوياً.
                     </span>
                   </div>
 
-                  <label className="flex items-start gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer">
+                  <label className="flex items-start gap-2 p-2 rounded-md bg-slate-50 border border-slate-200 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={connProfiles.freeRemote.autoDetect !== false}
@@ -1703,7 +1698,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                           freeRemote: { ...prev.freeRemote, autoDetect: e.target.checked },
                         }))
                       }
-                      className="w-4 h-4 mt-0.5 rounded text-sky-700"
+                      className="w-3.5 h-3.5 mt-0.5 rounded text-sky-700"
                     />
                     <div>
                       <span className="font-bold text-slate-800 block">تحديث رابط النفق تلقائياً عند تشغيل/تغيير النفق على اللابتوب</span>
@@ -1711,26 +1706,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     </div>
                   </label>
 
-                  <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 font-bold flex items-start gap-2">
-                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="p-2 rounded-md bg-amber-50 border border-amber-200 text-[11px] text-amber-900 font-bold flex items-start gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
                     <span>
                       تنبيه هام: رابط Quick Tunnel المجاني (<span className="font-mono" dir="ltr">trycloudflare.com</span>) مؤقت وقد يتغير عند إعادة تشغيل النفق أو اللابتوب — وعند تغيّره يمكنك إعادة ربط أي جهاز بسهولة عبر رابط الدعوة أو مسح QR جديد.
                     </span>
                   </div>
 
-                  <div className="p-3 rounded-xl bg-sky-50/70 border border-sky-200 space-y-2">
+                  <div className="p-2 rounded-md bg-sky-50/70 border border-sky-200 space-y-1.5">
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-sky-900 text-[11px]">تشغيل النفق المجاني مع الالتقاط التلقائي للرابط:</span>
                       <button
                         type="button"
                         onClick={() => copyCommandOrUrl(`node scripts/tunnel-supervisor.mjs --mode=quick --port=${activePort}`, 'أمر مراقب النفق المجاني')}
-                        className="px-2 py-1 rounded-lg bg-white border border-sky-300 text-sky-800 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                        className="px-2 py-0.5 rounded bg-white border border-sky-300 text-sky-800 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
                       >
                         <Copy className="w-3 h-3" />
                         <span>نسخ الأمر</span>
                       </button>
                     </div>
-                    <code className="block p-2 rounded-lg bg-slate-900 text-sky-300 font-mono text-[10px] overflow-x-auto" dir="ltr">
+                    <code className="block px-2 py-1.5 rounded bg-slate-900 text-sky-300 font-mono text-[10px] overflow-x-auto" dir="ltr">
                       node scripts/tunnel-supervisor.mjs --mode=quick --port={activePort}
                     </code>
                     <p className="text-[10px] text-slate-600">
@@ -1740,25 +1735,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                 </div>
 
                 {/* Mode 3: Professional Remote Connection */}
-                <div className={`bg-white p-5 rounded-2xl border shadow-xs space-y-4 ${connProfiles.activeMode === 'pro_remote' ? 'border-indigo-500 ring-2 ring-indigo-500/15' : 'border-slate-200'}`}>
-                  <div className="flex items-center justify-between border-b pb-2.5">
-                    <div className="flex items-center gap-2">
-                      <Globe className="w-4 h-4 text-indigo-700" />
-                      <h4 className="font-black text-slate-900 text-sm">3. الرابط الخارجي الاحترافي (Named Tunnel + Domain)</h4>
+                <div className={`bg-white p-3 rounded-lg border shadow-xs space-y-2.5 ${connProfiles.activeMode === 'pro_remote' ? 'border-[#003589] ring-1 ring-[#003589]/20' : 'border-slate-200'}`}>
+                  <div className="flex items-center justify-between border-b pb-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <Globe className="w-4 h-4 text-[#003589]" />
+                      <h4 className="font-black text-slate-900 text-xs sm:text-sm">3. الرابط الخارجي الاحترافي (Named Tunnel + Domain)</h4>
                     </div>
                     <button
                       type="button"
                       disabled={isTestingServer || !connProfiles.proRemote.domainUrl}
                       onClick={() => handleTestConnection('pro_remote')}
-                      className="px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-800 font-bold text-[11px] cursor-pointer disabled:opacity-40"
+                      className="px-2.5 py-1 rounded-md bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] font-bold text-[11px] cursor-pointer disabled:opacity-40"
                     >
                       اختبار الدومين
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div className="sm:col-span-2">
-                      <label className="block font-bold mb-1">الدومين الثابت المشفر (HTTPS):</label>
+                      <label className="block text-[11px] font-bold mb-0.5">الدومين الثابت المشفر (HTTPS):</label>
                       <input
                         type="url"
                         dir="ltr"
@@ -1770,11 +1765,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                             proRemote: { ...prev.proRemote, domainUrl: e.target.value },
                           }))
                         }
-                        className="w-full border rounded-xl p-2.5 font-mono text-indigo-900 font-bold text-left"
+                        className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono text-[#011E58] font-bold text-left"
                       />
                     </div>
                     <div className="sm:col-span-2">
-                      <label className="block font-bold mb-1">مزود البوابة الاحترافية:</label>
+                      <label className="block text-[11px] font-bold mb-0.5">مزود البوابة الاحترافية:</label>
                       <select
                         value={connProfiles.proRemote.provider || 'cloudflare_named_tunnel'}
                         onChange={(e) =>
@@ -1783,7 +1778,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                             proRemote: { ...prev.proRemote, provider: e.target.value },
                           }))
                         }
-                        className="w-full border rounded-xl p-2.5 bg-white font-bold text-slate-800"
+                        className="w-full h-8 border border-slate-300 rounded-md px-2 bg-white font-bold text-slate-800"
                       >
                         <option value="cloudflare_named_tunnel">Cloudflare Named Tunnel (دومين العميل بدون فتح بورتات الراوتر)</option>
                         <option value="nginx_reverse_proxy">Nginx Reverse Proxy + SSL (شهادة Let's Encrypt أو مملوكة للعميل)</option>
@@ -1795,8 +1790,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     </div>
                   </div>
 
-                  <div className="p-3 rounded-xl bg-indigo-50/70 border border-indigo-200 text-[11px] text-slate-700 space-y-1">
-                    <div className="font-bold text-indigo-900 flex items-center gap-1.5">
+                  <div className="p-2 rounded-md bg-[#EEF3FA] border border-[#DCE6F5] text-[11px] text-slate-700 space-y-0.5">
+                    <div className="font-bold text-[#011E58] flex items-center gap-1.5">
                       <Lock className="w-3.5 h-3.5" />
                       <span>أمان الأسرار والتوكنات:</span>
                     </div>
@@ -1807,24 +1802,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                 </div>
 
                 {/* Mode 4: Cloud VPS Connection */}
-                <div className={`bg-white p-5 rounded-2xl border shadow-xs space-y-4 ${connProfiles.activeMode === 'cloud_vps' ? 'border-purple-500 ring-2 ring-purple-500/15' : 'border-slate-200'}`}>
-                  <div className="flex items-center justify-between border-b pb-2.5">
-                    <div className="flex items-center gap-2">
-                      <Cloud className="w-4 h-4 text-purple-700" />
-                      <h4 className="font-black text-slate-900 text-sm">4. الاتصال عبر سيرفر سحابي (Cloud VPS)</h4>
+                <div className={`bg-white p-3 rounded-lg border shadow-xs space-y-2.5 ${connProfiles.activeMode === 'cloud_vps' ? 'border-[#011E58] ring-1 ring-[#011E58]/20' : 'border-slate-200'}`}>
+                  <div className="flex items-center justify-between border-b pb-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <Cloud className="w-4 h-4 text-[#011E58]" />
+                      <h4 className="font-black text-slate-900 text-xs sm:text-sm">4. الاتصال عبر سيرفر سحابي (Cloud VPS)</h4>
                     </div>
                     <button
                       type="button"
                       disabled={isTestingServer || !connProfiles.cloudVps.vpsUrl}
                       onClick={() => handleTestConnection('cloud_vps')}
-                      className="px-3 py-1.5 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-800 font-bold text-[11px] cursor-pointer disabled:opacity-40"
+                      className="px-2.5 py-1 rounded-md bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] font-bold text-[11px] cursor-pointer disabled:opacity-40"
                     >
                       اختبار الـ VPS
                     </button>
                   </div>
 
                   <div>
-                    <label className="block font-bold mb-1">عنوان السيرفر السحابي المستقبلي (HTTPS):</label>
+                    <label className="block text-[11px] font-bold mb-0.5">عنوان السيرفر السحابي المستقبلي (HTTPS):</label>
                     <input
                       type="url"
                       dir="ltr"
@@ -1836,12 +1831,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                           cloudVps: { ...prev.cloudVps, vpsUrl: e.target.value },
                         }))
                       }
-                      className="w-full border rounded-xl p-2.5 font-mono text-purple-900 font-bold text-left"
+                      className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono text-[#011E58] font-bold text-left"
                     />
                   </div>
 
                   <div>
-                    <label className="block font-bold mb-1">ملاحظات الاستضافة (بدون كلمات مرور أو مفاتيح):</label>
+                    <label className="block text-[11px] font-bold mb-0.5">ملاحظات الاستضافة (بدون كلمات مرور أو مفاتيح):</label>
                     <input
                       type="text"
                       placeholder="مثال: VPS مستقبلي — ترحيل يدوي عند الحاجة"
@@ -1852,20 +1847,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                           cloudVps: { ...prev.cloudVps, notes: e.target.value },
                         }))
                       }
-                      className="w-full border rounded-xl p-2.5"
+                      className="w-full h-8 border border-slate-300 rounded-md px-2.5"
                     />
                   </div>
 
-                  <div className="p-3 rounded-xl bg-purple-50/70 border border-purple-200 text-[11px] text-slate-700">
+                  <div className="p-2 rounded-md bg-slate-50 border border-slate-200 text-[11px] text-slate-700">
                     لا يتم تفعيل أي اشتراك أو نقل بيانات تلقائي. عند قرار الانتقال إلى VPS لاحقاً، تُنقل نفس قاعدة البيانات عبر النسخ الاحتياطي أو ترحيل PostgreSQL بموافقة الإدارة فقط.
                   </div>
                 </div>
               </div>
 
               {/* Security & Device Application Controls */}
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <label className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer">
+              <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-xs space-y-2.5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <label className="flex items-start gap-2 p-2 rounded-md bg-slate-50 border border-slate-200 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={connProfiles.enforceHttpsForRemote !== false}
@@ -1875,7 +1870,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                           enforceHttpsForRemote: e.target.checked,
                         }))
                       }
-                      className="w-4 h-4 mt-0.5 rounded text-blue-900"
+                      className="w-3.5 h-3.5 mt-0.5 rounded text-blue-900"
                     />
                     <div>
                       <span className="font-bold text-slate-900 block">إلزام بروتوكول HTTPS لجميع الاتصالات الخارجية</span>
@@ -1883,12 +1878,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     </div>
                   </label>
 
-                  <label className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer">
+                  <label className="flex items-start gap-2 p-2 rounded-md bg-slate-50 border border-slate-200 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={applyActiveToThisDevice}
                       onChange={(e) => setApplyActiveToThisDevice(e.target.checked)}
-                      className="w-4 h-4 mt-0.5 rounded text-blue-900"
+                      className="w-3.5 h-3.5 mt-0.5 rounded text-blue-900"
                     />
                     <div>
                       <span className="font-bold text-slate-900 block">تطبيق عنوان الوضع النشط على هذا الجهاز فوراً</span>
@@ -1899,7 +1894,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   </label>
                 </div>
 
-                <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100">
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-slate-100">
                   {!isNativeCapacitor() && currentDeviceUrl ? (
                     <button
                       type="button"
@@ -1907,13 +1902,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                         setConfiguredApiBaseUrl('');
                         showSavedBanner('تمت إعادة هذا الجهاز للاتصال المحلي المباشر (Same-Origin)');
                       }}
-                      className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+                      className="px-3 py-1.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
                     >
                       العودة للاتصال المباشر (Same-Origin) على هذا الجهاز
                     </button>
                   ) : (
                     <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
-                      <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
                       <span>إعدادات الاتصال تُحفظ مركزياً في قاعدة البيانات الموحدة وتنطبق على Windows و Android بدون إعادة بناء.</span>
                     </div>
                   )}
@@ -1921,9 +1916,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   <button
                     type="submit"
                     disabled={isSavingServer}
-                    className="flex items-center gap-2 px-6 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-black rounded-xl shadow-md cursor-pointer disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-4 py-1.5 bg-[#003589] hover:bg-[#0049B0] text-white font-black rounded-md shadow-xs cursor-pointer disabled:opacity-50"
                   >
-                    <Save className="w-4 h-4" />
+                    <Save className="w-3.5 h-3.5" />
                     <span>{isSavingServer ? 'جاري الحفظ...' : 'حفظ إعدادات السيرفر والاتصال'}</span>
                   </button>
                 </div>
@@ -1944,34 +1939,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
       {/* TAB 3: Abu Selim Product Import (Section 8) */}
       {activeTab === 'abu-selim' && (
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5 text-xs">
-          <div className="border-b pb-3">
-            <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+        <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs space-y-2.5 text-xs">
+          <div className="border-b pb-2">
+            <h3 className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5">
               <FileSpreadsheet className="w-4 h-4 text-amber-600" />
               <span>استيراد وتدقيق ملفات المنتجات (Product Import Engine)</span>
             </h3>
-            <p className="text-slate-500 mt-1 leading-relaxed">
+            <p className="text-[11px] text-slate-500 mt-0.5">
               وفق تعليمات الإدارة الصارمة: استخراج أسماء المنتجات والأكواد الأصلية فقط، عدم اختراع بيانات، وترك أسعار الشراء والبيع والكميات والصور فارغة بالكامل (0) لتحديدها لاحقاً بمعرفتكم.
             </p>
           </div>
 
           {importSuccessCount !== null && (
-            <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl font-bold flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <div className="px-2.5 py-2 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-md font-bold flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
               <span>تم استيراد ({importSuccessCount}) صنف جديد بنجاح إلى قاعدة البيانات دون أسعار أو كميات مسبقة!</span>
             </div>
           )}
 
           {importError && (
-            <div className="p-3.5 bg-red-50 border border-red-200 text-red-800 rounded-xl font-bold flex items-center gap-2">
+            <div className="px-2.5 py-2 bg-red-50 border border-red-200 text-red-800 rounded-md font-bold flex items-center gap-1.5">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{importError}</span>
             </div>
           )}
 
           {deleteImportedReport && (
-            <div className="p-4 bg-blue-50 border border-blue-200 text-blue-950 rounded-xl space-y-1.5">
-              <div className="font-black flex items-center gap-2">
+            <div className="px-2.5 py-2 bg-blue-50 border border-blue-200 text-blue-950 rounded-md space-y-1">
+              <div className="font-black flex items-center gap-1.5">
                 <CheckCircle2 className="w-4 h-4 text-blue-700" />
                 <span>تم حذف ({deleteImportedReport.deletedCount}) صنف مستورد من الملفات بأمان.</span>
               </div>
@@ -1986,12 +1981,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
           )}
 
           {/* Upload Box */}
-          <div className="p-4 border-2 border-dashed border-slate-300 rounded-xl text-center bg-slate-50/50 hover:bg-slate-50 transition-colors">
-            <FileSpreadsheet className="w-10 h-10 text-slate-400 mx-auto mb-2" />
-            <p className="font-bold text-slate-800 mb-1">اختر ملف الأصناف (شيبسيات.txt، مشروبات.txt، tool.txt، أو ملفات CSV)</p>
-            <p className="text-[11px] text-slate-500 mb-4">يتم فحص وتدقيق الأكواد المكررة تلقائياً وعرض معاينة تفصيلية قبل الاعتماد النهائي</p>
-            <label className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-900 hover:bg-blue-950 text-white font-bold rounded-xl cursor-pointer shadow-md transition-all">
-              <Upload className="w-4 h-4" />
+          <div className="p-3 border border-dashed border-slate-300 rounded-lg text-center bg-slate-50/50 hover:bg-slate-50 transition-colors">
+            <FileSpreadsheet className="w-7 h-7 text-slate-400 mx-auto mb-1" />
+            <p className="font-bold text-slate-800 mb-0.5">اختر ملف الأصناف (شيبسيات.txt، مشروبات.txt، tool.txt، أو ملفات CSV)</p>
+            <p className="text-[11px] text-slate-500 mb-2">يتم فحص وتدقيق الأكواد المكررة تلقائياً وعرض معاينة تفصيلية قبل الاعتماد النهائي</p>
+            <label className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-900 hover:bg-blue-950 text-white font-bold rounded-md cursor-pointer shadow-xs transition-all">
+              <Upload className="w-3.5 h-3.5" />
               <span>اختيار ملف الأصناف للفحص</span>
               <input
                 type="file"
@@ -2001,46 +1996,46 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               />
             </label>
             {importFileName && (
-              <p className="mt-3 font-mono font-bold text-blue-900 text-xs">الملف المختار: {importFileName}</p>
+              <p className="mt-2 font-mono font-bold text-blue-900 text-xs">الملف المختار: {importFileName}</p>
             )}
           </div>
 
           {/* Preview Table */}
           {importCandidates.length > 0 && (
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-bold text-slate-800">إجمالي السجلات المكتشفة ({importCandidates.length}):</span>
-                  <span className="text-[11px] text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded border border-emerald-300 font-bold">
-                    أصناف صالحة: {importCandidates.filter(c => c.isValid).length}
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-2.5 py-2 rounded-md border border-slate-200">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-bold text-slate-800">إجمالي السجلات ({importCandidates.length}):</span>
+                  <span className="text-[11px] text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-300 font-bold">
+                    صالح: {importCandidates.filter(c => c.isValid).length}
                   </span>
                   {importCandidates.some(c => c.isDuplicateCode) && (
-                    <span className="text-[11px] text-red-800 bg-red-50 px-2.5 py-0.5 rounded border border-red-300 font-bold">
+                    <span className="text-[11px] text-red-800 bg-red-50 px-2 py-0.5 rounded border border-red-300 font-bold">
                       أكواد مكررة: {importCandidates.filter(c => c.isDuplicateCode).length}
                     </span>
                   )}
                   {importCandidates.some(c => c.isDuplicateName) && (
-                    <span className="text-[11px] text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded border border-amber-300 font-bold">
+                    <span className="text-[11px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-300 font-bold">
                       أسماء مكررة: {importCandidates.filter(c => c.isDuplicateName).length}
                     </span>
                   )}
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <button
                     type="button"
                     onClick={handleCancelImport}
-                    className="px-3.5 py-2 border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold rounded-xl cursor-pointer"
+                    className="px-2.5 py-1 border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold rounded-md cursor-pointer"
                   >
-                    إلغاء العملية
+                    إلغاء
                   </button>
                   <button
                     type="button"
                     onClick={handleRequestImportConfirm}
                     disabled={isImportingToDb || importCandidates.filter(c => c.isValid).length === 0}
-                    className="flex items-center gap-1.5 px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-black rounded-xl shadow-xs cursor-pointer disabled:opacity-50"
+                    className="flex items-center gap-1 px-3 py-1 bg-[#003589] hover:bg-[#0049B0] text-white font-black rounded-md shadow-xs cursor-pointer disabled:opacity-50"
                   >
-                    <Check className="w-4 h-4" />
+                    <Check className="w-3.5 h-3.5" />
                     <span>{isImportingToDb ? 'جاري الاستيراد...' : 'اعتماد واستيراد الأصناف المعتمدة'}</span>
                   </button>
                 </div>
@@ -2105,11 +2100,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
           )}
 
           {/* Safe Delete Imported Products Section */}
-          <div className="p-4 rounded-2xl bg-red-50/70 border border-red-200 space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="p-2.5 rounded-lg bg-red-50/70 border border-red-200 space-y-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
                 <h4 className="font-black text-red-900 flex items-center gap-1.5 text-xs">
-                  <Trash2 className="w-4 h-4 text-red-600" />
+                  <Trash2 className="w-3.5 h-3.5 text-red-600" />
                   <span>إدارة وحذف الأصناف المستوردة من الملفات ({importedProductsList.length} صنف مستورد)</span>
                 </h4>
                 <p className="text-[11px] text-red-800/80 mt-0.5">
@@ -2120,9 +2115,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                 type="button"
                 disabled={importedProductsList.length === 0 || isDeletingImported}
                 onClick={() => setShowDeleteImportedConfirm(true)}
-                className="shrink-0 flex items-center gap-1.5 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-xs shadow-xs disabled:opacity-40 cursor-pointer"
+                className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-md font-black text-xs shadow-xs disabled:opacity-40 cursor-pointer"
               >
-                <Trash2 className="w-4 h-4" />
+                <Trash2 className="w-3.5 h-3.5" />
                 <span>
                   {selectedDeleteBatchId === 'all'
                     ? 'مسح جميع الأصناف المستوردة من الملفات'
@@ -2132,12 +2127,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             </div>
 
             {importBatches.length > 0 && (
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-2 border-t border-red-200/60">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1.5 border-t border-red-200/60">
                 <label className="text-[11px] font-bold text-red-950 shrink-0">نطاق الحذف:</label>
                 <select
                   value={selectedDeleteBatchId}
                   onChange={(e) => setSelectedDeleteBatchId(e.target.value)}
-                  className="bg-white border border-red-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800"
+                  className="h-8 bg-white border border-red-200 rounded-md px-2.5 text-xs font-bold text-slate-800"
                 >
                   <option value="all">جميع الأصناف المستوردة من الملفات ({importedProductsList.length} صنف)</option>
                   {importBatches
@@ -2184,20 +2179,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
       {/* TAB 5: Backup & Restore */}
       {activeTab === 'backup' && (
-        <div className="space-y-3.5 text-xs">
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5 text-xs">
-            <h3 className="text-sm font-black text-slate-900 border-b pb-2 flex items-center gap-2">
+        <div className="space-y-2.5 text-xs">
+          <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs space-y-2.5 text-xs">
+            <h3 className="text-xs sm:text-sm font-black text-slate-900 border-b pb-1.5 flex items-center gap-1.5">
               <Database className="w-4 h-4 text-blue-900" />
               <span>النسخ الاحتياطي واستعادة قاعدة البيانات (Backup & Recovery)</span>
             </h3>
-            <p className="text-slate-500 leading-relaxed">
+            <p className="text-[11px] text-slate-500">
               يمكنك في أي وقت تنزيل نسخة احتياطية كاملة ومأمونة من كافة فواتير المبيعات، المشتريات، حركة الخزائن، حسابات العملاء والموردين بصيغة JSON، واستعادتها على أي جهاز كمبيوتر أو هاتف محمول.
             </p>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               {/* Download Backup */}
-              <div className="p-4 bg-slate-50 border rounded-2xl space-y-3">
-                <h4 className="font-bold text-slate-900 flex items-center gap-2">
+              <div className="p-2.5 bg-slate-50 border rounded-lg space-y-2">
+                <h4 className="font-bold text-slate-900 flex items-center gap-1.5">
                   <Download className="w-4 h-4 text-blue-900" />
                   <span>تصدير نسخة احتياطية كاملة</span>
                 </h4>
@@ -2207,22 +2202,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                 <button
                   type="button"
                   onClick={exportBackup}
-                  className="w-full py-2.5 px-4 bg-blue-900 hover:bg-blue-950 text-white font-bold rounded-xl shadow-xs text-center cursor-pointer"
+                  className="w-full py-1.5 px-3 bg-blue-900 hover:bg-blue-950 text-white font-bold rounded-md shadow-xs text-center cursor-pointer"
                 >
                   تنزيل ملف النسخة الاحتياطية الآن
                 </button>
               </div>
 
               {/* Restore Backup */}
-              <div className="p-4 bg-slate-50 border rounded-2xl space-y-3">
-                <h4 className="font-bold text-slate-900 flex items-center gap-2">
-                  <Upload className="w-4 h-4 text-emerald-700" />
+              <div className="p-2.5 bg-slate-50 border rounded-lg space-y-2">
+                <h4 className="font-bold text-slate-900 flex items-center gap-1.5">
+                  <Upload className="w-4 h-4 text-[#003589]" />
                   <span>استعادة نسخة احتياطية سابقة</span>
                 </h4>
                 <p className="text-[11px] text-slate-500">
                   رفع ملف النسخة الاحتياطية (JSON) واسترجاع كامل العمليات والأرصدة بأمان
                 </p>
-                <label className="w-full block py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-center cursor-pointer shadow-xs">
+                <label className="w-full block py-1.5 px-3 bg-[#003589] hover:bg-[#0049B0] text-white font-bold rounded-md text-center cursor-pointer shadow-xs">
                   <span>اختر ملف النسخة واستعادتها</span>
                   <input
                     type="file"
@@ -2239,32 +2234,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
       {/* Migration Log and PostgreSQL Management Tab */}
       {activeTab === 'migration' && (
-        <div className="space-y-3.5 text-xs animate-in fade-in duration-200">
+        <div className="space-y-2.5 text-xs">
           {/* PostgreSQL Engine & Health Banner */}
-          <div className="bg-slate-900 text-white p-4 sm:p-5 rounded-xl shadow-xl border border-slate-800">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="bg-[#001A49] text-white p-3 rounded-lg shadow-sm border border-[#011E58] space-y-2.5">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
               <div>
-                <span className="text-[10px] uppercase tracking-wider text-indigo-400 font-bold block mb-1">
+                <span className="text-[10px] uppercase tracking-wider text-[#DCE6F5] font-bold block mb-0.5">
                   قاعدة البيانات المركزية والخادم المحلي (PostgreSQL Relational Engine)
                 </span>
-                <h3 className="text-base font-black flex items-center gap-2">
-                  <span className="relative flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-indigo-500"></span>
-                  </span>
+                <h3 className="text-sm font-black flex items-center gap-2">
+                  <span className="inline-flex rounded-full h-2.5 w-2.5 bg-[#0053BE] shrink-0"></span>
                   <span>PostgreSQL 16 Enterprise · awlad_selim · 20 مستخدم متزامن</span>
                 </h3>
-                <p className="text-xs text-slate-400 mt-1">
+                <p className="text-[11px] text-slate-300 mt-0.5">
                   نظام المعاملات المالية والمخزنية المتسقة (ACID Transactions)، المفاتيح الأجنبية، الفهارس وسجلات التدقيق المتقدمة.
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <button
                   type="button"
                   onClick={handleCheckPostgres}
                   disabled={isTestingPg}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold border border-slate-700 transition-colors disabled:opacity-50 cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[#011E58] hover:bg-[#002160] text-white rounded-md font-bold border border-[#003589] transition-colors disabled:opacity-50 cursor-pointer"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isTestingPg ? 'animate-spin' : ''}`} />
                   <span>{isTestingPg ? 'جاري الفحص...' : 'فحص اتصال PostgreSQL'}</span>
@@ -2274,9 +2266,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   type="button"
                   onClick={handleRunMigration}
                   disabled={isMigrating}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black shadow-lg shadow-indigo-600/30 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-black shadow-xs transition-all disabled:opacity-50 cursor-pointer"
                 >
-                  <ArrowLeftRight className={`w-4 h-4 ${isMigrating ? 'animate-spin' : ''}`} />
+                  <ArrowLeftRight className={`w-3.5 h-3.5 ${isMigrating ? 'animate-spin' : ''}`} />
                   <span>{isMigrating ? 'جاري الترحيل والتحقق...' : 'تشغيل فحص وترحيل البيانات'}</span>
                 </button>
 
@@ -2284,7 +2276,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   type="button"
                   onClick={handleRollbackMigration}
                   disabled={isMigrating}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold transition-colors disabled:opacity-50 cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-md font-bold transition-colors disabled:opacity-50 cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span>التراجع لآخر نسخة احتياطية</span>
@@ -2293,8 +2285,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             </div>
 
             {/* Diagnostic stats */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-4 border-t border-slate-800 text-[11px]">
-              <div className="p-3 rounded-xl bg-slate-800/60">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-slate-800 border border-slate-700 rounded-md overflow-hidden text-[11px]">
+              <div className="px-2.5 py-1.5 bg-slate-900/90">
                 <span className="text-slate-400 block text-[10px]">حالة المحرك:</span>
                 <strong className={pgHealthInfo?.status === 'online' ? 'text-emerald-400 font-bold' : 'text-amber-300 font-bold'}>
                   {pgHealthInfo?.status === 'online'
@@ -2304,29 +2296,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     : 'PostgreSQL غير مُعدّ بعد (السجلات المحلية الآمنة تعمل)'}
                 </strong>
               </div>
-              <div className="p-3 rounded-xl bg-slate-800/60">
+              <div className="px-2.5 py-1.5 bg-slate-900/90">
                 <span className="text-slate-400 block text-[10px]">استجابة الاتصال:</span>
                 <strong className="text-emerald-400 font-mono font-bold">
                   {pgHealthInfo?.latencyMs ? `${pgHealthInfo.latencyMs} ms` : 'محلي (0 ms)'}
                 </strong>
               </div>
-              <div className="p-3 rounded-xl bg-slate-800/60">
+              <div className="px-2.5 py-1.5 bg-slate-900/90">
                 <span className="text-slate-400 block text-[10px]">قاعدة البيانات:</span>
                 <strong className="text-slate-200 font-mono font-bold">
                   {pgHealthInfo?.databaseName || 'awlad_selim (v3.0)'}
                 </strong>
               </div>
-              <div className="p-3 rounded-xl bg-slate-800/60">
+              <div className="px-2.5 py-1.5 bg-slate-900/90">
                 <span className="text-slate-400 block text-[10px]">المعاملات المالية:</span>
                 <strong className="text-emerald-400 font-bold">ACID Enabled / Idempotent</strong>
               </div>
             </div>
 
             {pgHealthInfo && (
-              <div className={`mt-3 p-3 rounded-xl text-xs ${pgHealthInfo.status === 'online' ? 'bg-emerald-950/60 text-emerald-200 border border-emerald-800/60' : 'bg-slate-800/90 text-amber-200 border border-amber-700/40'}`}>
+              <div className={`px-2.5 py-1.5 rounded-md text-xs ${pgHealthInfo.status === 'online' ? 'bg-emerald-950/60 text-emerald-200 border border-emerald-800/60' : 'bg-slate-800/90 text-amber-200 border border-amber-700/40'}`}>
                 <p><strong>نتيجة الفحص:</strong> {pgHealthInfo.message}</p>
                 {pgHealthInfo.status !== 'online' && (
-                  <p className="text-[11px] text-slate-300 mt-1">
+                  <p className="text-[11px] text-slate-300 mt-0.5">
                     ملاحظة: تبقى جميع بياناتك الحالية محفوظة بالكامل دون حذف أو تصفير. لن يبدأ الترحيل الفعلي إلا بعد إعداد متغيرات اتصال PostgreSQL وتشغيل الخدمة وأخذ نسخة احتياطية تلقائية.
                   </p>
                 )}
@@ -2336,35 +2328,35 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
           {/* Live Migration Result Card */}
           {migrationResult && (
-            <div className={`p-5 rounded-2xl border ${
+            <div className={`p-3 rounded-lg border ${
               migrationResult.success ? 'bg-emerald-50 border-emerald-200 text-emerald-950' : 'bg-red-50 border-red-200 text-red-950'
-            } shadow-xs space-y-3`}>
+            } shadow-xs space-y-2`}>
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   {migrationResult.success ? (
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                   ) : (
-                    <AlertCircle className="w-5 h-5 text-red-600" />
+                    <AlertCircle className="w-4 h-4 text-red-600" />
                   )}
-                  <h4 className="font-black text-sm">
+                  <h4 className="font-black text-xs sm:text-sm">
                     {migrationResult.success ? 'تم فحص وترحيل البيانات وتوثيقها في سجل الترحيل بنجاح!' : 'تعذر تنفيذ الترحيل'}
                   </h4>
                 </div>
                 {migrationResult.log?.id && (
-                  <span className={`font-mono text-xs font-bold bg-white/80 px-2.5 py-1 rounded-lg border ${migrationResult.success ? 'border-emerald-300' : 'border-red-300'}`}>
+                  <span className={`font-mono text-xs font-bold bg-white/80 px-2 py-0.5 rounded border ${migrationResult.success ? 'border-emerald-300' : 'border-red-300'}`}>
                     {migrationResult.log.id}
                   </span>
                 )}
               </div>
 
-              <p className={`text-xs leading-relaxed font-semibold ${migrationResult.success ? 'text-emerald-800' : 'text-red-800'}`}>
+              <p className={`text-xs font-semibold ${migrationResult.success ? 'text-emerald-800' : 'text-red-800'}`}>
                 {migrationResult.success ? migrationResult.log?.notes : migrationResult.error}
               </p>
 
               {(() => {
                 const warnings = migrationResult.log?.details?.warnings || migrationResult.log?.warnings;
                 return Array.isArray(warnings) && warnings.length > 0 ? (
-                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 space-y-1">
+                  <div className="p-2 rounded-md bg-amber-50 border border-amber-200 text-amber-900 space-y-0.5">
                     <strong className="block">تحذيرات الترحيل وربط العملاء:</strong>
                     {warnings.map((w: string, idx: number) => (
                       <div key={idx}>• {w}</div>
@@ -2375,30 +2367,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
               {/* Breakdown Grid */}
               {migrationResult.log?.details && (
-                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 pt-2">
-                  <div className="p-2 bg-white rounded-xl border border-emerald-200 text-center">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-px bg-emerald-200 border border-emerald-200 rounded-md overflow-hidden">
+                  <div className="px-2 py-1.5 bg-white text-center">
                     <span className="text-[10px] text-slate-500 block">المستخدمون</span>
-                    <strong className="text-sm font-black text-emerald-900 font-mono">{migrationResult.log.details.users}</strong>
+                    <strong className="text-xs font-black text-emerald-900 font-mono tabular-nums">{migrationResult.log.details.users}</strong>
                   </div>
-                  <div className="p-2 bg-white rounded-xl border border-emerald-200 text-center">
+                  <div className="px-2 py-1.5 bg-white text-center">
                     <span className="text-[10px] text-slate-500 block">العملاء</span>
-                    <strong className="text-sm font-black text-emerald-900 font-mono">{migrationResult.log.details.customers}</strong>
+                    <strong className="text-xs font-black text-emerald-900 font-mono tabular-nums">{migrationResult.log.details.customers}</strong>
                   </div>
-                  <div className="p-2 bg-white rounded-xl border border-emerald-200 text-center">
+                  <div className="px-2 py-1.5 bg-white text-center">
                     <span className="text-[10px] text-slate-500 block">الموردون</span>
-                    <strong className="text-sm font-black text-emerald-900 font-mono">{migrationResult.log.details.suppliers}</strong>
+                    <strong className="text-xs font-black text-emerald-900 font-mono tabular-nums">{migrationResult.log.details.suppliers}</strong>
                   </div>
-                  <div className="p-2 bg-white rounded-xl border border-emerald-200 text-center">
+                  <div className="px-2 py-1.5 bg-white text-center">
                     <span className="text-[10px] text-slate-500 block">الأصناف والسلع</span>
-                    <strong className="text-sm font-black text-emerald-900 font-mono">{migrationResult.log.details.products}</strong>
+                    <strong className="text-xs font-black text-emerald-900 font-mono tabular-nums">{migrationResult.log.details.products}</strong>
                   </div>
-                  <div className="p-2 bg-white rounded-xl border border-emerald-200 text-center">
+                  <div className="px-2 py-1.5 bg-white text-center">
                     <span className="text-[10px] text-slate-500 block">المستودعات</span>
-                    <strong className="text-sm font-black text-emerald-900 font-mono">{migrationResult.log.details.warehouses}</strong>
+                    <strong className="text-xs font-black text-emerald-900 font-mono tabular-nums">{migrationResult.log.details.warehouses}</strong>
                   </div>
-                  <div className="p-2 bg-white rounded-xl border border-emerald-200 text-center">
+                  <div className="px-2 py-1.5 bg-white text-center">
                     <span className="text-[10px] text-slate-500 block">الفواتير والدفعات</span>
-                    <strong className="text-sm font-black text-emerald-900 font-mono">{migrationResult.log.details.invoices + (migrationResult.log.details.payments || 0)}</strong>
+                    <strong className="text-xs font-black text-emerald-900 font-mono tabular-nums">{migrationResult.log.details.invoices + (migrationResult.log.details.payments || 0)}</strong>
                   </div>
                 </div>
               )}
@@ -2421,7 +2413,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             emptyTitle="لا توجد عمليات ترحيل مسجلة بعد"
             emptySubtitle="اضغط على «تشغيل فحص وترحيل البيانات» بالأعلى لإجراء عملية ترحيل وتوثيق أولى"
             columns={[
-              { key: 'id', header: 'رقم العملية', render: (log) => <span className="font-mono font-bold text-indigo-900">{log.id}</span> },
+              { key: 'id', header: 'رقم العملية', render: (log) => <span className="font-mono font-bold text-[#011E58]">{log.id}</span> },
               { key: 'timestamp', header: 'التاريخ والوقت', render: (log) => <span className="font-mono text-slate-600 text-[11px]">{new Date(log.timestamp).toLocaleString('ar-EG')}</span> },
               { key: 'source', header: 'المصدر', render: (log) => <span className="text-slate-600 text-[11px]">{log.source}</span> },
               { key: 'destination', header: 'الوجهة', render: (log) => <span className="text-slate-700 font-bold text-[11px]">{log.destination}</span> },
@@ -2449,28 +2441,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
       )}
       {/* TAB: Branches Management */}
       {activeTab === 'branches' && (
-        <div className="space-y-4 text-xs">
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-            <h3 className="text-sm font-black text-slate-900 border-b pb-2 flex items-center gap-2">
+        <div className="space-y-2.5 text-xs">
+          <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs space-y-2">
+            <h3 className="text-xs sm:text-sm font-black text-slate-900 border-b pb-1.5 flex items-center gap-1.5">
               <GitBranch className="w-4 h-4 text-blue-900" />
               <span>إدارة الفروع ونقاط التوزيع</span>
             </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <input type="text" placeholder="اسم الفرع *" value={newBranchName} onChange={(e) => setNewBranchName(e.target.value)} className="border rounded-xl p-2 font-bold" />
-              <input type="text" placeholder="رقم الفرع (مثال: 01)" value={newBranchNumber} onChange={(e) => setNewBranchNumber(e.target.value)} className="border rounded-xl p-2 font-mono" />
-              <input type="text" placeholder="كود الفرع (BR-02)" value={newBranchCode} onChange={(e) => setNewBranchCode(e.target.value)} className="border rounded-xl p-2 font-mono" />
-              <input type="text" placeholder="رقم الهاتف" value={newBranchPhone} onChange={(e) => setNewBranchPhone(e.target.value)} className="border rounded-xl p-2 font-mono" />
-              <input type="text" placeholder="العنوان التفصيلي" value={newBranchAddress} onChange={(e) => setNewBranchAddress(e.target.value)} className="border rounded-xl p-2" />
-              <select value={newBranchWarehouseId} onChange={(e) => setNewBranchWarehouseId(e.target.value)} className="border rounded-xl p-2 font-bold">
+            <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+              <input type="text" placeholder="اسم الفرع *" value={newBranchName} onChange={(e) => setNewBranchName(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-bold" />
+              <input type="text" placeholder="رقم الفرع (مثال: 01)" value={newBranchNumber} onChange={(e) => setNewBranchNumber(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
+              <input type="text" placeholder="كود الفرع (BR-02)" value={newBranchCode} onChange={(e) => setNewBranchCode(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
+              <input type="text" placeholder="رقم الهاتف" value={newBranchPhone} onChange={(e) => setNewBranchPhone(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
+              <input type="text" placeholder="العنوان التفصيلي" value={newBranchAddress} onChange={(e) => setNewBranchAddress(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5" />
+              <select value={newBranchWarehouseId} onChange={(e) => setNewBranchWarehouseId(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2 font-bold bg-white">
                 <option value="">-- ربط بمستودع --</option>
                 {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
               </select>
-              <select value={newBranchCashboxId} onChange={(e) => setNewBranchCashboxId(e.target.value)} className="border rounded-xl p-2 font-bold">
+              <select value={newBranchCashboxId} onChange={(e) => setNewBranchCashboxId(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2 font-bold bg-white">
                 <option value="">-- ربط بخزينة --</option>
                 {cashboxes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
-            </div>
-            <div className="flex justify-end">
               <button
                 type="button"
                 onClick={async () => {
@@ -2495,7 +2485,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   setNewBranchAddress('');
                   await persistExtraSettings({ branches: next }, `تمت إضافة الفرع (${item.name}) بنجاح.`);
                 }}
-                className="px-5 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-black cursor-pointer"
+                className="h-8 px-3 bg-blue-900 hover:bg-blue-950 text-white rounded-md font-black cursor-pointer"
               >
                 + إضافة وحفظ الفرع
               </button>
@@ -2570,46 +2560,46 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
       {/* TAB: Barcode Settings */}
       {activeTab === 'barcode' && (
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5 text-xs">
-          <h3 className="text-sm font-black text-slate-900 border-b pb-2 flex items-center gap-2">
+        <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs space-y-2.5 text-xs">
+          <h3 className="text-xs sm:text-sm font-black text-slate-900 border-b pb-1.5 flex items-center gap-1.5">
             <Barcode className="w-4 h-4 text-blue-900" />
             <span>إعدادات طباعة ملصقات الباركود</span>
           </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div>
-              <label className="block font-bold mb-1">عرض الملصق (مم):</label>
-              <input type="number" min="20" value={barcodeConfig.labelWidthMm} onChange={(e) => setBarcodeConfig({ ...barcodeConfig, labelWidthMm: Number(e.target.value) })} className="w-full border rounded-xl p-2 font-mono font-bold" />
+              <label className="block text-[11px] font-bold mb-0.5">عرض الملصق (مم):</label>
+              <input type="number" min="20" value={barcodeConfig.labelWidthMm} onChange={(e) => setBarcodeConfig({ ...barcodeConfig, labelWidthMm: Number(e.target.value) })} className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono font-bold" />
             </div>
             <div>
-              <label className="block font-bold mb-1">ارتفاع الملصق (مم):</label>
-              <input type="number" min="15" value={barcodeConfig.labelHeightMm} onChange={(e) => setBarcodeConfig({ ...barcodeConfig, labelHeightMm: Number(e.target.value) })} className="w-full border rounded-xl p-2 font-mono font-bold" />
+              <label className="block text-[11px] font-bold mb-0.5">ارتفاع الملصق (مم):</label>
+              <input type="number" min="15" value={barcodeConfig.labelHeightMm} onChange={(e) => setBarcodeConfig({ ...barcodeConfig, labelHeightMm: Number(e.target.value) })} className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono font-bold" />
             </div>
             <div>
-              <label className="block font-bold mb-1">بادئة الباركود التلقائية:</label>
-              <input type="text" value={barcodeConfig.prefix} onChange={(e) => setBarcodeConfig({ ...barcodeConfig, prefix: e.target.value })} className="w-full border rounded-xl p-2 font-mono font-bold" />
+              <label className="block text-[11px] font-bold mb-0.5">بادئة الباركود التلقائية:</label>
+              <input type="text" value={barcodeConfig.prefix} onChange={(e) => setBarcodeConfig({ ...barcodeConfig, prefix: e.target.value })} className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono font-bold" />
             </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-            <label className="flex items-center gap-2 p-2.5 bg-slate-50 rounded-xl border cursor-pointer">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
               <input type="checkbox" checked={barcodeConfig.showCompanyName} onChange={(e) => setBarcodeConfig({ ...barcodeConfig, showCompanyName: e.target.checked })} />
               <span className="font-bold">إظهار اسم المؤسسة على الملصق</span>
             </label>
-            <label className="flex items-center gap-2 p-2.5 bg-slate-50 rounded-xl border cursor-pointer">
+            <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
               <input type="checkbox" checked={barcodeConfig.showProductCode} onChange={(e) => setBarcodeConfig({ ...barcodeConfig, showProductCode: e.target.checked })} />
               <span className="font-bold">إظهار كود الصنف الداخلي</span>
             </label>
-            <label className="flex items-center gap-2 p-2.5 bg-slate-50 rounded-xl border cursor-pointer">
+            <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
               <input type="checkbox" checked={barcodeConfig.showPrice} onChange={(e) => setBarcodeConfig({ ...barcodeConfig, showPrice: e.target.checked })} />
               <span className="font-bold">إظهار سعر البيع بالجنيه</span>
             </label>
           </div>
-          <div className="flex justify-end pt-2">
+          <div className="flex justify-end">
             <button
               type="button"
               onClick={() => persistExtraSettings({ barcodeConfig }, 'تم حفظ إعدادات الباركود بنجاح.')}
-              className="px-6 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-black cursor-pointer flex items-center gap-2"
+              className="px-4 py-1.5 bg-blue-900 hover:bg-blue-950 text-white rounded-md font-black cursor-pointer flex items-center gap-1.5"
             >
-              <Save className="w-4 h-4" />
+              <Save className="w-3.5 h-3.5" />
               <span>حفظ إعدادات الباركود</span>
             </button>
           </div>
@@ -2618,23 +2608,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
       {/* TAB: Multi-Printers */}
       {activeTab === 'printers' && (
-        <div className="space-y-4 text-xs">
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-            <h3 className="text-sm font-black text-slate-900 border-b pb-2 flex items-center gap-2">
+        <div className="space-y-2.5 text-xs">
+          <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs space-y-2">
+            <h3 className="text-xs sm:text-sm font-black text-slate-900 border-b pb-1.5 flex items-center gap-1.5">
               <Printer className="w-4 h-4 text-blue-900" />
               <span>إدارة الطابعات المتعددة (الإدارة / الكاشير / الباركود)</span>
             </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-              <input type="text" placeholder="اسم الطابعة *" value={newPrinterName} onChange={(e) => setNewPrinterName(e.target.value)} className="border rounded-xl p-2 font-bold" />
-              <select value={newPrinterRole} onChange={(e) => setNewPrinterRole(e.target.value as any)} className="border rounded-xl p-2 font-bold">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+              <input type="text" placeholder="اسم الطابعة *" value={newPrinterName} onChange={(e) => setNewPrinterName(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-bold" />
+              <select value={newPrinterRole} onChange={(e) => setNewPrinterRole(e.target.value as any)} className="h-8 border border-slate-300 rounded-md px-2 font-bold bg-white">
                 <option value="a4">A4 قياسية (فواتير وتقارير)</option>
                 <option value="cashier_thermal80">كاشير حرارية 80 مم</option>
                 <option value="cashier_thermal58">بلوتوث محمولة 58 مم</option>
                 <option value="barcode_label">طابعة ملصقات باركود</option>
               </select>
-              <input type="text" placeholder="المنفذ أو IP (مثال: 192.168.1.200)" value={newPrinterPort} onChange={(e) => setNewPrinterPort(e.target.value)} className="border rounded-xl p-2 font-mono" />
-              <div className="flex items-center gap-2">
-                <input type="number" min="1" max="5" value={newPrinterCopies} onChange={(e) => setNewPrinterCopies(Number(e.target.value))} className="w-20 border rounded-xl p-2 font-mono text-center font-bold" title="عدد النسخ" />
+              <input type="text" placeholder="المنفذ أو IP (مثال: 192.168.1.200)" value={newPrinterPort} onChange={(e) => setNewPrinterPort(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
+              <div className="flex items-center gap-1.5">
+                <input type="number" min="1" max="5" value={newPrinterCopies} onChange={(e) => setNewPrinterCopies(Number(e.target.value))} className="w-16 h-8 border border-slate-300 rounded-md px-2 font-mono text-center font-bold" title="عدد النسخ" />
                 <button
                   type="button"
                   onClick={async () => {
@@ -2653,7 +2643,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     setNewPrinterName('');
                     await persistExtraSettings({ printers: next }, `تمت إضافة الطابعة (${item.name}) بنجاح.`);
                   }}
-                  className="flex-1 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-black cursor-pointer"
+                  className="flex-1 h-8 bg-blue-900 hover:bg-blue-950 text-white rounded-md font-black cursor-pointer"
                 >
                   + إضافة طابعة
                 </button>
@@ -2686,9 +2676,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                       setPrinters(next);
                       await persistExtraSettings({ printers: next }, 'تم حذف الطابعة من القائمة.');
                     }}
-                    className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg cursor-pointer"
+                    className="p-1 text-red-600 hover:bg-red-50 rounded cursor-pointer"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 ),
               },
@@ -2699,40 +2689,40 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
       {/* TAB: Invoice Design */}
       {activeTab === 'invoice-design' && (
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5 text-xs">
-          <h3 className="text-sm font-black text-slate-900 border-b pb-2 flex items-center gap-2">
+        <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs space-y-2.5 text-xs">
+          <h3 className="text-xs sm:text-sm font-black text-slate-900 border-b pb-1.5 flex items-center gap-1.5">
             <FileText className="w-4 h-4 text-blue-900" />
             <span>إعدادات قالب ومحتوى الفاتورة</span>
           </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <label className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border cursor-pointer">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
               <input type="checkbox" checked={invoiceTemplate.showLogo} onChange={(e) => setInvoiceTemplate({ ...invoiceTemplate, showLogo: e.target.checked })} />
               <span className="font-bold">إظهار شعار أولاد سليم في رأس الفاتورة</span>
             </label>
-            <label className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border cursor-pointer">
+            <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
               <input type="checkbox" checked={invoiceTemplate.showPreviousBalance} onChange={(e) => setInvoiceTemplate({ ...invoiceTemplate, showPreviousBalance: e.target.checked })} />
               <span className="font-bold">إظهار الرصيد السابق للعميل</span>
             </label>
-            <label className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border cursor-pointer">
+            <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
               <input type="checkbox" checked={invoiceTemplate.showRemainingBalance} onChange={(e) => setInvoiceTemplate({ ...invoiceTemplate, showRemainingBalance: e.target.checked })} />
               <span className="font-bold">إظهار الرصيد النهائي المستحق بعد الفاتورة</span>
             </label>
-            <label className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border cursor-pointer">
+            <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
               <input type="checkbox" checked={invoiceTemplate.showSignatureBoxes} onChange={(e) => setInvoiceTemplate({ ...invoiceTemplate, showSignatureBoxes: e.target.checked })} />
               <span className="font-bold">إظهار خانات توقيع المستلم وأمين المخزن</span>
             </label>
           </div>
           <div>
-            <label className="block font-bold mb-1">نص تذييل الفاتورة المعتمد:</label>
-            <textarea rows={2} value={invoiceTemplate.footerText} onChange={(e) => setInvoiceTemplate({ ...invoiceTemplate, footerText: e.target.value })} className="w-full border rounded-xl p-2.5" />
+            <label className="block text-[11px] font-bold mb-0.5">نص تذييل الفاتورة المعتمد:</label>
+            <textarea rows={2} value={invoiceTemplate.footerText} onChange={(e) => setInvoiceTemplate({ ...invoiceTemplate, footerText: e.target.value })} className="w-full border border-slate-300 rounded-md p-2" />
           </div>
           <div className="flex justify-end">
             <button
               type="button"
               onClick={() => persistExtraSettings({ invoiceTemplate }, 'تم حفظ إعدادات قالب الفاتورة بنجاح.')}
-              className="px-6 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-black cursor-pointer flex items-center gap-2"
+              className="px-4 py-1.5 bg-blue-900 hover:bg-blue-950 text-white rounded-md font-black cursor-pointer flex items-center gap-1.5"
             >
-              <Save className="w-4 h-4" />
+              <Save className="w-3.5 h-3.5" />
               <span>حفظ إعدادات الفاتورة</span>
             </button>
           </div>
@@ -2741,25 +2731,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
       {/* TAB: Mobile Config */}
       {activeTab === 'mobile-config' && (
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5 text-xs">
-          <h3 className="text-sm font-black text-slate-900 border-b pb-2 flex items-center gap-2">
-            <Smartphone className="w-4 h-4 text-emerald-700" />
+        <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs space-y-2.5 text-xs">
+          <h3 className="text-xs sm:text-sm font-black text-slate-900 border-b pb-1.5 flex items-center gap-1.5">
+            <Smartphone className="w-4 h-4 text-[#003589]" />
             <span>إعدادات بوابة الموبايل (تطبيق العملاء وتطبيق المناديب)</span>
           </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <label className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border cursor-pointer">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
               <input type="checkbox" checked={mobileConfig.enableCustomerApp} onChange={(e) => setMobileConfig({ ...mobileConfig, enableCustomerApp: e.target.checked })} />
               <span className="font-bold">تفعيل استقبال الطلبات من تطبيق العملاء</span>
             </label>
-            <label className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border cursor-pointer">
+            <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
               <input type="checkbox" checked={mobileConfig.enableRepApp} onChange={(e) => setMobileConfig({ ...mobileConfig, enableRepApp: e.target.checked })} />
               <span className="font-bold">تفعيل بوابة المناديب والتحويل بالنصف</span>
             </label>
-            <label className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border cursor-pointer">
+            <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
               <input type="checkbox" checked={mobileConfig.allowCustomerPriceView} onChange={(e) => setMobileConfig({ ...mobileConfig, allowCustomerPriceView: e.target.checked })} />
               <span className="font-bold">إظهار أسعار البيع للعملاء داخل التطبيق</span>
             </label>
-            <label className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border cursor-pointer">
+            <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
               <input type="checkbox" checked={mobileConfig.requireOrderApproval} onChange={(e) => setMobileConfig({ ...mobileConfig, requireOrderApproval: e.target.checked })} />
               <span className="font-bold">اشتراط اعتماد الإدارة قبل تحويل طلب العميل لفاتورة</span>
             </label>
@@ -2768,9 +2758,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             <button
               type="button"
               onClick={() => persistExtraSettings({ mobileConfig }, 'تم حفظ إعدادات الموبايل بنجاح.')}
-              className="px-6 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-black cursor-pointer flex items-center gap-2"
+              className="px-4 py-1.5 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-black cursor-pointer flex items-center gap-1.5"
             >
-              <Save className="w-4 h-4" />
+              <Save className="w-3.5 h-3.5" />
               <span>حفظ إعدادات الموبايل</span>
             </button>
           </div>
@@ -2779,39 +2769,39 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
       {/* TAB: Online Sync */}
       {activeTab === 'online-sync' && (
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5 text-xs">
-          <h3 className="text-sm font-black text-slate-900 border-b pb-2 flex items-center gap-2">
-            <Wifi className="w-4 h-4 text-teal-700" />
+        <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs space-y-2.5 text-xs">
+          <h3 className="text-xs sm:text-sm font-black text-slate-900 border-b pb-1.5 flex items-center gap-1.5">
+            <Wifi className="w-4 h-4 text-[#003589]" />
             <span>إعدادات المزامنة الأونلاين والربط المركزي</span>
           </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <label className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border cursor-pointer">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer self-end h-8">
               <input type="checkbox" checked={onlineSyncConfig.autoSyncEnabled} onChange={(e) => setOnlineSyncConfig({ ...onlineSyncConfig, autoSyncEnabled: e.target.checked })} />
               <span className="font-bold">تفعيل المزامنة التلقائية الدورية</span>
             </label>
             <div>
-              <label className="block font-bold mb-1">فاصل المزامنة (بالثواني):</label>
-              <input type="number" min="10" value={onlineSyncConfig.syncIntervalSeconds} onChange={(e) => setOnlineSyncConfig({ ...onlineSyncConfig, syncIntervalSeconds: Number(e.target.value) })} className="w-full border rounded-xl p-2 font-mono font-bold" />
+              <label className="block text-[11px] font-bold mb-0.5">فاصل المزامنة (بالثواني):</label>
+              <input type="number" min="10" value={onlineSyncConfig.syncIntervalSeconds} onChange={(e) => setOnlineSyncConfig({ ...onlineSyncConfig, syncIntervalSeconds: Number(e.target.value) })} className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono font-bold" />
             </div>
             <div className="sm:col-span-2">
-              <label className="block font-bold mb-1">رابط السيرفر البعيد / السحابي (اختياري):</label>
-              <input type="text" placeholder="http://192.168.1.100:3000" value={onlineSyncConfig.cloudEndpointUrl || ''} onChange={(e) => setOnlineSyncConfig({ ...onlineSyncConfig, cloudEndpointUrl: e.target.value })} className="w-full border rounded-xl p-2 font-mono" />
+              <label className="block text-[11px] font-bold mb-0.5">رابط السيرفر البعيد / السحابي (اختياري):</label>
+              <input type="text" placeholder="http://192.168.1.100:3000" value={onlineSyncConfig.cloudEndpointUrl || ''} onChange={(e) => setOnlineSyncConfig({ ...onlineSyncConfig, cloudEndpointUrl: e.target.value })} className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
             </div>
           </div>
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-1.5">
             <button
               type="button"
               onClick={() => handleTestConnection()}
-              className="px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl font-bold cursor-pointer"
+              className="px-3 py-1.5 bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] border border-[#DCE6F5] rounded-md font-bold cursor-pointer"
             >
               فحص الاتصال الآن
             </button>
             <button
               type="button"
               onClick={() => persistExtraSettings({ onlineSyncConfig }, 'تم حفظ إعدادات المزامنة بنجاح.')}
-              className="px-6 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-black cursor-pointer flex items-center gap-2"
+              className="px-4 py-1.5 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-black cursor-pointer flex items-center gap-1.5"
             >
-              <Save className="w-4 h-4" />
+              <Save className="w-3.5 h-3.5" />
               <span>حفظ إعدادات المزامنة</span>
             </button>
           </div>
@@ -2820,18 +2810,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
       {/* TAB: Per-User Keyboard Shortcuts Management */}
       {activeTab === 'shortcuts' && (
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5 text-xs">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4">
+        <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs space-y-2.5 text-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-2">
             <div>
-              <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                <Keyboard className="w-4 h-4 text-purple-700" />
+              <h3 className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5">
+                <Keyboard className="w-4 h-4 text-[#003589]" />
                 <span>إعدادات اختصارات لوحة المفاتيح ({currentUser?.fullName})</span>
               </h3>
-              <p className="text-[11px] text-slate-500 mt-1">
-                تخصيص اختصاراتك الشخصية لكل قسم ووظيفة (تعمل مباشرة دون إعادة تشغيل البرنامج وتدعم لوحة المفاتيح العربية والإنجليزية).
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                تخصيص اختصاراتك الشخصية لكل قسم ووظيفة (تعمل مباشرة دون إعادة تشغيل وتدعم العربية والإنجليزية).
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => {
@@ -2845,17 +2835,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     keyCombo: '',
                   });
                 }}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-bold cursor-pointer"
+                className="flex items-center gap-1 px-2.5 py-1 bg-blue-900 hover:bg-blue-950 text-white rounded-md font-bold cursor-pointer"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-3.5 h-3.5" />
                 <span>إضافة / تخصيص اختصار</span>
               </button>
               <button
                 type="button"
                 onClick={() => setShowResetShortcutsConfirm(true)}
-                className="flex items-center gap-1.5 px-3.5 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl font-bold cursor-pointer"
+                className="flex items-center gap-1 px-2.5 py-1 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-md font-bold cursor-pointer"
               >
-                <RotateCcw className="w-4 h-4" />
+                <RotateCcw className="w-3.5 h-3.5" />
                 <span>استعادة الافتراضي</span>
               </button>
             </div>
@@ -2863,7 +2853,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
           {shortcutFeedback && (
             <div
-              className={`p-3 rounded-xl border font-bold flex items-center justify-between ${
+              className={`px-2.5 py-1.5 rounded-md border font-bold flex items-center justify-between ${
                 shortcutFeedback.type === 'success'
                   ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
                   : 'bg-red-50 border-red-200 text-red-900'
@@ -2876,130 +2866,132 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             </div>
           )}
 
-          <div className="relative max-w-md">
-            <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
+          <div className="relative max-w-sm">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2.5" />
             <input
               type="text"
               placeholder="ابحث عن وظيفة أو مفتاح اختصار (مثال: الطباعة، Ctrl+S)..."
               value={shortcutSearch}
               onChange={(e) => setShortcutSearch(e.target.value)}
-              className="w-full pr-9 pl-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold outline-hidden focus:bg-white focus:border-blue-700"
+              className="w-full h-8 pr-8 pl-2.5 bg-slate-50 border border-slate-300 rounded-md font-bold outline-hidden focus:bg-white focus:border-blue-700"
             />
           </div>
 
-          {(['التنقل', 'المبيعات والمشتريات', 'المخزون', 'العملاء والمالية', 'عام'] as ShortcutCategory[]).map((cat) => {
-            const catItems = userShortcuts.filter(
-              (sc) =>
-                sc.category === cat &&
-                (!shortcutSearch.trim() ||
-                  sc.label.toLowerCase().includes(shortcutSearch.toLowerCase()) ||
-                  (sc.keyCombo || '').toLowerCase().includes(shortcutSearch.toLowerCase()))
-            );
-            if (catItems.length === 0) return null;
-            return (
-              <div key={cat} className="space-y-2">
-                <h4 className="font-black text-blue-950 text-xs bg-slate-100 px-3 py-1.5 rounded-lg inline-block">
-                  {cat} ({catItems.length})
-                </h4>
-                <div className="border border-slate-200 rounded-2xl overflow-hidden divide-y divide-slate-100">
-                  {catItems.map((sc) => (
-                    <div
-                      key={sc.actionId}
-                      className={`p-3 flex flex-wrap items-center justify-between gap-3 ${
-                        sc.enabled === false ? 'bg-slate-50/70 opacity-70' : 'bg-white hover:bg-slate-50/70'
-                      }`}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="font-bold text-slate-900">{sc.label}</div>
-                        <div className="text-[10px] font-mono text-slate-400">{sc.actionId}</div>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2">
-                        {sc.keyCombo ? (
-                          <kbd
-                            dir="ltr"
-                            className={`px-3 py-1.5 rounded-xl font-mono font-black text-xs border min-w-20 text-center ${
-                              sc.enabled !== false
-                                ? 'bg-blue-50 text-blue-950 border-blue-300'
-                                : 'bg-slate-100 text-slate-400 border-slate-200 line-through'
-                            }`}
-                          >
-                            {sc.keyCombo}
-                          </kbd>
-                        ) : (
-                          <span className="px-3 py-1.5 rounded-xl text-[11px] bg-slate-100 text-slate-500 border border-slate-200">
-                            غير معيّن
-                          </span>
-                        )}
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setRecorderConflict(null);
-                            setRecordingTarget({
-                              mode: 'edit',
-                              actionId: sc.actionId,
-                              label: sc.label,
-                              category: sc.category,
-                              keyCombo: sc.keyCombo,
-                            });
-                          }}
-                          className="px-3 py-1.5 bg-slate-100 hover:bg-blue-100 text-slate-800 hover:text-blue-900 rounded-xl font-bold cursor-pointer"
-                        >
-                          تعديل المفتاح
-                        </button>
-
-                        <button
-                          type="button"
-                          disabled={isSavingUserShortcuts}
-                          onClick={async () => {
-                            const next = userShortcuts.map((item) =>
-                              item.actionId === sc.actionId ? { ...item, enabled: item.enabled === false } : item
-                            );
-                            const res = await saveShortcuts(next);
-                            if (!res.success) {
-                              setShortcutFeedback({ type: 'error', text: res.error || 'تعذر تحديث الحالة' });
-                            } else {
-                              setShortcutFeedback({
-                                type: 'success',
-                                text: `تم ${sc.enabled === false ? 'تفعيل' : 'تعطيل'} اختصار (${sc.label}).`,
-                              });
-                            }
-                          }}
-                          title={sc.enabled === false ? 'تفعيل الاختصار' : 'تعطيل الاختصار'}
-                          className={`p-1.5 rounded-xl border cursor-pointer ${
-                            sc.enabled !== false
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                              : 'bg-slate-100 text-slate-500 border-slate-300 hover:bg-slate-200'
-                          }`}
-                        >
-                          <Power className="w-4 h-4" />
-                        </button>
-
-                        <button
-                          type="button"
-                          disabled={isSavingUserShortcuts}
-                          onClick={async () => {
-                            const next = userShortcuts.map((item) =>
-                              item.actionId === sc.actionId ? { ...item, keyCombo: '', enabled: false } : item
-                            );
-                            const res = await saveShortcuts(next);
-                            if (res.success) {
-                              setShortcutFeedback({ type: 'success', text: `تم حذف مفتاح الاختصار لوظيفة (${sc.label}).` });
-                            }
-                          }}
-                          title="حذف المفتاح"
-                          className="p-1.5 rounded-xl text-red-500 hover:bg-red-50 border border-transparent hover:border-red-200 cursor-pointer"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+          <div className="border border-slate-200 rounded-lg overflow-x-auto">
+            <table className="w-full text-right border-collapse">
+              <thead className="bg-slate-100 border-b border-slate-200 text-[11px] text-slate-700">
+                <tr>
+                  <th className="px-2.5 py-1.5 font-black">القسم</th>
+                  <th className="px-2.5 py-1.5 font-black">الوظيفة</th>
+                  <th className="px-2.5 py-1.5 font-black text-center">الاختصار</th>
+                  <th className="px-2.5 py-1.5 font-black text-center">إجراءات</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {(['التنقل', 'المبيعات والمشتريات', 'المخزون', 'العملاء والمالية', 'عام'] as ShortcutCategory[]).flatMap((cat) =>
+                  userShortcuts
+                    .filter(
+                      (sc) =>
+                        sc.category === cat &&
+                        (!shortcutSearch.trim() ||
+                          sc.label.toLowerCase().includes(shortcutSearch.toLowerCase()) ||
+                          (sc.keyCombo || '').toLowerCase().includes(shortcutSearch.toLowerCase()))
+                    )
+                    .map((sc) => (
+                      <tr
+                        key={sc.actionId}
+                        className={sc.enabled === false ? 'bg-slate-50/70 opacity-65' : 'bg-white hover:bg-slate-50/70'}
+                      >
+                        <td className="px-2.5 py-1.5 text-[11px] font-bold text-slate-500 whitespace-nowrap">{sc.category}</td>
+                        <td className="px-2.5 py-1.5">
+                          <span className="font-bold text-slate-900">{sc.label}</span>
+                          <span className="text-[10px] font-mono text-slate-400 mr-1.5">({sc.actionId})</span>
+                        </td>
+                        <td className="px-2.5 py-1.5 text-center whitespace-nowrap">
+                          {sc.keyCombo ? (
+                            <kbd
+                              dir="ltr"
+                              className={`inline-block px-2 py-0.5 rounded font-mono font-black text-[11px] border min-w-16 ${
+                                sc.enabled !== false
+                                  ? 'bg-blue-50 text-blue-950 border-blue-300'
+                                  : 'bg-slate-100 text-slate-400 border-slate-200 line-through'
+                              }`}
+                            >
+                              {sc.keyCombo}
+                            </kbd>
+                          ) : (
+                            <span className="text-[11px] text-slate-400">غير معيّن</span>
+                          )}
+                        </td>
+                        <td className="px-2.5 py-1.5 text-center whitespace-nowrap">
+                          <div className="inline-flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRecorderConflict(null);
+                                setRecordingTarget({
+                                  mode: 'edit',
+                                  actionId: sc.actionId,
+                                  label: sc.label,
+                                  category: sc.category,
+                                  keyCombo: sc.keyCombo,
+                                });
+                              }}
+                              className="px-2 py-0.5 bg-slate-100 hover:bg-blue-100 text-slate-800 hover:text-blue-900 rounded font-bold cursor-pointer"
+                            >
+                              تعديل
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isSavingUserShortcuts}
+                              onClick={async () => {
+                                const next = userShortcuts.map((item) =>
+                                  item.actionId === sc.actionId ? { ...item, enabled: item.enabled === false } : item
+                                );
+                                const res = await saveShortcuts(next);
+                                if (!res.success) {
+                                  setShortcutFeedback({ type: 'error', text: res.error || 'تعذر تحديث الحالة' });
+                                } else {
+                                  setShortcutFeedback({
+                                    type: 'success',
+                                    text: `تم ${sc.enabled === false ? 'تفعيل' : 'تعطيل'} اختصار (${sc.label}).`,
+                                  });
+                                }
+                              }}
+                              title={sc.enabled === false ? 'تفعيل الاختصار' : 'تعطيل الاختصار'}
+                              className={`p-1 rounded border cursor-pointer ${
+                                sc.enabled !== false
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                  : 'bg-slate-100 text-slate-500 border-slate-300 hover:bg-slate-200'
+                              }`}
+                            >
+                              <Power className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isSavingUserShortcuts}
+                              onClick={async () => {
+                                const next = userShortcuts.map((item) =>
+                                  item.actionId === sc.actionId ? { ...item, keyCombo: '', enabled: false } : item
+                                );
+                                const res = await saveShortcuts(next);
+                                if (res.success) {
+                                  setShortcutFeedback({ type: 'success', text: `تم حذف مفتاح الاختصار لوظيفة (${sc.label}).` });
+                                }
+                              }}
+                              title="حذف المفتاح"
+                              className="p-1 rounded text-red-500 hover:bg-red-50 border border-transparent hover:border-red-200 cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                )}
+              </tbody>
+            </table>
+          </div>
 
           {/* Key Recorder Modal */}
           <Modal
@@ -3041,11 +3033,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   }
                   setRecordingTarget({ ...recordingTarget, keyCombo: combo });
                 }}
-                className="space-y-4 text-xs outline-hidden"
+                className="space-y-2.5 text-xs outline-hidden"
               >
                 {recordingTarget.mode === 'add' && (
                   <div>
-                    <label className="block font-bold mb-1">اختر الوظيفة المراد تخصيص اختصار لها:</label>
+                    <label className="block text-[11px] font-bold mb-0.5">اختر الوظيفة المراد تخصيص اختصار لها:</label>
                     <select
                       value={recordingTarget.actionId}
                       onChange={(e) => {
@@ -3060,7 +3052,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                           keyCombo: cur?.keyCombo || '',
                         });
                       }}
-                      className="w-full border rounded-xl p-2.5 font-bold"
+                      className="w-full h-8 border border-slate-300 rounded-md px-2 font-bold bg-white"
                     >
                       {userShortcutCatalog.map((def) => (
                         <option key={def.actionId} value={def.actionId}>
@@ -3071,20 +3063,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   </div>
                 )}
 
-                <div className="p-5 rounded-2xl bg-blue-50/70 border-2 border-dashed border-blue-300 text-center space-y-2">
+                <div className="p-3 rounded-lg bg-blue-50/70 border border-dashed border-blue-300 text-center space-y-1.5">
                   <p className="font-bold text-slate-700">
-                    اضغط الآن على مجموعة المفاتيح المطلوبة (مثل Ctrl+P أو Alt+S أو F2 أو Ctrl+Shift+N)
+                    اضغط الآن على مجموعة المفاتيح المطلوبة (مثل Ctrl+P أو Alt+S أو F2)
                   </p>
-                  <div className="py-2">
+                  <div className="py-1">
                     <kbd
                       dir="ltr"
-                      className="inline-block px-5 py-2.5 rounded-xl bg-white border border-blue-300 text-blue-950 font-mono font-black text-base shadow-xs min-w-36"
+                      className="inline-block px-4 py-1.5 rounded-md bg-white border border-blue-300 text-blue-950 font-mono font-black text-sm shadow-xs min-w-28"
                     >
                       {recordingTarget.keyCombo || 'في انتظار الضغط...'}
                     </kbd>
                   </div>
-                  <p className="text-[11px] text-slate-500">
-                    ملاحظة: يتم حفظ الاختصار اعتماداً على المفتاح الفيزيائي ليعمل مع لوحة المفاتيح العربية والإنجليزية على السواء.
+                  <p className="text-[10px] text-slate-500">
+                    يتم الحفظ اعتماداً على المفتاح الفيزيائي ليعمل مع العربية والإنجليزية.
                   </p>
                 </div>
 
@@ -3128,35 +3120,35 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     'Enter','Space','Insert','Delete','ArrowUp','ArrowDown','ArrowLeft','ArrowRight',
                   ];
                   return (
-                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                    <div className="p-2 rounded-md bg-slate-50 border border-slate-200 space-y-1.5">
                       <span className="block font-bold text-slate-700 text-[11px]">
                         أو اختر مفاتيح التحكم والمفتاح يدوياً:
                       </span>
-                      <div className="flex flex-wrap items-center gap-3">
-                        <label className="flex items-center gap-1.5 font-mono font-bold text-slate-800 cursor-pointer">
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <label className="flex items-center gap-1 font-mono font-bold text-slate-800 cursor-pointer">
                           <input
                             type="checkbox"
                             checked={hasCtrl}
                             onChange={(e) => updateManualCombo(e.target.checked, hasAlt, hasShift, baseKey)}
-                            className="w-4 h-4 rounded text-blue-900"
+                            className="w-3.5 h-3.5 rounded text-blue-900"
                           />
                           <span>Ctrl</span>
                         </label>
-                        <label className="flex items-center gap-1.5 font-mono font-bold text-slate-800 cursor-pointer">
+                        <label className="flex items-center gap-1 font-mono font-bold text-slate-800 cursor-pointer">
                           <input
                             type="checkbox"
                             checked={hasAlt}
                             onChange={(e) => updateManualCombo(hasCtrl, e.target.checked, hasShift, baseKey)}
-                            className="w-4 h-4 rounded text-blue-900"
+                            className="w-3.5 h-3.5 rounded text-blue-900"
                           />
                           <span>Alt</span>
                         </label>
-                        <label className="flex items-center gap-1.5 font-mono font-bold text-slate-800 cursor-pointer">
+                        <label className="flex items-center gap-1 font-mono font-bold text-slate-800 cursor-pointer">
                           <input
                             type="checkbox"
                             checked={hasShift}
                             onChange={(e) => updateManualCombo(hasCtrl, hasAlt, e.target.checked, baseKey)}
-                            className="w-4 h-4 rounded text-blue-900"
+                            className="w-3.5 h-3.5 rounded text-blue-900"
                           />
                           <span>Shift</span>
                         </label>
@@ -3164,7 +3156,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                           dir="ltr"
                           value={baseKey}
                           onChange={(e) => updateManualCombo(hasCtrl, hasAlt, hasShift, e.target.value)}
-                          className="flex-1 min-w-28 bg-white border border-slate-300 rounded-xl px-2.5 py-1.5 font-mono font-bold"
+                          className="flex-1 min-w-28 h-8 bg-white border border-slate-300 rounded-md px-2 font-mono font-bold"
                         >
                           <option value="">-- اختر المفتاح --</option>
                           {keyOptions.map((k) => (
@@ -3177,17 +3169,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                 })()}
 
                 {recorderConflict && (
-                  <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 shrink-0" />
+                  <div className="px-2.5 py-1.5 rounded-md bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                     <span>{recorderConflict}</span>
                   </div>
                 )}
 
-                <div className="flex justify-end gap-2 pt-2 border-t">
+                <div className="flex justify-end gap-1.5 pt-2 border-t">
                   <button
                     type="button"
                     onClick={() => setRecordingTarget(null)}
-                    className="px-4 py-2 border rounded-xl font-bold cursor-pointer"
+                    className="px-3 py-1.5 border rounded-md font-bold cursor-pointer"
                   >
                     إلغاء
                   </button>
@@ -3222,7 +3214,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                         });
                       }
                     }}
-                    className="px-5 py-2 bg-blue-900 text-white rounded-xl font-black disabled:opacity-50 cursor-pointer"
+                    className="px-4 py-1.5 bg-blue-900 text-white rounded-md font-black disabled:opacity-50 cursor-pointer"
                   >
                     {isSavingUserShortcuts ? 'جاري الحفظ...' : 'حفظ الاختصار وتفعيله'}
                   </button>
@@ -3254,36 +3246,36 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
       {/* TAB: Services */}
       {activeTab === 'services' && (
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3.5 text-xs">
-          <h3 className="text-sm font-black text-slate-900 border-b pb-2 flex items-center gap-2">
+        <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs space-y-2.5 text-xs">
+          <h3 className="text-xs sm:text-sm font-black text-slate-900 border-b pb-1.5 flex items-center gap-1.5">
             <Wrench className="w-4 h-4 text-amber-700" />
             <span>خدمات النظام والأتمتة</span>
           </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <label className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border cursor-pointer">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
               <input type="checkbox" checked={servicesConfig.enableBarcodeScanner} onChange={(e) => setServicesConfig({ ...servicesConfig, enableBarcodeScanner: e.target.checked })} />
               <span className="font-bold">دعم قارئ الباركود USB / اللاسلكي</span>
             </label>
-            <label className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border cursor-pointer">
+            <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
               <input type="checkbox" checked={servicesConfig.enableAutoBackup} onChange={(e) => setServicesConfig({ ...servicesConfig, enableAutoBackup: e.target.checked })} />
               <span className="font-bold">إنشاء نسخ احتياطي آلي قبل التغييرات الكبرى</span>
             </label>
-            <label className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border cursor-pointer">
+            <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
               <input type="checkbox" checked={servicesConfig.enableWhatsAppAlerts} onChange={(e) => setServicesConfig({ ...servicesConfig, enableWhatsAppAlerts: e.target.checked })} />
               <span className="font-bold">تجهيز رسائل وإشعارات واتساب للعملاء</span>
             </label>
           </div>
           <div>
-            <label className="block font-bold mb-1">رقم واتساب المؤسسة المعتمد:</label>
-            <input type="text" value={servicesConfig.whatsappNumber || ''} onChange={(e) => setServicesConfig({ ...servicesConfig, whatsappNumber: e.target.value })} className="w-full max-w-sm border rounded-xl p-2 font-mono font-bold" />
+            <label className="block text-[11px] font-bold mb-0.5">رقم واتساب المؤسسة المعتمد:</label>
+            <input type="text" value={servicesConfig.whatsappNumber || ''} onChange={(e) => setServicesConfig({ ...servicesConfig, whatsappNumber: e.target.value })} className="w-full max-w-sm h-8 border border-slate-300 rounded-md px-2.5 font-mono font-bold" />
           </div>
           <div className="flex justify-end">
             <button
               type="button"
               onClick={() => persistExtraSettings({ servicesConfig }, 'تم حفظ إعدادات الخدمات بنجاح.')}
-              className="px-6 py-2 bg-blue-900 hover:bg-blue-950 text-white rounded-xl font-black cursor-pointer flex items-center gap-2"
+              className="px-4 py-1.5 bg-blue-900 hover:bg-blue-950 text-white rounded-md font-black cursor-pointer flex items-center gap-1.5"
             >
-              <Save className="w-4 h-4" />
+              <Save className="w-3.5 h-3.5" />
               <span>حفظ الخدمات</span>
             </button>
           </div>

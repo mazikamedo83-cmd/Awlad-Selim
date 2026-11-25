@@ -126,30 +126,30 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   const pendingTransfers = repTransfers.filter(t => t.status === 'awaiting_receipt');
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2.5">
       {/* Compact Header & Period Filter */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white px-4 py-3 rounded-lg border border-slate-200">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-white px-3 py-2 rounded-lg border border-slate-200">
         <div>
-          <h2 className="text-base font-black text-slate-900 flex flex-wrap items-center gap-2">
+          <h2 className="text-sm font-black text-[var(--awlad-navy-950)] flex flex-wrap items-center gap-2">
             <span>ملخص الحسابات — {currentUser?.fullName}</span>
             {currentUser?.jobTitle && (
-              <span className="text-[11px] font-bold text-blue-800 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded">
+              <span className="text-[11px] font-bold text-[var(--awlad-royal-700)] bg-[#EEF3FA] border border-[#DCE6F5] px-1.5 py-0.5 rounded">
                 {currentUser.jobTitle}
               </span>
             )}
           </h2>
-          <p className="text-[11px] text-slate-500 mt-0.5">
+          <p className="text-[11px] text-slate-500">
             {settings.companyName || 'أولاد سليم'} • {new Date().toLocaleDateString('ar-EG')}
           </p>
         </div>
 
-        <div className="flex items-center gap-2 bg-slate-50 px-2.5 py-1.5 rounded-md border border-slate-200 text-xs">
-          <Calendar className="w-3.5 h-3.5 text-slate-500" />
-          <span className="text-slate-600 font-bold">الفترة:</span>
+        <div className="flex items-center gap-1.5 bg-[#EEF3FA] px-2 py-1 rounded-md border border-[#DCE6F5] text-xs">
+          <Calendar className="w-3.5 h-3.5 text-[var(--awlad-royal-700)]" />
+          <span className="text-[var(--awlad-navy-950)] font-bold">الفترة:</span>
           <select
             value={dateFilter}
             onChange={(e) => setDateFilter(e.target.value as any)}
-            className="bg-white border border-slate-300 rounded px-2 py-1 text-xs font-bold text-slate-800 focus:outline-hidden focus:border-blue-600"
+            className="h-7 bg-white border border-slate-300 rounded px-2 text-xs font-bold text-slate-800 focus:outline-hidden focus:border-[var(--awlad-royal-700)]"
           >
             <option value="today">اليوم</option>
             <option value="yesterday">أمس</option>
@@ -163,14 +163,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
       {/* Operational Alerts Strip */}
       {(pendingTransfers.length > 0 || lowStockProducts.length > 0) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           {pendingTransfers.length > 0 && (
             <button
               type="button"
               onClick={() => onNavigate('rep-transfers')}
-              className="flex items-center justify-between px-3.5 py-2.5 rounded-lg bg-amber-50 border border-amber-300 text-amber-950 text-right hover:bg-amber-100/70 transition-colors cursor-pointer"
+              className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-300 text-amber-950 text-right hover:bg-amber-100/70 transition-colors cursor-pointer"
             >
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2">
                 <ArrowLeftRight className="w-4 h-4 text-amber-700 shrink-0" />
                 <div>
                   <div className="text-xs font-black">
@@ -189,9 +189,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             <button
               type="button"
               onClick={() => onNavigate('products')}
-              className="flex items-center justify-between px-3.5 py-2.5 rounded-lg bg-red-50 border border-red-200 text-red-950 text-right hover:bg-red-100/70 transition-colors cursor-pointer"
+              className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-red-50 border border-red-200 text-red-950 text-right hover:bg-red-100/70 transition-colors cursor-pointer"
             >
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 text-red-700 shrink-0" />
                 <div>
                   <div className="text-xs font-black">
@@ -210,32 +210,32 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
       {/* Accounting Summary Ledger Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden">
-        <div className="bg-white px-3.5 py-3">
+        <div className="bg-white px-2.5 py-2">
           <div className="text-[11px] font-bold text-slate-500">إجمالي المبيعات</div>
-          <div className="text-base font-black text-slate-900 tabular-nums mt-0.5">
+          <div className="text-sm font-black text-[var(--awlad-navy-950)] tabular-nums mt-0.5">
             {totalSales.toLocaleString()} <span className="text-[11px] font-semibold text-slate-500">{settings.currency}</span>
           </div>
-          <div className="text-[11px] text-emerald-700 font-bold tabular-nums mt-1">
+          <div className="text-[11px] text-[var(--awlad-royal-700)] font-bold tabular-nums mt-1">
             اليوم: {todaySales.toLocaleString()} {settings.currency}
           </div>
         </div>
 
-        <div className="bg-white px-3.5 py-3">
+        <div className="bg-white px-2.5 py-2">
           <div className="text-[11px] font-bold text-slate-500">إجمالي المشتريات</div>
-          <div className="text-base font-black text-slate-900 tabular-nums mt-0.5">
+          <div className="text-sm font-black text-[var(--awlad-navy-950)] tabular-nums mt-0.5">
             {totalPurchases.toLocaleString()} <span className="text-[11px] font-semibold text-slate-500">{settings.currency}</span>
           </div>
-          <div className="text-[11px] text-indigo-700 font-bold tabular-nums mt-1">
+          <div className="text-[11px] text-[var(--awlad-silver-600)] font-bold tabular-nums mt-1">
             اليوم: {todayPurchases.toLocaleString()} {settings.currency}
           </div>
         </div>
 
         <div
           onClick={() => onNavigate('cashboxes')}
-          className="bg-white px-3.5 py-3 hover:bg-slate-50 cursor-pointer transition-colors"
+          className="bg-white px-2.5 py-2 hover:bg-[#EEF3FA]/50 cursor-pointer transition-colors"
         >
           <div className="text-[11px] font-bold text-slate-500">أرصدة الخزائن والبنوك</div>
-          <div className="text-base font-black text-emerald-700 tabular-nums mt-0.5">
+          <div className="text-sm font-black text-[var(--awlad-royal-700)] tabular-nums mt-0.5">
             {totalCashAndBanks.toLocaleString()} <span className="text-[11px] font-semibold text-slate-500">{settings.currency}</span>
           </div>
           <div className="text-[11px] text-slate-500 font-medium mt-1">
@@ -245,10 +245,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
         <div
           onClick={() => onNavigate('products')}
-          className="bg-white px-3.5 py-3 hover:bg-slate-50 cursor-pointer transition-colors"
+          className="bg-white px-2.5 py-2 hover:bg-[#EEF3FA]/50 cursor-pointer transition-colors"
         >
           <div className="text-[11px] font-bold text-slate-500">قيمة المخزون (تكلفة)</div>
-          <div className="text-base font-black text-slate-900 tabular-nums mt-0.5">
+          <div className="text-sm font-black text-[var(--awlad-navy-950)] tabular-nums mt-0.5">
             {inventoryValue.toLocaleString()} <span className="text-[11px] font-semibold text-slate-500">{settings.currency}</span>
           </div>
           <div className="text-[11px] text-slate-500 font-medium mt-1">
@@ -258,10 +258,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
         <div
           onClick={() => onNavigate('customer-accounts')}
-          className="bg-white px-3.5 py-3 hover:bg-slate-50 cursor-pointer transition-colors"
+          className="bg-white px-2.5 py-2 hover:bg-[#EEF3FA]/50 cursor-pointer transition-colors"
         >
           <div className="text-[11px] font-bold text-slate-500">مديونيات العملاء</div>
-          <div className="text-base font-black text-rose-700 tabular-nums mt-0.5">
+          <div className="text-sm font-black text-rose-700 tabular-nums mt-0.5">
             {customerDebtsTotal.toLocaleString()} <span className="text-[11px] font-semibold text-slate-500">{settings.currency}</span>
           </div>
           <div className="text-[11px] text-slate-500 font-medium mt-1">
@@ -271,10 +271,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
         <div
           onClick={() => onNavigate('supplier-accounts')}
-          className="bg-white px-3.5 py-3 hover:bg-slate-50 cursor-pointer transition-colors"
+          className="bg-white px-2.5 py-2 hover:bg-[#EEF3FA]/50 cursor-pointer transition-colors"
         >
           <div className="text-[11px] font-bold text-slate-500">مستحقات الموردين</div>
-          <div className="text-base font-black text-purple-700 tabular-nums mt-0.5">
+          <div className="text-sm font-black text-[var(--awlad-navy-900)] tabular-nums mt-0.5">
             {supplierDebtsTotal.toLocaleString()} <span className="text-[11px] font-semibold text-slate-500">{settings.currency}</span>
           </div>
           <div className="text-[11px] text-slate-500 font-medium mt-1">
@@ -284,10 +284,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
         <div
           onClick={() => onNavigate('expenses')}
-          className="bg-white px-3.5 py-3 hover:bg-slate-50 cursor-pointer transition-colors"
+          className="bg-white px-2.5 py-2 hover:bg-[#EEF3FA]/50 cursor-pointer transition-colors"
         >
           <div className="text-[11px] font-bold text-slate-500">المصروفات</div>
-          <div className="text-base font-black text-orange-700 tabular-nums mt-0.5">
+          <div className="text-sm font-black text-[var(--awlad-silver-600)] tabular-nums mt-0.5">
             {totalExpenses.toLocaleString()} <span className="text-[11px] font-semibold text-slate-500">{settings.currency}</span>
           </div>
           <div className="text-[11px] text-slate-500 font-medium mt-1">
@@ -297,10 +297,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
         <div
           onClick={() => onNavigate('expenses')}
-          className="bg-white px-3.5 py-3 hover:bg-slate-50 cursor-pointer transition-colors"
+          className="bg-white px-2.5 py-2 hover:bg-[#EEF3FA]/50 cursor-pointer transition-colors"
         >
           <div className="text-[11px] font-bold text-slate-500">الإيرادات المتنوعة</div>
-          <div className="text-base font-black text-teal-700 tabular-nums mt-0.5">
+          <div className="text-sm font-black text-[var(--awlad-royal-500)] tabular-nums mt-0.5">
             {totalIncome.toLocaleString()} <span className="text-[11px] font-semibold text-slate-500">{settings.currency}</span>
           </div>
           <div className="text-[11px] text-slate-500 font-medium mt-1">
@@ -310,17 +310,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
       </div>
 
       {/* Activity Chart & Cashboxes Ledger Table */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2 bg-white p-4 rounded-lg border border-slate-200 space-y-3">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <h3 className="text-xs font-black text-slate-900">حركة المبيعات والمشتريات (آخر 7 أيام)</h3>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-2.5">
+        <div className="lg:col-span-2 bg-white p-2.5 rounded-lg border border-slate-200 space-y-2">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+            <h3 className="text-xs font-black text-[var(--awlad-navy-950)]">حركة المبيعات والمشتريات (آخر 7 أيام)</h3>
             <div className="flex items-center gap-3 text-[11px] font-bold">
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-xs bg-blue-600"></span> المبيعات</span>
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-xs bg-slate-300"></span> المشتريات</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-xs bg-[var(--awlad-royal-700)]"></span> المبيعات</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-xs bg-[var(--awlad-silver-500)]/50"></span> المشتريات</span>
             </div>
           </div>
 
-          <div className="h-44 pt-4 flex items-end justify-between gap-2 border-b border-slate-200">
+          <div className="h-32 pt-2 flex items-end justify-between gap-2 border-b border-slate-200">
             {last7DaysChart.buckets.map((d, idx) => {
               const salesH = d.sales > 0 ? Math.max(4, Math.min(100, (d.sales / last7DaysChart.maxVal) * 100)) : 0;
               const purH = d.purchases > 0 ? Math.max(4, Math.min(100, (d.purchases / last7DaysChart.maxVal) * 100)) : 0;
@@ -330,12 +330,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                   <div className="flex items-end gap-1 w-full justify-center h-full">
                     <div
                       style={{ height: `${salesH}%` }}
-                      className="w-4 sm:w-5 bg-blue-600 rounded-t-xs hover:bg-blue-700 transition-colors"
+                      className="w-4 sm:w-5 bg-[var(--awlad-royal-700)] rounded-t-xs hover:bg-[var(--awlad-royal-500)] transition-colors"
                       title={`${d.dateStr} — مبيعات: ${d.sales.toLocaleString()} ${settings.currency}`}
                     />
                     <div
                       style={{ height: `${purH}%` }}
-                      className="w-4 sm:w-5 bg-slate-300 rounded-t-xs hover:bg-slate-400 transition-colors"
+                      className="w-4 sm:w-5 bg-[var(--awlad-silver-500)]/45 rounded-t-xs hover:bg-[var(--awlad-silver-600)]/60 transition-colors"
                       title={`${d.dateStr} — مشتريات: ${d.purchases.toLocaleString()} ${settings.currency}`}
                     />
                   </div>
@@ -349,7 +349,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             <button
               type="button"
               onClick={() => onNavigate('reports')}
-              className="text-blue-700 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+              className="text-[var(--awlad-royal-700)] font-bold hover:underline flex items-center gap-1 cursor-pointer"
             >
               تقرير المبيعات والأرباح المفصل <ChevronLeft className="w-3.5 h-3.5" />
             </button>
@@ -446,9 +446,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             exportValue: (inv) => (inv.type === 'sales' ? 'مبيعات' : 'مشتريات'),
             render: (inv) =>
               inv.type === 'sales' ? (
-                <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200 text-[10px] font-bold">مبيعات</span>
+                <span className="px-1.5 py-0.5 rounded bg-[#EEF3FA] text-[var(--awlad-royal-700)] border border-[#DCE6F5] text-[10px] font-bold">مبيعات</span>
               ) : (
-                <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-800 border border-indigo-200 text-[10px] font-bold">مشتريات</span>
+                <span className="px-1.5 py-0.5 rounded bg-slate-100 text-[var(--awlad-navy-900)] border border-slate-300 text-[10px] font-bold">مشتريات</span>
               ),
           },
           {

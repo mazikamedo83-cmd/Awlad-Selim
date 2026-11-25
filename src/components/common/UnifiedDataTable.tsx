@@ -232,16 +232,16 @@ export function UnifiedDataTable<T>({
     );
   };
 
-  const padCell = compact ? 'px-2 py-1.5' : 'px-2.5 py-1.5';
+  const padCell = compact ? 'px-1.5 py-1' : 'px-2 py-1.5';
 
   return (
-    <div className="bg-white rounded-lg border border-slate-200 shadow-2xs overflow-hidden flex flex-col">
+    <div className="bg-white rounded-lg border border-slate-200 overflow-hidden flex flex-col">
       {(title || searchable || toolbarFilters || headerActions || exportFilename || pdfTitle) && (
-        <div className="p-2 sm:p-2.5 border-b border-slate-200 bg-slate-50/70 space-y-1.5">
+        <div className="p-2 border-b border-slate-200 bg-[var(--awlad-blue-tint-50)]/45 space-y-1.5">
           <div className="flex flex-wrap items-center justify-between gap-1.5">
             {(title || subtitle) && (
               <div className="min-w-0">
-                {title && <h3 className="text-xs sm:text-sm font-black text-slate-900 truncate">{title}</h3>}
+                {title && <h3 className="text-xs sm:text-sm font-black text-[var(--awlad-navy-900)] truncate">{title}</h3>}
                 {subtitle && <p className="text-[11px] text-slate-500 truncate">{subtitle}</p>}
               </div>
             )}
@@ -250,9 +250,9 @@ export function UnifiedDataTable<T>({
                 <button
                   type="button"
                   onClick={handleExcelExport}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-[11px] font-bold transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1 h-7 px-2 rounded-md border border-slate-300 bg-white hover:bg-slate-100 text-[var(--awlad-navy-900)] text-[11px] font-bold transition-colors cursor-pointer"
                 >
-                  <Download className="w-3.5 h-3.5 text-blue-800" />
+                  <Download className="w-3.5 h-3.5 text-[var(--awlad-royal-700)]" />
                   <span>Excel</span>
                 </button>
               )}
@@ -260,7 +260,7 @@ export function UnifiedDataTable<T>({
                 <button
                   type="button"
                   onClick={handlePdfExport}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-blue-900 bg-blue-950 hover:bg-blue-900 text-white text-[11px] font-bold transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1 h-7 px-2 rounded-md border border-[var(--awlad-navy-900)] bg-[var(--awlad-navy-900)] hover:bg-[var(--awlad-royal-700)] text-white text-[11px] font-bold transition-colors cursor-pointer"
                 >
                   <Printer className="w-3.5 h-3.5" />
                   <span>PDF</span>
@@ -274,13 +274,13 @@ export function UnifiedDataTable<T>({
             <div className="flex flex-wrap items-center gap-1.5">
               {searchable && (
                 <div className="relative flex-1 min-w-[160px]">
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="text"
                     value={effectiveSearch}
                     onChange={(e) => handleSearch(e.target.value)}
                     placeholder={searchPlaceholder}
-                    className="w-full pr-8 pl-2.5 py-1 rounded-md border border-slate-300 bg-white text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-800"
+                    className="w-full h-8 pr-7 pl-2 rounded-md border border-slate-300 bg-white text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-[var(--awlad-royal-700)] focus:border-[var(--awlad-royal-700)]"
                   />
                 </div>
               )}
@@ -288,10 +288,10 @@ export function UnifiedDataTable<T>({
                 <button
                   type="button"
                   onClick={() => setShowMobileFilters((v) => !v)}
-                  className={`sm:hidden inline-flex items-center gap-1 px-2.5 py-1 rounded-md border text-[11px] font-bold shrink-0 cursor-pointer ${
+                  className={`sm:hidden inline-flex items-center gap-1 h-8 px-2.5 rounded-md border text-[11px] font-bold shrink-0 cursor-pointer ${
                     showMobileFilters
-                      ? 'bg-blue-900 text-white border-blue-900'
-                      : 'bg-white text-slate-700 border-slate-300'
+                      ? 'bg-[var(--awlad-royal-700)] text-white border-[var(--awlad-royal-700)]'
+                      : 'bg-white text-[var(--awlad-navy-900)] border-slate-300'
                   }`}
                 >
                   <SlidersHorizontal className="w-3.5 h-3.5" />
@@ -316,16 +316,16 @@ export function UnifiedDataTable<T>({
 
       <div className={`overflow-x-auto overflow-y-auto ${maxHeightClassName}`}>
         <table className="w-full text-xs text-right border-collapse awlad-tabular">
-          <thead className="bg-blue-950 text-white sticky top-0 z-10 shadow-sm">
+          <thead className="bg-[var(--awlad-navy-900)] text-white sticky top-0 z-10">
             <tr>
               {selectable && (
-                <th className="w-10 px-2.5 py-2.5 text-center border-b border-blue-900">
+                <th className="w-9 px-2 py-1.5 text-center border-b border-[var(--awlad-royal-700)]">
                   <input
                     type="checkbox"
                     checked={allPageSelected}
                     onChange={toggleAllPage}
                     aria-label="تحديد الكل"
-                    className="w-4 h-4 rounded accent-blue-600 cursor-pointer"
+                    className="w-4 h-4 rounded accent-[var(--awlad-royal-700)] cursor-pointer"
                   />
                 </th>
               )}
@@ -338,8 +338,8 @@ export function UnifiedDataTable<T>({
                     key={col.key}
                     style={{ width: col.width, minWidth: col.minWidth }}
                     onClick={() => canSort && toggleSort(col)}
-                    className={`${padCell} font-bold whitespace-nowrap border-b border-blue-900 select-none ${alignCls} ${
-                      canSort ? 'cursor-pointer hover:bg-blue-900/80' : ''
+                    className={`${padCell} font-bold whitespace-nowrap border-b border-[var(--awlad-royal-700)] select-none ${alignCls} ${
+                      canSort ? 'cursor-pointer hover:bg-[var(--awlad-royal-700)]/80' : ''
                     } ${col.headerClassName || ''}`}
                   >
                     <span className="inline-flex items-center gap-1">
@@ -390,15 +390,15 @@ export function UnifiedDataTable<T>({
                       onRowClick ? 'cursor-pointer' : ''
                     } ${
                       isSelected
-                        ? 'bg-blue-50/90 hover:bg-blue-100/70'
+                        ? 'bg-[var(--awlad-blue-tint-50)] hover:bg-[var(--awlad-blue-tint-100)]/70'
                         : idx % 2 === 1
-                        ? 'bg-slate-50/50 hover:bg-blue-50/50'
-                        : 'bg-white hover:bg-blue-50/50'
+                        ? 'bg-slate-50/60 hover:bg-[var(--awlad-blue-tint-50)]/60'
+                        : 'bg-white hover:bg-[var(--awlad-blue-tint-50)]/60'
                     } ${customRowCls}`}
                   >
                     {selectable && (
                       <td
-                        className="w-10 px-2.5 py-2 text-center"
+                        className="w-9 px-2 py-1 text-center"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <input
@@ -406,7 +406,7 @@ export function UnifiedDataTable<T>({
                           disabled={!canSelect}
                           checked={isSelected}
                           onChange={() => toggleOne(key)}
-                          className="w-4 h-4 rounded accent-blue-800 cursor-pointer disabled:opacity-40"
+                          className="w-4 h-4 rounded accent-[var(--awlad-royal-700)] cursor-pointer disabled:opacity-40"
                         />
                       </td>
                     )}
@@ -447,7 +447,7 @@ export function UnifiedDataTable<T>({
               إجمالي السجلات: <strong className="font-mono tabular-nums text-slate-900">{totalRows}</strong>
             </span>
             {selectable && selectedKeys.length > 0 && (
-              <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-900 font-bold">
+              <span className="px-2 py-0.5 rounded bg-[var(--awlad-blue-tint-100)] text-[var(--awlad-navy-900)] font-bold">
                 المحدد: <span className="font-mono tabular-nums">{selectedKeys.length}</span>
               </span>
             )}

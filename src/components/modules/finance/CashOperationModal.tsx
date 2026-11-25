@@ -22,25 +22,25 @@ const OP_LABELS: Record<CashOperationType, { title: string; badge: string; btnCl
   cash_deposit: {
     title: 'إيداع نقدي بالخزينة',
     badge: 'إيداع نقدي',
-    btnClass: 'bg-emerald-700 hover:bg-emerald-800',
+    btnClass: 'bg-[#003589] hover:bg-[#0049B0]',
     defaultCategory: 'إيداع نقدي',
   },
   cashbox_transfer: {
     title: 'ترحيل / تحويل بين الخزائن',
     badge: 'ترحيل نقدي',
-    btnClass: 'bg-blue-900 hover:bg-blue-950',
+    btnClass: 'bg-[#011E58] hover:bg-[#002160]',
     defaultCategory: 'ترحيل بين الخزائن',
   },
   expense: {
     title: 'تسجيل مصروف تشغيل',
     badge: 'مصروفات',
-    btnClass: 'bg-orange-700 hover:bg-orange-800',
+    btnClass: 'bg-amber-700 hover:bg-amber-800',
     defaultCategory: 'مصروفات تشغيل',
   },
   profit_deposit: {
     title: 'إيداع ربحي / إيراد خزينة',
     badge: 'إيداع ربحي',
-    btnClass: 'bg-teal-700 hover:bg-teal-800',
+    btnClass: 'bg-[#003589] hover:bg-[#0049B0]',
     defaultCategory: 'إيداع ربحي',
   },
 };
@@ -178,15 +178,15 @@ export const CashOperationModal: React.FC<CashOperationModalProps> = ({
         subtitle="تسجيل وتوثيق فوري للعملية النقدية على الخزينة وسجل المراجعة"
         maxWidth="lg"
       >
-        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+        <form onSubmit={handleSubmit} className="space-y-2.5 text-xs">
           {/* Operation Type Switcher */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 bg-slate-100 p-1.5 rounded-xl">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-1 bg-slate-100 p-1 rounded-lg">
             {(Object.keys(OP_LABELS) as CashOperationType[]).map((key) => (
               <button
                 key={key}
                 type="button"
                 onClick={() => handleModeChange(key)}
-                className={`py-2 px-2 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                className={`py-1.5 px-2 rounded-md font-bold text-[11px] transition-all cursor-pointer ${
                   opType === key
                     ? 'bg-blue-900 text-white shadow-xs'
                     : 'text-slate-600 hover:bg-white'
@@ -198,22 +198,22 @@ export const CashOperationModal: React.FC<CashOperationModalProps> = ({
           </div>
 
           {error && (
-            <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">
+            <div className="p-2 rounded-lg bg-red-50 border border-red-200 text-red-800 font-bold flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
               <span>{error}</span>
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <div>
-              <label className="block font-bold text-slate-700 mb-1">
+              <label className="block font-bold text-slate-700 mb-0.5">
                 {opType === 'cashbox_transfer' ? 'من خزينة / حساب:' : 'الخزينة / الحساب البنكي:'}
               </label>
               <select
                 value={cashboxId}
                 onChange={(e) => setCashboxId(e.target.value)}
                 required
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold"
+                className="w-full h-8 bg-white border border-slate-300 rounded-md px-2.5 py-1 font-bold"
               >
                 {cashboxes.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -225,12 +225,12 @@ export const CashOperationModal: React.FC<CashOperationModalProps> = ({
 
             {opType === 'cashbox_transfer' ? (
               <div>
-                <label className="block font-bold text-slate-700 mb-1">إلى خزينة / حساب وجهة:</label>
+                <label className="block font-bold text-slate-700 mb-0.5">إلى خزينة / حساب وجهة:</label>
                 <select
                   value={targetCashboxId}
                   onChange={(e) => setTargetCashboxId(e.target.value)}
                   required
-                  className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold"
+                  className="w-full h-8 bg-white border border-slate-300 rounded-md px-2.5 py-1 font-bold"
                 >
                   {cashboxes.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -241,13 +241,13 @@ export const CashOperationModal: React.FC<CashOperationModalProps> = ({
               </div>
             ) : (
               <div>
-                <label className="block font-bold text-slate-700 mb-1">تاريخ العملية:</label>
+                <label className="block font-bold text-slate-700 mb-0.5">تاريخ العملية:</label>
                 <input
                   type="date"
                   required
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-mono font-bold"
+                  className="w-full h-8 bg-white border border-slate-300 rounded-md px-2.5 py-1 font-mono font-bold"
                 />
               </div>
             )}
@@ -255,22 +255,22 @@ export const CashOperationModal: React.FC<CashOperationModalProps> = ({
 
           {/* Live balance preview */}
           {selectedCb && (
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Wallet className="w-4 h-4 text-blue-900" />
+            <div className="px-2.5 py-2 rounded-lg bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                <Wallet className="w-3.5 h-3.5 text-blue-900" />
                 <span className="text-slate-600 font-bold">الرصيد الحالي ({selectedCb.name}):</span>
-                <strong className="font-mono text-slate-900">
+                <strong className="font-mono text-slate-900 tabular-nums">
                   {currentBalance.toLocaleString()} {settings.currency}
                 </strong>
               </div>
               {amount > 0 && (
                 <div className="flex items-center gap-1.5">
                   <span className="text-slate-500">الرصيد بعد العملية:</span>
-                  <strong className={`font-mono font-black ${projectedBalance < 0 ? 'text-red-700' : 'text-emerald-700'}`}>
+                  <strong className={`font-mono font-black tabular-nums ${projectedBalance < 0 ? 'text-red-700' : 'text-emerald-700'}`}>
                     {projectedBalance.toLocaleString()} {settings.currency}
                   </strong>
                   {opType === 'cashbox_transfer' && targetCb && (
-                    <span className="text-blue-800 font-mono font-bold">
+                    <span className="text-blue-800 font-mono font-bold tabular-nums">
                       (الوجهة: {targetCb.balanceHidden ? 'محجوب' : ((targetCb.currentBalance ?? 0) + amount).toLocaleString()})
                     </span>
                   )}
@@ -279,9 +279,9 @@ export const CashOperationModal: React.FC<CashOperationModalProps> = ({
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <div>
-              <label className="block font-bold text-slate-700 mb-1">المبلغ ({settings.currency}):</label>
+              <label className="block font-bold text-slate-700 mb-0.5">المبلغ ({settings.currency}):</label>
               <input
                 type="number"
                 step="0.01"
@@ -290,12 +290,12 @@ export const CashOperationModal: React.FC<CashOperationModalProps> = ({
                 value={amount || ''}
                 onChange={(e) => setAmount(Number(e.target.value))}
                 placeholder="0.00"
-                className="w-full bg-blue-50 border border-blue-300 rounded-xl p-2.5 font-mono font-black text-center text-base text-blue-950"
+                className="w-full h-8 bg-blue-50 border border-blue-300 rounded-md px-2.5 py-1 font-mono font-black text-center text-sm text-blue-950"
               />
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 mb-1">
+              <label className="block font-bold text-slate-700 mb-0.5">
                 {opType === 'expense' ? 'بند المصروف:' : opType === 'profit_deposit' ? 'تصنيف الربح / الإيراد:' : 'التصنيف / البيان:'}
               </label>
               <input
@@ -303,70 +303,70 @@ export const CashOperationModal: React.FC<CashOperationModalProps> = ({
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
                 placeholder={meta.defaultCategory}
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold"
+                className="w-full h-8 bg-white border border-slate-300 rounded-md px-2.5 py-1 font-bold"
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <div>
-              <label className="block font-bold text-slate-700 mb-1">المستفيد / المودع / المسؤول:</label>
+              <label className="block font-bold text-slate-700 mb-0.5">المستفيد / المودع / المسؤول:</label>
               <input
                 type="text"
                 value={recipientOrPayer}
                 onChange={(e) => setRecipientOrPayer(e.target.value)}
                 placeholder="اسم الشخص أو الجهة..."
-                className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold"
+                className="w-full h-8 bg-white border border-slate-300 rounded-md px-2.5 py-1 font-bold"
               />
             </div>
             {opType === 'cashbox_transfer' && (
               <div>
-                <label className="block font-bold text-slate-700 mb-1">تاريخ الترحيل:</label>
+                <label className="block font-bold text-slate-700 mb-0.5">تاريخ الترحيل:</label>
                 <input
                   type="date"
                   required
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
-                  className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-mono font-bold"
+                  className="w-full h-8 bg-white border border-slate-300 rounded-md px-2.5 py-1 font-mono font-bold"
                 />
               </div>
             )}
           </div>
 
           <div>
-            <label className="block font-bold text-slate-700 mb-1">ملاحظات وتفاصيل:</label>
+            <label className="block font-bold text-slate-700 mb-0.5">ملاحظات وتفاصيل:</label>
             <textarea
               rows={2}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="أدخل تفاصيل أو سبب العملية للتوثيق في سجل الحركات..."
-              className="w-full bg-white border border-slate-300 rounded-xl p-2.5"
+              className="w-full bg-white border border-slate-300 rounded-md p-2"
             />
           </div>
 
-          <label className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer">
+          <label className="flex items-center gap-2 p-2 rounded-lg bg-slate-50 border border-slate-200 cursor-pointer">
             <input
               type="checkbox"
               checked={printAfterSave}
               onChange={(e) => setPrintAfterSave(e.target.checked)}
               className="w-4 h-4 rounded text-blue-900"
             />
-            <Printer className="w-4 h-4 text-slate-600" />
+            <Printer className="w-3.5 h-3.5 text-slate-600" />
             <span className="font-bold text-slate-700">فتح معاينة وطباعة السند بعد الاعتماد مباشرة</span>
           </label>
 
-          <div className="flex justify-end gap-2 pt-3 border-t">
+          <div className="flex justify-end gap-2 pt-2 border-t">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 border border-slate-300 rounded-xl font-bold text-slate-700 cursor-pointer"
+              className="px-3 py-1.5 border border-slate-300 rounded-md font-bold text-slate-700 cursor-pointer"
             >
               إلغاء
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className={`px-6 py-2 text-white rounded-xl font-black shadow-md transition-all cursor-pointer disabled:opacity-50 ${meta.btnClass}`}
+              className={`px-4 py-1.5 text-white rounded-md font-black transition-all cursor-pointer disabled:opacity-50 ${meta.btnClass}`}
             >
               {isSubmitting ? 'جاري التنفيذ...' : `اعتماد ${meta.badge}`}
             </button>

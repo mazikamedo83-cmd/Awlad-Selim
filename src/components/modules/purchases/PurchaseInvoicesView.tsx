@@ -324,7 +324,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
       case 'sent':
         return { label: 'مرسلة بانتظار الاستلام', cls: 'bg-amber-50 text-amber-900 border border-amber-200' };
       case 'received':
-        return { label: 'تم الاستلام (بانتظار الاعتماد)', cls: 'bg-sky-50 text-sky-900 border border-sky-200' };
+        return { label: 'تم الاستلام (بانتظار الاعتماد)', cls: 'bg-[#EEF3FA] text-[#011E58] border border-[#DCE6F5]' };
       case 'rejected':
         return { label: 'مرفوضة', cls: 'bg-rose-50 text-rose-800 border border-rose-200' };
       default:
@@ -745,12 +745,12 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 bg-white px-3.5 py-2.5 rounded-lg border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-white px-2.5 py-2 rounded-lg border border-slate-200">
         <div>
-          <h2 className="text-base font-black text-slate-900 tracking-tight">إدارة فواتير المشتريات</h2>
-          <p className="text-[11px] text-slate-500 mt-0.5">
+          <h2 className="text-sm font-black text-slate-900 tracking-tight">إدارة فواتير المشتريات</h2>
+          <p className="text-[11px] text-slate-500">
             توثيق توريدات البضائع الغذائية من المصانع والمطاحن وزيادة أرصدة المخازن آلياً
           </p>
         </div>
@@ -760,7 +760,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
             <button
               type="button"
               onClick={() => setStatusFilter('rep_incoming')}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-xs font-black cursor-pointer hover:bg-amber-100"
+              className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-50 border border-amber-300 text-amber-900 text-xs font-black cursor-pointer hover:bg-amber-100"
             >
               <Send className="w-3.5 h-3.5 text-amber-700" />
               <span>وارد من المناديب ({repIncomingPendingCount})</span>
@@ -771,7 +771,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
               resetPurchaseModalForm();
               setIsNewModalOpen(true);
             }}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white text-xs font-black shadow-xs active:scale-95 transition-all cursor-pointer"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-black active:scale-95 transition-all cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>فاتورة شراء جديدة</span>
@@ -876,7 +876,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
               <div>
                 <div className="font-bold text-slate-800">{inv.supplierName}</div>
                 {(inv.representativeName || inv.sentBy) && (
-                  <div className="text-[10px] text-indigo-700 font-bold mt-0.5">
+                  <div className="text-[10px] text-[#003589] font-bold mt-0.5">
                     المندوب / المرسل: {inv.representativeName || inv.sentBy}
                   </div>
                 )}
@@ -944,7 +944,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       setSendModalRecipientId(inv.recipientUserId || '');
                       setSendModalNotes('');
                     }}
-                    className="p-1.5 text-indigo-700 hover:text-indigo-900 hover:bg-indigo-50 rounded-lg cursor-pointer"
+                    className="p-1.5 text-[#003589] hover:text-[#011E58] hover:bg-[#EEF3FA] rounded-md cursor-pointer"
                     title={inv.dispatchStatus === 'rejected' ? 'إعادة إرسال الفاتورة للإدارة' : 'إرسال الفاتورة للإدارة'}
                   >
                     <Send className="w-4 h-4" />
@@ -1003,18 +1003,18 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
         title="إنشاء فاتورة مشتريات وتوريد جديدة"
         maxWidth="4xl"
       >
-        <div className="space-y-3 text-xs">
+        <div className="space-y-2 text-xs">
           {error && (
-            <div className="px-3 py-2 bg-red-50 text-red-700 rounded-lg font-bold">{error}</div>
+            <div className="px-2.5 py-1.5 bg-red-50 border border-red-200 text-red-700 rounded-md font-bold">{error}</div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-slate-50 p-2.5 rounded-lg">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-slate-50 p-2 rounded-lg border border-slate-200">
             <div>
-              <label className="block font-bold mb-1">المورد:</label>
+              <label className="block font-bold mb-0.5">المورد:</label>
               <select
                 value={selectedSupplierId}
                 onChange={(e) => setSelectedSupplierId(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold"
+                className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 font-bold"
               >
                 {suppliers.length === 0 ? (
                   <option value="">-- لا يوجد موردين مسجلين بعد --</option>
@@ -1026,11 +1026,11 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
               </select>
             </div>
             <div>
-              <label className="block font-bold mb-1">المستودع المستلم:</label>
+              <label className="block font-bold mb-0.5">المستودع المستلم:</label>
               <select
                 value={selectedWarehouseId}
                 onChange={(e) => setSelectedWarehouseId(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold"
+                className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 font-bold"
               >
                 {warehouses.map(w => (
                   <option key={w.id} value={w.id}>{w.name}</option>
@@ -1038,18 +1038,18 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
               </select>
             </div>
             <div>
-              <label className="block font-bold mb-1">التاريخ:</label>
+              <label className="block font-bold mb-0.5">التاريخ:</label>
               <input
                 type="date"
                 value={invoiceDate}
                 onChange={(e) => setInvoiceDate(e.target.value)}
-                className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-bold"
+                className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 font-mono font-bold"
               />
             </div>
           </div>
 
           {/* Add product to purchase using instant search + Inline New Product Creation */}
-          <div className="bg-blue-50/60 p-2.5 rounded-lg border border-blue-200 space-y-2.5">
+          <div className="bg-[#EEF3FA] p-2 rounded-lg border border-[#DCE6F5] space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="font-black text-slate-800">إضافة أصناف لفاتورة الشراء:</span>
               <button
@@ -1058,10 +1058,10 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   setShowInlineNewProduct((prev) => !prev);
                   setError(null);
                 }}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-bold border transition-colors cursor-pointer ${
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md font-bold border transition-colors cursor-pointer ${
                   showInlineNewProduct
-                    ? 'bg-slate-800 text-white border-slate-800'
-                    : 'bg-white text-blue-900 border-blue-300 hover:bg-blue-50'
+                    ? 'bg-[#011E58] text-white border-[#011E58]'
+                    : 'bg-white text-[#011E58] border-[#B8CAE8] hover:bg-[#DCE6F5]'
                 }`}
               >
                 <PackagePlus className="w-3.5 h-3.5" />
@@ -1070,9 +1070,9 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
             </div>
 
             {!showInlineNewProduct ? (
-              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 items-end">
                 <div className="sm:col-span-6">
-                  <label className="block font-bold text-slate-700 mb-1">ابحث واختر السلعة المشتراة:</label>
+                  <label className="block font-bold text-slate-700 mb-0.5">ابحث واختر السلعة المشتراة:</label>
                   <ProductSearchSelect
                     products={products}
                     selectedProductId={itemProdId}
@@ -1090,7 +1090,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   />
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="block font-bold text-slate-700 mb-1">الكمية:</label>
+                  <label className="block font-bold text-slate-700 mb-0.5">الكمية:</label>
                   <QuantityInput
                     inputRef={qtyInputRef}
                     allowDecimals
@@ -1105,11 +1105,11 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       }
                     }}
                     ariaLabel="كمية الشراء"
-                    inputClassName="w-full bg-white border border-slate-300 rounded-lg px-2 py-1.5 text-center font-mono font-bold outline-hidden focus:border-blue-700"
+                    inputClassName="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 text-center font-mono font-bold outline-hidden focus:border-blue-700"
                   />
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="block font-bold text-slate-700 mb-1">سعر الشراء:</label>
+                  <label className="block font-bold text-slate-700 mb-0.5">سعر الشراء:</label>
                   <input
                     type="number"
                     step="0.5"
@@ -1126,14 +1126,14 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                         handleAddItem();
                       }
                     }}
-                    className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1.5 text-center font-mono font-bold"
+                    className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 text-center font-mono font-bold"
                   />
                 </div>
                 <div className="sm:col-span-2">
                   <button
                     type="button"
                     onClick={handleAddItem}
-                    className="w-full py-1.5 px-3 bg-blue-900 hover:bg-blue-950 text-white rounded-lg font-bold cursor-pointer"
+                    className="w-full h-8 px-2.5 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-bold cursor-pointer"
                   >
                     + إضافة
                   </button>
@@ -1286,7 +1286,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   <button
                     type="button"
                     onClick={handleAddInlineNewProductItem}
-                    className="px-3.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold cursor-pointer"
+                    className="px-3.5 py-1.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
                   >
                     {duplicateCheckState.exactMatch ? 'ربط بالصنف الموجود وإضافته' : '+ إضافة الصنف للفاتورة'}
                   </button>
@@ -1388,29 +1388,29 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
           </div>
 
           {/* Payment & Totals */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-2.5 rounded-lg">
-            <div className="space-y-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-slate-50 p-2 rounded-lg border border-slate-200">
+            <div className="space-y-1.5">
               <div>
-                <label className="block font-bold mb-1">طريقة السداد للمورد:</label>
+                <label className="block font-bold mb-0.5">طريقة السداد للمورد:</label>
                 <div className="grid grid-cols-3 gap-1.5 font-bold">
                   <button
                     type="button"
                     onClick={() => setPaymentType('cash')}
-                    className={`p-1.5 rounded-lg border ${paymentType === 'cash' ? 'bg-blue-900 text-white border-blue-900' : 'bg-white text-slate-700 border-slate-300'}`}
+                    className={`py-1 px-2 rounded-md border ${paymentType === 'cash' ? 'bg-[#011E58] text-white border-[#011E58]' : 'bg-white text-slate-700 border-slate-300'}`}
                   >
                     نقدي كامل
                   </button>
                   <button
                     type="button"
                     onClick={() => setPaymentType('credit')}
-                    className={`p-1.5 rounded-lg border ${paymentType === 'credit' ? 'bg-blue-900 text-white border-blue-900' : 'bg-white text-slate-700 border-slate-300'}`}
+                    className={`py-1 px-2 rounded-md border ${paymentType === 'credit' ? 'bg-[#011E58] text-white border-[#011E58]' : 'bg-white text-slate-700 border-slate-300'}`}
                   >
                     آجل بالكامل
                   </button>
                   <button
                     type="button"
                     onClick={() => setPaymentType('partial')}
-                    className={`p-1.5 rounded-lg border ${paymentType === 'partial' ? 'bg-blue-900 text-white border-blue-900' : 'bg-white text-slate-700 border-slate-300'}`}
+                    className={`py-1 px-2 rounded-md border ${paymentType === 'partial' ? 'bg-[#011E58] text-white border-[#011E58]' : 'bg-white text-slate-700 border-slate-300'}`}
                   >
                     دفعة + آجل
                   </button>
@@ -1419,11 +1419,11 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
 
               {paymentType !== 'credit' && (
                 <div>
-                  <label className="block font-bold mb-1">الخزينة المسدد منها:</label>
+                  <label className="block font-bold mb-0.5">الخزينة المسدد منها:</label>
                   <select
                     value={selectedCashboxId}
                     onChange={(e) => setSelectedCashboxId(e.target.value)}
-                    className="w-full bg-white border rounded-lg px-2.5 py-1.5 font-bold"
+                    className="w-full h-8 bg-white border rounded-md px-2 py-1 font-bold"
                   >
                     {cashboxes.map(cb => (
                       <option key={cb.id} value={cb.id}>{cb.name} ({cb.currentBalance})</option>
@@ -1434,7 +1434,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
 
               {paymentType === 'partial' && (
                 <div>
-                  <label className="block font-bold mb-1">المدفوع نقداً للمورد:</label>
+                  <label className="block font-bold mb-0.5">المدفوع نقداً للمورد:</label>
                   <input
                     type="number"
                     min="0"
@@ -1445,27 +1445,27 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       const raw = e.target.value;
                       setPaidAmount(raw === '' ? '' : Number(raw));
                     }}
-                    className="w-full bg-white border rounded-lg px-2.5 py-1.5 font-mono font-bold"
+                    className="w-full h-8 bg-white border rounded-md px-2 py-1 font-mono font-bold"
                   />
                 </div>
               )}
 
               <div>
-                <label className="block font-bold mb-1">ملاحظات الفاتورة:</label>
+                <label className="block font-bold mb-0.5">ملاحظات الفاتورة:</label>
                 <input
                   type="text"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="رقم بوليصة التوريد أو ملاحظات..."
-                  className="w-full bg-white border rounded-lg px-2.5 py-1.5"
+                  className="w-full h-8 bg-white border rounded-md px-2 py-1"
                 />
               </div>
             </div>
 
-            <div className="bg-white p-2.5 rounded-lg border space-y-1.5 font-bold">
+            <div className="bg-white p-2 rounded-lg border space-y-1 font-bold">
               <div className="flex justify-between">
                 <span>المجموع الفرعي:</span>
-                <span>{subtotal.toLocaleString()} {settings.currency}</span>
+                <span className="font-mono tabular-nums">{subtotal.toLocaleString()} {settings.currency}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span>الخصم المكتسب:</span>
@@ -1478,31 +1478,31 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     const raw = e.target.value;
                     setDiscountTotal(raw === '' ? '' : Math.max(0, Number(raw)));
                   }}
-                  className="w-24 border rounded-lg px-2 py-1 text-center font-mono text-red-600"
+                  className="w-24 h-7 border rounded-md px-2 py-0.5 text-center font-mono text-red-600"
                 />
               </div>
-              <div className="flex justify-between text-sm font-black text-blue-950 border-t pt-1.5">
+              <div className="flex justify-between text-sm font-black text-blue-950 border-t pt-1">
                 <span>الإجمالي الصافي:</span>
-                <span>{grandTotal.toLocaleString()} {settings.currency}</span>
+                <span className="font-mono tabular-nums">{grandTotal.toLocaleString()} {settings.currency}</span>
               </div>
               <div className="flex justify-between text-emerald-700">
                 <span>المدفوع:</span>
-                <span>{numericPaid.toLocaleString()}</span>
+                <span className="font-mono tabular-nums">{numericPaid.toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-red-700 border-t pt-1">
                 <span>المتبقي للمورد:</span>
-                <span>{remainingAmount.toLocaleString()} {settings.currency}</span>
+                <span className="font-mono tabular-nums">{remainingAmount.toLocaleString()} {settings.currency}</span>
               </div>
             </div>
           </div>
 
-          <div className="bg-indigo-50/60 border border-indigo-200 rounded-lg p-2.5 flex flex-wrap items-center justify-between gap-2">
+          <div className="bg-[#EEF3FA] border border-[#DCE6F5] rounded-lg p-2 flex flex-wrap items-center justify-between gap-2">
             <div className="flex-1 min-w-[200px]">
-              <label className="block font-bold text-indigo-950 mb-1">المسؤول الموجه إليه عند الإرسال للإدارة (اختياري):</label>
+              <label className="block font-bold text-[#011E58] mb-0.5">المسؤول الموجه إليه عند الإرسال للإدارة (اختياري):</label>
               <select
                 value={newRecipientUserId}
                 onChange={(e) => setNewRecipientUserId(e.target.value)}
-                className="w-full bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 font-bold"
+                className="w-full h-8 bg-white border border-[#DCE6F5] rounded-md px-2 py-1 font-bold"
               >
                 <option value="">الإدارة العامة (جميع المسؤولين المختصين)</option>
                 {purchaseReceivers.map((r) => (
@@ -1510,16 +1510,16 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 ))}
               </select>
             </div>
-            <span className="text-[11px] font-bold text-indigo-800">
+            <span className="text-[11px] font-bold text-[#003589]">
               «حفظ وإرسال للإدارة» يحفظها كمسودة مرسلة دون تعديل أرصدة المخزون أو المورد لحين الاعتماد.
             </span>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t">
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t">
             <button
               type="button"
               onClick={() => setIsNewModalOpen(false)}
-              className="px-3.5 py-1.5 border rounded-lg font-bold cursor-pointer"
+              className="px-3 py-1 border rounded-md font-bold cursor-pointer"
             >
               إلغاء
             </button>
@@ -1528,7 +1528,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 type="button"
                 disabled={isSubmitting || items.length === 0}
                 onClick={() => handleSubmitPurchase(false, true)}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-800 hover:bg-indigo-900 text-white rounded-lg font-bold cursor-pointer disabled:opacity-50"
+                className="flex items-center gap-1 px-3 py-1 bg-[#011E58] hover:bg-[#002160] text-white rounded-md font-bold cursor-pointer disabled:opacity-50"
               >
                 <Send className="w-3.5 h-3.5" />
                 <span>{isSubmitting ? 'جاري الإرسال...' : 'حفظ وإرسال للإدارة'}</span>
@@ -1537,7 +1537,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 type="button"
                 disabled={isSubmitting || items.length === 0}
                 onClick={() => handleSubmitPurchase(false, false)}
-                className="flex items-center gap-1.5 px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-bold cursor-pointer disabled:opacity-50"
+                className="flex items-center gap-1 px-3 py-1 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-bold cursor-pointer disabled:opacity-50"
               >
                 <Save className="w-3.5 h-3.5" />
                 <span>{isSubmitting ? 'جاري الحفظ...' : canApprovePurchase ? 'حفظ واعتماد الفاتورة' : 'حفظ كمسودة'}</span>
@@ -1546,7 +1546,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 type="button"
                 disabled={isSubmitting || items.length === 0}
                 onClick={() => handleSubmitPurchase(true, false)}
-                className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-900 hover:bg-blue-950 text-white rounded-lg font-bold cursor-pointer disabled:opacity-50"
+                className="flex items-center gap-1 px-3 py-1 bg-[#002160] hover:bg-[#001A49] text-white rounded-md font-bold cursor-pointer disabled:opacity-50"
               >
                 <Printer className="w-3.5 h-3.5" />
                 <span>حفظ وطباعة الفاتورة</span>
@@ -1560,9 +1560,9 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
       {displayedActiveInvoice && (() => {
         const badge = getPurchaseStatusBadge(displayedActiveInvoice);
         return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-900/60 backdrop-blur-xs">
-          <div className="w-full max-w-3xl bg-white rounded-xl shadow-2xl border border-slate-200 p-3.5 text-right max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b pb-2.5 mb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-3xl bg-white rounded-lg shadow-2xl border border-slate-200 p-2.5 text-right max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b pb-2 mb-2">
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-sm font-black text-slate-900">
                   تفاصيل فاتورة المشتريات: {displayedActiveInvoice.invoiceNumber}
@@ -1589,7 +1589,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 <p className="text-slate-500">المستودع المستلم: <strong className="text-slate-800">{displayedActiveInvoice.warehouseName}</strong></p>
                 <p className="text-slate-500">أنشئت بواسطة: <strong className="text-slate-800">{displayedActiveInvoice.createdBy}</strong></p>
                 {(displayedActiveInvoice.sentBy || displayedActiveInvoice.representativeName) && (
-                  <p className="text-indigo-800">
+                  <p className="text-[#011E58]">
                     المرسل / المندوب: <strong>{displayedActiveInvoice.sentBy || displayedActiveInvoice.representativeName}</strong>
                     {displayedActiveInvoice.sentAt ? ` (${new Date(displayedActiveInvoice.sentAt).toLocaleString('ar-EG')})` : ''}
                   </p>
@@ -1601,7 +1601,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   <p className="text-slate-500">الموجه إليه: <strong className="text-slate-800">{displayedActiveInvoice.recipientName}</strong></p>
                 )}
                 {displayedActiveInvoice.receivedBy && (
-                  <p className="text-sky-800">
+                  <p className="text-[#003589]">
                     تم الاستلام بواسطة: <strong>{displayedActiveInvoice.receivedBy}</strong>
                     {displayedActiveInvoice.receivedAt ? ` (${new Date(displayedActiveInvoice.receivedAt).toLocaleString('ar-EG')})` : ''}
                   </p>
@@ -1714,16 +1714,16 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
             </div>
 
             {Array.isArray(displayedActiveInvoice.dispatchHistory) && displayedActiveInvoice.dispatchHistory.length > 0 && (
-              <div className="mb-3 p-2.5 bg-indigo-50/70 border border-indigo-200 rounded-lg space-y-1.5">
+              <div className="mb-3 p-2.5 bg-[#EEF3FA] border border-[#DCE6F5] rounded-lg space-y-1.5">
                 <div className="flex items-center gap-2">
-                  <Send className="w-3.5 h-3.5 text-indigo-700" />
-                  <h4 className="text-xs font-black text-indigo-950">
+                  <Send className="w-3.5 h-3.5 text-[#003589]" />
+                  <h4 className="text-xs font-black text-[#011E58]">
                     سجل الإرسال والاستلام والاعتماد ({displayedActiveInvoice.dispatchHistory.length})
                   </h4>
                 </div>
                 <div className="space-y-1">
                   {displayedActiveInvoice.dispatchHistory.map((h, idx) => (
-                    <div key={`${h.at}-${idx}`} className="p-2 bg-white border border-indigo-200/70 rounded-lg text-[11px] flex items-center justify-between gap-2">
+                    <div key={`${h.at}-${idx}`} className="p-2 bg-white border border-[#DCE6F5] rounded-lg text-[11px] flex items-center justify-between gap-2">
                       <div>
                         <strong className="text-slate-900">
                           {h.action === 'created' ? 'إنشاء الفاتورة' :
@@ -1734,7 +1734,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                            h.action === 'confirmed' ? 'اعتماد وترحيل' : h.action}
                         </strong>
                         {h.by && <span className="text-slate-600 mr-1.5">· {h.by}</span>}
-                        {h.recipientName && <span className="text-indigo-700 mr-1.5">→ {h.recipientName}</span>}
+                        {h.recipientName && <span className="text-[#003589] mr-1.5">→ {h.recipientName}</span>}
                         {(h.notes || h.reason) && <p className="text-slate-500 mt-0.5">{h.notes || h.reason}</p>}
                       </div>
                       <span className="font-mono text-[10px] text-slate-400 shrink-0" dir="ltr">
@@ -1842,7 +1842,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                         setSendModalRecipientId(displayedActiveInvoice.recipientUserId || '');
                         setSendModalNotes('');
                       }}
-                      className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-indigo-800 hover:bg-indigo-900 text-white font-bold cursor-pointer disabled:opacity-50"
+                      className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-[#011E58] hover:bg-[#002160] text-white font-bold cursor-pointer disabled:opacity-50"
                     >
                       <Send className="w-3.5 h-3.5" />
                       <span>{displayedActiveInvoice.dispatchStatus === 'rejected' ? 'إعادة إرسال للإدارة' : 'إرسال للإدارة'}</span>
@@ -1866,7 +1866,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                           setActionMessage({ type: 'error', text: res.error || 'تعذر تأكيد استلام الفاتورة' });
                         }
                       }}
-                      className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-sky-700 hover:bg-sky-800 text-white font-bold cursor-pointer disabled:opacity-50"
+                      className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer disabled:opacity-50"
                     >
                       <UserCheck className="w-3.5 h-3.5" />
                       <span>تأكيد استلام الفاتورة</span>
@@ -1878,7 +1878,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       type="button"
                       disabled={isDispatchActionBusy}
                       onClick={() => setIsRejectBoxOpen(true)}
-                      className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-300 font-bold cursor-pointer disabled:opacity-50"
+                      className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-300 font-bold cursor-pointer disabled:opacity-50"
                     >
                       <XCircle className="w-3.5 h-3.5" />
                       <span>رفض مع ذكر السبب</span>
@@ -1902,7 +1902,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                           setActionMessage({ type: 'error', text: res.error || 'تعذر اعتماد الفاتورة' });
                         }
                       }}
-                      className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-black cursor-pointer disabled:opacity-50"
+                      className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-black cursor-pointer disabled:opacity-50"
                     >
                       <CheckCircle2 className="w-3.5 h-3.5" />
                       <span>اعتماد وترحيل الفاتورة</span>
@@ -1924,7 +1924,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   setActiveInvoice(null);
                   handlePrint(inv);
                 }}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-900 text-white rounded-lg font-bold hover:bg-blue-950 transition-colors cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1 bg-[#003589] text-white rounded-md font-bold hover:bg-[#0049B0] transition-colors cursor-pointer"
               >
                 <Printer className="w-3.5 h-3.5" />
                 <span>طباعة هذه الفاتورة</span>
@@ -1937,40 +1937,40 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
 
       {/* Edit Purchase Invoice Modal */}
       {editModalInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-900/60 backdrop-blur-xs">
-          <div className="w-full max-w-3xl bg-white rounded-xl shadow-2xl border border-slate-200 p-3.5 text-right max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b pb-2.5 mb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-3xl bg-white rounded-lg shadow-2xl border border-slate-200 p-2.5 text-right max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b pb-2 mb-2">
               <div>
                 <h3 className="text-sm font-black text-slate-900">
                   تعديل فاتورة المشتريات رقم: {editModalInvoice.invoiceNumber}
                 </h3>
-                <p className="text-[11px] text-slate-500 mt-0.5">
+                <p className="text-[11px] text-slate-500">
                   المدفوع مسبقاً للمورد: <strong className="text-emerald-700">{editModalInvoice.paidAmount.toLocaleString()} {settings.currency}</strong>
                 </p>
               </div>
               <button
                 onClick={() => setEditModalInvoice(null)}
-                className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer"
+                className="text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
             {editError && (
-              <div className="mb-3 px-3 py-2 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs flex items-center gap-2">
+              <div className="mb-2 px-2.5 py-1.5 bg-red-50 border border-red-200 text-red-700 rounded-md text-xs flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{editError}</span>
               </div>
             )}
 
-            <form onSubmit={handleSubmitEdit} className="space-y-3 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 bg-slate-50 p-2.5 rounded-lg">
+            <form onSubmit={handleSubmitEdit} className="space-y-2 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 bg-slate-50 p-2 rounded-lg border border-slate-200">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">المورد:</label>
+                  <label className="block font-bold text-slate-700 mb-0.5">المورد:</label>
                   <select
                     value={editSupplierId}
                     onChange={(e) => setEditSupplierId(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold"
+                    className="w-full h-8 px-2 py-1 rounded-md border border-slate-300 bg-white font-bold"
                   >
                     <option value="">مورد نقدي</option>
                     {suppliers.map((s) => (
@@ -1979,11 +1979,11 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   </select>
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">المستودع المستلم:</label>
+                  <label className="block font-bold text-slate-700 mb-0.5">المستودع المستلم:</label>
                   <select
                     value={editWarehouseId}
                     onChange={(e) => setEditWarehouseId(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold"
+                    className="w-full h-8 px-2 py-1 rounded-md border border-slate-300 bg-white font-bold"
                   >
                     {warehouses.map((w) => (
                       <option key={w.id} value={w.id}>{w.name}</option>
@@ -1991,24 +1991,24 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   </select>
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">تاريخ الفاتورة:</label>
+                  <label className="block font-bold text-slate-700 mb-0.5">تاريخ الفاتورة:</label>
                   <input
                     type="date"
                     required
                     value={editDate}
                     onChange={(e) => setEditDate(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-mono"
+                    className="w-full h-8 px-2 py-1 rounded-md border border-slate-300 bg-white font-mono"
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">إجمالي الخصم ({settings.currency}):</label>
+                  <label className="block font-bold text-slate-700 mb-0.5">إجمالي الخصم ({settings.currency}):</label>
                   <input
                     type="number"
                     min={0}
                     step="0.5"
                     value={editDiscount}
                     onChange={(e) => setEditDiscount(Math.max(0, parseFloat(e.target.value) || 0))}
-                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold"
+                    className="w-full h-8 px-2 py-1 rounded-md border border-slate-300 bg-white font-bold"
                   />
                 </div>
               </div>
@@ -2056,7 +2056,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   <button
                     type="button"
                     onClick={handleAddItemToEdit}
-                    className="w-full py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-bold cursor-pointer"
+                    className="w-full py-1.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
                   >
                     + إضافة
                   </button>
@@ -2237,18 +2237,18 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 );
               })()}
 
-              <div className="flex items-center justify-end gap-2 pt-2.5 border-t">
+              <div className="flex items-center justify-end gap-1.5 pt-2 border-t">
                 <button
                   type="button"
                   onClick={() => setEditModalInvoice(null)}
-                  className="px-3.5 py-1.5 rounded-lg border border-slate-300 text-slate-600 font-bold hover:bg-slate-50 cursor-pointer"
+                  className="px-3 py-1 rounded-md border border-slate-300 text-slate-600 font-bold hover:bg-slate-50 cursor-pointer"
                 >
                   إلغاء
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmittingEdit || editItems.length === 0 || (editItems.reduce((acc, it) => acc + computeLineTotal(it.quantity, it.unitPrice, it.discount || 0), 0) - Math.max(0, Number(editDiscount || 0))) < Number(editModalInvoice.paidAmount || 0) - 0.01}
-                  className="px-4 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-black transition-colors disabled:opacity-50 cursor-pointer"
+                  className="px-3 py-1 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-black transition-colors disabled:opacity-50 cursor-pointer"
                 >
                   {isSubmittingEdit ? 'جاري حفظ التعديل...' : 'حفظ وتحديث الفاتورة'}
                 </button>
@@ -2278,16 +2278,16 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
           title={`${sendModalInvoice.dispatchStatus === 'rejected' ? 'إعادة إرسال' : 'إرسال'} فاتورة الشراء (${sendModalInvoice.invoiceNumber}) للإدارة`}
           maxWidth="md"
         >
-          <div className="space-y-3 text-xs">
-            <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 font-bold">
+          <div className="space-y-2 text-xs">
+            <div className="p-2 rounded-md bg-amber-50 border border-amber-200 text-amber-900 font-bold">
               سيتم توجيه الفاتورة للإدارة للاستلام والمراجعة فقط دون تعديل المخزون أو حساب المورد أو الخزينة حتى الاعتماد.
             </div>
             <div>
-              <label className="block font-bold text-slate-700 mb-1">المسؤول الموجه إليه:</label>
+              <label className="block font-bold text-slate-700 mb-0.5">المسؤول الموجه إليه:</label>
               <select
                 value={sendModalRecipientId}
                 onChange={(e) => setSendModalRecipientId(e.target.value)}
-                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold"
+                className="w-full h-8 px-2 py-1 rounded-md border border-slate-300 bg-white font-bold"
               >
                 <option value="">الإدارة العامة (جميع المسؤولين المختصين)</option>
                 {purchaseReceivers.map((r) => (
@@ -2296,21 +2296,21 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
               </select>
             </div>
             <div>
-              <label className="block font-bold text-slate-700 mb-1">ملاحظة للإدارة (اختياري):</label>
+              <label className="block font-bold text-slate-700 mb-0.5">ملاحظة للإدارة (اختياري):</label>
               <input
                 type="text"
                 value={sendModalNotes}
                 onChange={(e) => setSendModalNotes(e.target.value)}
                 placeholder="مثال: تم شراء البضاعة وبانتظار مراجعة التسعير والكميات..."
-                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300"
+                className="w-full h-8 px-2 py-1 rounded-md border border-slate-300"
               />
             </div>
-            <div className="flex justify-end gap-2 pt-2 border-t">
+            <div className="flex justify-end gap-1.5 pt-2 border-t">
               <button
                 type="button"
                 disabled={isSendingModalBusy}
                 onClick={() => setSendModalInvoice(null)}
-                className="px-3.5 py-1.5 rounded-lg border border-slate-300 font-bold cursor-pointer"
+                className="px-3 py-1 rounded-md border border-slate-300 font-bold cursor-pointer"
               >
                 إلغاء
               </button>
@@ -2336,7 +2336,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     setActionMessage({ type: 'error', text: res.error || 'تعذر إرسال الفاتورة' });
                   }
                 }}
-                className="px-4 py-1.5 rounded-lg bg-indigo-800 hover:bg-indigo-900 text-white font-black inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                className="px-3 py-1 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-black inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
               >
                 <Send className="w-3.5 h-3.5" />
                 <span>{isSendingModalBusy ? 'جاري الإرسال...' : 'تأكيد الإرسال'}</span>

@@ -65,8 +65,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       Icon: AlertTriangle,
     },
     info: {
-      iconBg: 'bg-blue-50 text-blue-700 border-blue-100',
-      btn: 'bg-blue-900 hover:bg-blue-950 text-white',
+      iconBg: 'bg-[#EEF3FA] text-[#003589] border-[#DCE6F5]',
+      btn: 'bg-[#003589] hover:bg-[#011E58] text-white',
       Icon: Info,
     },
     success: {
@@ -89,13 +89,13 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-900/60 backdrop-blur-xs no-print">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 bg-slate-900/60 backdrop-blur-xs no-print">
       <div
-        className="w-full max-w-md rounded-xl bg-white p-4 shadow-2xl border border-slate-200 text-right"
+        className="w-full max-w-md rounded-lg bg-white p-3 shadow-2xl border border-slate-200 text-right"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between mb-2">
-          <div className={`w-9 h-9 rounded-lg border flex items-center justify-center ${palette.iconBg}`}>
+        <div className="flex items-start justify-between mb-1.5">
+          <div className={`w-8 h-8 rounded-md border flex items-center justify-center ${palette.iconBg}`}>
             <Icon className="w-4 h-4" />
           </div>
           <button
@@ -108,10 +108,10 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           </button>
         </div>
 
-        <h3 className="text-sm font-black text-slate-900 mb-1">{title}</h3>
+        <h3 className="text-sm font-black text-slate-900 mb-0.5">{title}</h3>
         <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-line">{message}</p>
 
-        <form onSubmit={handleConfirmClick} className="mt-3 space-y-2.5">
+        <form onSubmit={handleConfirmClick} className="mt-2.5 space-y-2">
           {requireInput && (
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">{inputLabel}</label>
@@ -124,25 +124,25 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                   if (inputError) setInputError(null);
                 }}
                 placeholder={inputPlaceholder}
-                className="w-full border border-slate-300 rounded-lg p-2 text-xs font-bold focus:outline-hidden focus:border-blue-700"
+                className="w-full border border-slate-300 rounded-md px-2.5 py-1.5 text-xs font-bold focus:outline-hidden focus:border-blue-700"
               />
               {inputError && <p className="text-[11px] text-red-600 font-bold mt-1">{inputError}</p>}
             </div>
           )}
 
-          <div className="flex items-center justify-end gap-2 pt-2.5 border-t border-slate-100">
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
             <button
               type="button"
               disabled={isLoading}
               onClick={onClose}
-              className="px-3.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold cursor-pointer disabled:opacity-50"
+              className="px-3 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold cursor-pointer disabled:opacity-50"
             >
               {cancelLabel}
             </button>
             <button
               type="submit"
               disabled={isLoading}
-              className={`px-4 py-1.5 rounded-lg text-xs font-black shadow-xs cursor-pointer disabled:opacity-50 ${palette.btn}`}
+              className={`px-3.5 py-1 rounded-md text-xs font-black shadow-xs cursor-pointer disabled:opacity-50 ${palette.btn}`}
             >
               {isLoading ? 'جاري التنفيذ...' : confirmLabel}
             </button>

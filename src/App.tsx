@@ -150,8 +150,26 @@ const MainAppContent: React.FC = () => {
     typeof window !== 'undefined' ? window.innerWidth < 768 || isNativeCapacitor() : false
   );
   const [isSectionsOpen, setIsSectionsOpen] = useState<boolean>(() =>
-    typeof window !== 'undefined' ? window.innerWidth >= 768 && !isNativeCapacitor() : true
+    typeof window !== 'undefined' ? window.innerWidth >= 1024 && !isNativeCapacitor() : true
   );
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return typeof window !== 'undefined' && localStorage.getItem('awlad_selim_sidebar_collapsed') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggleSidebarCollapse = () => {
+    setIsSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('awlad_selim_sidebar_collapsed', next ? '1' : '0');
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
   const [cashOpModal, setCashOpModal] = useState<{ open: boolean; mode: CashOperationType }>({
     open: false,
     mode: 'cash_deposit',
@@ -182,10 +200,10 @@ const MainAppContent: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Auto-open sections sidebar upon desktop login while keeping toggle control
+  // Auto-open sections sidebar upon large desktop login while keeping toggle control
   useEffect(() => {
     if (isAuthenticated && currentUser && currentUser.role !== 'customer' && currentUser.role !== 'representative') {
-      if (typeof window !== 'undefined' && window.innerWidth >= 768 && !isNativeCapacitor()) {
+      if (typeof window !== 'undefined' && window.innerWidth >= 1024 && !isNativeCapacitor()) {
         setIsSectionsOpen(true);
       }
     }
@@ -363,10 +381,10 @@ const MainAppContent: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-900 text-white font-sans">
-        <div className="text-center space-y-4">
-          <div className="w-14 h-14 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <p className="text-sm font-bold text-slate-300">جاري تشغيل نظام أولاد سليم...</p>
+      <div className="flex items-center justify-center min-h-screen awlad-brand-gradient text-white font-sans">
+        <div className="text-center space-y-3">
+          <div className="w-12 h-12 border-4 border-white/80 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="text-sm font-bold text-blue-100">جاري تشغيل نظام أولاد سليم...</p>
         </div>
       </div>
     );
@@ -380,7 +398,7 @@ const MainAppContent: React.FC = () => {
     pairingBanner ? (
       <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[70] w-[calc(100%-1.5rem)] max-w-lg px-2 pointer-events-none">
         <div
-          className={`pointer-events-auto px-3 py-2.5 rounded-xl border shadow-lg text-xs font-bold flex items-start justify-between gap-2 ${
+          className={`pointer-events-auto px-2.5 py-2 rounded-lg border shadow-lg text-xs font-bold flex items-start justify-between gap-2 ${
             pairingBanner.type === 'success'
               ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
               : pairingBanner.type === 'warning'
@@ -454,7 +472,7 @@ const MainAppContent: React.FC = () => {
           <p className="text-xs text-slate-500">هذه الصلاحية مقيدة لحسابك. يرجى مراجعة المدير العام عند الحاجة.</p>
           <button
             onClick={() => setCurrentPage('dashboard')}
-            className="px-4 py-1.5 rounded-lg bg-blue-900 text-white text-xs font-bold cursor-pointer"
+            className="h-8 px-4 rounded-md bg-[var(--awlad-royal-700)] hover:bg-[var(--awlad-navy-900)] text-white text-xs font-bold cursor-pointer"
           >
             العودة إلى الرئيسية
           </button>
@@ -647,7 +665,7 @@ const MainAppContent: React.FC = () => {
 
   const renderDbOrSyncAlert = () =>
     isDatabaseUnavailable || (networkStatus === 'error' && lastError) ? (
-      <div className="mb-2.5 p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-800 text-xs font-bold flex flex-wrap items-center justify-between gap-2 shadow-xs">
+      <div className="mb-2 p-2 rounded-lg bg-red-50 border border-red-200 text-red-800 text-xs font-bold flex flex-wrap items-center justify-between gap-2 shadow-2xs">
         <div className="flex items-center gap-2">
           <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
           <span>
@@ -695,18 +713,20 @@ const MainAppContent: React.FC = () => {
           {renderActivePage()}
         </StaffMobileShell>
       ) : (
-        <div className="min-h-screen bg-slate-100/70 text-slate-800 flex flex-col font-sans antialiased pb-safe">
+        <div className="min-h-screen bg-[var(--awlad-surface-page)] text-slate-800 flex flex-col font-sans antialiased pb-safe">
           <Sidebar
             currentPage={currentPage}
             onNavigate={(page) => setCurrentPage(page)}
             isOpen={isSectionsOpen}
             onClose={() => setIsSectionsOpen(false)}
+            isCollapsed={isSidebarCollapsed}
+            onToggleCollapse={toggleSidebarCollapse}
             onOpenCashOp={(mode) => setCashOpModal({ open: true, mode })}
           />
 
           <div
             className={`flex-1 flex flex-col min-w-0 transition-all duration-200 ${
-              isSectionsOpen ? 'md:mr-72' : ''
+              isSectionsOpen ? (isSidebarCollapsed ? 'lg:mr-12' : 'lg:mr-52') : ''
             }`}
           >
             <Header
@@ -718,10 +738,10 @@ const MainAppContent: React.FC = () => {
             />
 
             <main
-              className={`flex-1 w-full mx-auto min-w-0 ${
+              className={`flex-1 flex flex-col w-full mx-auto min-w-0 ${
                 currentPage === 'reports' || currentPage === 'item-movement-report'
-                  ? 'max-w-full px-2 sm:px-3 py-2'
-                  : 'max-w-full p-2.5 sm:p-3 lg:p-4'
+                  ? 'max-w-full px-1.5 sm:px-2 py-1.5'
+                  : 'max-w-full p-1.5 sm:p-2'
               }`}
             >
               {renderDbOrSyncAlert()}

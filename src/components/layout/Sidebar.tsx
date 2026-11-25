@@ -19,6 +19,8 @@ import {
   TrendingUp,
   ArrowLeftRight,
   X,
+  PanelRightClose,
+  PanelRightOpen,
 } from 'lucide-react';
 import {
   DashboardHomeIcon,
@@ -102,6 +104,8 @@ interface SidebarProps {
   onNavigate: (page: NavItemKey) => void;
   isOpen: boolean;
   onClose: () => void;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
   onOpenCashOp?: (mode: CashOperationType) => void;
 }
 
@@ -126,6 +130,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onNavigate,
   isOpen,
   onClose,
+  isCollapsed = false,
+  onToggleCollapse,
   onOpenCashOp,
 }) => {
   const { hasPermission, currentUser } = useAuth();
@@ -152,8 +158,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id: 'sales',
         title: 'المبيعات والعملاء',
         icon: SalesInvoiceIcon,
-        headerGradient: 'bg-gradient-to-l from-blue-50/95 via-sky-50/80 to-white text-blue-950 border-blue-100',
-        iconAccent: 'bg-white border border-blue-100 shadow-2xs',
+        headerGradient: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
+        iconAccent: 'bg-white border border-[var(--awlad-blue-tint-100)]',
         permission: 'canManageSales',
         items: [
           {
@@ -173,8 +179,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id: 'purchases',
         title: 'المشتريات والموردون',
         icon: SuppliersTruckIcon,
-        headerGradient: 'bg-slate-50 text-indigo-950 border-slate-200',
-        iconAccent: 'bg-white border border-indigo-100',
+        headerGradient: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
+        iconAccent: 'bg-white border border-[var(--awlad-blue-tint-100)]',
         permission: ['canManagePurchases', 'canCreatePurchase'],
         items: [
           { key: 'purchase-invoices', label: 'فواتير المشتريات' },
@@ -187,8 +193,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id: 'inventory',
         title: 'المخازن والمنتجات',
         icon: WarehouseBoxesIcon,
-        headerGradient: 'bg-slate-50 text-sky-950 border-slate-200',
-        iconAccent: 'bg-white border border-sky-100',
+        headerGradient: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
+        iconAccent: 'bg-white border border-[var(--awlad-blue-tint-100)]',
         permission: 'canManageInventory',
         items: [
           { key: 'products', label: 'المنتجات والأسعار' },
@@ -220,8 +226,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id: 'finance',
         title: 'الحسابات والخزائن',
         icon: SafeVaultIcon,
-        headerGradient: 'bg-slate-50 text-emerald-950 border-slate-200',
-        iconAccent: 'bg-white border border-emerald-100',
+        headerGradient: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
+        iconAccent: 'bg-white border border-[var(--awlad-blue-tint-100)]',
         permission: ['canManageCashboxes', 'canManageAccounts'],
         items: [
           {
@@ -248,8 +254,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id: 'cheques-inst',
         title: 'الشيكات والأقساط',
         icon: ChequesIcon,
-        headerGradient: 'bg-gradient-to-l from-violet-50/90 via-purple-50/65 to-white text-violet-950 border-violet-100',
-        iconAccent: 'bg-white border border-violet-100 shadow-2xs',
+        headerGradient: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
+        iconAccent: 'bg-white border border-[var(--awlad-blue-tint-100)]',
         permission: 'canManageAccounts',
         items: [
           { key: 'cheques', label: 'الشيكات (واردة / صادرة)' },
@@ -260,8 +266,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id: 'representatives',
         title: 'المندوبون والتحويلات',
         icon: RepsFleetIcon,
-        headerGradient: 'bg-gradient-to-l from-cyan-50/90 via-sky-50/65 to-white text-cyan-950 border-cyan-100',
-        iconAccent: 'bg-white border border-cyan-100 shadow-2xs',
+        headerGradient: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
+        iconAccent: 'bg-white border border-[var(--awlad-blue-tint-100)]',
         permission: 'canManageReps',
         items: [
           {
@@ -287,8 +293,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id: 'employees',
         title: 'الموظفون والرواتب',
         icon: EmployeesHrIcon,
-        headerGradient: 'bg-slate-50 text-rose-950 border-slate-200',
-        iconAccent: 'bg-white border border-rose-100',
+        headerGradient: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
+        iconAccent: 'bg-white border border-[var(--awlad-blue-tint-100)]',
         permission: 'canManageEmployees',
         items: [
           { key: 'employees', label: 'شؤون الموظفين' },
@@ -301,8 +307,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id: 'reports',
         title: 'التقارير المحاسبية',
         icon: ReportsChartIcon,
-        headerGradient: 'bg-slate-50 text-blue-950 border-slate-200',
-        iconAccent: 'bg-white border border-blue-100',
+        headerGradient: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
+        iconAccent: 'bg-white border border-[var(--awlad-blue-tint-100)]',
         permission: 'canViewReports',
         items: [
           { key: 'reports', label: 'جميع التقارير والأرباح' },
@@ -317,8 +323,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id: 'management',
         title: 'المستخدمون والصلاحيات',
         icon: UsersShieldIcon,
-        headerGradient: 'bg-slate-50 text-slate-900 border-slate-200',
-        iconAccent: 'bg-white border border-slate-200',
+        headerGradient: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
+        iconAccent: 'bg-white border border-[var(--awlad-blue-tint-100)]',
         permission: 'canManageUsers',
         items: [
           { key: 'users', label: 'إدارة المستخدمين' },
@@ -329,8 +335,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id: 'settings',
         title: 'الإعدادات والنسخ الاحتياطي',
         icon: SettingsTwinGearsIcon,
-        headerGradient: 'bg-slate-50 text-slate-900 border-slate-200',
-        iconAccent: 'bg-white border border-slate-200',
+        headerGradient: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
+        iconAccent: 'bg-white border border-[var(--awlad-blue-tint-100)]',
         permission: 'canManageSettings',
         items: [
           { key: 'system-settings', label: 'إعدادات النظام والحساب', allowAllStaff: true },
@@ -400,81 +406,137 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const handleItemClick = (key: NavItemKey) => {
     onNavigate(key);
-    // On mobile viewports (< 768px), automatically close drawer after choosing a destination
-    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
       onClose();
     }
   };
 
   return (
     <>
-      {/* Backdrop Overlay for Narrow Viewports */}
+      {/* Backdrop Overlay for Tablet/Small Viewports (< 1024px) */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-40 bg-slate-950/35 backdrop-blur-[2px] transition-opacity md:hidden no-print"
+          className="fixed inset-0 z-40 bg-slate-950/35 backdrop-blur-[2px] transition-opacity lg:hidden no-print"
           onClick={onClose}
           aria-hidden="true"
         />
       )}
 
-      {/* RTL Sliding Sidebar Drawer — Traditional Accounting Structure */}
+      {/* RTL Collapsible Sidebar Drawer */}
       <aside
         id="system-sections-drawer"
         aria-label="قائمة الأقسام الجانبية"
         aria-hidden={!isOpen}
-        className={`fixed top-0 bottom-0 right-0 z-50 md:z-40 w-[82vw] max-w-[300px] md:w-72 bg-white text-slate-800 border-l border-slate-200 shadow-lg transition-transform duration-200 ease-out flex flex-col pt-safe pb-safe no-print ${
+        className={`fixed top-0 bottom-0 right-0 z-50 lg:z-40 bg-white text-slate-800 border-l border-slate-200 shadow-lg transition-all duration-200 ease-out flex flex-col pt-safe pb-safe no-print ${
+          isCollapsed ? 'lg:w-12 w-[78vw] max-w-[260px]' : 'w-[78vw] max-w-[260px] lg:w-52'
+        } ${
           isOpen ? 'translate-x-0 pointer-events-auto' : 'translate-x-full pointer-events-none'
         }`}
       >
-        {/* Drawer Header Strip (Soft Royal Blue to Indigo Gradient) */}
-        <div className="h-13 flex items-center justify-between px-3 bg-gradient-to-l from-blue-950 via-blue-900 to-indigo-900 text-white border-b border-blue-800/60 shrink-0 shadow-xs">
-          <div className="flex items-center gap-2 min-w-0">
+        {/* Drawer Header Strip (Logo Navy/Royal Gradient) */}
+        <div className={`h-11 flex items-center ${isCollapsed ? 'lg:justify-center lg:px-1 justify-between px-2.5' : 'justify-between px-2'} awlad-brand-gradient text-white border-b border-[var(--awlad-royal-500)]/40 shrink-0`}>
+          <div className={`flex items-center gap-1.5 min-w-0 ${isCollapsed ? 'lg:hidden' : ''}`}>
             <img
               src="/awlad-selim-logo.png"
               alt="أولاد سليم"
-              className="h-8 w-8 object-contain bg-white rounded-lg p-0.5 shrink-0 shadow-xs"
+              className="h-7 w-7 object-contain bg-white rounded-md p-0.5 shrink-0"
             />
             <div className="text-right min-w-0">
               <span className="block font-black text-xs text-white tracking-wide truncate">
                 أقسام النظام
               </span>
-              <span className="block text-[10px] text-blue-200 font-semibold truncate">
-                AWLAD SELIM · {currentUser?.fullName}
+              <span className="block text-[10px] text-blue-100 font-semibold truncate">
+                {currentUser?.fullName}
               </span>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="min-h-[34px] min-w-[34px] flex items-center justify-center rounded-lg bg-white/15 hover:bg-white/25 text-white transition-colors cursor-pointer shrink-0"
-            aria-label="إغلاق قائمة الأقسام"
-            title="إغلاق القائمة"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            {onToggleCollapse && (
+              <button
+                type="button"
+                onClick={onToggleCollapse}
+                className="hidden lg:flex h-7 w-7 items-center justify-center rounded-md bg-white/15 hover:bg-white/25 text-white transition-colors cursor-pointer"
+                aria-label={isCollapsed ? 'توسيع القائمة الجانبية' : 'طي القائمة الجانبية'}
+                title={isCollapsed ? 'توسيع القائمة الجانبية' : 'طي القائمة الجانبية لشريط أيقونات'}
+              >
+                {isCollapsed ? <PanelRightOpen className="w-4 h-4" /> : <PanelRightClose className="w-4 h-4" />}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className={`h-7 w-7 flex items-center justify-center rounded-md bg-white/15 hover:bg-white/25 text-white transition-colors cursor-pointer ${
+                isCollapsed ? 'lg:hidden' : ''
+              }`}
+              aria-label="إغلاق قائمة الأقسام"
+              title="إخفاء القائمة"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
-        {/* Scrollable Sections Container */}
-        <div className="flex-1 overflow-y-auto overscroll-contain p-2.5 space-y-1.5">
+        {/* Collapsed Slim Rail Mode (Desktop lg+) */}
+        {isCollapsed && (
+          <div className="hidden lg:flex flex-col items-center flex-1 overflow-y-auto py-1.5 gap-1 no-scrollbar">
+            <button
+              type="button"
+              onClick={() => handleItemClick('dashboard')}
+              title="لوحة التحكم الرئيسية"
+              className={`w-9 h-9 rounded-md flex items-center justify-center border transition-colors cursor-pointer ${
+                currentPage === 'dashboard'
+                  ? 'bg-[var(--awlad-royal-700)] text-white border-[var(--awlad-royal-700)]'
+                  : 'bg-white text-[var(--awlad-navy-900)] border-slate-200 hover:bg-[var(--awlad-blue-tint-50)]'
+              }`}
+            >
+              <DashboardHomeIcon className="w-4 h-4" />
+            </button>
+            {filteredSections.map((section) => {
+              const SectionIcon = section.icon;
+              const hasActiveChild = section.items.some((item) => item.key === currentPage);
+              return (
+                <button
+                  key={section.id}
+                  type="button"
+                  title={section.title}
+                  onClick={() => {
+                    const firstItem = section.items[0];
+                    if (firstItem) handleItemClick(firstItem.key);
+                  }}
+                  className={`w-9 h-9 rounded-md flex items-center justify-center border transition-colors cursor-pointer ${
+                    hasActiveChild
+                      ? 'bg-[var(--awlad-royal-700)] text-white border-[var(--awlad-royal-700)]'
+                      : 'bg-white text-[var(--awlad-navy-900)] border-slate-200 hover:bg-[var(--awlad-blue-tint-50)]'
+                  }`}
+                >
+                  <SectionIcon className="w-4 h-4" />
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Expanded Sections Container */}
+        <div className={`flex-1 overflow-y-auto overscroll-contain p-1.5 space-y-1 ${isCollapsed ? 'lg:hidden' : ''}`}>
           {/* Quick Link: الرئيسية */}
           <button
             type="button"
             onClick={() => handleItemClick('dashboard')}
-            className={`w-full min-h-[38px] flex items-center justify-between px-3 py-1.5 rounded-lg font-bold text-xs border transition-all cursor-pointer ${
+            className={`w-full min-h-[32px] flex items-center justify-between px-2 py-1 rounded-md font-bold text-xs border transition-all cursor-pointer ${
               currentPage === 'dashboard'
-                ? 'bg-blue-900 text-white border-blue-900 font-black'
-                : 'bg-white text-slate-800 border-slate-200 hover:bg-blue-50 hover:text-blue-950'
+                ? 'bg-[var(--awlad-royal-700)] text-white border-[var(--awlad-royal-700)] font-black'
+                : 'bg-white text-[var(--awlad-navy-900)] border-slate-200 hover:bg-[var(--awlad-blue-tint-50)]'
             }`}
           >
-            <div className="flex items-center gap-2">
-              <span className="w-6 h-6 rounded-md bg-white border border-blue-100 flex items-center justify-center shrink-0">
-                <DashboardHomeIcon className="w-4 h-4" />
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="w-5 h-5 rounded bg-white border border-[var(--awlad-blue-tint-100)] flex items-center justify-center shrink-0">
+                <DashboardHomeIcon className="w-3.5 h-3.5" />
               </span>
-              <span>لوحة التحكم الرئيسية</span>
+              <span className="truncate">لوحة التحكم الرئيسية</span>
             </div>
             <ChevronLeft
-              className={`w-4 h-4 shrink-0 ${
+              className={`w-3.5 h-3.5 shrink-0 ${
                 currentPage === 'dashboard' ? 'text-blue-100' : 'text-slate-400'
               }`}
             />
@@ -482,9 +544,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           {/* Quick Cash Operations (Direct Execution, Permission-Gated) */}
           {checkPerm('canManageCashboxes') && onOpenCashOp && (
-            <div className="rounded-lg bg-emerald-50/70 border border-emerald-200/80 p-2 space-y-1.5">
-              <p className="text-[11px] font-black text-emerald-950 flex items-center gap-1.5">
-                <Wallet className="w-3.5 h-3.5 text-emerald-700" />
+            <div className="rounded-lg bg-[var(--awlad-blue-tint-50)]/70 border border-[var(--awlad-blue-tint-100)] p-1.5 space-y-1">
+              <p className="text-[11px] font-black text-[var(--awlad-navy-900)] flex items-center gap-1">
+                <Wallet className="w-3.5 h-3.5 text-[var(--awlad-royal-700)]" />
                 <span>العمليات النقدية السريعة</span>
               </p>
               <div className="grid grid-cols-2 gap-1 text-[11px] font-bold">
@@ -492,55 +554,55 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   type="button"
                   onClick={() => {
                     onOpenCashOp('cash_deposit');
-                    if (typeof window !== 'undefined' && window.innerWidth < 768) onClose();
+                    if (typeof window !== 'undefined' && window.innerWidth < 1024) onClose();
                   }}
-                  className="min-h-[36px] flex items-center justify-center gap-1.5 rounded-lg bg-white border border-emerald-200 text-emerald-800 hover:bg-emerald-50 transition-colors cursor-pointer"
+                  className="h-7 flex items-center justify-center gap-1 rounded-md bg-white border border-slate-200 text-[var(--awlad-navy-900)] hover:border-[var(--awlad-royal-700)] hover:bg-[var(--awlad-blue-tint-50)] transition-colors cursor-pointer"
                 >
-                  <ArrowDownCircle className="w-3.5 h-3.5 shrink-0" />
+                  <ArrowDownCircle className="w-3 h-3 text-emerald-700 shrink-0" />
                   <span>إيداع نقدي</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => {
                     onOpenCashOp('cash_withdrawal');
-                    if (typeof window !== 'undefined' && window.innerWidth < 768) onClose();
+                    if (typeof window !== 'undefined' && window.innerWidth < 1024) onClose();
                   }}
-                  className="min-h-[36px] flex items-center justify-center gap-1.5 rounded-lg bg-white border border-rose-200 text-rose-800 hover:bg-rose-50 transition-colors cursor-pointer"
+                  className="h-7 flex items-center justify-center gap-1 rounded-md bg-white border border-slate-200 text-[var(--awlad-navy-900)] hover:border-[var(--awlad-royal-700)] hover:bg-[var(--awlad-blue-tint-50)] transition-colors cursor-pointer"
                 >
-                  <ArrowUpCircle className="w-3.5 h-3.5 shrink-0" />
+                  <ArrowUpCircle className="w-3 h-3 text-red-700 shrink-0" />
                   <span>سحب نقدي</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => {
                     onOpenCashOp('expense');
-                    if (typeof window !== 'undefined' && window.innerWidth < 768) onClose();
+                    if (typeof window !== 'undefined' && window.innerWidth < 1024) onClose();
                   }}
-                  className="min-h-[36px] flex items-center justify-center gap-1.5 rounded-lg bg-white border border-orange-200 text-orange-800 hover:bg-orange-50 transition-colors cursor-pointer"
+                  className="h-7 flex items-center justify-center gap-1 rounded-md bg-white border border-slate-200 text-[var(--awlad-navy-900)] hover:border-[var(--awlad-royal-700)] hover:bg-[var(--awlad-blue-tint-50)] transition-colors cursor-pointer"
                 >
-                  <TrendingDown className="w-3.5 h-3.5 shrink-0" />
+                  <TrendingDown className="w-3 h-3 text-amber-700 shrink-0" />
                   <span>مصروف</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => {
                     onOpenCashOp('profit_deposit');
-                    if (typeof window !== 'undefined' && window.innerWidth < 768) onClose();
+                    if (typeof window !== 'undefined' && window.innerWidth < 1024) onClose();
                   }}
-                  className="min-h-[36px] flex items-center justify-center gap-1.5 rounded-lg bg-white border border-teal-200 text-teal-800 hover:bg-teal-50 transition-colors cursor-pointer"
+                  className="h-7 flex items-center justify-center gap-1 rounded-md bg-white border border-slate-200 text-[var(--awlad-navy-900)] hover:border-[var(--awlad-royal-700)] hover:bg-[var(--awlad-blue-tint-50)] transition-colors cursor-pointer"
                 >
-                  <TrendingUp className="w-3.5 h-3.5 shrink-0" />
+                  <TrendingUp className="w-3 h-3 text-[var(--awlad-royal-700)] shrink-0" />
                   <span>إيداع ربحي</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => {
                     onOpenCashOp('cashbox_transfer');
-                    if (typeof window !== 'undefined' && window.innerWidth < 768) onClose();
+                    if (typeof window !== 'undefined' && window.innerWidth < 1024) onClose();
                   }}
-                  className="col-span-2 min-h-[36px] flex items-center justify-center gap-1.5 rounded-lg bg-white border border-blue-200 text-blue-900 hover:bg-blue-50 transition-colors cursor-pointer"
+                  className="col-span-2 h-7 flex items-center justify-center gap-1 rounded-md bg-white border border-[var(--awlad-blue-tint-100)] text-[var(--awlad-royal-700)] hover:bg-[var(--awlad-blue-tint-50)] transition-colors cursor-pointer"
                 >
-                  <ArrowLeftRight className="w-3.5 h-3.5 shrink-0" />
+                  <ArrowLeftRight className="w-3 h-3 shrink-0" />
                   <span>ترحيل فوري بين الخزائن</span>
                 </button>
               </div>
@@ -556,8 +618,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             return (
               <div
                 key={section.id}
-                className={`rounded-xl border overflow-hidden bg-white transition-colors ${
-                  hasActiveChild ? 'border-blue-400' : 'border-slate-200'
+                className={`rounded-lg border overflow-hidden bg-white transition-colors ${
+                  hasActiveChild ? 'border-[var(--awlad-royal-700)]' : 'border-slate-200'
                 }`}
               >
                 {/* Accordion Header */}
@@ -565,22 +627,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   type="button"
                   onClick={() => toggleSection(section.id)}
                   aria-expanded={isExpanded}
-                  className={`w-full min-h-[40px] flex items-center justify-between px-3 py-2 text-xs font-black transition-colors cursor-pointer ${
+                  className={`w-full min-h-[30px] flex items-center justify-between px-2 py-1 text-xs font-black transition-colors cursor-pointer ${
                     section.headerGradient
                   } ${isExpanded ? 'border-b border-slate-200' : ''}`}
                 >
-                  <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex items-center gap-1.5 min-w-0">
                     <span
-                      className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 p-1 ${section.iconAccent}`}
+                      className={`w-5 h-5 rounded flex items-center justify-center shrink-0 p-0.5 ${section.iconAccent}`}
                     >
-                      <SectionIcon className="w-5 h-5" />
+                      <SectionIcon className="w-3.5 h-3.5" />
                     </span>
                     <span className="truncate">{section.title}</span>
                   </div>
 
                   <ChevronDown
-                    className={`w-4 h-4 shrink-0 text-slate-500 transition-transform duration-150 ${
-                      isExpanded ? 'rotate-180 text-blue-700' : ''
+                    className={`w-3.5 h-3.5 shrink-0 text-slate-500 transition-transform duration-150 ${
+                      isExpanded ? 'rotate-180 text-[var(--awlad-royal-700)]' : ''
                     }`}
                   />
                 </button>
@@ -595,10 +657,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           key={item.key}
                           type="button"
                           onClick={() => handleItemClick(item.key)}
-                          className={`w-full min-h-[36px] flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors cursor-pointer ${
+                          className={`w-full min-h-[28px] flex items-center justify-between gap-1.5 px-2 py-1 rounded-md text-[11.5px] transition-colors cursor-pointer ${
                             isActive
-                              ? 'bg-blue-900 text-white font-black'
-                              : 'text-slate-700 hover:bg-slate-100 hover:text-blue-950 font-semibold'
+                              ? 'bg-[var(--awlad-royal-700)] text-white font-black'
+                              : 'text-slate-700 hover:bg-[var(--awlad-blue-tint-50)] hover:text-[var(--awlad-navy-900)] font-semibold'
                           }`}
                         >
                           <span className="truncate">{item.label}</span>
@@ -608,7 +670,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                               className={`text-[10px] font-bold font-mono tabular-nums px-1.5 py-0.5 rounded shrink-0 ${
                                 isActive
                                   ? 'bg-white/20 text-white'
-                                  : 'bg-blue-50 text-blue-900 border border-blue-200'
+                                  : 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border border-[var(--awlad-blue-tint-100)]'
                               }`}
                             >
                               {item.badge}
@@ -625,8 +687,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Clean Drawer Footer */}
-        <div className="p-2.5 border-t border-slate-200 bg-slate-50 text-center shrink-0">
-          <div className="text-[11px] text-slate-600 font-semibold">
+        <div className={`p-1.5 border-t border-slate-200 bg-slate-50 text-center shrink-0 ${isCollapsed ? 'lg:hidden' : ''}`}>
+          <div className="text-[10px] text-[var(--awlad-brand-silver)] font-semibold">
             <span>أولاد سليم للمحاسبة • v3.0.0</span>
           </div>
         </div>

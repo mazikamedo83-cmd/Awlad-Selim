@@ -275,9 +275,9 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/65 backdrop-blur-xs">
       <form
         onSubmit={handleSave}
-        className="w-full max-w-lg bg-white rounded-t-xl sm:rounded-xl p-3 shadow-2xl border border-slate-200 space-y-2.5 text-right pb-safe max-h-[92vh] overflow-y-auto"
+        className="w-full max-w-lg bg-white rounded-t-xl sm:rounded-lg p-2.5 shadow-2xl border border-slate-200 space-y-2 text-right pb-safe max-h-[92vh] overflow-y-auto"
       >
-        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
           <div className="flex items-center gap-2">
             <Server className="w-4 h-4 text-blue-900" />
             <div>
@@ -294,7 +294,7 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="min-h-[34px] min-w-[34px] flex items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 cursor-pointer"
+            className="h-8 w-8 flex items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -306,7 +306,7 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
             type="button"
             disabled={claimingQr}
             onClick={() => setShowQrScanner(true)}
-            className="min-h-[36px] px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+            className="h-8 px-2.5 rounded-md bg-[#003589] hover:bg-[#011E58] text-white text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
           >
             {claimingQr ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <QrCode className="w-3.5 h-3.5" />}
             <span>{claimingQr ? 'جاري الربط...' : 'مسح QR أو لصق رابط دعوة'}</span>
@@ -315,7 +315,7 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
             type="button"
             disabled={discovering}
             onClick={handleAutoDiscover}
-            className="min-h-[36px] px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-800 text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+            className="h-8 px-2.5 rounded-md bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-800 text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
           >
             {discovering ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
             <span>{discovering ? 'جاري البحث في الشبكة...' : 'اكتشاف السيرفر تلقائياً'}</span>
@@ -332,13 +332,13 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
                     key={srv.url}
                     type="button"
                     onClick={() => handleSelectDiscovered(srv)}
-                    className="w-full px-2.5 py-2 hover:bg-emerald-50 flex items-center justify-between gap-2 text-right cursor-pointer"
+                    className="w-full px-2.5 py-2 hover:bg-[#EEF3FA] flex items-center justify-between gap-2 text-right cursor-pointer"
                   >
                     <div>
                       <div className="text-xs font-black text-slate-900">{srv.companyName || 'AWLAD SELIM Server'}</div>
-                      <div className="text-[11px] font-mono text-emerald-700" dir="ltr">{srv.url}</div>
+                      <div className="text-[11px] font-mono text-[#003589]" dir="ltr">{srv.url}</div>
                     </div>
-                    <span className="text-[10px] font-mono text-emerald-800 font-bold">
+                    <span className="text-[10px] font-mono text-[#011E58] font-bold">
                       {srv.latencyMs}ms
                     </span>
                   </button>
@@ -363,9 +363,9 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
                   setFormError(null);
                   setTestResult({});
                 }}
-                className={`p-2 rounded-lg border text-center transition-all cursor-pointer flex flex-col items-center gap-1 ${
+                className={`p-1.5 rounded-md border text-center transition-all cursor-pointer flex flex-col items-center gap-0.5 ${
                   active
-                    ? 'bg-blue-900 text-white border-blue-900 shadow-xs'
+                    ? 'bg-blue-900 text-white border-blue-900'
                     : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300'
                 }`}
               >
@@ -377,7 +377,7 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
         </div>
 
         {!nativeApp && (
-          <label className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 cursor-pointer">
+          <label className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 cursor-pointer">
             <input
               type="checkbox"
               checked={useSameOrigin}
@@ -386,22 +386,22 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
                 setFormError(null);
                 setTestResult({});
               }}
-              className="w-4 h-4 rounded text-blue-900"
+              className="w-3.5 h-3.5 rounded text-blue-900"
             />
             <span>اتصال تلقائي بنفس السيرفر المفتوح منه البرنامج (Same-Origin)</span>
           </label>
         )}
 
         {!useSameOrigin && (
-          <div className="space-y-2 bg-slate-50/70 p-2.5 rounded-lg border border-slate-200">
+          <div className="space-y-1.5 bg-slate-50/70 p-2 rounded-lg border border-slate-200">
             <div className="text-xs font-black text-slate-900">{activeModeMeta.title}</div>
             <p className="text-[11px] text-slate-600 leading-snug">{activeModeMeta.hint}</p>
 
             {selectedMode === 'local_network' ? (
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <div className="grid grid-cols-3 gap-1.5">
                   <div className="col-span-2">
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
                       عنوان IP اللابتوب:
                     </label>
                     <input
@@ -417,11 +417,11 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
                         setTestResult({});
                       }}
                       placeholder="192.168.1.100"
-                      className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono text-left focus:border-blue-600 outline-hidden"
+                      className="w-full h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-mono text-left focus:border-blue-600 outline-hidden"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
                       المنفذ (Port):
                     </label>
                     <input
@@ -441,7 +441,7 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
                         setFormError(null);
                         setTestResult({});
                       }}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono text-left focus:border-blue-600 outline-hidden"
+                      className="w-full h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-mono text-left focus:border-blue-600 outline-hidden"
                     />
                   </div>
                 </div>
@@ -508,7 +508,7 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
                     setTestResult({});
                   }}
                   placeholder={activeModeMeta.placeholder}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-mono text-left focus:border-blue-600 outline-hidden"
+                  className="w-full h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-mono text-left focus:border-blue-600 outline-hidden"
                 />
                 {selectedMode === 'free_remote' && (
                   <p className="text-[10px] text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2 py-1 font-bold">
@@ -525,7 +525,7 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
         )}
 
         {formError && (
-          <div className="p-2.5 rounded-lg border bg-red-50 border-red-200 text-red-700 text-xs font-bold flex items-center gap-2">
+          <div className="p-2 rounded-md border bg-red-50 border-red-200 text-red-700 text-xs font-bold flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
             <span>{formError}</span>
           </div>
@@ -533,7 +533,7 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
 
         {testResult.message && (
           <div
-            className={`p-2.5 rounded-lg border text-xs font-bold space-y-1 ${
+            className={`p-2 rounded-md border text-xs font-bold space-y-1 ${
               testResult.ok
                 ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
                 : 'bg-red-50 border-red-200 text-red-700'
@@ -577,19 +577,19 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
           </div>
         )}
 
-        <div className="flex gap-2 pt-1">
+        <div className="flex gap-1.5 pt-1">
           <button
             type="button"
             disabled={testing}
             onClick={handleTest}
-            className="min-h-[36px] px-3 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+            className="h-8 px-2.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
           >
             <Wifi className="w-3.5 h-3.5" />
             <span>{testing ? 'جاري الفحص...' : 'اختبار الاتصال'}</span>
           </button>
           <button
             type="submit"
-            className="min-h-[36px] flex-1 rounded-lg bg-blue-900 hover:bg-blue-950 text-white text-xs font-black cursor-pointer"
+            className="h-8 flex-1 rounded-md bg-[#011E58] hover:bg-[#001A49] text-white text-xs font-black cursor-pointer"
           >
             حفظ وتطبيق الوضع
           </button>

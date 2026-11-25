@@ -276,12 +276,12 @@ export const SearchableFilterSelect: React.FC<SearchableFilterSelectProps> = ({
         onClick={() => {
           if (!disabled) setIsOpen((prev) => !prev);
         }}
-        className={`w-full min-h-[34px] px-2.5 py-1.5 rounded-md border text-[12px] flex items-center justify-between gap-1.5 transition-colors text-right ${
+        className={`w-full h-8 px-2 rounded-md border text-[12px] flex items-center justify-between gap-1.5 transition-colors text-right ${
           disabled
             ? 'bg-slate-100 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-400 cursor-not-allowed'
             : isOpen
-            ? 'bg-white dark:bg-slate-900 border-emerald-600 ring-2 ring-emerald-500/20 text-slate-900 dark:text-slate-100'
-            : 'bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500 text-slate-800 dark:text-slate-100'
+            ? 'bg-white dark:bg-slate-900 border-[var(--awlad-royal-700)] ring-2 ring-[var(--awlad-royal-500)]/20 text-slate-900 dark:text-slate-100'
+            : 'bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 hover:border-[var(--awlad-silver-500)] dark:hover:border-slate-500 text-slate-800 dark:text-slate-100'
         } ${buttonClassName}`}
         title={selectedOption?.subtitle ? `${displayLabel} — ${selectedOption.subtitle}` : displayLabel}
       >
@@ -310,7 +310,7 @@ export const SearchableFilterSelect: React.FC<SearchableFilterSelectProps> = ({
           )}
           <ChevronDown
             className={`w-3.5 h-3.5 text-slate-500 transition-transform ${
-              isOpen ? 'rotate-180 text-emerald-600' : ''
+              isOpen ? 'rotate-180 text-[var(--awlad-royal-700)]' : ''
             }`}
           />
         </span>
@@ -347,7 +347,7 @@ export const SearchableFilterSelect: React.FC<SearchableFilterSelectProps> = ({
                   }}
                   onKeyDown={handleSearchKeyDown}
                   placeholder={searchPlaceholder}
-                  className="w-full h-8 pr-8 pl-7 text-xs rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-emerald-600"
+                  className="w-full h-8 pr-8 pl-7 text-xs rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-[var(--awlad-royal-700)]"
                 />
                 {query && (
                   <button
@@ -394,7 +394,7 @@ export const SearchableFilterSelect: React.FC<SearchableFilterSelectProps> = ({
                           opt.disabled
                             ? 'opacity-45 cursor-not-allowed'
                             : isSelected
-                            ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 font-semibold'
+                            ? 'bg-[var(--awlad-blue-tint-50)] dark:bg-slate-800 text-[var(--awlad-navy-900)] dark:text-blue-200 font-bold'
                             : isHighlighted
                             ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100'
                             : 'text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/70'
@@ -414,7 +414,7 @@ export const SearchableFilterSelect: React.FC<SearchableFilterSelectProps> = ({
                               {opt.badge}
                             </span>
                           )}
-                          {isSelected && <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
+                          {isSelected && <Check className="w-3.5 h-3.5 text-[var(--awlad-royal-700)] shrink-0" />}
                         </div>
                       </button>
                     </React.Fragment>

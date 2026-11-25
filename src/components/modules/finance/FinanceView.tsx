@@ -720,7 +720,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
   const formatSupplierBalBadge = (bal: number) => {
     if (bal > 0.005) {
       return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-purple-50 text-purple-900 border border-purple-200 text-[10px] font-black tabular-nums">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-50 text-amber-900 border border-amber-200 text-[10px] font-black tabular-nums">
           علينا للمورد: {bal.toLocaleString()} {settings.currency}
         </span>
       );
@@ -740,16 +740,16 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 bg-white px-3.5 py-2.5 rounded-lg border border-slate-200 shadow-xs">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0">
-            <AccountsLedgerIcon className="w-6 h-6" />
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-white px-2.5 py-2 rounded-lg border border-slate-200">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0">
+            <AccountsLedgerIcon className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-base font-black text-slate-900 tracking-tight">مركز الحسابات والعملاء والموردين والخزائن</h2>
-            <p className="text-[11px] text-slate-500 mt-0.5">
+            <h2 className="text-sm font-black text-slate-900 tracking-tight">مركز الحسابات والعملاء والموردين والخزائن</h2>
+            <p className="text-[11px] text-slate-500">
               كشوف الحسابات التفصيلية للعملاء والموردين، السيولة النقدية ({totalLiquidity.toLocaleString()} {settings.currency})، وسندات الصرف والقبض
             </p>
           </div>
@@ -762,7 +762,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               setRecordType('expense');
               setIsExpenseModalOpen(true);
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-xs font-bold transition-all cursor-pointer"
+            className="flex items-center gap-1 px-2.5 py-1 bg-amber-700 hover:bg-amber-800 text-white rounded-md text-xs font-bold transition-all cursor-pointer"
           >
             <TrendingDown className="w-3.5 h-3.5" />
             <span>سند صرف مصروف</span>
@@ -774,7 +774,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               setRecordType('income');
               setIsExpenseModalOpen(true);
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold transition-all cursor-pointer"
+            className="flex items-center gap-1 px-2.5 py-1 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md text-xs font-bold transition-all cursor-pointer"
           >
             <TrendingUp className="w-3.5 h-3.5" />
             <span>سند قبض إيراد</span>
@@ -785,7 +785,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               setTransferError(null);
               setIsTransferModalOpen(true);
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-900 hover:bg-blue-950 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+            className="flex items-center gap-1 px-2.5 py-1 bg-[#011E58] hover:bg-[#002160] text-white rounded-md text-xs font-bold transition-all cursor-pointer"
           >
             <ArrowLeftRight className="w-3.5 h-3.5" />
             <span>تحويل بين الخزائن</span>
@@ -795,7 +795,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
 
       {statusBanner && (
         <div
-          className={`px-3 py-2 rounded-lg border text-xs font-bold flex items-center justify-between gap-2 ${
+          className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold flex items-center justify-between gap-2 ${
             statusBanner.type === 'success'
               ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
               : 'bg-red-50 border-red-200 text-red-900'
@@ -816,7 +816,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
       )}
 
       {/* Navigation Tabs */}
-      <div className="flex flex-wrap border-b border-slate-200 text-xs font-bold gap-2 sm:gap-4 bg-white px-3 pt-1.5 rounded-t-lg">
+      <div className="flex flex-wrap border-b border-slate-200 text-xs font-bold gap-2 sm:gap-3 bg-white px-2.5 pt-1 rounded-t-lg">
         {[
           { key: 'customer-accounts' as const, label: `حسابات العملاء (${customers.length})`, Icon: CustomersGroupIcon },
           { key: 'supplier-accounts' as const, label: `حسابات الموردين (${suppliers.length})`, Icon: SuppliersTruckIcon },
@@ -944,7 +944,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                 render: (c) => (
                   <div className="font-mono">
                     {c.phone ? (
-                      <a href={`tel:${c.phone}`} className="inline-flex items-center gap-1 text-emerald-700 hover:underline font-bold">
+                      <a href={`tel:${c.phone}`} className="inline-flex items-center gap-1 text-[#003589] hover:underline font-bold">
                         <Phone className="w-3 h-3" />
                         <span>{c.phone}</span>
                       </a>
@@ -972,7 +972,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                       onClick={() => handleOpenCustomerStatement(c)}
                       className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg font-bold cursor-pointer"
                     >
-                      <FileText className="w-3.5 h-3.5 text-blue-800" />
+                      <FileText className="w-3.5 h-3.5 text-[#003589]" />
                       <span>كشف حساب</span>
                     </button>
                     <button
@@ -984,7 +984,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                         setCustPaymentTarget(c);
                         setCustPayAmount(c.currentBalance > 0 ? c.currentBalance : 0);
                       }}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold cursor-pointer"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#003589] hover:bg-[#0049B0] text-white rounded-lg font-bold cursor-pointer"
                     >
                       <ArrowDownLeft className="w-3.5 h-3.5" />
                       <span>تحصيل دفعة</span>
@@ -1004,10 +1004,10 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden text-xs">
             <div className="bg-white px-3 py-2">
               <span className="text-[10px] font-bold text-slate-600 block">إجمالي مستحقات الموردين (علينا)</span>
-              <div className="text-base font-black font-mono tabular-nums text-purple-900">
+              <div className="text-base font-black font-mono tabular-nums text-amber-800">
                 {supplierKpis.payableTotal.toLocaleString()} <span className="text-[10px] font-sans text-slate-500">{settings.currency}</span>
               </div>
-              <span className="text-[10px] font-bold text-purple-700">عدد {supplierKpis.payablesCount} مورد مستحق لهم</span>
+              <span className="text-[10px] font-bold text-amber-700">عدد {supplierKpis.payablesCount} مورد مستحق لهم</span>
             </div>
 
             <div className="bg-white px-3 py-2">
@@ -1077,7 +1077,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                 sortable: true,
                 sortValue: (s) => s.code,
                 exportValue: (s) => s.code,
-                render: (s) => <span className="font-mono font-bold text-indigo-900">{s.code}</span>,
+                render: (s) => <span className="font-mono font-bold text-[#011E58]">{s.code}</span>,
               },
               {
                 key: 'name',
@@ -1099,7 +1099,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                 render: (s) => (
                   <div className="font-mono">
                     {s.phone ? (
-                      <a href={`tel:${s.phone}`} className="inline-flex items-center gap-1 text-emerald-700 hover:underline font-bold">
+                      <a href={`tel:${s.phone}`} className="inline-flex items-center gap-1 text-[#003589] hover:underline font-bold">
                         <Phone className="w-3 h-3" />
                         <span>{s.phone}</span>
                       </a>
@@ -1129,7 +1129,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                         onClick={() => handleOpenSupplierStatement(s)}
                         className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg font-bold cursor-pointer"
                       >
-                        <FileText className="w-3.5 h-3.5 text-blue-800" />
+                        <FileText className="w-3.5 h-3.5 text-[#003589]" />
                         <span>كشف حساب</span>
                       </button>
                       <button
@@ -1140,7 +1140,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                           setSuppPaymentTarget(s);
                           setSuppPayAmount(s.currentBalance > 0 ? s.currentBalance : 0);
                         }}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold cursor-pointer"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#011E58] hover:bg-[#002160] text-white rounded-lg font-bold cursor-pointer"
                       >
                         <ArrowUpRight className="w-3.5 h-3.5" />
                         <span>سداد دفعة</span>
@@ -1156,7 +1156,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                             setSettleInvoiceId(firstInv?.id || '');
                             setSettleAmount(firstInv ? Math.min(availableAdvance, Number(firstInv.remainingAmount || 0)) : 0);
                           }}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg font-bold cursor-pointer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] border border-[#DCE6F5] rounded-lg font-bold cursor-pointer"
                         >
                           <DollarSign className="w-3.5 h-3.5" />
                           <span>تسوية مقدم</span>
@@ -1359,11 +1359,11 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               exportValue: (rec) => (rec.type === 'expense' ? 'مصروف' : 'إيراد'),
               render: (rec) =>
                 rec.type === 'expense' ? (
-                  <span className="px-2 py-0.5 rounded bg-orange-50 text-orange-800 border border-orange-200 font-bold text-[10px]">
+                  <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-900 border border-amber-200 font-bold text-[10px]">
                     سند صرف (مصروف)
                   </span>
                 ) : (
-                  <span className="px-2 py-0.5 rounded bg-teal-50 text-teal-800 border border-teal-200 font-bold text-[10px]">
+                  <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold text-[10px]">
                     سند قبض (إيراد)
                   </span>
                 ),
@@ -1396,7 +1396,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               sortValue: (rec) => rec.amount,
               exportValue: (rec) => rec.amount,
               render: (rec) => (
-                <span className={`font-mono font-black text-sm tabular-nums ${rec.type === 'expense' ? 'text-orange-700' : 'text-teal-700'}`}>
+                <span className={`font-mono font-black text-sm tabular-nums ${rec.type === 'expense' ? 'text-amber-800' : 'text-emerald-700'}`}>
                   {rec.amount.toLocaleString()} {settings.currency}
                 </span>
               ),
@@ -1421,9 +1421,9 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
           maxWidth="6xl"
         >
           {isLoadingCustStatement || !custStatementData ? (
-            <div className="p-6 text-center text-xs font-bold text-slate-500">جاري تحميل كشف حساب العميل...</div>
+            <div className="p-4 text-center text-xs font-bold text-slate-500">جاري تحميل كشف حساب العميل...</div>
           ) : (
-            <div className="space-y-3 text-xs">
+            <div className="space-y-2 text-xs">
               {/* Summary Strip (Separated Debt vs Advance Credit) */}
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden">
                 <div className="px-2.5 py-2 bg-slate-50">
@@ -1450,9 +1450,9 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                     {Number(custStatementData.summary.debtAmount ?? Math.max(0, Number(custStatementData.summary.currentBalance || 0))).toLocaleString()} {settings.currency}
                   </span>
                 </div>
-                <div className="px-2.5 py-2 bg-teal-50">
-                  <span className="text-[10px] font-bold text-teal-800 block">رصيد دائن للعميل (علينا)</span>
-                  <span className="font-mono font-black text-sm text-teal-800">
+                <div className="px-2.5 py-2 bg-[#EEF3FA]">
+                  <span className="text-[10px] font-bold text-[#003589] block">رصيد دائن للعميل (علينا)</span>
+                  <span className="font-mono font-black text-sm text-[#011E58]">
                     {Number(custStatementData.summary.creditAmount ?? Math.max(0, -Number(custStatementData.summary.currentBalance || 0))).toLocaleString()} {settings.currency}
                   </span>
                 </div>
@@ -1624,9 +1624,9 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
           maxWidth="6xl"
         >
           {isLoadingSuppStatement || !suppStatementData ? (
-            <div className="p-6 text-center text-xs font-bold text-slate-500">جاري تحميل كشف حساب المورد...</div>
+            <div className="p-4 text-center text-xs font-bold text-slate-500">جاري تحميل كشف حساب المورد...</div>
           ) : (
-            <div className="space-y-3 text-xs">
+            <div className="space-y-2 text-xs">
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden">
                 <div className="px-2.5 py-2 bg-slate-50">
                   <span className="text-[10px] font-bold text-slate-500 block">رصيد أول المدة</span>
@@ -1634,9 +1634,9 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                     {Number(suppStatementData.summary.openingBalance || 0).toLocaleString()} {settings.currency}
                   </span>
                 </div>
-                <div className="px-2.5 py-2 bg-indigo-50">
-                  <span className="text-[10px] font-bold text-indigo-700 block">إجمالي المشتريات</span>
-                  <span className="font-mono font-black text-sm text-indigo-950">
+                <div className="px-2.5 py-2 bg-[#EEF3FA]">
+                  <span className="text-[10px] font-bold text-[#003589] block">إجمالي المشتريات</span>
+                  <span className="font-mono font-black text-sm text-[#011E58]">
                     {Number(suppStatementData.summary.totalPurchases || 0).toLocaleString()} {settings.currency}
                   </span>
                 </div>
@@ -1646,15 +1646,15 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                     {Number(suppStatementData.summary.totalPaid || 0).toLocaleString()} {settings.currency}
                   </span>
                 </div>
-                <div className="px-2.5 py-2 bg-purple-50">
-                  <span className="text-[10px] font-bold text-purple-800 block">مستحق للمورد (علينا)</span>
-                  <span className="font-mono font-black text-sm text-purple-900">
+                <div className="px-2.5 py-2 bg-amber-50">
+                  <span className="text-[10px] font-bold text-amber-800 block">مستحق للمورد (علينا)</span>
+                  <span className="font-mono font-black text-sm text-amber-900">
                     {Number(suppStatementData.summary.payableAmount || 0).toLocaleString()} {settings.currency}
                   </span>
                 </div>
-                <div className="px-2.5 py-2 bg-teal-50">
-                  <span className="text-[10px] font-bold text-teal-800 block">دفعة مقدمة عند المورد (لنا)</span>
-                  <span className="font-mono font-black text-sm text-teal-800">
+                <div className="px-2.5 py-2 bg-emerald-50/70">
+                  <span className="text-[10px] font-bold text-emerald-800 block">دفعة مقدمة عند المورد (لنا)</span>
+                  <span className="font-mono font-black text-sm text-emerald-900">
                     {Number(suppStatementData.summary.advanceCreditAmount || 0).toLocaleString()} {settings.currency}
                   </span>
                 </div>
@@ -1740,7 +1740,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                   {
                     key: 'docNumber',
                     header: 'رقم المستند',
-                    render: (entry) => <span className="font-mono font-bold text-indigo-900">{entry.docNumber}</span>,
+                    render: (entry) => <span className="font-mono font-bold text-[#011E58]">{entry.docNumber}</span>,
                   },
                   {
                     key: 'label',
@@ -1792,7 +1792,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                         <span
                           className={`px-2 py-0.5 rounded text-[10px] font-black border ${
                             rb > 0.005
-                              ? 'bg-purple-50 text-purple-800 border-purple-200'
+                              ? 'bg-amber-50 text-amber-900 border-amber-200'
                               : rb < -0.005
                               ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                               : 'bg-slate-100 text-slate-600 border-slate-200'
@@ -1807,7 +1807,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                     key: 'view',
                     header: 'عرض',
                     align: 'center',
-                    render: () => <Eye className="w-4 h-4 text-indigo-800 inline" />,
+                    render: () => <Eye className="w-4 h-4 text-[#003589] inline" />,
                   },
                 ]}
               />
@@ -1938,7 +1938,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                 required
                 value={custPayAmount || ''}
                 onChange={(e) => setCustPayAmount(Number(e.target.value))}
-                className="w-full border rounded-lg px-2.5 py-1.5 text-center font-mono font-black text-emerald-800 text-base"
+                className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1 text-center font-mono font-black text-emerald-800 text-base"
               />
             </div>
 
@@ -1975,7 +1975,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               <select
                 value={custPayCashboxId}
                 onChange={(e) => setCustPayCashboxId(e.target.value)}
-                className="w-full border rounded-lg px-2.5 py-1.5 font-bold"
+                className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1 font-bold"
               >
                 {cashboxes.map((cb) => (
                   <option key={cb.id} value={cb.id}>
@@ -1992,7 +1992,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                 value={custPayNotes}
                 onChange={(e) => setCustPayNotes(e.target.value)}
                 placeholder="تحصيل نقدي من حساب العميل..."
-                className="w-full border rounded-lg px-2.5 py-1.5"
+                className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1"
               />
             </div>
 
@@ -2003,7 +2003,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               <button
                 type="submit"
                 disabled={isSubmittingCustPay}
-                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold cursor-pointer disabled:opacity-50"
+                className="px-4 py-1.5 bg-[#003589] hover:bg-[#0049B0] text-white rounded-lg font-bold cursor-pointer disabled:opacity-50"
               >
                 {isSubmittingCustPay ? 'جاري التسجيل...' : 'تأكيد التحصيل'}
               </button>
@@ -2044,7 +2044,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                 required
                 value={suppPayAmount || ''}
                 onChange={(e) => setSuppPayAmount(Number(e.target.value))}
-                className="w-full border rounded-lg px-2.5 py-1.5 text-center text-purple-900 font-mono font-black text-base"
+                className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1 text-center text-[#011E58] font-mono font-black text-base"
               />
             </div>
 
@@ -2085,7 +2085,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               <select
                 value={suppPayCashboxId}
                 onChange={(e) => setSuppPayCashboxId(e.target.value)}
-                className="w-full border rounded-lg px-2.5 py-1.5 font-bold"
+                className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1 font-bold"
               >
                 {cashboxes.map((cb) => (
                   <option key={cb.id} value={cb.id}>
@@ -2102,7 +2102,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                 value={suppPayNotes}
                 onChange={(e) => setSuppPayNotes(e.target.value)}
                 placeholder="سداد دفعة من حساب المورد..."
-                className="w-full border rounded-lg px-2.5 py-1.5"
+                className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1"
               />
             </div>
 
@@ -2117,7 +2117,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                   (suppPayAmount - Math.max(0, Number(suppPaymentTarget.currentBalance || 0)) > 0.009 &&
                     !canApproveSupplierOverpayment)
                 }
-                className="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold cursor-pointer disabled:opacity-50"
+                className="px-4 py-1.5 bg-[#011E58] hover:bg-[#002160] text-white rounded-lg font-bold cursor-pointer disabled:opacity-50"
               >
                 {isSubmittingSuppPay ? 'جاري الصرف...' : 'تأكيد الصرف للمورد'}
               </button>
@@ -2170,7 +2170,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                   const found = openInvoices.find((i) => i.id === id);
                   if (found) setSettleAmount(Math.min(availableAdvance, Number(found.remainingAmount || 0)));
                 }}
-                className="w-full border rounded-lg px-2.5 py-1.5 font-bold"
+                className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1 font-bold"
               >
                 {getSupplierAdvanceInfo(settleSupplierTarget).openInvoices.map((inv) => (
                   <option key={inv.id} value={inv.id}>
@@ -2190,7 +2190,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                 required
                 value={settleAmount || ''}
                 onChange={(e) => setSettleAmount(Number(e.target.value))}
-                className="w-full border rounded-lg px-2.5 py-1.5 text-center font-mono font-black text-emerald-800 text-sm"
+                className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1 text-center font-mono font-black text-emerald-800 text-sm"
               />
             </div>
             <div>
@@ -2199,7 +2199,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                 type="text"
                 value={settleNotes}
                 onChange={(e) => setSettleNotes(e.target.value)}
-                className="w-full border rounded-lg px-2.5 py-1.5"
+                className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1"
               />
             </div>
             <div className="flex justify-end gap-2 pt-2 border-t">
@@ -2209,7 +2209,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               <button
                 type="submit"
                 disabled={isSettlingAdvance}
-                className="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg font-bold cursor-pointer disabled:opacity-50"
+                className="px-4 py-1.5 bg-[#003589] hover:bg-[#0049B0] text-white rounded-lg font-bold cursor-pointer disabled:opacity-50"
               >
                 تنفيذ التسوية
               </button>
@@ -2252,7 +2252,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             <select
               value={fromCbId}
               onChange={(e) => setFromCbId(e.target.value)}
-              className="w-full border rounded-lg px-2.5 py-1.5 font-bold"
+              className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1 font-bold"
             >
               {cashboxes.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -2267,7 +2267,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             <select
               value={toCbId}
               onChange={(e) => setToCbId(e.target.value)}
-              className="w-full border rounded-lg px-2.5 py-1.5 font-bold"
+              className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1 font-bold"
             >
               {cashboxes.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -2286,7 +2286,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               placeholder="0.00"
               value={transferAmount}
               onChange={(e) => setTransferAmount(e.target.value === '' ? '' : Number(e.target.value))}
-              className="w-full border rounded-lg px-2.5 py-1.5 font-mono font-black text-center text-sm"
+              className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1 font-mono font-black text-center text-sm"
             />
           </div>
 
@@ -2297,7 +2297,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               value={transferNotes}
               onChange={(e) => setTransferNotes(e.target.value)}
               placeholder="إيداع بنكي لحساب المبيعات..."
-              className="w-full border rounded-lg px-2.5 py-1.5"
+              className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1"
             />
           </div>
 
@@ -2354,7 +2354,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               placeholder="مثال: حساب البنك الأهلي الجاري"
               value={newCbName}
               onChange={(e) => setNewCbName(e.target.value)}
-              className="w-full border rounded-lg px-2.5 py-1.5 font-bold"
+              className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1 font-bold"
             />
           </div>
 
@@ -2366,7 +2366,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                 placeholder="IBAN / Account Number"
                 value={newCbAccount}
                 onChange={(e) => setNewCbAccount(e.target.value)}
-                className="w-full border rounded-lg px-2.5 py-1.5 font-mono"
+                className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1 font-mono"
               />
             </div>
           )}
@@ -2378,7 +2378,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               placeholder="0.00"
               value={newCbOpening}
               onChange={(e) => setNewCbOpening(e.target.value === '' ? '' : Number(e.target.value))}
-              className="w-full border rounded-lg px-2.5 py-1.5 font-mono font-bold"
+              className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1 font-mono font-bold"
             />
           </div>
 
@@ -2415,7 +2415,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               value={category}
               onChange={(e) => setCategory(e.target.value)}
               placeholder="وقود، صيانة، كهرباء، إيجار، تخريد..."
-              className="w-full border rounded-lg px-2.5 py-1.5 font-bold"
+              className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1 font-bold"
             />
           </div>
 
@@ -2428,7 +2428,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               placeholder="0.00"
               value={amount}
               onChange={(e) => setAmount(e.target.value === '' ? '' : Number(e.target.value))}
-              className="w-full border rounded-lg px-2.5 py-1.5 font-mono font-black text-center text-sm"
+              className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1 font-mono font-black text-center text-sm"
             />
           </div>
 
@@ -2437,7 +2437,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             <select
               value={selectedCashboxId}
               onChange={(e) => setSelectedCashboxId(e.target.value)}
-              className="w-full border rounded-lg px-2.5 py-1.5 font-bold"
+              className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1 font-bold"
             >
               {cashboxes.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -2454,7 +2454,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               required
               value={recipientOrPayer}
               onChange={(e) => setRecipientOrPayer(e.target.value)}
-              className="w-full border rounded-lg px-2.5 py-1.5"
+              className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1"
             />
           </div>
 
@@ -2464,7 +2464,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               rows={2}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="w-full border rounded-lg px-2.5 py-1.5"
+              className="w-full border border-slate-300 rounded-md px-2.5 py-1.5"
             />
           </div>
 
@@ -2476,7 +2476,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               type="submit"
               disabled={isSubmittingExpense}
               className={`px-4 py-1.5 text-white rounded-lg font-bold shadow-xs cursor-pointer disabled:opacity-50 ${
-                recordType === 'expense' ? 'bg-orange-600 hover:bg-orange-700' : 'bg-teal-600 hover:bg-teal-700'
+                recordType === 'expense' ? 'bg-amber-700 hover:bg-amber-800' : 'bg-[#003589] hover:bg-[#0049B0]'
               }`}
             >
               {isSubmittingExpense ? 'جاري الاعتماد...' : 'اعتماد السند وطباعته'}

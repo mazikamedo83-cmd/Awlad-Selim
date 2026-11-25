@@ -140,25 +140,25 @@ export const DiagnosticLogsPanel: React.FC = () => {
   };
 
   return (
-    <div className="space-y-4 text-xs">
+    <div className="space-y-2.5 text-xs">
       {/* Header & Summary */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4">
-          <div className="space-y-1">
-            <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+      <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 space-y-2.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-2">
+          <div className="space-y-0.5">
+            <h3 className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5">
               <Activity className="w-4 h-4 text-rose-700" />
               <span>سجل التشخيص والأخطاء (Diagnostics)</span>
             </h3>
-            <p className="text-xs text-slate-500">
+            <p className="text-[11px] text-slate-500">
               يعرض أحدث أحداث التطبيق، أخطاء الاتصال بالخادم، ومشاكل المزامنة على هذا الجهاز لتسهيل الدعم الفني (يتم إخفاء التوكنات وكلمات المرور تلقائياً).
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-1.5 shrink-0">
             <button
               type="button"
               onClick={() => setEntries(getDiagnostics())}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold cursor-pointer"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold cursor-pointer"
             >
               <RefreshCw className="w-3.5 h-3.5" />
               <span>تحديث</span>
@@ -167,7 +167,7 @@ export const DiagnosticLogsPanel: React.FC = () => {
               type="button"
               onClick={handleCopyExport}
               disabled={entries.length === 0}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold cursor-pointer disabled:opacity-50"
             >
               {copiedNotice ? <Check className="w-3.5 h-3.5 text-emerald-700" /> : <Copy className="w-3.5 h-3.5" />}
               <span>نسخ JSON</span>
@@ -176,7 +176,7 @@ export const DiagnosticLogsPanel: React.FC = () => {
               type="button"
               onClick={handleDownloadExport}
               disabled={entries.length === 0}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-900 font-bold cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-900 font-bold cursor-pointer disabled:opacity-50"
             >
               <Download className="w-3.5 h-3.5" />
               <span>تصدير</span>
@@ -185,7 +185,7 @@ export const DiagnosticLogsPanel: React.FC = () => {
               type="button"
               onClick={() => setShowClearConfirm(true)}
               disabled={entries.length === 0}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-800 font-bold cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-800 font-bold cursor-pointer disabled:opacity-50"
             >
               <Trash2 className="w-3.5 h-3.5" />
               <span>مسح السجل</span>
@@ -194,27 +194,27 @@ export const DiagnosticLogsPanel: React.FC = () => {
         </div>
 
         {/* 4 Summary Tiles */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-            <span className="text-[11px] font-bold text-slate-500 block">إجمالي الأحداث المسجلة</span>
-            <strong className="text-lg font-black font-mono tabular-nums text-slate-900">{stats.total}</strong>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden">
+          <div className="bg-slate-50/70 px-2.5 py-2">
+            <span className="text-[10px] font-bold text-slate-500 block">إجمالي الأحداث المسجلة</span>
+            <strong className="text-sm font-black font-mono tabular-nums text-slate-900">{stats.total}</strong>
           </div>
-          <div className="rounded-xl border border-rose-200 bg-rose-50/60 p-3">
-            <span className="text-[11px] font-bold text-rose-700 block">أخطاء الشبكة والسيرفر</span>
-            <strong className="text-lg font-black font-mono tabular-nums text-rose-900">{stats.networkErrors}</strong>
+          <div className="bg-rose-50/60 px-2.5 py-2">
+            <span className="text-[10px] font-bold text-rose-700 block">أخطاء الشبكة والسيرفر</span>
+            <strong className="text-sm font-black font-mono tabular-nums text-rose-900">{stats.networkErrors}</strong>
           </div>
-          <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
-            <span className="text-[11px] font-bold text-amber-800 block">مشاكل وتعذر المزامنة</span>
-            <strong className="text-lg font-black font-mono tabular-nums text-amber-900">{stats.syncIssues}</strong>
+          <div className="bg-amber-50/60 px-2.5 py-2">
+            <span className="text-[10px] font-bold text-amber-800 block">مشاكل وتعذر المزامنة</span>
+            <strong className="text-sm font-black font-mono tabular-nums text-amber-900">{stats.syncIssues}</strong>
           </div>
-          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-            <span className="text-[11px] font-bold text-slate-600 block">أحداث المصادقة والأجهزة</span>
-            <strong className="text-lg font-black font-mono tabular-nums text-slate-900">{stats.authEvents}</strong>
+          <div className="bg-slate-50/70 px-2.5 py-2">
+            <span className="text-[10px] font-bold text-slate-600 block">أحداث المصادقة والأجهزة</span>
+            <strong className="text-sm font-black font-mono tabular-nums text-slate-900">{stats.authEvents}</strong>
           </div>
         </div>
 
         {actionNotice && (
-          <div className="p-3 rounded-xl border border-blue-200 bg-blue-50 text-blue-900 font-bold flex items-center justify-between gap-2">
+          <div className="px-2.5 py-1.5 rounded-md border border-blue-200 bg-blue-50 text-blue-900 font-bold flex items-center justify-between gap-2">
             <span>{actionNotice}</span>
             <button type="button" onClick={() => setActionNotice(null)} className="underline cursor-pointer">
               إغلاق
@@ -223,22 +223,22 @@ export const DiagnosticLogsPanel: React.FC = () => {
         )}
 
         {/* Filter Bar */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <div className="relative">
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="بحث في الرسالة أو المصدر أو التفاصيل..."
-              className="w-full rounded-xl border border-slate-300 bg-slate-50 pr-9 pl-3 py-2 font-semibold focus:bg-white focus:border-blue-600 outline-hidden"
+              className="w-full h-8 rounded-md border border-slate-300 bg-slate-50 pr-8 pl-2.5 font-semibold focus:bg-white focus:border-blue-600 outline-hidden"
             />
-            <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2.5" />
           </div>
 
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value as 'all' | DiagnosticCategory)}
-            className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 font-bold text-slate-700 focus:bg-white focus:border-blue-600 outline-hidden"
+            className="h-8 rounded-md border border-slate-300 bg-slate-50 px-2.5 font-bold text-slate-700 focus:bg-white focus:border-blue-600 outline-hidden"
           >
             <option value="all">-- جميع التصنيفات --</option>
             <option value="network_error">أخطاء الشبكة والسيرفر</option>
@@ -250,7 +250,7 @@ export const DiagnosticLogsPanel: React.FC = () => {
           <select
             value={severityFilter}
             onChange={(e) => setSeverityFilter(e.target.value as 'all' | DiagnosticSeverity)}
-            className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 font-bold text-slate-700 focus:bg-white focus:border-blue-600 outline-hidden"
+            className="h-8 rounded-md border border-slate-300 bg-slate-50 px-2.5 font-bold text-slate-700 focus:bg-white focus:border-blue-600 outline-hidden"
           >
             <option value="all">-- جميع المستويات --</option>
             <option value="error">خطأ (Error)</option>
