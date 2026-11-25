@@ -71,12 +71,12 @@ export const QrCodeDisplay: React.FC<QrCodeDisplayProps> = ({
   if (!value) return null;
 
   return (
-    <div className="flex flex-col items-center gap-2 p-3 rounded-lg bg-white border border-slate-200 shadow-xs text-center">
-      {title && <div className="text-xs font-black text-slate-900">{title}</div>}
+    <div className="flex flex-col items-center gap-2 p-3 rounded-lg bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#21375C] shadow-xs text-center">
+      {title && <div className="text-xs font-black text-slate-900 dark:text-[#F3F7FC]">{title}</div>}
       {error ? (
-        <div className="text-xs text-red-600 font-bold py-4">{error}</div>
+        <div className="text-xs text-red-600 dark:text-red-300 font-bold py-4">{error}</div>
       ) : dataUrl ? (
-        <div className="p-1.5 rounded-lg bg-white border border-slate-200">
+        <div className="p-1.5 rounded-lg bg-white dark:bg-white no-dark-surface border border-slate-200 dark:border-[#2A436E]">
           <img
             src={dataUrl}
             alt={title || 'QR Code'}
@@ -84,19 +84,19 @@ export const QrCodeDisplay: React.FC<QrCodeDisplayProps> = ({
           />
         </div>
       ) : (
-        <div className="w-44 h-44 flex items-center justify-center bg-slate-50 rounded-lg border border-slate-200">
-          <Loader2 className="w-5 h-5 text-slate-400 animate-spin" />
+        <div className="w-44 h-44 flex items-center justify-center bg-slate-50 dark:bg-[#132544] rounded-lg border border-slate-200 dark:border-[#21375C]">
+          <Loader2 className="w-5 h-5 text-slate-400 dark:text-[#849BBF] animate-spin" />
         </div>
       )}
       {subtitle && (
-        <p className="text-[11px] text-slate-500 max-w-xs leading-relaxed">{subtitle}</p>
+        <p className="text-[11px] text-slate-500 dark:text-[#A9BCD9] max-w-xs leading-relaxed">{subtitle}</p>
       )}
       {dataUrl && (
         <button
           type="button"
           onClick={handleDownloadOrShare}
           disabled={saving}
-          className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+          className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 dark:bg-[#1659C8] dark:hover:bg-[#1F6BE6] text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
         >
           {isNativeCapacitor() ? <Share2 className="w-3.5 h-3.5" /> : <Download className="w-3.5 h-3.5" />}
           <span>{saving ? 'جاري التجهيز...' : isNativeCapacitor() ? 'مشاركة / حفظ صورة QR' : 'تنزيل صورة QR (PNG)'}</span>

@@ -26,9 +26,13 @@ import {
   Heart,
   Tag,
   Menu,
+  Sun,
+  Moon,
+  Monitor,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
+import { usePreferences } from '../../../context/PreferencesContext';
 import { getStoredTokens } from '../../../services/api';
 import { isMobileAppPlatform, registerAndroidBackButton } from '../../../services/native';
 import { MobileNotificationItem } from '../../../types';
@@ -52,6 +56,7 @@ export const MobilePortal: React.FC = () => {
     updatePassword,
   } = useAuth();
   const data = useData();
+  const { themePreference, setThemePreference } = usePreferences();
   const isRep = currentUser?.role === 'representative';
   const hideSectionsNav = isMobileAppPlatform();
 
@@ -263,7 +268,7 @@ export const MobilePortal: React.FC = () => {
       ];
 
   return (
-    <div className="min-h-screen bg-[#F4F6FA] dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-sans antialiased pb-16 pb-safe">
+    <div className="min-h-screen bg-[#F4F6FA] dark:bg-[#081326] text-slate-800 dark:text-[#DCE6F5] font-sans antialiased pb-16 pb-safe">
       {/* Slim Brand Mobile App Header */}
       <header className="sticky top-0 z-30 awlad-brand-gradient text-white shadow-sm border-b border-[var(--awlad-navy-950)] pt-safe">
         <div className="max-w-5xl mx-auto px-3 sm:px-4">
@@ -283,7 +288,7 @@ export const MobilePortal: React.FC = () => {
               <img
                 src="/awlad-selim-logo.png"
                 alt="AWLAD SELIM"
-                className="h-7 w-7 object-contain bg-white rounded-md p-0.5 shrink-0"
+                className="no-dark-surface h-7 w-7 object-contain bg-white dark:bg-white rounded-md p-0.5 shrink-0"
               />
               <div className="min-w-0">
                 <h1 className="text-xs sm:text-sm font-black truncate leading-tight">أولاد سليم</h1>
@@ -309,7 +314,7 @@ export const MobilePortal: React.FC = () => {
               >
                 <CloudOff className="w-4 h-4" />
                 {syncBadgeCount > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded bg-slate-900 text-white text-[9px] font-black flex items-center justify-center tabular-nums">
+                  <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded bg-slate-900 dark:bg-[#1659C8] text-white text-[9px] font-black flex items-center justify-center tabular-nums">
                     {syncBadgeCount}
                   </span>
                 )}
@@ -379,7 +384,7 @@ export const MobilePortal: React.FC = () => {
       <aside
         aria-label="قائمة أقسام البوابة"
         aria-hidden={!isDrawerOpen}
-        className={`fixed top-0 bottom-0 right-0 z-50 w-[80vw] max-w-[290px] bg-white text-slate-800 border-l border-slate-200 shadow-2xl transition-transform duration-200 ease-out flex flex-col pt-safe pb-safe ${
+        className={`fixed top-0 bottom-0 right-0 z-50 w-[80vw] max-w-[290px] bg-white dark:bg-[#0E1C36] text-slate-800 dark:text-[#DCE6F5] border-l border-slate-200 dark:border-[#21375C] shadow-2xl transition-transform duration-200 ease-out flex flex-col pt-safe pb-safe ${
           isDrawerOpen ? 'translate-x-0 pointer-events-auto' : 'translate-x-full pointer-events-none'
         }`}
       >
@@ -388,7 +393,7 @@ export const MobilePortal: React.FC = () => {
             <img
               src="/awlad-selim-logo.png"
               alt="AWLAD SELIM"
-              className="h-7 w-7 object-contain bg-white rounded-md p-0.5 shrink-0"
+              className="no-dark-surface h-7 w-7 object-contain bg-white dark:bg-white rounded-md p-0.5 shrink-0"
             />
             <div className="min-w-0">
               <span className="block text-xs font-black truncate">أقسام البوابة</span>
@@ -420,8 +425,8 @@ export const MobilePortal: React.FC = () => {
                 }}
                 className={`w-full min-h-[34px] px-2.5 py-1 rounded-md flex items-center justify-between gap-2 text-xs border transition-colors cursor-pointer ${
                   item.active
-                    ? 'bg-[var(--awlad-navy-900)] text-white border-[var(--awlad-navy-900)] font-black'
-                    : 'bg-white text-slate-800 border-slate-200 hover:bg-[#EEF3FA] font-bold'
+                    ? 'bg-[var(--awlad-navy-900)] dark:bg-[#1659C8] text-white border-[var(--awlad-navy-900)] dark:border-[#60A5FA]/40 font-black'
+                    : 'bg-white dark:bg-[#132544] text-slate-800 dark:text-[#DCE6F5] border-slate-200 dark:border-[#21375C] hover:bg-[#EEF3FA] dark:hover:bg-[#1A3461] font-bold'
                 }`}
               >
                 <div className="flex items-center gap-2 min-w-0">
@@ -550,7 +555,7 @@ export const MobilePortal: React.FC = () => {
       {/* Fixed 5-Tab Mobile Bottom Navigation Bar */}
       <nav
         aria-label="شريط التنقل السفلي"
-        className="fixed bottom-0 inset-x-0 z-30 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 pb-safe shadow-sm"
+        className="fixed bottom-0 inset-x-0 z-30 bg-white dark:bg-[#0E1C36] border-t border-slate-200 dark:border-[#21375C] pb-safe shadow-sm dark:shadow-[0_-4px_16px_rgba(0,0,0,0.35)]"
       >
         <div className="max-w-5xl mx-auto grid grid-cols-5 gap-0.5 px-1">
           {bottomNavItems.map((item) => {
@@ -564,7 +569,7 @@ export const MobilePortal: React.FC = () => {
                 className={`relative min-h-[48px] py-1 px-1 flex flex-col items-center justify-center gap-0.5 transition-colors cursor-pointer ${
                   item.active
                     ? 'text-[var(--awlad-royal-700)] dark:text-[#60A5FA] font-black'
-                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 font-bold'
+                    : 'text-slate-500 dark:text-[#95ACCE] hover:text-slate-800 dark:hover:text-[#DCE6F5] font-bold'
                 }`}
               >
                 {item.active && (
@@ -646,15 +651,15 @@ export const MobilePortal: React.FC = () => {
 
       {isSettingsModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 bg-slate-950/60 backdrop-blur-xs">
-          <div className="w-full max-w-sm bg-white rounded-lg p-3 shadow-2xl border border-slate-200 space-y-2 text-xs">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+          <div className="w-full max-w-sm bg-white dark:bg-[#0E1C36] rounded-lg p-3 shadow-2xl border border-slate-200 dark:border-[#21375C] space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-[#1B2F52] pb-1.5">
               <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-md bg-blue-50 text-blue-800 flex items-center justify-center">
+                <div className="w-7 h-7 rounded-md bg-blue-50 dark:bg-[#172E56] text-blue-800 dark:text-[#85B8FF] flex items-center justify-center">
                   <Settings className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-black text-xs text-slate-900">إعدادات التطبيق والحساب</h3>
-                  <p className="text-[11px] text-slate-500">
+                  <h3 className="font-black text-xs text-slate-900 dark:text-[#F3F7FC]">إعدادات التطبيق والحساب</h3>
+                  <p className="text-[11px] text-slate-500 dark:text-[#97AECE]">
                     {isRep ? 'بوابة المندوب' : 'بوابة العميل'} · {currentUser?.fullName}
                   </p>
                 </div>
@@ -662,7 +667,7 @@ export const MobilePortal: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setIsSettingsModalOpen(false)}
-                className="h-8 w-8 rounded-md bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-700 cursor-pointer"
+                className="h-8 w-8 rounded-md bg-slate-100 dark:bg-[#132544] hover:bg-slate-200 dark:hover:bg-[#1A3461] flex items-center justify-center text-slate-700 dark:text-[#DCE6F5] cursor-pointer"
                 aria-label="إغلاق"
               >
                 <X className="w-4 h-4" />
@@ -670,6 +675,38 @@ export const MobilePortal: React.FC = () => {
             </div>
 
             <div className="space-y-1.5 max-h-[72vh] overflow-y-auto pr-0.5">
+              {/* Theme Switcher */}
+              <div className="p-2 rounded-md bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C] space-y-1">
+                <p className="font-black text-[11px] text-slate-800 dark:text-[#F3F7FC]">مظهر التطبيق</p>
+                <div className="grid grid-cols-3 gap-1">
+                  {(
+                    [
+                      { key: 'light', label: 'نهاري', icon: Sun },
+                      { key: 'dark', label: 'داكن', icon: Moon },
+                      { key: 'system', label: 'تلقائي', icon: Monitor },
+                    ] as const
+                  ).map((opt) => {
+                    const Icon = opt.icon;
+                    const active = themePreference === opt.key;
+                    return (
+                      <button
+                        key={opt.key}
+                        type="button"
+                        onClick={() => setThemePreference(opt.key)}
+                        className={`h-8 rounded-md border text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors ${
+                          active
+                            ? 'bg-[var(--awlad-royal-700)] dark:bg-[#1659C8] text-white border-[var(--awlad-royal-700)] dark:border-[#60A5FA]/40'
+                            : 'bg-white dark:bg-[#0E1C36] text-slate-700 dark:text-[#DCE6F5] border-slate-200 dark:border-[#21375C] hover:bg-slate-100 dark:hover:bg-[#1A3461]'
+                        }`}
+                      >
+                        <Icon className="w-3.5 h-3.5" />
+                        <span>{opt.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Scoped Permissions Summary */}
               <div className="p-2 rounded-md bg-slate-50 border border-slate-200 space-y-1">
                 <div className="flex items-center justify-between">

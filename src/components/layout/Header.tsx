@@ -288,7 +288,7 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <>
       {/* Top Logo-Navy/Royal Header */}
-      <header className="sticky top-0 z-30 awlad-brand-gradient text-white shadow-sm border-b border-[var(--awlad-royal-500)]/40 pt-safe no-print">
+      <header className="sticky top-0 z-30 awlad-brand-gradient text-white shadow-sm border-b border-[var(--awlad-royal-500)]/40 dark:border-[#2A4D86] pt-safe no-print">
         <div className="max-w-full mx-auto px-2 sm:px-3">
           {/* Top Row: Brand Identity + (Desktop Primary Buttons) + Utility Controls */}
           <div className="h-10 flex items-center justify-between gap-2">
@@ -297,7 +297,7 @@ export const Header: React.FC<HeaderProps> = ({
               <img
                 src="/awlad-selim-logo.png"
                 alt="AWLAD SELIM"
-                className="h-7 w-7 object-contain bg-white rounded-md p-0.5 shrink-0"
+                className="h-7 w-7 object-contain bg-white no-dark-surface rounded-md p-0.5 shrink-0"
               />
               <div className="min-w-0">
                 <h1 className="text-xs font-black text-white leading-tight truncate">
@@ -326,7 +326,7 @@ export const Header: React.FC<HeaderProps> = ({
                     aria-current={!btn.controlsDrawer && btn.active ? 'page' : undefined}
                     className={`min-h-[30px] px-2 xl:px-2.5 py-0.5 rounded-md text-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
                       btn.active
-                        ? 'bg-white text-[var(--awlad-navy-900)] font-black'
+                        ? 'bg-white text-[var(--awlad-navy-900)] dark:bg-[#1659C8] dark:text-white dark:border dark:border-[#60A5FA]/45 font-black'
                         : 'bg-white/10 text-blue-50 border border-white/15 hover:bg-white/20 hover:text-white font-bold'
                     }`}
                   >
@@ -350,7 +350,7 @@ export const Header: React.FC<HeaderProps> = ({
                 >
                   <Bell className="w-3.5 h-3.5 shrink-0" />
                   <span className="hidden xl:inline">طلبات</span>
-                  <span className="px-1.5 py-0.5 rounded bg-white text-blue-950 text-[10px] font-mono tabular-nums">
+                  <span className="px-1.5 py-0.5 rounded bg-white text-blue-950 no-dark-surface text-[10px] font-mono tabular-nums">
                     {pendingOrdersCount}
                   </span>
                 </button>
@@ -364,7 +364,7 @@ export const Header: React.FC<HeaderProps> = ({
                   className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-md bg-amber-400/20 text-amber-100 border border-amber-300/40 text-[11px] font-bold hover:bg-amber-400/30 transition-colors cursor-pointer whitespace-nowrap shrink-0"
                 >
                   <ArrowLeftRight className="w-3.5 h-3.5 shrink-0" />
-                  <span className="px-1.5 py-0.5 rounded bg-amber-300 text-amber-950 text-[10px] font-mono tabular-nums">
+                  <span className="px-1.5 py-0.5 rounded bg-amber-300 text-amber-950 no-dark-surface text-[10px] font-mono tabular-nums">
                     {pendingTransfersCount}
                   </span>
                 </button>
@@ -378,7 +378,7 @@ export const Header: React.FC<HeaderProps> = ({
                   className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-md bg-white/15 text-white border border-white/25 text-[11px] font-bold hover:bg-white/25 transition-colors cursor-pointer whitespace-nowrap shrink-0"
                 >
                   <span>REFRESH</span>
-                  <span className="px-1.5 py-0.5 rounded bg-white text-blue-950 text-[10px] font-mono tabular-nums font-black">
+                  <span className="px-1.5 py-0.5 rounded bg-white text-blue-950 no-dark-surface text-[10px] font-mono tabular-nums font-black">
                     {incomingDispatchCount}
                   </span>
                 </button>
@@ -514,7 +514,7 @@ export const Header: React.FC<HeaderProps> = ({
                   aria-current={!btn.controlsDrawer && btn.active ? 'page' : undefined}
                   className={`flex-1 min-h-[32px] px-2 py-1 rounded-md flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 text-[11px] sm:text-xs whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
                     btn.active
-                      ? 'bg-white text-blue-950 font-black shadow-xs'
+                      ? 'bg-white text-blue-950 dark:bg-[#1659C8] dark:text-white dark:border dark:border-[#60A5FA]/45 font-black shadow-xs'
                       : 'bg-white/10 text-blue-50 hover:bg-white/20 font-bold'
                   }`}
                 >
@@ -547,16 +547,16 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Logout Confirmation Modal */}
       {showLogoutModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-900/60 backdrop-blur-xs no-print">
-          <div className="w-full max-w-sm rounded-lg bg-white p-3 shadow-2xl border border-slate-200 text-right animate-in fade-in zoom-in duration-150">
-            <div className="w-9 h-9 rounded-lg bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-2 border border-red-100">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-900/60 dark:bg-[#040B17]/75 backdrop-blur-xs no-print">
+          <div className="w-full max-w-sm rounded-lg bg-white dark:bg-[#0E1C36] p-3 shadow-2xl border border-slate-200 dark:border-[#21375C] text-right animate-in fade-in zoom-in duration-150">
+            <div className="w-9 h-9 rounded-lg bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-300 flex items-center justify-center mx-auto mb-2 border border-red-100 dark:border-red-500/30">
               <AlertTriangle className="w-4 h-4" />
             </div>
 
-            <h3 className="text-sm font-black text-slate-900 text-center mb-1">
+            <h3 className="text-sm font-black text-slate-900 dark:text-[#F3F7FC] text-center mb-1">
               هل تريد تسجيل الخروج؟
             </h3>
-            <p className="text-xs text-slate-500 text-center mb-3 leading-relaxed">
+            <p className="text-xs text-slate-500 dark:text-[#A9BCD9] text-center mb-3 leading-relaxed">
               سيتم إنهاء جلستك الحالية والعودة لشاشة الدخول. لن يتم فقد أي بيانات تجارية أو فواتير محفوظة.
             </p>
 
@@ -574,7 +574,7 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={() => setShowLogoutModal(false)}
-                className="flex-1 py-1.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-md transition-colors cursor-pointer"
+                className="flex-1 py-1.5 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-[#132544] dark:hover:bg-[#1A3461] text-slate-700 dark:text-[#DCE6F5] border border-transparent dark:border-[#21375C] text-xs font-bold rounded-md transition-colors cursor-pointer"
               >
                 إلغاء والعودة
               </button>

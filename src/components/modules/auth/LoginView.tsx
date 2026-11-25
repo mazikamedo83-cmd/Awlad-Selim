@@ -271,11 +271,11 @@ export const LoginView: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-2.5 sm:p-4 relative overflow-hidden font-sans pt-safe pb-safe">
-      <div className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 rounded-full bg-blue-600/10 blur-3xl pointer-events-none"></div>
-      <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-96 h-96 rounded-full bg-sky-500/10 blur-3xl pointer-events-none"></div>
+    <div className="min-h-screen bg-slate-900 dark:bg-[#081326] flex items-center justify-center p-2.5 sm:p-4 relative overflow-hidden font-sans pt-safe pb-safe">
+      <div className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 rounded-full bg-blue-600/10 dark:bg-[#1659C8]/15 blur-3xl pointer-events-none"></div>
+      <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-96 h-96 rounded-full bg-sky-500/10 dark:bg-[#1D63D8]/12 blur-3xl pointer-events-none"></div>
 
-      <div className="w-full max-w-lg bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden relative z-10 text-right animate-in fade-in duration-300">
+      <div className="w-full max-w-lg bg-white dark:bg-[#0E1C36] rounded-xl shadow-2xl border border-slate-200 dark:border-[#21375C] overflow-hidden relative z-10 text-right animate-in fade-in duration-300">
         {/* Header / Logo banner */}
         <div className="awlad-brand-gradient p-3.5 text-center text-white relative">
           <button
@@ -288,7 +288,7 @@ export const LoginView: React.FC = () => {
             <span>{serverMissing ? 'إعداد السيرفر' : 'أوضاع الاتصال'}</span>
           </button>
 
-          <div className="bg-white rounded-lg px-3 py-1.5 inline-flex items-center justify-center border border-white/80 mb-1.5">
+          <div className="bg-white dark:bg-white no-dark-surface rounded-lg px-3 py-1.5 inline-flex items-center justify-center border border-white/80 mb-1.5">
             <img
               src="/awlad-selim-logo.png"
               alt="أولاد سليم AWLAD SELIM"
@@ -364,9 +364,9 @@ export const LoginView: React.FC = () => {
               </div>
             </div>
           ) : (
-            <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-[#EEF3FA] border border-[#DCE6F5] text-[11px]">
-              <div className="flex items-center gap-1.5 text-[var(--awlad-navy-950)] font-bold truncate">
-                <Server className="w-3.5 h-3.5 text-[var(--awlad-royal-700)] shrink-0" />
+            <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-[#EEF3FA] dark:bg-[#132544] border border-[#DCE6F5] dark:border-[#21375C] text-[11px]">
+              <div className="flex items-center gap-1.5 text-[var(--awlad-navy-950)] dark:text-[#DCE6F5] font-bold truncate">
+                <Server className="w-3.5 h-3.5 text-[var(--awlad-royal-700)] dark:text-[#85B8FF] shrink-0" />
                 <span className="truncate">{activeModeLabel}</span>
               </div>
               <div className="flex items-center gap-1">
@@ -374,16 +374,16 @@ export const LoginView: React.FC = () => {
                   type="button"
                   disabled={isClaimingQr}
                   onClick={() => setShowQrScanner(true)}
-                  className="px-2 py-1 rounded bg-white hover:bg-[#DCE6F5] text-[var(--awlad-navy-900)] border border-slate-300 font-bold flex items-center gap-1 cursor-pointer"
+                  className="px-2 py-1 rounded bg-white dark:bg-[#0E1C36] hover:bg-[#DCE6F5] dark:hover:bg-[#1A3461] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] border border-slate-300 dark:border-[#2A436E] font-bold flex items-center gap-1 cursor-pointer"
                 >
-                  <QrCode className="w-3 h-3 text-[var(--awlad-royal-700)]" />
+                  <QrCode className="w-3 h-3 text-[var(--awlad-royal-700)] dark:text-[#85B8FF]" />
                   <span>ربط بـ QR / رابط</span>
                 </button>
                 <button
                   type="button"
                   disabled={isDiscovering}
                   onClick={handleQuickDiscover}
-                  className="px-2 py-1 rounded bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-bold flex items-center gap-1 cursor-pointer"
+                  className="px-2 py-1 rounded bg-white dark:bg-[#0E1C36] hover:bg-slate-100 dark:hover:bg-[#1A3461] text-slate-700 dark:text-[#A9BCD9] border border-slate-300 dark:border-[#2A436E] font-bold flex items-center gap-1 cursor-pointer"
                 >
                   {isDiscovering ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
                   <span>بحث تلقائي</span>
@@ -436,15 +436,15 @@ export const LoginView: React.FC = () => {
           )}
 
           {!needsAdminSetup && savedAccounts.length > 0 && (
-            <div className="p-2 rounded-lg bg-slate-50 border border-slate-200 space-y-1.5">
+            <div className="p-2 rounded-lg bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C] space-y-1.5">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-black text-slate-900 flex items-center gap-1.5">
-                  <Users className="w-3.5 h-3.5 text-blue-800" />
+                <span className="text-xs font-black text-slate-900 dark:text-[#F3F7FC] flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5 text-blue-800 dark:text-[#85B8FF]" />
                   <span>الحسابات المحفوظة على الجهاز ({savedAccounts.length})</span>
                 </span>
-                <span className="text-[10px] font-bold text-slate-500">تبديل ودخول سريع آمن</span>
+                <span className="text-[10px] font-bold text-slate-500 dark:text-[#97AECE]">تبديل ودخول سريع آمن</span>
               </div>
-              <div className="divide-y divide-slate-200 border border-slate-200 rounded-md bg-white max-h-40 overflow-y-auto">
+              <div className="divide-y divide-slate-200 dark:divide-[#1B2F52] border border-slate-200 dark:border-[#21375C] rounded-md bg-white dark:bg-[#0E1C36] max-h-40 overflow-y-auto">
                 {savedAccounts.map((acc) => {
                   const isResuming = resumingUserId === acc.userId;
                   const quickReady = acc.sessionStatus === 'active' && Boolean(acc.refreshToken || acc.accessToken);
@@ -517,7 +517,7 @@ export const LoginView: React.FC = () => {
           )}
 
           {!needsAdminSetup && (
-            <div className="grid grid-cols-3 gap-1 p-1 rounded-lg bg-[#EEF3FA] border border-[#DCE6F5]">
+            <div className="grid grid-cols-3 gap-1 p-1 rounded-lg bg-[#EEF3FA] dark:bg-[#132544] border border-[#DCE6F5] dark:border-[#21375C]">
               <button
                 type="button"
                 onClick={() => {
@@ -527,8 +527,8 @@ export const LoginView: React.FC = () => {
                 }}
                 className={`h-8 px-2 rounded-md text-xs font-bold transition-all cursor-pointer ${
                   authMode === 'login'
-                    ? 'bg-[var(--awlad-navy-900)] text-white font-black'
-                    : 'text-slate-700 hover:bg-white'
+                    ? 'bg-[var(--awlad-navy-900)] dark:bg-[#1659C8] text-white font-black'
+                    : 'text-slate-700 dark:text-[#A9BCD9] hover:bg-white dark:hover:bg-[#1A3461]'
                 }`}
               >
                 تسجيل الدخول
@@ -544,8 +544,8 @@ export const LoginView: React.FC = () => {
                 }}
                 className={`h-8 px-2 rounded-md text-xs font-bold transition-all cursor-pointer ${
                   authMode === 'register_customer'
-                    ? 'bg-[var(--awlad-navy-900)] text-white font-black'
-                    : 'text-slate-700 hover:bg-white'
+                    ? 'bg-[var(--awlad-navy-900)] dark:bg-[#1659C8] text-white font-black'
+                    : 'text-slate-700 dark:text-[#A9BCD9] hover:bg-white dark:hover:bg-[#1A3461]'
                 }`}
               >
                 تسجيل عميل جديد
@@ -561,8 +561,8 @@ export const LoginView: React.FC = () => {
                 }}
                 className={`h-8 px-2 rounded-md text-xs font-bold transition-all cursor-pointer ${
                   authMode === 'register_rep'
-                    ? 'bg-[var(--awlad-navy-900)] text-white font-black'
-                    : 'text-slate-700 hover:bg-white'
+                    ? 'bg-[var(--awlad-navy-900)] dark:bg-[#1659C8] text-white font-black'
+                    : 'text-slate-700 dark:text-[#A9BCD9] hover:bg-white dark:hover:bg-[#1A3461]'
                 }`}
               >
                 تسجيل مندوب جديد
@@ -793,7 +793,7 @@ export const LoginView: React.FC = () => {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full min-h-[36px] py-2 px-3 bg-[var(--awlad-royal-700)] hover:bg-[var(--awlad-royal-600)] text-white font-bold text-xs rounded-lg shadow-sm transition-all active:scale-98 disabled:opacity-60 flex items-center justify-center gap-1.5 cursor-pointer"
+              className="w-full min-h-[36px] py-2 px-3 bg-[var(--awlad-royal-700)] hover:bg-[var(--awlad-royal-600)] dark:bg-[#1659C8] dark:hover:bg-[#1F6BE6] text-white font-bold text-xs rounded-lg shadow-sm transition-all active:scale-98 disabled:opacity-60 flex items-center justify-center gap-1.5 cursor-pointer"
             >
               {needsAdminSetup || authMode !== 'login' ? (
                 <UserPlus className="w-4 h-4" />
@@ -815,22 +815,22 @@ export const LoginView: React.FC = () => {
           </form>
         </div>
 
-        <div className="bg-slate-50 border-t border-slate-100 px-3 py-2 text-center text-[11px] text-slate-500 font-medium">
+        <div className="bg-slate-50 dark:bg-[#0A162B] border-t border-slate-100 dark:border-[#21375C] px-3 py-2 text-center text-[11px] text-slate-500 dark:text-[#97AECE] font-medium">
           مؤسسة أولاد سليم لتجارة المواد الغذائية بالجملة • جميع الحقوق محفوظة 2026
         </div>
       </div>
 
       {/* Forgot Password Modal */}
       {showForgotModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-950/70 backdrop-blur-xs">
-          <div className="w-full max-w-sm bg-white rounded-lg p-3.5 text-right shadow-2xl border border-slate-200">
-            <h4 className="text-sm font-bold text-slate-900 mb-1">استعادة كلمة المرور</h4>
-            <p className="text-xs text-slate-600 leading-relaxed mb-2.5">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-950/70 dark:bg-[#040B17]/80 backdrop-blur-xs">
+          <div className="w-full max-w-sm bg-white dark:bg-[#0E1C36] rounded-lg p-3.5 text-right shadow-2xl border border-slate-200 dark:border-[#21375C]">
+            <h4 className="text-sm font-bold text-slate-900 dark:text-[#F3F7FC] mb-1">استعادة كلمة المرور</h4>
+            <p className="text-xs text-slate-600 dark:text-[#A9BCD9] leading-relaxed mb-2.5">
               لأسباب أمنية، يتم إعادة ضبط كلمات المرور حصرياً من خلال مسؤول النظام داخل إدارة المستخدمين.
             </p>
             <button
               onClick={() => setShowForgotModal(false)}
-              className="w-full h-8 bg-[var(--awlad-navy-900)] text-white text-xs font-bold rounded-md hover:bg-[var(--awlad-navy-950)] cursor-pointer"
+              className="w-full h-8 bg-[var(--awlad-navy-900)] dark:bg-[#1659C8] text-white text-xs font-bold rounded-md hover:bg-[var(--awlad-navy-950)] dark:hover:bg-[#1F6BE6] cursor-pointer"
             >
               حسناً، فهمت
             </button>

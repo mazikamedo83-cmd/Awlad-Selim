@@ -53,17 +53,20 @@
   background: #f1f5f9;
 }
 html.dark ::-webkit-scrollbar-track {
-  background: #0f172a;
+  background: #081326;
 }
 ::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 4px;
 }
 html.dark ::-webkit-scrollbar-thumb {
-  background: #334155;
+  background: #28426B;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #3B5D94;
 }
 
 /* Subtle horizontal scrollbar hiding for shortcut strips */

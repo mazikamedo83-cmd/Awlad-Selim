@@ -109,7 +109,7 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ variant = 'l
           <IconComponent className={`w-3.5 h-3.5 shrink-0 ${networkStatus === 'synchronizing' ? 'animate-spin' : ''}`} />
           <span className="hidden 2xl:inline">{config.label}</span>
           {totalBadge > 0 && (
-            <span className="px-1.5 py-0.5 rounded-full bg-slate-900 text-white text-[10px] font-mono">
+            <span className="px-1.5 py-0.5 rounded-full bg-slate-900 dark:bg-[#1659C8] text-white text-[10px] font-mono">
               {totalBadge}
             </span>
           )}

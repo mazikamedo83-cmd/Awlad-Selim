@@ -504,21 +504,23 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
   return (
     <div className="space-y-2">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-white px-2.5 py-2 rounded-lg border border-slate-200">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-white dark:bg-[#0E1C36] px-2.5 py-2 rounded-lg border border-slate-200 dark:border-[#21375C]">
         <div>
-          <h2 className="text-sm font-black text-slate-900 tracking-tight">إدارة فواتير المبيعات وعروض الأسعار</h2>
-          <p className="text-[11px] text-slate-500">
+          <h2 className="text-sm font-black text-slate-900 dark:text-[#F3F7FC] tracking-tight">إدارة فواتير المبيعات وعروض الأسعار</h2>
+          <p className="text-[11px] text-slate-500 dark:text-[#97AECE]">
             عرض وتوليد وطباعة فواتير المبيعات ومراجعة فواتير المناديب وإصدار عروض الأسعار وتحويلها 1:1
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
-          <div className="flex items-center bg-slate-100 p-0.5 rounded-md text-xs font-bold">
+          <div className="flex items-center bg-slate-100 dark:bg-[#132544] dark:border dark:border-[#21375C] p-0.5 rounded-md text-xs font-bold">
             <button
               type="button"
               onClick={() => setActiveTab('invoices')}
               className={`px-2.5 py-1 rounded transition-colors cursor-pointer ${
-                activeTab === 'invoices' ? 'bg-[#011E58] text-white' : 'text-slate-700 hover:text-slate-900'
+                activeTab === 'invoices'
+                  ? 'bg-[#011E58] dark:bg-[#1659C8] text-white'
+                  : 'text-slate-700 dark:text-[#A9BCD9] hover:text-slate-900 dark:hover:text-[#F3F7FC]'
               }`}
             >
               فواتير المبيعات ({salesInvoices.length})
@@ -527,7 +529,9 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
               type="button"
               onClick={() => setActiveTab('quotes')}
               className={`px-2.5 py-1 rounded transition-colors cursor-pointer ${
-                activeTab === 'quotes' ? 'bg-[#011E58] text-white' : 'text-slate-700 hover:text-slate-900'
+                activeTab === 'quotes'
+                  ? 'bg-[#011E58] dark:bg-[#1659C8] text-white'
+                  : 'text-slate-700 dark:text-[#A9BCD9] hover:text-slate-900 dark:hover:text-[#F3F7FC]'
               }`}
             >
               عروض الأسعار ({quotesList.length})
@@ -537,9 +541,9 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
           <button
             type="button"
             onClick={handleExportExcel}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-300 dark:border-[#2A436E] dark:bg-[#132544] text-slate-700 dark:text-[#DCE6F5] text-xs font-bold hover:bg-slate-50 dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
           >
-            <Download className="w-3.5 h-3.5 text-[#003589]" />
+            <Download className="w-3.5 h-3.5 text-[#003589] dark:text-[#85B8FF]" />
             <span>تصدير Excel</span>
           </button>
 
@@ -556,7 +560,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
               setQuoteError(null);
               setIsNewQuoteOpen(true);
             }}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#011E58] hover:bg-[#002160] text-white text-xs font-bold transition-all cursor-pointer"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#011E58] hover:bg-[#002160] dark:bg-[#173C7E] dark:hover:bg-[#1659C8] dark:border dark:border-[#2E5CA8] text-white text-xs font-bold transition-all cursor-pointer"
           >
             <FileText className="w-3.5 h-3.5" />
             <span>عرض سعر جديد</span>
@@ -565,7 +569,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
           <button
             type="button"
             onClick={() => setIsNewModalOpen(true)}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-black transition-all active:scale-95 cursor-pointer"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#003589] hover:bg-[#0049B0] dark:bg-[#1659C8] dark:hover:bg-[#1F6BE6] text-white text-xs font-black transition-all active:scale-95 cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>فاتورة بيع جديدة</span>

@@ -38,16 +38,27 @@
 }
 
 html.dark {
-  --awlad-text-body: #F1F5F9;
-  --awlad-text-muted: #94A3B8;
-  --awlad-surface-page: #0B1220;
-  --awlad-surface-card: #131E33;
-  --awlad-border-subtle: #253654;
-  --awlad-brand-primary: #003589;
+  --awlad-text-body: #DCE6F5;
+  --awlad-text-strong: #F3F7FC;
+  --awlad-text-muted: #A9BCD9;
+  --awlad-text-subtle: #849BBF;
+  --awlad-surface-page: #081326;
+  --awlad-surface-card: #0E1C36;
+  --awlad-surface-elevated: #132544;
+  --awlad-surface-header: #172E56;
+  --awlad-surface-hover: #1A3461;
+  --awlad-surface-selected: #16366B;
+  --awlad-border-subtle: #21375C;
+  --awlad-border-divider: #1B2F52;
+  --awlad-border-input: #2A436E;
+  --awlad-royal-active: #1659C8;
+  --awlad-royal-active-hover: #1F6BE6;
+  --awlad-accent-text: #85B8FF;
+  --awlad-brand-primary: #1659C8;
   --awlad-brand-primary-dark: #011E58;
   --awlad-brand-primary-deep: #001A49;
-  --awlad-brand-accent: #0053BE;
-  --awlad-brand-silver: #6E7788;
+  --awlad-brand-accent: #3B82F6;
+  --awlad-brand-silver: #95ACCE;
 }
 
 .awlad-brand-gradient {
@@ -70,4 +81,382 @@ html.dark {
 
 .awlad-tabular {
   font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================================
+   AWLAD SELIM — Harmonized Navy Dark Mode Layer (Non-destructive to Light Mode)
+   Excludes print views (.print-container, .print-only) and explicit dark: classes
+   ============================================================================ */
+@media not print {
+  html.dark body {
+    background-color: var(--awlad-surface-page);
+    color: var(--awlad-text-body);
+  }
+
+  /* 1. Stepped Navy Surfaces */
+  html.dark :is(
+    .bg-\[\#F4F6FA\]
+  ):not([class*="dark:bg-"]):not(.print-container):not(.print-container *):not(.print-only):not(.print-only *):not(.no-dark-surface) {
+    background-color: var(--awlad-surface-page) !important;
+  }
+
+  html.dark :is(
+    .bg-white,
+    .bg-white\/95,
+    .bg-white\/90
+  ):not([class*="dark:bg-"]):not(.print-container):not(.print-container *):not(.print-only):not(.print-only *):not(.no-dark-surface):not(img) {
+    background-color: var(--awlad-surface-card) !important;
+  }
+
+  html.dark :is(
+    .bg-slate-50,
+    .bg-slate-50\/40,
+    .bg-slate-50\/50,
+    .bg-slate-50\/60,
+    .bg-slate-50\/70,
+    .bg-slate-50\/80
+  ):not([class*="dark:bg-"]):not(.print-container):not(.print-container *):not(.print-only):not(.print-only *):not(.no-dark-surface) {
+    background-color: #12223E !important;
+  }
+
+  html.dark :is(
+    .bg-slate-100,
+    .bg-slate-100\/70,
+    .bg-slate-100\/80,
+    .bg-slate-100\/95
+  ):not([class*="dark:bg-"]):not(.print-container):not(.print-container *):not(.print-only):not(.print-only *):not(.no-dark-surface) {
+    background-color: #172B4D !important;
+  }
+
+  html.dark :is(
+    .bg-slate-200,
+    .bg-slate-200\/70,
+    .bg-slate-200\/80
+  ):not([class*="dark:bg-"]):not(.print-container):not(.print-container *):not(.print-only):not(.print-only *):not(.no-dark-surface) {
+    background-color: #1D3358 !important;
+  }
+
+  html.dark :is(
+    .bg-\[\#EEF3FA\],
+    .bg-\[\#EEF3FA\]\/40,
+    .bg-\[\#EEF3FA\]\/50,
+    .bg-\[\#EEF3FA\]\/60,
+    .bg-\[\#EEF3FA\]\/70,
+    .bg-\[\#EEF3FA\]\/80,
+    .bg-\[var\(--awlad-blue-tint-50\)\],
+    .bg-\[var\(--awlad-blue-tint-50\)\]\/45,
+    .bg-\[var\(--awlad-blue-tint-50\)\]\/60,
+    .bg-\[var\(--awlad-blue-tint-50\)\]\/70
+  ):not([class*="dark:bg-"]):not(.print-container):not(.print-container *):not(.print-only):not(.print-only *):not(.no-dark-surface) {
+    background-color: var(--awlad-surface-elevated) !important;
+  }
+
+  html.dark :is(
+    .bg-\[\#DCE6F5\],
+    .bg-\[\#DCE6F5\]\/70,
+    .bg-\[var\(--awlad-blue-tint-100\)\],
+    .bg-blue-50,
+    .bg-blue-50\/60,
+    .bg-blue-100,
+    .bg-sky-50
+  ):not([class*="dark:bg-"]):not(.print-container):not(.print-container *):not(.print-only):not(.print-only *):not(.no-dark-surface) {
+    background-color: var(--awlad-surface-selected) !important;
+  }
+
+  /* Semantic Soft Tints */
+  html.dark :is(
+    .bg-emerald-50,
+    .bg-emerald-50\/70,
+    .bg-emerald-100,
+    .bg-green-50,
+    .bg-green-100
+  ):not([class*="dark:bg-"]):not(.print-container):not(.print-container *):not(.print-only):not(.print-only *) {
+    background-color: rgba(16, 185, 129, 0.14) !important;
+  }
+
+  html.dark :is(
+    .bg-amber-50,
+    .bg-amber-50\/40,
+    .bg-amber-50\/70,
+    .bg-amber-100,
+    .bg-yellow-50,
+    .bg-yellow-100
+  ):not([class*="dark:bg-"]):not(.print-container):not(.print-container *):not(.print-only):not(.print-only *) {
+    background-color: rgba(245, 158, 11, 0.15) !important;
+  }
+
+  html.dark :is(
+    .bg-red-50,
+    .bg-red-50\/70,
+    .bg-red-100,
+    .bg-rose-50,
+    .bg-rose-100
+  ):not([class*="dark:bg-"]):not(.print-container):not(.print-container *):not(.print-only):not(.print-only *) {
+    background-color: rgba(239, 68, 68, 0.15) !important;
+  }
+
+  /* 2. Table Headers & Footers (Stepped Navy Header above Table Body) */
+  html.dark :is(
+    thead.bg-\[var\(--awlad-navy-900\)\],
+    thead.bg-\[\#011E58\],
+    thead.bg-\[\#001A49\],
+    thead.bg-blue-900,
+    thead.bg-blue-950,
+    thead tr.bg-\[var\(--awlad-navy-900\)\],
+    thead tr.bg-\[\#011E58\],
+    thead tr.bg-slate-900
+  ):not([class*="dark:bg-"]):not(.print-container):not(.print-container *):not(.print-only):not(.print-only *) {
+    background-color: var(--awlad-surface-header) !important;
+    color: var(--awlad-text-strong) !important;
+    border-color: var(--awlad-border-input) !important;
+  }
+
+  html.dark thead th:not([class*="dark:border-"]):not(.print-container *):not(.print-only *) {
+    border-color: var(--awlad-border-input) !important;
+  }
+
+  html.dark :is(
+    tfoot.bg-slate-100,
+    tfoot.bg-slate-50,
+    tfoot
+  ):not([class*="dark:bg-"]):not(.print-container):not(.print-container *):not(.print-only):not(.print-only *) {
+    background-color: var(--awlad-surface-header) !important;
+    color: var(--awlad-text-strong) !important;
+    border-color: var(--awlad-border-input) !important;
+  }
+
+  /* 3. Royal Blue reserved for Primary Buttons & Active Elements */
+  html.dark :is(
+    button.bg-\[var\(--awlad-royal-700\)\],
+    a.bg-\[var\(--awlad-royal-700\)\],
+    button.bg-\[\#003589\],
+    a.bg-\[\#003589\],
+    button.bg-\[\#0049B0\],
+    button.bg-blue-700,
+    button.bg-blue-800
+  ):not([class*="dark:bg-"]):not(.print-container):not(.print-container *) {
+    background-color: var(--awlad-royal-active) !important;
+    border-color: rgba(96, 165, 250, 0.35) !important;
+    color: #FFFFFF !important;
+  }
+
+  html.dark :is(
+    button.bg-\[var\(--awlad-royal-700\)\],
+    a.bg-\[var\(--awlad-royal-700\)\],
+    button.bg-\[\#003589\],
+    a.bg-\[\#003589\],
+    button.bg-\[\#0049B0\],
+    button.bg-blue-700,
+    button.bg-blue-800
+  ):not([class*="dark:bg-"]):not(.print-container):not(.print-container *):hover {
+    background-color: var(--awlad-royal-active-hover) !important;
+  }
+
+  html.dark :is(
+    button.bg-\[var\(--awlad-navy-900\)\],
+    a.bg-\[var\(--awlad-navy-900\)\],
+    button.bg-\[\#011E58\],
+    button.bg-\[\#001A49\],
+    button.bg-blue-900,
+    button.bg-blue-950,
+    button.bg-slate-900
+  ):not([class*="dark:bg-"]):not(.print-container):not(.print-container *) {
+    background-color: #173C7E !important;
+    border-color: #2E5CA8 !important;
+    color: #FFFFFF !important;
+  }
+
+  html.dark :is(
+    button.bg-\[var\(--awlad-navy-900\)\],
+    a.bg-\[var\(--awlad-navy-900\)\],
+    button.bg-\[\#011E58\],
+    button.bg-\[\#001A49\],
+    button.bg-blue-900,
+    button.bg-blue-950,
+    button.bg-slate-900
+  ):not([class*="dark:bg-"]):not(.print-container):not(.print-container *):hover {
+    background-color: var(--awlad-royal-active) !important;
+  }
+
+  /* Calm Hovers on Rows & List Items */
+  html.dark :is(
+    .hover\:bg-slate-50,
+    .hover\:bg-slate-100,
+    .hover\:bg-slate-200,
+    .hover\:bg-\[\#EEF3FA\],
+    .hover\:bg-\[\#EEF3FA\]\/50,
+    .hover\:bg-\[var\(--awlad-blue-tint-50\)\],
+    .hover\:bg-\[var\(--awlad-blue-tint-50\)\]\/60,
+    .hover\:bg-blue-50
+  ):not([class*="dark:hover:bg-"]):not(.print-container *):not(.print-only *):hover {
+    background-color: var(--awlad-surface-hover) !important;
+  }
+
+  /* 4. Calm Hairline Borders & Dividers */
+  html.dark :is(
+    .border-slate-100,
+    .border-slate-200,
+    .border-\[\#DCE6F5\],
+    .border-\[var\(--awlad-blue-tint-100\)\]
+  ):not([class*="dark:border-"]):not(.print-container):not(.print-container *):not(.print-only):not(.print-only *) {
+    border-color: var(--awlad-border-subtle) !important;
+  }
+
+  html.dark :is(
+    .border-slate-300,
+    .border-slate-400,
+    .border-blue-200,
+    .border-blue-300
+  ):not([class*="dark:border-"]):not(.print-container):not(.print-container *):not(.print-only):not(.print-only *) {
+    border-color: var(--awlad-border-input) !important;
+  }
+
+  html.dark :is(.divide-slate-100, .divide-slate-200):not([class*="dark:divide-"]):not(.print-container *):not(.print-only *) > :not(:last-child) {
+    border-color: var(--awlad-border-divider) !important;
+  }
+
+  html.dark :is(.border-emerald-100, .border-emerald-200, .border-emerald-300):not([class*="dark:border-"]):not(.print-container *) {
+    border-color: rgba(52, 211, 153, 0.30) !important;
+  }
+
+  html.dark :is(.border-amber-100, .border-amber-200, .border-amber-300):not([class*="dark:border-"]):not(.print-container *) {
+    border-color: rgba(251, 191, 36, 0.32) !important;
+  }
+
+  html.dark :is(.border-red-100, .border-red-200, .border-red-300, .border-rose-200):not([class*="dark:border-"]):not(.print-container *) {
+    border-color: rgba(248, 113, 113, 0.32) !important;
+  }
+
+  /* 5. Legible Typography Ladder (Headings, Body, Secondary, Dates, Numbers) */
+  html.dark :is(
+    .text-slate-950,
+    .text-slate-900,
+    .text-\[var\(--awlad-navy-950\)\]
+  ):not([class*="dark:text-"]):not(.text-white):not(.print-container):not(.print-container *):not(.print-only):not(.print-only *):not(.no-dark-surface) {
+    color: var(--awlad-text-strong) !important;
+  }
+
+  html.dark .text-slate-800:not([class*="dark:text-"]):not(.text-white):not(.print-container *):not(.print-only *):not(.no-dark-surface) {
+    color: var(--awlad-text-body) !important;
+  }
+
+  html.dark .text-slate-700:not([class*="dark:text-"]):not(.text-white):not(.print-container *):not(.print-only *):not(.no-dark-surface) {
+    color: #CBD9EE !important;
+  }
+
+  html.dark :is(
+    .text-slate-600,
+    .text-\[var\(--awlad-silver-600\)\],
+    .text-\[var\(--awlad-brand-silver\)\]
+  ):not([class*="dark:text-"]):not(.text-white):not(.print-container *):not(.print-only *) {
+    color: var(--awlad-text-muted) !important;
+  }
+
+  html.dark :is(
+    .text-slate-500,
+    .text-\[var\(--awlad-silver-500\)\]
+  ):not([class*="dark:text-"]):not(.text-white):not(.print-container *):not(.print-only *) {
+    color: #97AECE !important;
+  }
+
+  html.dark :is(
+    .text-slate-400,
+    .text-slate-300
+  ):not([class*="dark:text-"]):not(.text-white):not(.print-container *):not(.print-only *) {
+    color: var(--awlad-text-subtle) !important;
+  }
+
+  html.dark :is(
+    .text-\[var\(--awlad-navy-900\)\],
+    .text-\[var\(--awlad-royal-700\)\],
+    .text-\[var\(--awlad-royal-500\)\],
+    .text-\[\#011E58\],
+    .text-\[\#001A49\],
+    .text-\[\#003589\],
+    .text-\[\#0049B0\],
+    .text-blue-950,
+    .text-blue-900,
+    .text-blue-800,
+    .text-blue-700
+  ):not([class*="dark:text-"]):not(.text-white):not(.awlad-brand-gradient):not(.awlad-brand-gradient *):not(.print-container *):not(.print-only *):not(.no-dark-surface) {
+    color: var(--awlad-accent-text) !important;
+  }
+
+  html.dark :is(
+    .text-emerald-950,
+    .text-emerald-900,
+    .text-emerald-800,
+    .text-emerald-700,
+    .text-emerald-600,
+    .text-green-700
+  ):not([class*="dark:text-"]):not(.print-container *):not(.print-only *) {
+    color: #6EE7B7 !important;
+  }
+
+  html.dark :is(
+    .text-amber-950,
+    .text-amber-900,
+    .text-amber-800,
+    .text-amber-700,
+    .text-amber-600
+  ):not([class*="dark:text-"]):not(.print-container *):not(.print-only *) {
+    color: #FCD34D !important;
+  }
+
+  html.dark :is(
+    .text-red-950,
+    .text-red-900,
+    .text-red-800,
+    .text-red-700,
+    .text-red-600,
+    .text-rose-800,
+    .text-rose-700,
+    .text-rose-600
+  ):not([class*="dark:text-"]):not(.print-container *):not(.print-only *) {
+    color: #FCA5A5 !important;
+  }
+
+  /* 6. Inputs, Selects & Textareas */
+  html.dark :is(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+    select,
+    textarea
+  ):not([class*="dark:bg-"]):not(.print-container *):not(.print-only *) {
+    background-color: #10203D !important;
+    color: #EEF4FC !important;
+    border-color: var(--awlad-border-input) !important;
+  }
+
+  html.dark :is(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+    textarea
+  ):not([class*="dark:placeholder-"]):not(.print-container *):not(.print-only *)::placeholder {
+    color: #7F96BA !important;
+    opacity: 1;
+  }
+
+  html.dark :is(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+    select,
+    textarea
+  ):not(.print-container *):not(.print-only *):focus {
+    border-color: #3B82F6 !important;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25) !important;
+  }
+
+  html.dark :is(
+    input:not([type="checkbox"]):not([type="radio"]),
+    select,
+    textarea
+  ):not(.print-container *):not(.print-only *):disabled {
+    background-color: #0B172E !important;
+    color: #7C92B5 !important;
+    border-color: #1E3254 !important;
+  }
+
+  /* White Brand Badges inside dark headers/banners stay bright with dark navy ink */
+  html.dark .no-dark-surface {
+    background-color: #FFFFFF !important;
+    color: #011E58 !important;
+  }
 }

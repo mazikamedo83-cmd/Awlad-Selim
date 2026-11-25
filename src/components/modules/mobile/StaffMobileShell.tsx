@@ -787,7 +787,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
   }, [currentUser, onNavigate]);
 
   return (
-    <div className="min-h-screen bg-[var(--awlad-surface-page)] dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-['Cairo'] antialiased pb-16">
+    <div className="min-h-screen bg-[var(--awlad-surface-page)] dark:bg-[#081326] text-slate-800 dark:text-[#DCE6F5] font-['Cairo'] antialiased pb-16">
       {/* Slim Logo-Navy/Royal Top App Header Bar */}
       <header className="sticky top-0 z-30 awlad-brand-gradient text-white border-b border-[var(--awlad-royal-500)]/40 pt-safe no-print">
         <div className="w-full max-w-full mx-auto px-2 h-11 flex items-center justify-between gap-1.5">
@@ -795,7 +795,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
             <img
               src="/awlad-selim-logo.png"
               alt="AWLAD SELIM"
-              className="h-7 w-7 object-contain bg-white rounded-md p-0.5 shrink-0"
+              className="no-dark-surface h-7 w-7 object-contain bg-white dark:bg-white rounded-md p-0.5 shrink-0"
             />
             <div className="min-w-0">
               <h1 className="text-xs font-black truncate leading-tight">AWLAD SELIM</h1>
@@ -866,7 +866,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                 onNavigate('system-settings');
               }}
               className={`min-h-[32px] min-w-[32px] flex items-center justify-center rounded-md cursor-pointer ${
-                !isMoreViewOpen && currentPage === 'system-settings' ? 'bg-white text-[var(--awlad-navy-900)]' : 'text-white hover:bg-white/15'
+                !isMoreViewOpen && currentPage === 'system-settings' ? 'bg-white dark:bg-[#1659C8] text-[var(--awlad-navy-900)] dark:text-white' : 'text-white hover:bg-white/15'
               }`}
               title="الإعدادات"
               aria-label="الإعدادات"
@@ -1037,11 +1037,11 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                                 onNavigate(item.key);
                               }}
                               className={`w-full min-h-[36px] px-2.5 py-1.5 flex items-center justify-between gap-2 text-right text-xs transition-colors cursor-pointer ${
-                                active ? 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] font-black' : 'text-slate-800 hover:bg-slate-50 font-bold'
+                                active ? 'bg-[var(--awlad-blue-tint-50)] dark:bg-[#1659C8] text-[var(--awlad-navy-900)] dark:text-white font-black' : 'text-slate-800 hover:bg-slate-50 font-bold'
                               }`}
                             >
                               <span className="truncate">{item.label}</span>
-                              <ChevronLeft className={`w-3.5 h-3.5 shrink-0 ${active ? 'text-[var(--awlad-royal-700)]' : 'text-slate-400'}`} />
+                              <ChevronLeft className={`w-3.5 h-3.5 shrink-0 ${active ? 'text-[var(--awlad-royal-700)] dark:text-white' : 'text-slate-400'}`} />
                             </button>
                           );
                         })}
@@ -1082,7 +1082,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                     <button
                       type="button"
                       onClick={() => setIsAddProductModalOpen(true)}
-                      className="h-8 px-2.5 rounded-md bg-white text-[var(--awlad-navy-900)] text-xs font-black flex items-center gap-1 shrink-0 cursor-pointer"
+                      className="h-8 px-2.5 rounded-md bg-white dark:bg-[#1659C8] dark:hover:bg-[#1F6BE6] text-[var(--awlad-navy-900)] dark:text-white text-xs font-black flex items-center gap-1 shrink-0 cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>أضف صنف</span>
@@ -1118,7 +1118,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
       {/* Fixed 5-Tab Bottom Navigation Bar */}
       <nav
         aria-label="التنقل السفلي"
-        className="fixed bottom-0 inset-x-0 z-30 bg-white border-t border-slate-200 pb-safe shadow-[0_-2px_10px_rgba(1,30,88,0.08)] no-print"
+        className="fixed bottom-0 inset-x-0 z-30 bg-white dark:bg-[#0E1C36] border-t border-slate-200 dark:border-[#21375C] pb-safe shadow-[0_-2px_10px_rgba(1,30,88,0.08)] dark:shadow-[0_-4px_16px_rgba(0,0,0,0.35)] no-print"
       >
         <div className="w-full max-w-3xl mx-auto flex items-stretch justify-around">
           {bottomNavTabs.map((tab) => {
@@ -1130,11 +1130,11 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                 onClick={tab.onClick}
                 aria-current={tab.active ? 'page' : undefined}
                 className={`flex-1 min-h-[46px] py-1 px-1 flex flex-col items-center justify-center gap-0.5 relative cursor-pointer transition-colors ${
-                  tab.active ? 'text-[var(--awlad-royal-700)] font-black' : 'text-slate-500 hover:text-[var(--awlad-navy-900)] font-bold'
+                  tab.active ? 'text-[var(--awlad-royal-700)] dark:text-[#60A5FA] font-black' : 'text-slate-500 dark:text-[#95ACCE] hover:text-[var(--awlad-navy-900)] dark:hover:text-[#DCE6F5] font-bold'
                 }`}
               >
                 {tab.active && (
-                  <span className="absolute top-0 inset-x-3 h-[2.5px] rounded-b bg-[var(--awlad-royal-700)]" aria-hidden="true" />
+                  <span className="absolute top-0 inset-x-3 h-[2.5px] rounded-b bg-[var(--awlad-royal-700)] dark:bg-[#60A5FA]" aria-hidden="true" />
                 )}
                 <TabIcon className="w-4 h-4 shrink-0" />
                 <span className="text-[10.5px] leading-tight whitespace-nowrap">{tab.label}</span>

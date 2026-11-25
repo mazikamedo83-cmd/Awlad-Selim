@@ -7486,7 +7486,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           {custodySubTab === 'van' && (
             <div className="space-y-2 text-xs">
               {custodyStatement && (
-                <div className="bg-slate-900 text-white rounded-lg p-2.5 space-y-1.5 tabular-nums">
+                <div className="bg-[#011E58] dark:bg-[#0E1C36] border border-transparent dark:border-[#21375C] text-white rounded-lg p-2.5 space-y-1.5 tabular-nums">
                   <div className="flex items-center justify-between">
                     <h4 className="font-black text-xs">كشف عهدة السيارة التراكمي</h4>
                     <button
@@ -7499,25 +7499,25 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       <span>تحديث</span>
                     </button>
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-slate-700 border border-slate-700 rounded-md overflow-hidden text-center">
-                    <div className="px-2 py-1.5 bg-slate-800">
-                      <span className="text-[10px] text-slate-300 block">إجمالي المستلم</span>
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-[#002D73] dark:bg-[#21375C] border border-[#003589] dark:border-[#2A436E] rounded-md overflow-hidden text-center">
+                    <div className="px-2 py-1.5 bg-[#002463] dark:bg-[#132544]">
+                      <span className="text-[10px] text-blue-100 dark:text-[#97AECE] block">إجمالي المستلم</span>
                       <strong className="font-mono text-xs">{custodyStatement.totals.totalReceivedQty}</strong>
                     </div>
-                    <div className="px-2 py-1.5 bg-slate-800">
-                      <span className="text-[10px] text-slate-300 block">المسلم للعملاء</span>
+                    <div className="px-2 py-1.5 bg-[#002463] dark:bg-[#132544]">
+                      <span className="text-[10px] text-blue-100 dark:text-[#97AECE] block">المسلم للعملاء</span>
                       <strong className="font-mono text-xs text-sky-300">{custodyStatement.totals.totalDeliveredQty}</strong>
                     </div>
-                    <div className="px-2 py-1.5 bg-slate-800">
-                      <span className="text-[10px] text-slate-300 block">المرتجع للمخزن</span>
+                    <div className="px-2 py-1.5 bg-[#002463] dark:bg-[#132544]">
+                      <span className="text-[10px] text-blue-100 dark:text-[#97AECE] block">المرتجع للمخزن</span>
                       <strong className="font-mono text-xs text-amber-300">{custodyStatement.totals.totalReturnedQty}</strong>
                     </div>
-                    <div className="px-2 py-1.5 bg-[#003589]">
+                    <div className="px-2 py-1.5 bg-[#003589] dark:bg-[#1659C8]">
                       <span className="text-[10px] text-[#DCE6F5] block">المتبقي الفعلي</span>
                       <strong className="font-mono text-xs">{custodyStatement.totals.totalRemainingCustodyQty}</strong>
                     </div>
-                    <div className="px-2 py-1.5 bg-blue-900 col-span-2 sm:col-span-1">
-                      <span className="text-[10px] text-blue-200 block">القيمة بالتكلفة</span>
+                    <div className="px-2 py-1.5 bg-[#002B73] dark:bg-[#172E56] col-span-2 sm:col-span-1">
+                      <span className="text-[10px] text-blue-200 dark:text-[#A9BCD9] block">القيمة بالتكلفة</span>
                       <strong className="font-mono text-xs">
                         {custodyStatement.totals.totalCustodyCostValue.toLocaleString()} {data.settings.currency}
                       </strong>

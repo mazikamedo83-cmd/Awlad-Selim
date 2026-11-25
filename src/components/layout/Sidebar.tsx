@@ -158,8 +158,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id: 'sales',
         title: 'المبيعات والعملاء',
         icon: SalesInvoiceIcon,
-        headerGradient: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
-        iconAccent: 'bg-white border border-[var(--awlad-blue-tint-100)]',
+        headerGradient: 'bg-[var(--awlad-blue-tint-50)] dark:bg-[#132544] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] border-[var(--awlad-blue-tint-100)] dark:border-[#21375C]',
+        iconAccent: 'bg-white dark:bg-[#172E56] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E]',
         permission: 'canManageSales',
         items: [
           {
@@ -179,8 +179,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id: 'purchases',
         title: 'المشتريات والموردون',
         icon: SuppliersTruckIcon,
-        headerGradient: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
-        iconAccent: 'bg-white border border-[var(--awlad-blue-tint-100)]',
+        headerGradient: 'bg-[var(--awlad-blue-tint-50)] dark:bg-[#132544] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] border-[var(--awlad-blue-tint-100)] dark:border-[#21375C]',
+        iconAccent: 'bg-white dark:bg-[#172E56] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E]',
         permission: ['canManagePurchases', 'canCreatePurchase'],
         items: [
           { key: 'purchase-invoices', label: 'فواتير المشتريات' },
@@ -193,8 +193,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id: 'inventory',
         title: 'المخازن والمنتجات',
         icon: WarehouseBoxesIcon,
-        headerGradient: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
-        iconAccent: 'bg-white border border-[var(--awlad-blue-tint-100)]',
+        headerGradient: 'bg-[var(--awlad-blue-tint-50)] dark:bg-[#132544] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] border-[var(--awlad-blue-tint-100)] dark:border-[#21375C]',
+        iconAccent: 'bg-white dark:bg-[#172E56] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E]',
         permission: 'canManageInventory',
         items: [
           { key: 'products', label: 'المنتجات والأسعار' },
@@ -226,8 +226,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id: 'finance',
         title: 'الحسابات والخزائن',
         icon: SafeVaultIcon,
-        headerGradient: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
-        iconAccent: 'bg-white border border-[var(--awlad-blue-tint-100)]',
+        headerGradient: 'bg-[var(--awlad-blue-tint-50)] dark:bg-[#132544] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] border-[var(--awlad-blue-tint-100)] dark:border-[#21375C]',
+        iconAccent: 'bg-white dark:bg-[#172E56] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E]',
         permission: ['canManageCashboxes', 'canManageAccounts'],
         items: [
           {
@@ -254,8 +254,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id: 'cheques-inst',
         title: 'الشيكات والأقساط',
         icon: ChequesIcon,
-        headerGradient: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
-        iconAccent: 'bg-white border border-[var(--awlad-blue-tint-100)]',
+        headerGradient: 'bg-[var(--awlad-blue-tint-50)] dark:bg-[#132544] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] border-[var(--awlad-blue-tint-100)] dark:border-[#21375C]',
+        iconAccent: 'bg-white dark:bg-[#172E56] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E]',
         permission: 'canManageAccounts',
         items: [
           { key: 'cheques', label: 'الشيكات (واردة / صادرة)' },
@@ -266,8 +266,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id: 'representatives',
         title: 'المندوبون والتحويلات',
         icon: RepsFleetIcon,
-        headerGradient: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
-        iconAccent: 'bg-white border border-[var(--awlad-blue-tint-100)]',
+        headerGradient: 'bg-[var(--awlad-blue-tint-50)] dark:bg-[#132544] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] border-[var(--awlad-blue-tint-100)] dark:border-[#21375C]',
+        iconAccent: 'bg-white dark:bg-[#172E56] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E]',
         permission: 'canManageReps',
         items: [
           {
@@ -293,8 +293,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id: 'employees',
         title: 'الموظفون والرواتب',
         icon: EmployeesHrIcon,
-        headerGradient: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
-        iconAccent: 'bg-white border border-[var(--awlad-blue-tint-100)]',
+        headerGradient: 'bg-[var(--awlad-blue-tint-50)] dark:bg-[#132544] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] border-[var(--awlad-blue-tint-100)] dark:border-[#21375C]',
+        iconAccent: 'bg-white dark:bg-[#172E56] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E]',
         permission: 'canManageEmployees',
         items: [
           { key: 'employees', label: 'شؤون الموظفين' },
@@ -307,8 +307,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id: 'reports',
         title: 'التقارير المحاسبية',
         icon: ReportsChartIcon,
-        headerGradient: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
-        iconAccent: 'bg-white border border-[var(--awlad-blue-tint-100)]',
+        headerGradient: 'bg-[var(--awlad-blue-tint-50)] dark:bg-[#132544] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] border-[var(--awlad-blue-tint-100)] dark:border-[#21375C]',
+        iconAccent: 'bg-white dark:bg-[#172E56] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E]',
         permission: 'canViewReports',
         items: [
           { key: 'reports', label: 'جميع التقارير والأرباح' },
@@ -323,8 +323,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id: 'management',
         title: 'المستخدمون والصلاحيات',
         icon: UsersShieldIcon,
-        headerGradient: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
-        iconAccent: 'bg-white border border-[var(--awlad-blue-tint-100)]',
+        headerGradient: 'bg-[var(--awlad-blue-tint-50)] dark:bg-[#132544] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] border-[var(--awlad-blue-tint-100)] dark:border-[#21375C]',
+        iconAccent: 'bg-white dark:bg-[#172E56] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E]',
         permission: 'canManageUsers',
         items: [
           { key: 'users', label: 'إدارة المستخدمين' },
@@ -335,8 +335,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id: 'settings',
         title: 'الإعدادات والنسخ الاحتياطي',
         icon: SettingsTwinGearsIcon,
-        headerGradient: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
-        iconAccent: 'bg-white border border-[var(--awlad-blue-tint-100)]',
+        headerGradient: 'bg-[var(--awlad-blue-tint-50)] dark:bg-[#132544] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] border-[var(--awlad-blue-tint-100)] dark:border-[#21375C]',
+        iconAccent: 'bg-white dark:bg-[#172E56] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E]',
         permission: 'canManageSettings',
         items: [
           { key: 'system-settings', label: 'إعدادات النظام والحساب', allowAllStaff: true },
@@ -416,7 +416,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Backdrop Overlay for Tablet/Small Viewports (< 1024px) */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-40 bg-slate-950/35 backdrop-blur-[2px] transition-opacity lg:hidden no-print"
+          className="fixed inset-0 z-40 bg-slate-950/35 dark:bg-[#040B17]/65 backdrop-blur-[2px] transition-opacity lg:hidden no-print"
           onClick={onClose}
           aria-hidden="true"
         />
@@ -427,19 +427,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
         id="system-sections-drawer"
         aria-label="قائمة الأقسام الجانبية"
         aria-hidden={!isOpen}
-        className={`fixed top-0 bottom-0 right-0 z-50 lg:z-40 bg-white text-slate-800 border-l border-slate-200 shadow-lg transition-all duration-200 ease-out flex flex-col pt-safe pb-safe no-print ${
+        className={`fixed top-0 bottom-0 right-0 z-50 lg:z-40 bg-white dark:bg-[#0E1C36] text-slate-800 dark:text-[#DCE6F5] border-l border-slate-200 dark:border-[#21375C] shadow-lg transition-all duration-200 ease-out flex flex-col pt-safe pb-safe no-print ${
           isCollapsed ? 'lg:w-12 w-[78vw] max-w-[260px]' : 'w-[78vw] max-w-[260px] lg:w-52'
         } ${
           isOpen ? 'translate-x-0 pointer-events-auto' : 'translate-x-full pointer-events-none'
         }`}
       >
         {/* Drawer Header Strip (Logo Navy/Royal Gradient) */}
-        <div className={`h-11 flex items-center ${isCollapsed ? 'lg:justify-center lg:px-1 justify-between px-2.5' : 'justify-between px-2'} awlad-brand-gradient text-white border-b border-[var(--awlad-royal-500)]/40 shrink-0`}>
+        <div className={`h-11 flex items-center ${isCollapsed ? 'lg:justify-center lg:px-1 justify-between px-2.5' : 'justify-between px-2'} awlad-brand-gradient text-white border-b border-[var(--awlad-royal-500)]/40 dark:border-[#2A4D86] shrink-0`}>
           <div className={`flex items-center gap-1.5 min-w-0 ${isCollapsed ? 'lg:hidden' : ''}`}>
             <img
               src="/awlad-selim-logo.png"
               alt="أولاد سليم"
-              className="h-7 w-7 object-contain bg-white rounded-md p-0.5 shrink-0"
+              className="h-7 w-7 object-contain bg-white no-dark-surface rounded-md p-0.5 shrink-0"
             />
             <div className="text-right min-w-0">
               <span className="block font-black text-xs text-white tracking-wide truncate">
@@ -486,8 +486,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
               title="لوحة التحكم الرئيسية"
               className={`w-9 h-9 rounded-md flex items-center justify-center border transition-colors cursor-pointer ${
                 currentPage === 'dashboard'
-                  ? 'bg-[var(--awlad-royal-700)] text-white border-[var(--awlad-royal-700)]'
-                  : 'bg-white text-[var(--awlad-navy-900)] border-slate-200 hover:bg-[var(--awlad-blue-tint-50)]'
+                  ? 'bg-[var(--awlad-royal-700)] dark:bg-[#1659C8] text-white border-[var(--awlad-royal-700)] dark:border-[#60A5FA]/40'
+                  : 'bg-white dark:bg-[#132544] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] border-slate-200 dark:border-[#21375C] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461]'
               }`}
             >
               <DashboardHomeIcon className="w-4 h-4" />
@@ -506,8 +506,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   }}
                   className={`w-9 h-9 rounded-md flex items-center justify-center border transition-colors cursor-pointer ${
                     hasActiveChild
-                      ? 'bg-[var(--awlad-royal-700)] text-white border-[var(--awlad-royal-700)]'
-                      : 'bg-white text-[var(--awlad-navy-900)] border-slate-200 hover:bg-[var(--awlad-blue-tint-50)]'
+                      ? 'bg-[var(--awlad-royal-700)] dark:bg-[#1659C8] text-white border-[var(--awlad-royal-700)] dark:border-[#60A5FA]/40'
+                      : 'bg-white dark:bg-[#132544] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] border-slate-200 dark:border-[#21375C] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461]'
                   }`}
                 >
                   <SectionIcon className="w-4 h-4" />
@@ -525,28 +525,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
             onClick={() => handleItemClick('dashboard')}
             className={`w-full min-h-[32px] flex items-center justify-between px-2 py-1 rounded-md font-bold text-xs border transition-all cursor-pointer ${
               currentPage === 'dashboard'
-                ? 'bg-[var(--awlad-royal-700)] text-white border-[var(--awlad-royal-700)] font-black'
-                : 'bg-white text-[var(--awlad-navy-900)] border-slate-200 hover:bg-[var(--awlad-blue-tint-50)]'
+                ? 'bg-[var(--awlad-royal-700)] dark:bg-[#1659C8] text-white border-[var(--awlad-royal-700)] dark:border-[#60A5FA]/40 font-black'
+                : 'bg-white dark:bg-[#132544] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] border-slate-200 dark:border-[#21375C] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461]'
             }`}
           >
             <div className="flex items-center gap-1.5 min-w-0">
-              <span className="w-5 h-5 rounded bg-white border border-[var(--awlad-blue-tint-100)] flex items-center justify-center shrink-0">
+              <span className="w-5 h-5 rounded bg-white dark:bg-[#172E56] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E] flex items-center justify-center shrink-0">
                 <DashboardHomeIcon className="w-3.5 h-3.5" />
               </span>
               <span className="truncate">لوحة التحكم الرئيسية</span>
             </div>
             <ChevronLeft
               className={`w-3.5 h-3.5 shrink-0 ${
-                currentPage === 'dashboard' ? 'text-blue-100' : 'text-slate-400'
+                currentPage === 'dashboard' ? 'text-blue-100' : 'text-slate-400 dark:text-[#849BBF]'
               }`}
             />
           </button>
 
           {/* Quick Cash Operations (Direct Execution, Permission-Gated) */}
           {checkPerm('canManageCashboxes') && onOpenCashOp && (
-            <div className="rounded-lg bg-[var(--awlad-blue-tint-50)]/70 border border-[var(--awlad-blue-tint-100)] p-1.5 space-y-1">
-              <p className="text-[11px] font-black text-[var(--awlad-navy-900)] flex items-center gap-1">
-                <Wallet className="w-3.5 h-3.5 text-[var(--awlad-royal-700)]" />
+            <div className="rounded-lg bg-[var(--awlad-blue-tint-50)]/70 dark:bg-[#132544] border border-[var(--awlad-blue-tint-100)] dark:border-[#21375C] p-1.5 space-y-1">
+              <p className="text-[11px] font-black text-[var(--awlad-navy-900)] dark:text-[#F3F7FC] flex items-center gap-1">
+                <Wallet className="w-3.5 h-3.5 text-[var(--awlad-royal-700)] dark:text-[#60A5FA]" />
                 <span>العمليات النقدية السريعة</span>
               </p>
               <div className="grid grid-cols-2 gap-1 text-[11px] font-bold">
@@ -556,9 +556,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onOpenCashOp('cash_deposit');
                     if (typeof window !== 'undefined' && window.innerWidth < 1024) onClose();
                   }}
-                  className="h-7 flex items-center justify-center gap-1 rounded-md bg-white border border-slate-200 text-[var(--awlad-navy-900)] hover:border-[var(--awlad-royal-700)] hover:bg-[var(--awlad-blue-tint-50)] transition-colors cursor-pointer"
+                  className="h-7 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#2A436E] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] hover:border-[var(--awlad-royal-700)] dark:hover:border-[#3B82F6] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
                 >
-                  <ArrowDownCircle className="w-3 h-3 text-emerald-700 shrink-0" />
+                  <ArrowDownCircle className="w-3 h-3 text-emerald-700 dark:text-emerald-400 shrink-0" />
                   <span>إيداع نقدي</span>
                 </button>
                 <button
@@ -567,9 +567,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onOpenCashOp('cash_withdrawal');
                     if (typeof window !== 'undefined' && window.innerWidth < 1024) onClose();
                   }}
-                  className="h-7 flex items-center justify-center gap-1 rounded-md bg-white border border-slate-200 text-[var(--awlad-navy-900)] hover:border-[var(--awlad-royal-700)] hover:bg-[var(--awlad-blue-tint-50)] transition-colors cursor-pointer"
+                  className="h-7 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#2A436E] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] hover:border-[var(--awlad-royal-700)] dark:hover:border-[#3B82F6] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
                 >
-                  <ArrowUpCircle className="w-3 h-3 text-red-700 shrink-0" />
+                  <ArrowUpCircle className="w-3 h-3 text-red-700 dark:text-red-400 shrink-0" />
                   <span>سحب نقدي</span>
                 </button>
                 <button
@@ -578,9 +578,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onOpenCashOp('expense');
                     if (typeof window !== 'undefined' && window.innerWidth < 1024) onClose();
                   }}
-                  className="h-7 flex items-center justify-center gap-1 rounded-md bg-white border border-slate-200 text-[var(--awlad-navy-900)] hover:border-[var(--awlad-royal-700)] hover:bg-[var(--awlad-blue-tint-50)] transition-colors cursor-pointer"
+                  className="h-7 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#2A436E] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] hover:border-[var(--awlad-royal-700)] dark:hover:border-[#3B82F6] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
                 >
-                  <TrendingDown className="w-3 h-3 text-amber-700 shrink-0" />
+                  <TrendingDown className="w-3 h-3 text-amber-700 dark:text-amber-400 shrink-0" />
                   <span>مصروف</span>
                 </button>
                 <button
@@ -589,9 +589,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onOpenCashOp('profit_deposit');
                     if (typeof window !== 'undefined' && window.innerWidth < 1024) onClose();
                   }}
-                  className="h-7 flex items-center justify-center gap-1 rounded-md bg-white border border-slate-200 text-[var(--awlad-navy-900)] hover:border-[var(--awlad-royal-700)] hover:bg-[var(--awlad-blue-tint-50)] transition-colors cursor-pointer"
+                  className="h-7 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#2A436E] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] hover:border-[var(--awlad-royal-700)] dark:hover:border-[#3B82F6] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
                 >
-                  <TrendingUp className="w-3 h-3 text-[var(--awlad-royal-700)] shrink-0" />
+                  <TrendingUp className="w-3 h-3 text-[var(--awlad-royal-700)] dark:text-[#60A5FA] shrink-0" />
                   <span>إيداع ربحي</span>
                 </button>
                 <button
@@ -600,7 +600,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onOpenCashOp('cashbox_transfer');
                     if (typeof window !== 'undefined' && window.innerWidth < 1024) onClose();
                   }}
-                  className="col-span-2 h-7 flex items-center justify-center gap-1 rounded-md bg-white border border-[var(--awlad-blue-tint-100)] text-[var(--awlad-royal-700)] hover:bg-[var(--awlad-blue-tint-50)] transition-colors cursor-pointer"
+                  className="col-span-2 h-7 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E] text-[var(--awlad-royal-700)] dark:text-[#85B8FF] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
                 >
                   <ArrowLeftRight className="w-3 h-3 shrink-0" />
                   <span>ترحيل فوري بين الخزائن</span>
@@ -618,8 +618,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             return (
               <div
                 key={section.id}
-                className={`rounded-lg border overflow-hidden bg-white transition-colors ${
-                  hasActiveChild ? 'border-[var(--awlad-royal-700)]' : 'border-slate-200'
+                className={`rounded-lg border overflow-hidden bg-white dark:bg-[#0E1C36] transition-colors ${
+                  hasActiveChild ? 'border-[var(--awlad-royal-700)] dark:border-[#3B82F6]' : 'border-slate-200 dark:border-[#21375C]'
                 }`}
               >
                 {/* Accordion Header */}
@@ -629,7 +629,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   aria-expanded={isExpanded}
                   className={`w-full min-h-[30px] flex items-center justify-between px-2 py-1 text-xs font-black transition-colors cursor-pointer ${
                     section.headerGradient
-                  } ${isExpanded ? 'border-b border-slate-200' : ''}`}
+                  } ${isExpanded ? 'border-b border-slate-200 dark:border-[#21375C]' : ''}`}
                 >
                   <div className="flex items-center gap-1.5 min-w-0">
                     <span
@@ -641,15 +641,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </div>
 
                   <ChevronDown
-                    className={`w-3.5 h-3.5 shrink-0 text-slate-500 transition-transform duration-150 ${
-                      isExpanded ? 'rotate-180 text-[var(--awlad-royal-700)]' : ''
+                    className={`w-3.5 h-3.5 shrink-0 text-slate-500 dark:text-[#849BBF] transition-transform duration-150 ${
+                      isExpanded ? 'rotate-180 text-[var(--awlad-royal-700)] dark:text-[#85B8FF]' : ''
                     }`}
                   />
                 </button>
 
                 {/* Collapsible Submenu Items */}
                 {isExpanded && (
-                  <div className="p-1 space-y-0.5 bg-white">
+                  <div className="p-1 space-y-0.5 bg-white dark:bg-[#0E1C36]">
                     {section.items.map((item) => {
                       const isActive = currentPage === item.key;
                       return (
@@ -659,8 +659,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           onClick={() => handleItemClick(item.key)}
                           className={`w-full min-h-[28px] flex items-center justify-between gap-1.5 px-2 py-1 rounded-md text-[11.5px] transition-colors cursor-pointer ${
                             isActive
-                              ? 'bg-[var(--awlad-royal-700)] text-white font-black'
-                              : 'text-slate-700 hover:bg-[var(--awlad-blue-tint-50)] hover:text-[var(--awlad-navy-900)] font-semibold'
+                              ? 'bg-[var(--awlad-royal-700)] dark:bg-[#1659C8] text-white font-black'
+                              : 'text-slate-700 dark:text-[#C9D7EC] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] hover:text-[var(--awlad-navy-900)] dark:hover:text-[#F3F7FC] font-semibold'
                           }`}
                         >
                           <span className="truncate">{item.label}</span>
@@ -670,7 +670,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                               className={`text-[10px] font-bold font-mono tabular-nums px-1.5 py-0.5 rounded shrink-0 ${
                                 isActive
                                   ? 'bg-white/20 text-white'
-                                  : 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border border-[var(--awlad-blue-tint-100)]'
+                                  : 'bg-[var(--awlad-blue-tint-50)] dark:bg-[#16366B] text-[var(--awlad-navy-900)] dark:text-[#85B8FF] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E]'
                               }`}
                             >
                               {item.badge}
@@ -687,8 +687,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Clean Drawer Footer */}
-        <div className={`p-1.5 border-t border-slate-200 bg-slate-50 text-center shrink-0 ${isCollapsed ? 'lg:hidden' : ''}`}>
-          <div className="text-[10px] text-[var(--awlad-brand-silver)] font-semibold">
+        <div className={`p-1.5 border-t border-slate-200 dark:border-[#21375C] bg-slate-50 dark:bg-[#0A162B] text-center shrink-0 ${isCollapsed ? 'lg:hidden' : ''}`}>
+          <div className="text-[10px] text-[var(--awlad-brand-silver)] dark:text-[#849BBF] font-semibold">
             <span>أولاد سليم للمحاسبة • v3.0.0</span>
           </div>
         </div>

@@ -466,13 +466,13 @@ const MainAppContent: React.FC = () => {
   const renderActivePage = () => {
     if (!isPageAllowed) {
       return (
-        <div className="bg-white rounded-lg border border-red-200 p-4 text-center space-y-2 shadow-xs">
-          <ShieldAlert className="w-8 h-8 text-red-500 mx-auto" />
-          <h3 className="text-sm font-black text-slate-900">غير مصرح لك بالوصول إلى هذه الشاشة</h3>
-          <p className="text-xs text-slate-500">هذه الصلاحية مقيدة لحسابك. يرجى مراجعة المدير العام عند الحاجة.</p>
+        <div className="bg-white dark:bg-[#0E1C36] rounded-lg border border-red-200 dark:border-red-500/35 p-4 text-center space-y-2 shadow-xs">
+          <ShieldAlert className="w-8 h-8 text-red-500 dark:text-red-400 mx-auto" />
+          <h3 className="text-sm font-black text-slate-900 dark:text-[#F3F7FC]">غير مصرح لك بالوصول إلى هذه الشاشة</h3>
+          <p className="text-xs text-slate-500 dark:text-[#A9BCD9]">هذه الصلاحية مقيدة لحسابك. يرجى مراجعة المدير العام عند الحاجة.</p>
           <button
             onClick={() => setCurrentPage('dashboard')}
-            className="h-8 px-4 rounded-md bg-[var(--awlad-royal-700)] hover:bg-[var(--awlad-navy-900)] text-white text-xs font-bold cursor-pointer"
+            className="h-8 px-4 rounded-md bg-[var(--awlad-royal-700)] hover:bg-[var(--awlad-navy-900)] dark:bg-[#1659C8] dark:hover:bg-[#1F6BE6] text-white text-xs font-bold cursor-pointer"
           >
             العودة إلى الرئيسية
           </button>
@@ -713,7 +713,7 @@ const MainAppContent: React.FC = () => {
           {renderActivePage()}
         </StaffMobileShell>
       ) : (
-        <div className="min-h-screen bg-[var(--awlad-surface-page)] text-slate-800 flex flex-col font-sans antialiased pb-safe">
+        <div className="min-h-screen bg-[var(--awlad-surface-page)] text-slate-800 dark:text-[#DCE6F5] flex flex-col font-sans antialiased pb-safe">
           <Sidebar
             currentPage={currentPage}
             onNavigate={(page) => setCurrentPage(page)}

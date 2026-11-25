@@ -128,28 +128,28 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   return (
     <div className="space-y-2.5">
       {/* Compact Header & Period Filter */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-white px-3 py-2 rounded-lg border border-slate-200">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-white dark:bg-[#0E1C36] px-3 py-2 rounded-lg border border-slate-200 dark:border-[#21375C]">
         <div>
-          <h2 className="text-sm font-black text-[var(--awlad-navy-950)] flex flex-wrap items-center gap-2">
+          <h2 className="text-sm font-black text-[var(--awlad-navy-950)] dark:text-[#F3F7FC] flex flex-wrap items-center gap-2">
             <span>ملخص الحسابات — {currentUser?.fullName}</span>
             {currentUser?.jobTitle && (
-              <span className="text-[11px] font-bold text-[var(--awlad-royal-700)] bg-[#EEF3FA] border border-[#DCE6F5] px-1.5 py-0.5 rounded">
+              <span className="text-[11px] font-bold text-[var(--awlad-royal-700)] dark:text-[#85B8FF] bg-[#EEF3FA] dark:bg-[#132544] border border-[#DCE6F5] dark:border-[#2A436E] px-1.5 py-0.5 rounded">
                 {currentUser.jobTitle}
               </span>
             )}
           </h2>
-          <p className="text-[11px] text-slate-500">
+          <p className="text-[11px] text-slate-500 dark:text-[#97AECE]">
             {settings.companyName || 'أولاد سليم'} • {new Date().toLocaleDateString('ar-EG')}
           </p>
         </div>
 
-        <div className="flex items-center gap-1.5 bg-[#EEF3FA] px-2 py-1 rounded-md border border-[#DCE6F5] text-xs">
-          <Calendar className="w-3.5 h-3.5 text-[var(--awlad-royal-700)]" />
-          <span className="text-[var(--awlad-navy-950)] font-bold">الفترة:</span>
+        <div className="flex items-center gap-1.5 bg-[#EEF3FA] dark:bg-[#132544] px-2 py-1 rounded-md border border-[#DCE6F5] dark:border-[#2A436E] text-xs">
+          <Calendar className="w-3.5 h-3.5 text-[var(--awlad-royal-700)] dark:text-[#85B8FF]" />
+          <span className="text-[var(--awlad-navy-950)] dark:text-[#DCE6F5] font-bold">الفترة:</span>
           <select
             value={dateFilter}
             onChange={(e) => setDateFilter(e.target.value as any)}
-            className="h-7 bg-white border border-slate-300 rounded px-2 text-xs font-bold text-slate-800 focus:outline-hidden focus:border-[var(--awlad-royal-700)]"
+            className="h-7 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC] focus:outline-hidden focus:border-[var(--awlad-royal-700)] dark:focus:border-[#3B82F6]"
           >
             <option value="today">اليوم</option>
             <option value="yesterday">أمس</option>
@@ -209,101 +209,101 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
       )}
 
       {/* Accounting Summary Ledger Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden">
-        <div className="bg-white px-2.5 py-2">
-          <div className="text-[11px] font-bold text-slate-500">إجمالي المبيعات</div>
-          <div className="text-sm font-black text-[var(--awlad-navy-950)] tabular-nums mt-0.5">
-            {totalSales.toLocaleString()} <span className="text-[11px] font-semibold text-slate-500">{settings.currency}</span>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-slate-200 dark:bg-[#21375C] border border-slate-200 dark:border-[#21375C] rounded-lg overflow-hidden">
+        <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-2">
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#A9BCD9]">إجمالي المبيعات</div>
+          <div className="text-sm font-black text-[var(--awlad-navy-950)] dark:text-[#F3F7FC] tabular-nums mt-0.5">
+            {totalSales.toLocaleString()} <span className="text-[11px] font-semibold text-slate-500 dark:text-[#97AECE]">{settings.currency}</span>
           </div>
-          <div className="text-[11px] text-[var(--awlad-royal-700)] font-bold tabular-nums mt-1">
+          <div className="text-[11px] text-[var(--awlad-royal-700)] dark:text-[#85B8FF] font-bold tabular-nums mt-1">
             اليوم: {todaySales.toLocaleString()} {settings.currency}
           </div>
         </div>
 
-        <div className="bg-white px-2.5 py-2">
-          <div className="text-[11px] font-bold text-slate-500">إجمالي المشتريات</div>
-          <div className="text-sm font-black text-[var(--awlad-navy-950)] tabular-nums mt-0.5">
-            {totalPurchases.toLocaleString()} <span className="text-[11px] font-semibold text-slate-500">{settings.currency}</span>
+        <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-2">
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#A9BCD9]">إجمالي المشتريات</div>
+          <div className="text-sm font-black text-[var(--awlad-navy-950)] dark:text-[#F3F7FC] tabular-nums mt-0.5">
+            {totalPurchases.toLocaleString()} <span className="text-[11px] font-semibold text-slate-500 dark:text-[#97AECE]">{settings.currency}</span>
           </div>
-          <div className="text-[11px] text-[var(--awlad-silver-600)] font-bold tabular-nums mt-1">
+          <div className="text-[11px] text-[var(--awlad-silver-600)] dark:text-[#97AECE] font-bold tabular-nums mt-1">
             اليوم: {todayPurchases.toLocaleString()} {settings.currency}
           </div>
         </div>
 
         <div
           onClick={() => onNavigate('cashboxes')}
-          className="bg-white px-2.5 py-2 hover:bg-[#EEF3FA]/50 cursor-pointer transition-colors"
+          className="bg-white dark:bg-[#0E1C36] px-2.5 py-2 hover:bg-[#EEF3FA]/50 dark:hover:bg-[#15284A] cursor-pointer transition-colors"
         >
-          <div className="text-[11px] font-bold text-slate-500">أرصدة الخزائن والبنوك</div>
-          <div className="text-sm font-black text-[var(--awlad-royal-700)] tabular-nums mt-0.5">
-            {totalCashAndBanks.toLocaleString()} <span className="text-[11px] font-semibold text-slate-500">{settings.currency}</span>
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#A9BCD9]">أرصدة الخزائن والبنوك</div>
+          <div className="text-sm font-black text-[var(--awlad-royal-700)] dark:text-[#85B8FF] tabular-nums mt-0.5">
+            {totalCashAndBanks.toLocaleString()} <span className="text-[11px] font-semibold text-slate-500 dark:text-[#97AECE]">{settings.currency}</span>
           </div>
-          <div className="text-[11px] text-slate-500 font-medium mt-1">
+          <div className="text-[11px] text-slate-500 dark:text-[#97AECE] font-medium mt-1">
             {cashboxes.length} خزائن وحسابات نشطة
           </div>
         </div>
 
         <div
           onClick={() => onNavigate('products')}
-          className="bg-white px-2.5 py-2 hover:bg-[#EEF3FA]/50 cursor-pointer transition-colors"
+          className="bg-white dark:bg-[#0E1C36] px-2.5 py-2 hover:bg-[#EEF3FA]/50 dark:hover:bg-[#15284A] cursor-pointer transition-colors"
         >
-          <div className="text-[11px] font-bold text-slate-500">قيمة المخزون (تكلفة)</div>
-          <div className="text-sm font-black text-[var(--awlad-navy-950)] tabular-nums mt-0.5">
-            {inventoryValue.toLocaleString()} <span className="text-[11px] font-semibold text-slate-500">{settings.currency}</span>
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#A9BCD9]">قيمة المخزون (تكلفة)</div>
+          <div className="text-sm font-black text-[var(--awlad-navy-950)] dark:text-[#F3F7FC] tabular-nums mt-0.5">
+            {inventoryValue.toLocaleString()} <span className="text-[11px] font-semibold text-slate-500 dark:text-[#97AECE]">{settings.currency}</span>
           </div>
-          <div className="text-[11px] text-slate-500 font-medium mt-1">
+          <div className="text-[11px] text-slate-500 dark:text-[#97AECE] font-medium mt-1">
             {products.length} صنف مسجل
           </div>
         </div>
 
         <div
           onClick={() => onNavigate('customer-accounts')}
-          className="bg-white px-2.5 py-2 hover:bg-[#EEF3FA]/50 cursor-pointer transition-colors"
+          className="bg-white dark:bg-[#0E1C36] px-2.5 py-2 hover:bg-[#EEF3FA]/50 dark:hover:bg-[#15284A] cursor-pointer transition-colors"
         >
-          <div className="text-[11px] font-bold text-slate-500">مديونيات العملاء</div>
-          <div className="text-sm font-black text-rose-700 tabular-nums mt-0.5">
-            {customerDebtsTotal.toLocaleString()} <span className="text-[11px] font-semibold text-slate-500">{settings.currency}</span>
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#A9BCD9]">مديونيات العملاء</div>
+          <div className="text-sm font-black text-rose-700 dark:text-rose-400 tabular-nums mt-0.5">
+            {customerDebtsTotal.toLocaleString()} <span className="text-[11px] font-semibold text-slate-500 dark:text-[#97AECE]">{settings.currency}</span>
           </div>
-          <div className="text-[11px] text-slate-500 font-medium mt-1">
+          <div className="text-[11px] text-slate-500 dark:text-[#97AECE] font-medium mt-1">
             من أصل {customers.length} عميل
           </div>
         </div>
 
         <div
           onClick={() => onNavigate('supplier-accounts')}
-          className="bg-white px-2.5 py-2 hover:bg-[#EEF3FA]/50 cursor-pointer transition-colors"
+          className="bg-white dark:bg-[#0E1C36] px-2.5 py-2 hover:bg-[#EEF3FA]/50 dark:hover:bg-[#15284A] cursor-pointer transition-colors"
         >
-          <div className="text-[11px] font-bold text-slate-500">مستحقات الموردين</div>
-          <div className="text-sm font-black text-[var(--awlad-navy-900)] tabular-nums mt-0.5">
-            {supplierDebtsTotal.toLocaleString()} <span className="text-[11px] font-semibold text-slate-500">{settings.currency}</span>
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#A9BCD9]">مستحقات الموردين</div>
+          <div className="text-sm font-black text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] tabular-nums mt-0.5">
+            {supplierDebtsTotal.toLocaleString()} <span className="text-[11px] font-semibold text-slate-500 dark:text-[#97AECE]">{settings.currency}</span>
           </div>
-          <div className="text-[11px] text-slate-500 font-medium mt-1">
+          <div className="text-[11px] text-slate-500 dark:text-[#97AECE] font-medium mt-1">
             من أصل {suppliers.length} مورد
           </div>
         </div>
 
         <div
           onClick={() => onNavigate('expenses')}
-          className="bg-white px-2.5 py-2 hover:bg-[#EEF3FA]/50 cursor-pointer transition-colors"
+          className="bg-white dark:bg-[#0E1C36] px-2.5 py-2 hover:bg-[#EEF3FA]/50 dark:hover:bg-[#15284A] cursor-pointer transition-colors"
         >
-          <div className="text-[11px] font-bold text-slate-500">المصروفات</div>
-          <div className="text-sm font-black text-[var(--awlad-silver-600)] tabular-nums mt-0.5">
-            {totalExpenses.toLocaleString()} <span className="text-[11px] font-semibold text-slate-500">{settings.currency}</span>
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#A9BCD9]">المصروفات</div>
+          <div className="text-sm font-black text-[var(--awlad-silver-600)] dark:text-[#DCE6F5] tabular-nums mt-0.5">
+            {totalExpenses.toLocaleString()} <span className="text-[11px] font-semibold text-slate-500 dark:text-[#97AECE]">{settings.currency}</span>
           </div>
-          <div className="text-[11px] text-slate-500 font-medium mt-1">
+          <div className="text-[11px] text-slate-500 dark:text-[#97AECE] font-medium mt-1">
             خلال الفترة المحددة
           </div>
         </div>
 
         <div
           onClick={() => onNavigate('expenses')}
-          className="bg-white px-2.5 py-2 hover:bg-[#EEF3FA]/50 cursor-pointer transition-colors"
+          className="bg-white dark:bg-[#0E1C36] px-2.5 py-2 hover:bg-[#EEF3FA]/50 dark:hover:bg-[#15284A] cursor-pointer transition-colors"
         >
-          <div className="text-[11px] font-bold text-slate-500">الإيرادات المتنوعة</div>
-          <div className="text-sm font-black text-[var(--awlad-royal-500)] tabular-nums mt-0.5">
-            {totalIncome.toLocaleString()} <span className="text-[11px] font-semibold text-slate-500">{settings.currency}</span>
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#A9BCD9]">الإيرادات المتنوعة</div>
+          <div className="text-sm font-black text-[var(--awlad-royal-500)] dark:text-[#85B8FF] tabular-nums mt-0.5">
+            {totalIncome.toLocaleString()} <span className="text-[11px] font-semibold text-slate-500 dark:text-[#97AECE]">{settings.currency}</span>
           </div>
-          <div className="text-[11px] text-slate-500 font-medium mt-1">
+          <div className="text-[11px] text-slate-500 dark:text-[#97AECE] font-medium mt-1">
             خلال الفترة المحددة
           </div>
         </div>
@@ -311,16 +311,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
       {/* Activity Chart & Cashboxes Ledger Table */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-2.5">
-        <div className="lg:col-span-2 bg-white p-2.5 rounded-lg border border-slate-200 space-y-2">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
-            <h3 className="text-xs font-black text-[var(--awlad-navy-950)]">حركة المبيعات والمشتريات (آخر 7 أيام)</h3>
-            <div className="flex items-center gap-3 text-[11px] font-bold">
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-xs bg-[var(--awlad-royal-700)]"></span> المبيعات</span>
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-xs bg-[var(--awlad-silver-500)]/50"></span> المشتريات</span>
+        <div className="lg:col-span-2 bg-white dark:bg-[#0E1C36] p-2.5 rounded-lg border border-slate-200 dark:border-[#21375C] space-y-2">
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-[#1B2F52] pb-1.5">
+            <h3 className="text-xs font-black text-[var(--awlad-navy-950)] dark:text-[#F3F7FC]">حركة المبيعات والمشتريات (آخر 7 أيام)</h3>
+            <div className="flex items-center gap-3 text-[11px] font-bold dark:text-[#DCE6F5]">
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-xs bg-[var(--awlad-royal-700)] dark:bg-[#1D63D8]"></span> المبيعات</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-xs bg-[var(--awlad-silver-500)]/50 dark:bg-[#5E7BA8]"></span> المشتريات</span>
             </div>
           </div>
 
-          <div className="h-32 pt-2 flex items-end justify-between gap-2 border-b border-slate-200">
+          <div className="h-32 pt-2 flex items-end justify-between gap-2 border-b border-slate-200 dark:border-[#21375C]">
             {last7DaysChart.buckets.map((d, idx) => {
               const salesH = d.sales > 0 ? Math.max(4, Math.min(100, (d.sales / last7DaysChart.maxVal) * 100)) : 0;
               const purH = d.purchases > 0 ? Math.max(4, Math.min(100, (d.purchases / last7DaysChart.maxVal) * 100)) : 0;
@@ -330,16 +330,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                   <div className="flex items-end gap-1 w-full justify-center h-full">
                     <div
                       style={{ height: `${salesH}%` }}
-                      className="w-4 sm:w-5 bg-[var(--awlad-royal-700)] rounded-t-xs hover:bg-[var(--awlad-royal-500)] transition-colors"
+                      className="w-4 sm:w-5 bg-[var(--awlad-royal-700)] dark:bg-[#1D63D8] rounded-t-xs hover:bg-[var(--awlad-royal-500)] dark:hover:bg-[#3B82F6] transition-colors"
                       title={`${d.dateStr} — مبيعات: ${d.sales.toLocaleString()} ${settings.currency}`}
                     />
                     <div
                       style={{ height: `${purH}%` }}
-                      className="w-4 sm:w-5 bg-[var(--awlad-silver-500)]/45 rounded-t-xs hover:bg-[var(--awlad-silver-600)]/60 transition-colors"
+                      className="w-4 sm:w-5 bg-[var(--awlad-silver-500)]/45 dark:bg-[#5E7BA8] rounded-t-xs hover:bg-[var(--awlad-silver-600)]/60 dark:hover:bg-[#7A98C6] transition-colors"
                       title={`${d.dateStr} — مشتريات: ${d.purchases.toLocaleString()} ${settings.currency}`}
                     />
                   </div>
-                  <span className="text-[10px] font-bold text-slate-500 mt-1">{d.day}</span>
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-[#97AECE] mt-1">{d.day}</span>
                 </div>
               );
             })}
@@ -349,7 +349,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             <button
               type="button"
               onClick={() => onNavigate('reports')}
-              className="text-[var(--awlad-royal-700)] font-bold hover:underline flex items-center gap-1 cursor-pointer"
+              className="text-[var(--awlad-royal-700)] dark:text-[#85B8FF] font-bold hover:underline flex items-center gap-1 cursor-pointer"
             >
               تقرير المبيعات والأرباح المفصل <ChevronLeft className="w-3.5 h-3.5" />
             </button>
@@ -371,7 +371,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             <button
               type="button"
               onClick={() => onNavigate('cashboxes')}
-              className="text-[11px] text-blue-900 font-bold hover:underline cursor-pointer whitespace-nowrap"
+              className="text-[11px] text-blue-900 dark:text-[#85B8FF] font-bold hover:underline cursor-pointer whitespace-nowrap"
             >
               إدارة الخزائن
             </button>
@@ -385,8 +385,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
               exportValue: (cb) => cb.name,
               render: (cb) => (
                 <div>
-                  <div className="font-bold text-slate-800">{cb.name}</div>
-                  <div className="text-[10px] text-slate-500">
+                  <div className="font-bold text-slate-800 dark:text-[#F3F7FC]">{cb.name}</div>
+                  <div className="text-[10px] text-slate-500 dark:text-[#97AECE]">
                     {cb.type === 'bank' ? `بنك: ${cb.accountNumber || 'جاري'}` : 'خزينة نقدية'}
                   </div>
                 </div>
@@ -399,9 +399,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
               sortValue: (cb) => (cb.balanceHidden ? 0 : cb.currentBalance ?? 0),
               exportValue: (cb) => (cb.balanceHidden ? 'مخفي' : cb.currentBalance ?? 0),
               render: (cb) => (
-                <span className="font-black text-blue-950 font-mono tabular-nums whitespace-nowrap">
+                <span className="font-black text-blue-950 dark:text-[#85B8FF] font-mono tabular-nums whitespace-nowrap">
                   {cb.balanceHidden ? 'مخفي' : (cb.currentBalance ?? 0).toLocaleString()}{' '}
-                  <span className="text-[10px] font-normal text-slate-500">{settings.currency}</span>
+                  <span className="text-[10px] font-normal text-slate-500 dark:text-[#97AECE]">{settings.currency}</span>
                 </span>
               ),
             },
@@ -424,7 +424,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           <button
             type="button"
             onClick={() => onNavigate('sales-invoices')}
-            className="text-xs text-blue-900 font-bold hover:underline flex items-center gap-1 cursor-pointer whitespace-nowrap"
+            className="text-xs text-blue-900 dark:text-[#85B8FF] font-bold hover:underline flex items-center gap-1 cursor-pointer whitespace-nowrap"
           >
             عرض جميع الفواتير <ChevronLeft className="w-3.5 h-3.5" />
           </button>
@@ -436,7 +436,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             align: 'right',
             sortValue: (inv) => inv.invoiceNumber,
             exportValue: (inv) => inv.invoiceNumber,
-            render: (inv) => <span className="font-bold text-blue-900 font-mono whitespace-nowrap">{inv.invoiceNumber}</span>,
+            render: (inv) => <span className="font-bold text-blue-900 dark:text-[#85B8FF] font-mono whitespace-nowrap">{inv.invoiceNumber}</span>,
           },
           {
             key: 'type',
@@ -446,9 +446,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             exportValue: (inv) => (inv.type === 'sales' ? 'مبيعات' : 'مشتريات'),
             render: (inv) =>
               inv.type === 'sales' ? (
-                <span className="px-1.5 py-0.5 rounded bg-[#EEF3FA] text-[var(--awlad-royal-700)] border border-[#DCE6F5] text-[10px] font-bold">مبيعات</span>
+                <span className="px-1.5 py-0.5 rounded bg-[#EEF3FA] dark:bg-[#16366B] text-[var(--awlad-royal-700)] dark:text-[#85B8FF] border border-[#DCE6F5] dark:border-[#2A436E] text-[10px] font-bold">مبيعات</span>
               ) : (
-                <span className="px-1.5 py-0.5 rounded bg-slate-100 text-[var(--awlad-navy-900)] border border-slate-300 text-[10px] font-bold">مشتريات</span>
+                <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-[#172B4D] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] border border-slate-300 dark:border-[#2A436E] text-[10px] font-bold">مشتريات</span>
               ),
           },
           {
@@ -458,7 +458,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             sortValue: (inv) => inv.customerName || inv.supplierName || 'نقدي / عام',
             exportValue: (inv) => inv.customerName || inv.supplierName || 'نقدي / عام',
             render: (inv) => (
-              <span className="font-semibold text-slate-800">{inv.customerName || inv.supplierName || 'نقدي / عام'}</span>
+              <span className="font-semibold text-slate-800 dark:text-[#F3F7FC]">{inv.customerName || inv.supplierName || 'نقدي / عام'}</span>
             ),
           },
           {
@@ -467,7 +467,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             align: 'center',
             sortValue: (inv) => inv.date,
             exportValue: (inv) => inv.date,
-            render: (inv) => <span className="text-slate-500 font-mono tabular-nums whitespace-nowrap">{inv.date}</span>,
+            render: (inv) => <span className="text-slate-500 dark:text-[#97AECE] font-mono tabular-nums whitespace-nowrap">{inv.date}</span>,
           },
           {
             key: 'warehouseName',
@@ -475,7 +475,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             align: 'right',
             sortValue: (inv) => inv.warehouseName || '',
             exportValue: (inv) => inv.warehouseName || '',
-            render: (inv) => <span className="text-slate-600">{inv.warehouseName}</span>,
+            render: (inv) => <span className="text-slate-600 dark:text-[#A9BCD9]">{inv.warehouseName}</span>,
           },
           {
             key: 'grandTotal',
@@ -484,7 +484,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             sortValue: (inv) => inv.grandTotal,
             exportValue: (inv) => inv.grandTotal,
             render: (inv) => (
-              <span className="font-black text-slate-900 font-mono tabular-nums whitespace-nowrap">
+              <span className="font-black text-slate-900 dark:text-[#F3F7FC] font-mono tabular-nums whitespace-nowrap">
                 {inv.grandTotal.toLocaleString()} {settings.currency}
               </span>
             ),
@@ -496,7 +496,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             sortValue: (inv) => inv.paidAmount,
             exportValue: (inv) => inv.paidAmount,
             render: (inv) => (
-              <span className="font-bold text-emerald-700 font-mono tabular-nums whitespace-nowrap">
+              <span className="font-bold text-emerald-700 dark:text-emerald-400 font-mono tabular-nums whitespace-nowrap">
                 {inv.paidAmount.toLocaleString()}
               </span>
             ),
@@ -508,7 +508,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             sortValue: (inv) => inv.remainingAmount,
             exportValue: (inv) => inv.remainingAmount,
             render: (inv) => (
-              <span className="font-bold text-red-600 font-mono tabular-nums whitespace-nowrap">
+              <span className="font-bold text-red-600 dark:text-rose-400 font-mono tabular-nums whitespace-nowrap">
                 {inv.remainingAmount.toLocaleString()}
               </span>
             ),
@@ -521,11 +521,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             exportValue: (inv) => (inv.status === 'confirmed' ? 'مؤكدة' : inv.status === 'draft' ? 'مسودة' : 'ملغاة'),
             render: (inv) =>
               inv.status === 'confirmed' ? (
-                <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">مؤكدة</span>
+                <span className="px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-400/30 text-[10px] font-bold">مؤكدة</span>
               ) : inv.status === 'draft' ? (
-                <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold">مسودة</span>
+                <span className="px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-400/30 text-[10px] font-bold">مسودة</span>
               ) : (
-                <span className="px-1.5 py-0.5 rounded bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold">ملغاة</span>
+                <span className="px-1.5 py-0.5 rounded bg-red-50 dark:bg-red-500/15 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-400/30 text-[10px] font-bold">ملغاة</span>
               ),
           },
           {
@@ -537,7 +537,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
               <button
                 type="button"
                 onClick={() => onNavigate(inv.type === 'sales' ? 'sales-invoices' : 'purchase-invoices')}
-                className="p-1.5 rounded text-slate-600 hover:text-blue-900 hover:bg-blue-50 transition-colors cursor-pointer"
+                className="p-1.5 rounded text-slate-600 dark:text-[#A9BCD9] hover:text-blue-900 dark:hover:text-[#85B8FF] hover:bg-blue-50 dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
                 title="عرض الفاتورة"
               >
                 <Eye className="w-4 h-4" />

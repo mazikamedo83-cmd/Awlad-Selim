@@ -313,7 +313,7 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           autoComplete="off"
-          className="w-full pr-8 pl-12 py-1.5 h-8 bg-white border border-slate-300 rounded-md text-xs font-bold text-slate-900 placeholder:text-slate-400 placeholder:font-normal focus:outline-hidden focus:border-[#003589] focus:ring-1 focus:ring-[#DCE6F5] disabled:bg-slate-100 disabled:cursor-not-allowed"
+          className="w-full pr-8 pl-12 py-1.5 h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md text-xs font-bold text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-400 dark:placeholder:text-[#7F96BA] placeholder:font-normal focus:outline-hidden focus:border-[#003589] dark:focus:border-[#3B82F6] focus:ring-1 focus:ring-[#DCE6F5] dark:focus:ring-[#3B82F6]/30 disabled:bg-slate-100 dark:disabled:bg-[#0B172E] disabled:cursor-not-allowed"
         />
         <div className="absolute left-2 flex items-center gap-1">
           {(query || selectedProductId) && !disabled && (
@@ -325,7 +325,7 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
                 setIsOpen(true);
                 inputElRef.current?.focus();
               }}
-              className="p-1 text-slate-400 hover:text-red-600 rounded cursor-pointer"
+              className="p-1 text-slate-400 dark:text-[#849BBF] hover:text-red-600 dark:hover:text-red-400 rounded cursor-pointer"
               title="مسح البحث"
             >
               <X className="w-3.5 h-3.5" />
@@ -342,7 +342,7 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
                 inputElRef.current?.focus();
               }
             }}
-            className={`w-4 h-4 text-slate-400 transition-transform cursor-pointer ${isOpen ? 'rotate-180 text-blue-700' : ''}`}
+            className={`w-4 h-4 text-slate-400 dark:text-[#849BBF] transition-transform cursor-pointer ${isOpen ? 'rotate-180 text-blue-700 dark:text-[#85B8FF]' : ''}`}
           />
         </div>
       </div>
@@ -362,11 +362,11 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
               maxHeight: panelStyle.maxHeight,
               zIndex: 100,
             }}
-            className="overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-xl divide-y divide-slate-100"
+            className="overflow-y-auto bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#21375C] rounded-lg shadow-xl divide-y divide-slate-100 dark:divide-[#1B2F52]"
           >
           {filteredProducts.length === 0 ? (
-            <div className="p-3 text-center text-xs text-slate-500">
-              <Package className="w-5 h-5 text-slate-300 mx-auto mb-1" />
+            <div className="p-3 text-center text-xs text-slate-500 dark:text-[#97AECE]">
+              <Package className="w-5 h-5 text-slate-300 dark:text-[#5F789E] mx-auto mb-1" />
               لا توجد أصناف مطابقة للبحث "{query}"
             </div>
           ) : (
@@ -388,42 +388,42 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
                   }}
                   className={`w-full px-3 py-1.5 text-right flex items-center justify-between gap-2 transition-colors cursor-pointer ${
                     isHighlighted
-                      ? 'bg-[#EEF3FA] text-[#011E58]'
+                      ? 'bg-[#EEF3FA] dark:bg-[#16366B] text-[#011E58] dark:text-[#F3F7FC]'
                       : isSelected
-                      ? 'bg-[#DCE6F5]/70'
-                      : 'hover:bg-slate-50'
+                      ? 'bg-[#DCE6F5]/70 dark:bg-[#132544]'
+                      : 'hover:bg-slate-50 dark:hover:bg-[#1A3461]'
                   }`}
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-black text-slate-900 truncate">{p.name}</span>
-                      <span className="text-[10px] font-mono bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-bold">
+                      <span className="text-xs font-black text-slate-900 dark:text-[#F3F7FC] truncate">{p.name}</span>
+                      <span className="text-[10px] font-mono bg-slate-100 dark:bg-[#172E56] text-slate-600 dark:text-[#A9BCD9] px-1.5 py-0.5 rounded font-bold">
                         {p.code}
                       </span>
                       {p.barcode && (
-                        <span className="text-[10px] font-mono text-slate-400">#{p.barcode}</span>
+                        <span className="text-[10px] font-mono text-slate-400 dark:text-[#849BBF]">#{p.barcode}</span>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5 flex-wrap">
+                    <div className="flex items-center gap-2 text-[10px] text-slate-500 dark:text-[#97AECE] mt-0.5 flex-wrap">
                       <span>{p.category}</span>
                       <span>•</span>
                       <span>الوحدة: {p.baseUnit}</span>
                       <span>•</span>
-                      <span className="text-slate-600 font-semibold">{getProductWarehouseDisplay(p)}</span>
+                      <span className="text-slate-600 dark:text-[#CBD9EE] font-semibold">{getProductWarehouseDisplay(p)}</span>
                     </div>
                   </div>
 
                   <div className="text-left shrink-0 space-y-0.5">
-                    <div className="text-xs font-black text-blue-900 font-mono">
+                    <div className="text-xs font-black text-blue-900 dark:text-[#85B8FF] font-mono">
                       {Number(price || 0).toLocaleString()} {currency}
                     </div>
                     <div
                       className={`text-[10px] font-bold px-1.5 py-0.5 rounded inline-block ${
                         stockQty <= 0
-                          ? 'bg-red-100 text-red-700'
+                          ? 'bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-300'
                           : stockQty <= (p.minStockLevel || 0)
-                          ? 'bg-amber-100 text-amber-800'
-                          : 'bg-emerald-100 text-emerald-800'
+                          ? 'bg-amber-100 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300'
+                          : 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-800 dark:text-emerald-300'
                       }`}
                     >
                       المتاح: {stockQty} {p.baseUnit}

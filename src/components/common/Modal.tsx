@@ -48,17 +48,17 @@ export const Modal: React.FC<ModalProps> = ({
     <div className="fixed inset-0 z-50 overflow-y-auto no-print">
       {/* Backdrop */}
       <div 
-        className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity" 
+        className="fixed inset-0 bg-slate-900/60 dark:bg-[#040B17]/75 backdrop-blur-xs transition-opacity" 
         onClick={onClose} 
       />
 
       <div className="flex min-h-full items-center justify-center p-2 text-right">
         <div 
-          className={`relative w-full ${maxWidthClass} transform rounded-lg bg-white shadow-2xl transition-all border border-slate-200 overflow-hidden`}
+          className={`relative w-full ${maxWidthClass} transform rounded-lg bg-white dark:bg-[#0E1C36] shadow-2xl transition-all border border-slate-200 dark:border-[#21375C] overflow-hidden`}
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-[var(--awlad-royal-700)]/20 bg-[var(--awlad-navy-900)] text-white px-3 py-2 gap-2">
+          <div className="flex items-center justify-between border-b border-[var(--awlad-royal-700)]/20 dark:border-[#2A4D86] bg-[var(--awlad-navy-900)] dark:bg-[#132952] text-white px-3 py-2 gap-2">
             <div className="min-w-0">
               <h3 className="text-xs sm:text-sm font-black text-white truncate">{title}</h3>
               {subtitle && <p className="text-[11px] text-blue-100 mt-0.5 line-clamp-1">{subtitle}</p>}
