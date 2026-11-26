@@ -10,6 +10,8 @@ import {
 } from 'lucide-react';
 import type { ItemLifecyclePayload, ItemPnlSummary } from '../../../types';
 import { UnifiedDataTable } from '../../common/UnifiedDataTable';
+import { usePreferences } from '../../../context/PreferencesContext';
+import { formatLocaleNumber } from '../../../i18n/translator';
 
 interface ItemLifecycleAndPnlPanelProps {
   lifecycle: ItemLifecyclePayload | null;
@@ -34,8 +36,8 @@ interface ItemLifecycleAndPnlPanelProps {
   onInspectDocument: (docType: string, docId: string) => void;
 }
 
-const fmt = (n: number | undefined | null) => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const fmtQty = (n: number | undefined | null) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 3 });
+const fmt = (n: number | undefined | null) => formatLocaleNumber(Number(n || 0), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtQty = (n: number | undefined | null) => formatLocaleNumber(Number(n || 0), { maximumFractionDigits: 3 });
 
 export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> = ({
   lifecycle,
@@ -46,6 +48,7 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
   onSelectProduct,
   onInspectDocument,
 }) => {
+  const { t, dir } = usePreferences();
   const [innerTab, setInnerTab] = useState<'timeline' | 'pnl' | 'portfolio'>(
     lifecycle ? 'timeline' : 'portfolio'
   );
@@ -74,7 +77,7 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
   });
 
   return (
-    <div className="space-y-2.5" dir="rtl">
+    <div className="space-y-2.5" dir={dir}>
       {/* Sub-mode switcher inside the unified Item Analysis view */}
       <div className="flex flex-wrap items-center justify-between gap-2 bg-white border border-slate-200 rounded-lg p-1.5">
         <div className="flex flex-wrap items-center gap-1">
@@ -88,7 +91,7 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
                   : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
             >
-              تاريخ الصنف من أول يوم لآخر حركة ({lifecycle.timeline.length})
+              {t('تاريخ الصنف من أول يوم لآخر حركة', 'Full Item History (Day 1 to Latest)')} ({lifecycle.timeline.length})
             </button>
           )}
           {selectedPnl && (
@@ -101,7 +104,7 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
                   : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
             >
-              تحليل الأرباح والخسائر التفصيلي للصنف
+              {t('تحليل الأرباح والخسائر التفصيلي للصنف', 'Detailed Item Profit & Loss Analysis')}
             </button>
           )}
           <button
@@ -113,16 +116,16 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
                 : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
           >
-            أرباح وخسائر جميع الأصناف ({pnlItems.length})
+            {t('أرباح وخسائر جميع الأصناف', 'All Items Profit & Loss')} ({pnlItems.length})
           </button>
         </div>
 
         {lifecycle && (
           <div className="text-xs text-slate-600 flex flex-wrap items-center gap-2">
-            <span>الصنف: <strong className="text-slate-900">{lifecycle.product.name}</strong></span>
-            <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded">كود: {lifecycle.product.code}</span>
+            <span>{t('الصنف:', 'Item:')} <strong className="text-slate-900">{lifecycle.product.name}</strong></span>
+            <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded">{t('كود:', 'Code:')} {lifecycle.product.code}</span>
             {lifecycle.product.barcode && (
-              <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded">باركود: {lifecycle.product.barcode}</span>
+              <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded">{t('باركود:', 'Barcode:')} {lifecycle.product.barcode}</span>
             )}
           </div>
         )}
@@ -142,14 +145,14 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
                   <div>
                     <h3 className="font-black text-slate-900 text-sm">{lifecycle.product.name}</h3>
                     <p className="text-[11px] text-slate-500">
-                      المجموعة: <strong>{lifecycle.product.category}</strong> · تصنيف 1: <strong>{lifecycle.product.class1 || 'بدون'}</strong> · الوحدة الأساسية: <strong>{lifecycle.product.baseUnit}</strong>
+                      {t('المجموعة:', 'Category:')} <strong>{lifecycle.product.category}</strong> · {t('تصنيف 1:', 'Class 1:')} <strong>{lifecycle.product.class1 || t('بدون', 'None')}</strong> · {t('الوحدة الأساسية:', 'Base Unit:')} <strong>{t(lifecycle.product.baseUnit)}</strong>
                     </p>
                   </div>
                 </div>
-                <div className="text-left text-[11px] text-slate-500">
+                <div className="text-end text-[11px] text-slate-500">
                   <span className="flex items-center gap-1 justify-end">
                     <Calendar className="w-3 h-3" />
-                    تاريخ إضافة الصنف:
+                    {t('تاريخ إضافة الصنف:', 'Created Date:')}
                   </span>
                   <strong className="text-slate-800 font-mono">{lifecycle.product.createdAtFormatted || '-'}</strong>
                 </div>
@@ -157,20 +160,20 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden text-xs">
                 <div className="px-2.5 py-1.5 bg-slate-50">
-                  <span className="text-[11px] text-slate-500 block">الرصيد الحالي الكلي</span>
-                  <strong className="text-sm font-black text-slate-900 tabular-nums">{fmtQty(lifecycle.currentStockTotal)} {lifecycle.product.baseUnit}</strong>
+                  <span className="text-[11px] text-slate-500 block">{t('الرصيد الحالي الكلي', 'Total Current Stock')}</span>
+                  <strong className="text-sm font-black text-slate-900 tabular-nums">{fmtQty(lifecycle.currentStockTotal)} {t(lifecycle.product.baseUnit)}</strong>
                 </div>
                 <div className="px-2.5 py-1.5 bg-slate-50">
-                  <span className="text-[11px] text-slate-500 block">قيمة المخزون بالتكلفة</span>
-                  <strong className="text-sm font-black text-blue-800 tabular-nums">{fmt(lifecycle.currentStockValueAtCost)} {currency}</strong>
+                  <span className="text-[11px] text-slate-500 block">{t('قيمة المخزون بالتكلفة', 'Stock Value at Cost')}</span>
+                  <strong className="text-sm font-black text-blue-800 tabular-nums">{fmt(lifecycle.currentStockValueAtCost)} {t(currency)}</strong>
                 </div>
                 <div className="px-2.5 py-1.5 bg-slate-50">
-                  <span className="text-[11px] text-slate-500 block">آخر سعر شراء</span>
+                  <span className="text-[11px] text-slate-500 block">{t('آخر سعر شراء', 'Last Purchase Price')}</span>
                   <strong className="text-sm font-black text-amber-700 tabular-nums">{fmt(lifecycle.lastPurchasePrice)}</strong>
                   {lifecycle.lastPurchaseDate && <span className="block text-[10px] text-slate-400 font-mono">{lifecycle.lastPurchaseDate}</span>}
                 </div>
                 <div className="px-2.5 py-1.5 bg-slate-50">
-                  <span className="text-[11px] text-slate-500 block">آخر سعر بيع</span>
+                  <span className="text-[11px] text-slate-500 block">{t('آخر سعر بيع', 'Last Sale Price')}</span>
                   <strong className="text-sm font-black text-emerald-700 tabular-nums">{fmt(lifecycle.lastSalePrice)}</strong>
                   {lifecycle.lastSaleDate && <span className="block text-[10px] text-slate-400 font-mono">{lifecycle.lastSaleDate}</span>}
                 </div>
@@ -180,15 +183,15 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
             <div className="bg-white border border-slate-200 rounded-lg p-2.5">
               <div className="flex items-center gap-1.5 text-xs font-extrabold text-slate-800 mb-1.5">
                 <WarehouseIcon className="w-3.5 h-3.5 text-blue-700" />
-                <span>الرصيد الحالي حسب المخزن والعهد</span>
+                <span>{t('الرصيد الحالي حسب المخزن والعهد', 'Current Balance by Warehouse & Custody')}</span>
               </div>
               <div className="max-h-36 overflow-y-auto border border-slate-200 rounded-md">
-                <table className="w-full text-right text-xs border-collapse">
+                <table className="w-full text-start text-xs border-collapse">
                   <thead className="bg-slate-100 text-slate-700 text-[10px] sticky top-0">
                     <tr>
-                      <th className="px-2 py-1 border-b border-slate-200">المخزن / الفرع</th>
-                      <th className="px-2 py-1 border-b border-slate-200 text-left">الرصيد</th>
-                      <th className="px-2 py-1 border-b border-slate-200 text-left">التكلفة</th>
+                      <th className="px-2 py-1 border-b border-slate-200">{t('المخزن / الفرع', 'Warehouse / Branch')}</th>
+                      <th className="px-2 py-1 border-b border-slate-200 text-end">{t('الرصيد', 'Balance')}</th>
+                      <th className="px-2 py-1 border-b border-slate-200 text-end">{t('التكلفة', 'Cost')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -198,13 +201,13 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
                           <strong className="text-slate-800 block">{wb.warehouseName}</strong>
                           <span className="text-[10px] text-slate-500">{wb.branchName}</span>
                         </td>
-                        <td className="px-2 py-1 text-left font-mono tabular-nums">
+                        <td className="px-2 py-1 text-end font-mono tabular-nums">
                           <strong className={wb.quantity > 0 ? 'text-emerald-700' : wb.quantity < 0 ? 'text-rose-700' : 'text-slate-500'}>
                             {fmtQty(wb.quantity)}
                           </strong>
                         </td>
-                        <td className="px-2 py-1 text-left font-mono text-[11px] text-slate-500 tabular-nums">
-                          {fmt(wb.costValue)} {currency}
+                        <td className="px-2 py-1 text-end font-mono text-[11px] text-slate-500 tabular-nums">
+                          {fmt(wb.costValue)} {t(currency)}
                         </td>
                       </tr>
                     ))}
@@ -216,15 +219,15 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
 
           {/* Chronological Timeline Table */}
           <UnifiedDataTable
-            title="السجل التاريخي التسلسلي الكامل للصنف (من لحظة الإضافة حتى آخر حركة)"
-            subtitle={`عدد الأحداث: ${lifecycle.timeline.length}`}
+            title={t('السجل التاريخي التسلسلي الكامل للصنف (من لحظة الإضافة حتى آخر حركة)', 'Full Chronological Item History (Creation to Latest Movement)')}
+            subtitle={`${t('عدد الأحداث:', 'Events Count:')} ${lifecycle.timeline.length}`}
             compact
             maxHeightClassName="max-h-[52vh]"
             data={lifecycle.timeline}
             rowKey={(ev) => ev.id}
-            searchPlaceholder="بحث بالمستند أو نوع الحركة أو المخزن أو الطرف..."
+            searchPlaceholder={t('بحث بالمستند أو نوع الحركة أو المخزن أو الطرف...', 'Search by doc, movement type, warehouse, or party...')}
             exportFilename={`AWLAD_SELIM_Lifecycle_${lifecycle.product.code}`}
-            pdfTitle={`السجل التاريخي للصنف: ${lifecycle.product.name}`}
+            pdfTitle={t(`السجل التاريخي للصنف: ${lifecycle.product.name}`, `Item History: ${lifecycle.product.name}`)}
             defaultPageSize={50}
             onRowClick={(ev) => {
               if (ev.docId && ev.docType !== 'product' && ev.docType !== 'audit') {
@@ -240,7 +243,7 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
             columns={[
               {
                 key: 'date',
-                header: 'اليومية',
+                header: t('اليومية', 'Journal Date'),
                 sortable: true,
                 sortValue: (ev) => ev.date,
                 exportValue: (ev) => ev.date.replace(/-/g, '/'),
@@ -248,7 +251,7 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
               },
               {
                 key: 'actualDateTime',
-                header: 'التاريخ الفعلي',
+                header: t('التاريخ الفعلي', 'Actual Date/Time'),
                 sortable: true,
                 sortValue: (ev) => ev.actualDateTime,
                 exportValue: (ev) => ev.actualDateTime,
@@ -256,15 +259,15 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
               },
               {
                 key: 'eventLabel',
-                header: 'نوع الحركة',
+                header: t('نوع الحركة', 'Movement Type'),
                 sortable: true,
-                sortValue: (ev) => ev.eventLabel,
-                exportValue: (ev) => ev.eventLabel,
-                render: (ev) => <span className="font-bold whitespace-nowrap">{ev.eventLabel}</span>,
+                sortValue: (ev) => t(ev.eventLabel),
+                exportValue: (ev) => t(ev.eventLabel),
+                render: (ev) => <span className="font-bold whitespace-nowrap">{t(ev.eventLabel)}</span>,
               },
               {
                 key: 'docNumber',
-                header: 'رقم المستند',
+                header: t('رقم المستند', 'Document #'),
                 sortable: true,
                 sortValue: (ev) => ev.docNumber,
                 exportValue: (ev) => ev.docNumber,
@@ -277,7 +280,7 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
               },
               {
                 key: 'warehouseName',
-                header: 'المخزن / المسار',
+                header: t('المخزن / المسار', 'Warehouse / Route'),
                 sortable: true,
                 sortValue: (ev) => ev.warehouseName,
                 exportValue: (ev) => ev.warehouseName,
@@ -285,7 +288,7 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
               },
               {
                 key: 'partyName',
-                header: 'الطرف',
+                header: t('الطرف', 'Party'),
                 sortable: true,
                 sortValue: (ev) => ev.partyName,
                 exportValue: (ev) => ev.partyName,
@@ -293,14 +296,14 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
               },
               {
                 key: 'unit',
-                header: 'الوحدة',
+                header: t('الوحدة', 'Unit'),
                 align: 'center',
-                exportValue: (ev) => ev.unit,
-                render: (ev) => <span className="whitespace-nowrap">{ev.unit}</span>,
+                exportValue: (ev) => t(ev.unit),
+                render: (ev) => <span className="whitespace-nowrap">{t(ev.unit)}</span>,
               },
               {
                 key: 'qtyIn',
-                header: 'وارد (+)',
+                header: t('وارد (+)', 'In (+)'),
                 align: 'center',
                 sortable: true,
                 sortValue: (ev) => ev.qtyIn,
@@ -313,7 +316,7 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
               },
               {
                 key: 'qtyOut',
-                header: 'صادر (-)',
+                header: t('صادر (-)', 'Out (-)'),
                 align: 'center',
                 sortable: true,
                 sortValue: (ev) => ev.qtyOut,
@@ -326,7 +329,7 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
               },
               {
                 key: 'runningBalance',
-                header: 'الرصيد بعد الحركة',
+                header: t('الرصيد بعد الحركة', 'Balance After'),
                 align: 'center',
                 sortable: true,
                 sortValue: (ev) => ev.runningBalance,
@@ -336,7 +339,7 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
               },
               {
                 key: 'unitPrice',
-                header: 'السعر / التكلفة',
+                header: t('السعر / التكلفة', 'Price / Cost'),
                 align: 'center',
                 sortable: true,
                 sortValue: (ev) => ev.unitPrice,
@@ -345,7 +348,7 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
               },
               {
                 key: 'totalValue',
-                header: 'الإجمالي',
+                header: t('الإجمالي', 'Total'),
                 align: 'center',
                 sortable: true,
                 sortValue: (ev) => ev.totalValue,
@@ -354,7 +357,7 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
               },
               {
                 key: 'userName',
-                header: 'المستخدم',
+                header: t('المستخدم', 'User'),
                 sortable: true,
                 sortValue: (ev) => ev.userName,
                 exportValue: (ev) => ev.userName,
@@ -362,7 +365,7 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
               },
               {
                 key: 'notes',
-                header: 'ملاحظات',
+                header: t('ملاحظات', 'Notes'),
                 exportValue: (ev) => ev.notes || '-',
                 render: (ev) => <span className="text-slate-600 whitespace-nowrap">{ev.notes || '-'}</span>,
               },
@@ -376,86 +379,86 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
         <div className="space-y-2.5">
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden text-xs">
             <div className="px-2.5 py-2 bg-white">
-              <span className="text-[11px] text-slate-500 block">إجمالي المشتريات</span>
-              <strong className="text-sm font-black text-slate-900 tabular-nums">{fmt(selectedPnl.totalPurchaseValue)} {currency}</strong>
-              <span className="text-[10px] text-slate-500 block">الكمية: {fmtQty(selectedPnl.totalPurchaseQty)} {selectedPnl.baseUnit}</span>
+              <span className="text-[11px] text-slate-500 block">{t('إجمالي المشتريات', 'Total Purchases')}</span>
+              <strong className="text-sm font-black text-slate-900 tabular-nums">{fmt(selectedPnl.totalPurchaseValue)} {t(currency)}</strong>
+              <span className="text-[10px] text-slate-500 block">{t('الكمية:', 'Qty:')} {fmtQty(selectedPnl.totalPurchaseQty)} {t(selectedPnl.baseUnit)}</span>
             </div>
             <div className="px-2.5 py-2 bg-white">
-              <span className="text-[11px] text-slate-500 block">صافي المبيعات</span>
-              <strong className="text-sm font-black text-blue-800 tabular-nums">{fmt(selectedPnl.netSalesValue)} {currency}</strong>
-              <span className="text-[10px] text-slate-500 block">صافي الكمية: {fmtQty(selectedPnl.netSalesQty)} (خصم: {fmt(selectedPnl.totalDiscounts)})</span>
+              <span className="text-[11px] text-slate-500 block">{t('صافي المبيعات', 'Net Sales')}</span>
+              <strong className="text-sm font-black text-blue-800 tabular-nums">{fmt(selectedPnl.netSalesValue)} {t(currency)}</strong>
+              <span className="text-[10px] text-slate-500 block">{t('صافي الكمية:', 'Net Qty:')} {fmtQty(selectedPnl.netSalesQty)} ({t('خصم:', 'Discount:')} {fmt(selectedPnl.totalDiscounts)})</span>
             </div>
             <div className="px-2.5 py-2 bg-white">
-              <span className="text-[11px] text-slate-500 block">تكلفة البضاعة المباعة</span>
-              <strong className="text-sm font-black text-amber-800 tabular-nums">{fmt(selectedPnl.cogs)} {currency}</strong>
-              <span className="text-[10px] text-slate-500 block">مرتجع بيع: {fmt(selectedPnl.salesReturnsValue)}</span>
+              <span className="text-[11px] text-slate-500 block">{t('تكلفة البضاعة المباعة', 'COGS')}</span>
+              <strong className="text-sm font-black text-amber-800 tabular-nums">{fmt(selectedPnl.cogs)} {t(currency)}</strong>
+              <span className="text-[10px] text-slate-500 block">{t('مرتجع بيع:', 'Sales Return:')} {fmt(selectedPnl.salesReturnsValue)}</span>
             </div>
             <div className="px-2.5 py-2 bg-white">
-              <span className="text-[11px] text-slate-500 block">مجمل الربح</span>
+              <span className="text-[11px] text-slate-500 block">{t('مجمل الربح', 'Gross Profit')}</span>
               <strong className={`text-sm font-black tabular-nums ${selectedPnl.grossProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-                {fmt(selectedPnl.grossProfit)} {currency}
+                {fmt(selectedPnl.grossProfit)} {t(currency)}
               </strong>
-              <span className="text-[10px] text-slate-500 block">مرتجع شراء: {fmt(selectedPnl.purchaseReturnsValue)}</span>
+              <span className="text-[10px] text-slate-500 block">{t('مرتجع شراء:', 'Purchase Return:')} {fmt(selectedPnl.purchaseReturnsValue)}</span>
             </div>
             <div className="px-2.5 py-2 bg-emerald-50/40">
-              <span className="text-[11px] text-slate-600 block">صافي الربح</span>
+              <span className="text-[11px] text-slate-600 block">{t('صافي الربح', 'Net Profit')}</span>
               <strong className={`text-sm font-black flex items-center gap-1 tabular-nums ${selectedPnl.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
                 {selectedPnl.netProfit >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-                {fmt(selectedPnl.netProfit)} {currency}
+                {fmt(selectedPnl.netProfit)} {t(currency)}
               </strong>
-              <span className="text-[10px] text-slate-600 block">نسبة على التكلفة: {selectedPnl.profitPercentOnCost}% | هامش: {selectedPnl.profitMarginOnSales}%</span>
+              <span className="text-[10px] text-slate-600 block">{t('نسبة على التكلفة:', 'Markup:')} {selectedPnl.profitPercentOnCost}% | {t('هامش:', 'Margin:')} {selectedPnl.profitMarginOnSales}%</span>
             </div>
             <div className="px-2.5 py-2 bg-rose-50/40">
-              <span className="text-[11px] text-slate-600 block">إجمالي الخسائر والتوالف</span>
-              <strong className="text-sm font-black text-rose-700 tabular-nums">{fmt(selectedPnl.totalLoss)} {currency}</strong>
-              <span className="text-[10px] text-slate-500 block">مصاريف/توالف محملة: {fmt(selectedPnl.allocatedExpenses)}</span>
+              <span className="text-[11px] text-slate-600 block">{t('إجمالي الخسائر والتوالف', 'Total Losses & Damages')}</span>
+              <strong className="text-sm font-black text-rose-700 tabular-nums">{fmt(selectedPnl.totalLoss)} {t(currency)}</strong>
+              <span className="text-[10px] text-slate-500 block">{t('مصاريف/توالف محملة:', 'Allocated Exp/Dmg:')} {fmt(selectedPnl.allocatedExpenses)}</span>
             </div>
             <div className="px-2.5 py-1.5 col-span-2 sm:col-span-4 lg:col-span-6 grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50">
               <div>
-                <span className="text-[11px] text-slate-500 block">عدد الوحدات المتبقية</span>
-                <strong className="text-xs font-black text-slate-900 tabular-nums">{fmtQty(selectedPnl.currentStockQty)} {selectedPnl.baseUnit}</strong>
+                <span className="text-[11px] text-slate-500 block">{t('عدد الوحدات المتبقية', 'Remaining Units')}</span>
+                <strong className="text-xs font-black text-slate-900 tabular-nums">{fmtQty(selectedPnl.currentStockQty)} {t(selectedPnl.baseUnit)}</strong>
               </div>
               <div>
-                <span className="text-[11px] text-slate-500 block">قيمة المخزون الحالي</span>
-                <strong className="text-xs font-black text-blue-800 tabular-nums">{fmt(selectedPnl.currentStockValue)} {currency}</strong>
+                <span className="text-[11px] text-slate-500 block">{t('قيمة المخزون الحالي', 'Current Stock Value')}</span>
+                <strong className="text-xs font-black text-blue-800 tabular-nums">{fmt(selectedPnl.currentStockValue)} {t(currency)}</strong>
               </div>
               <div>
-                <span className="text-[11px] text-slate-500 block">إجمالي المبيعات (قبل المرتجع)</span>
-                <strong className="text-xs font-black text-slate-900 tabular-nums">{fmt(selectedPnl.totalSalesValue)} {currency} ({fmtQty(selectedPnl.totalSalesQty)})</strong>
+                <span className="text-[11px] text-slate-500 block">{t('إجمالي المبيعات (قبل المرتجع)', 'Gross Sales (Before Returns)')}</span>
+                <strong className="text-xs font-black text-slate-900 tabular-nums">{fmt(selectedPnl.totalSalesValue)} {t(currency)} ({fmtQty(selectedPnl.totalSalesQty)})</strong>
               </div>
               <div>
-                <span className="text-[11px] text-slate-500 block">صافي المشتريات (بعد المرتجع)</span>
-                <strong className="text-xs font-black text-slate-900 tabular-nums">{fmt(selectedPnl.netPurchaseValue)} {currency} ({fmtQty(selectedPnl.netPurchaseQty)})</strong>
+                <span className="text-[11px] text-slate-500 block">{t('صافي المشتريات (بعد المرتجع)', 'Net Purchases (After Returns)')}</span>
+                <strong className="text-xs font-black text-slate-900 tabular-nums">{fmt(selectedPnl.netPurchaseValue)} {t(currency)} ({fmtQty(selectedPnl.netPurchaseQty)})</strong>
               </div>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-xs">
             <div className="bg-white border border-slate-200 rounded-lg p-2.5 space-y-1.5">
-              <h4 className="font-extrabold text-slate-800 border-b border-slate-100 pb-1">تحليل أسعار الشراء ({selectedPnl.baseUnit})</h4>
+              <h4 className="font-extrabold text-slate-800 border-b border-slate-100 pb-1">{t('تحليل أسعار الشراء', 'Purchase Price Analysis')} ({t(selectedPnl.baseUnit)})</h4>
               <div className="grid grid-cols-4 gap-px bg-slate-200 border border-slate-200 rounded overflow-hidden text-center">
-                <div className="p-1.5 bg-slate-50"><span className="text-[11px] text-slate-500 block">المتوسط</span><strong className="font-mono tabular-nums">{fmt(selectedPnl.avgPurchasePrice)}</strong></div>
-                <div className="p-1.5 bg-slate-50"><span className="text-[11px] text-slate-500 block">الأقل</span><strong className="font-mono text-emerald-700 tabular-nums">{fmt(selectedPnl.minPurchasePrice)}</strong></div>
-                <div className="p-1.5 bg-slate-50"><span className="text-[11px] text-slate-500 block">الأعلى</span><strong className="font-mono text-rose-700 tabular-nums">{fmt(selectedPnl.maxPurchasePrice)}</strong></div>
-                <div className="p-1.5 bg-slate-50"><span className="text-[11px] text-slate-500 block">الآخر</span><strong className="font-mono tabular-nums">{fmt(selectedPnl.lastPurchasePrice)}</strong></div>
+                <div className="p-1.5 bg-slate-50"><span className="text-[11px] text-slate-500 block">{t('المتوسط', 'Average')}</span><strong className="font-mono tabular-nums">{fmt(selectedPnl.avgPurchasePrice)}</strong></div>
+                <div className="p-1.5 bg-slate-50"><span className="text-[11px] text-slate-500 block">{t('الأقل', 'Min')}</span><strong className="font-mono text-emerald-700 tabular-nums">{fmt(selectedPnl.minPurchasePrice)}</strong></div>
+                <div className="p-1.5 bg-slate-50"><span className="text-[11px] text-slate-500 block">{t('الأعلى', 'Max')}</span><strong className="font-mono text-rose-700 tabular-nums">{fmt(selectedPnl.maxPurchasePrice)}</strong></div>
+                <div className="p-1.5 bg-slate-50"><span className="text-[11px] text-slate-500 block">{t('الآخر', 'Last')}</span><strong className="font-mono tabular-nums">{fmt(selectedPnl.lastPurchasePrice)}</strong></div>
               </div>
             </div>
 
             <div className="bg-white border border-slate-200 rounded-lg p-2.5 space-y-1.5">
-              <h4 className="font-extrabold text-slate-800 border-b border-slate-100 pb-1">تحليل أسعار البيع ({selectedPnl.baseUnit})</h4>
+              <h4 className="font-extrabold text-slate-800 border-b border-slate-100 pb-1">{t('تحليل أسعار البيع', 'Sale Price Analysis')} ({t(selectedPnl.baseUnit)})</h4>
               <div className="grid grid-cols-4 gap-px bg-slate-200 border border-slate-200 rounded overflow-hidden text-center">
-                <div className="p-1.5 bg-slate-50"><span className="text-[11px] text-slate-500 block">المتوسط</span><strong className="font-mono tabular-nums">{fmt(selectedPnl.avgSalePrice)}</strong></div>
-                <div className="p-1.5 bg-slate-50"><span className="text-[11px] text-slate-500 block">الأقل</span><strong className="font-mono text-rose-700 tabular-nums">{fmt(selectedPnl.minSalePrice)}</strong></div>
-                <div className="p-1.5 bg-slate-50"><span className="text-[11px] text-slate-500 block">الأعلى</span><strong className="font-mono text-emerald-700 tabular-nums">{fmt(selectedPnl.maxSalePrice)}</strong></div>
-                <div className="p-1.5 bg-slate-50"><span className="text-[11px] text-slate-500 block">الآخر</span><strong className="font-mono tabular-nums">{fmt(selectedPnl.lastSalePrice)}</strong></div>
+                <div className="p-1.5 bg-slate-50"><span className="text-[11px] text-slate-500 block">{t('المتوسط', 'Average')}</span><strong className="font-mono tabular-nums">{fmt(selectedPnl.avgSalePrice)}</strong></div>
+                <div className="p-1.5 bg-slate-50"><span className="text-[11px] text-slate-500 block">{t('الأقل', 'Min')}</span><strong className="font-mono text-rose-700 tabular-nums">{fmt(selectedPnl.minSalePrice)}</strong></div>
+                <div className="p-1.5 bg-slate-50"><span className="text-[11px] text-slate-500 block">{t('الأعلى', 'Max')}</span><strong className="font-mono text-emerald-700 tabular-nums">{fmt(selectedPnl.maxSalePrice)}</strong></div>
+                <div className="p-1.5 bg-slate-50"><span className="text-[11px] text-slate-500 block">{t('الآخر', 'Last')}</span><strong className="font-mono tabular-nums">{fmt(selectedPnl.lastSalePrice)}</strong></div>
               </div>
             </div>
           </div>
 
           {/* Loss-making sales & damaged breakdown */}
           <UnifiedDataTable
-            title={`الحركات الخاسرة والبيع بأقل من التكلفة (${selectedPnl.lossTransactions.length})`}
-            subtitle={`إجمالي الخسائر: ${fmt(selectedPnl.totalLoss)} ${currency}`}
+            title={`${t('الحركات الخاسرة والبيع بأقل من التكلفة', 'Loss-Making & Below-Cost Transactions')} (${formatLocaleNumber(selectedPnl.lossTransactions.length)})`}
+            subtitle={`${t('إجمالي الخسائر:', 'Total Losses:')} ${fmt(selectedPnl.totalLoss)} ${t(currency)}`}
             compact
             searchable={false}
             data={selectedPnl.lossTransactions}
@@ -463,12 +466,12 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
             onRowClick={(lt) => onInspectDocument(lt.docType, lt.docId)}
             rowClassName={() => 'cursor-pointer hover:bg-rose-50/70'}
             exportFilename={`AWLAD_SELIM_LossTransactions_${selectedPnl.code}`}
-            pdfTitle={`الحركات الخاسرة للصنف: ${selectedPnl.productName}`}
-            emptyTitle="لا توجد أي عمليات بيع خاسرة أو توالف لهذا الصنف ضمن الفترة المحددة"
+            pdfTitle={`${t('الحركات الخاسرة للصنف:', 'Loss Transactions for Item:')} ${selectedPnl.productName}`}
+            emptyTitle={t('لا توجد أي عمليات بيع خاسرة أو توالف لهذا الصنف ضمن الفترة المحددة', 'No loss-making sales or damaged items found for this product within the selected period')}
             columns={[
               {
                 key: 'actualDateTime',
-                header: 'التاريخ الفعلي',
+                header: t('التاريخ الفعلي', 'Actual Date & Time'),
                 sortable: true,
                 sortValue: (lt) => lt.actualDateTime,
                 exportValue: (lt) => lt.actualDateTime,
@@ -476,7 +479,7 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
               },
               {
                 key: 'docNumber',
-                header: 'المستند',
+                header: t('المستند', 'Document'),
                 sortable: true,
                 sortValue: (lt) => lt.docNumber,
                 exportValue: (lt) => lt.docNumber,
@@ -484,24 +487,24 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
               },
               {
                 key: 'partyName',
-                header: 'العميل / المخزن',
+                header: t('العميل / المخزن', 'Customer / Warehouse'),
                 sortable: true,
                 sortValue: (lt) => lt.partyName,
                 exportValue: (lt) => lt.partyName,
-                render: (lt) => <span>{lt.partyName}</span>,
+                render: (lt) => <span>{t(lt.partyName)}</span>,
               },
               {
                 key: 'quantity',
-                header: 'الكمية',
+                header: t('الكمية', 'Quantity'),
                 align: 'center',
                 sortable: true,
                 sortValue: (lt) => lt.quantity,
-                exportValue: (lt) => `${lt.quantity} ${lt.unit}`,
-                render: (lt) => <span className="font-bold tabular-nums">{lt.quantity} {lt.unit}</span>,
+                exportValue: (lt) => `${lt.quantity} ${t(lt.unit)}`,
+                render: (lt) => <span className="font-bold tabular-nums">{fmtQty(lt.quantity)} {t(lt.unit)}</span>,
               },
               {
                 key: 'sellingPrice',
-                header: 'سعر البيع',
+                header: t('سعر البيع', 'Sale Price'),
                 align: 'center',
                 sortable: true,
                 sortValue: (lt) => lt.sellingPrice,
@@ -510,7 +513,7 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
               },
               {
                 key: 'costPrice',
-                header: 'التكلفة',
+                header: t('التكلفة', 'Cost'),
                 align: 'center',
                 sortable: true,
                 sortValue: (lt) => lt.costPrice,
@@ -519,7 +522,7 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
               },
               {
                 key: 'discount',
-                header: 'الخصم',
+                header: t('الخصم', 'Discount'),
                 align: 'center',
                 sortable: true,
                 sortValue: (lt) => lt.discount,
@@ -528,7 +531,7 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
               },
               {
                 key: 'lossAmount',
-                header: 'قيمة الخسارة',
+                header: t('قيمة الخسارة', 'Loss Value'),
                 align: 'center',
                 sortable: true,
                 sortValue: (lt) => lt.lossAmount,
@@ -537,9 +540,9 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
               },
               {
                 key: 'reason',
-                header: 'السبب التفصيلي',
+                header: t('السبب التفصيلي', 'Detailed Reason'),
                 exportValue: (lt) => lt.reason,
-                render: (lt) => <span className="text-rose-900">{lt.reason}</span>,
+                render: (lt) => <span className="text-rose-900">{t(lt.reason)}</span>,
               },
             ]}
           />
@@ -550,26 +553,26 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
       {(innerTab === 'portfolio' || (!lifecycle && !selectedPnl)) && (
         <div className="space-y-2.5">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden text-xs">
-            <div className="px-2.5 py-2 bg-white"><span className="text-[11px] text-slate-500 block">إجمالي المشتريات</span><strong className="text-sm font-black tabular-nums">{fmt(portfolioTotals.totalPurchaseValue)}</strong></div>
-            <div className="px-2.5 py-2 bg-white"><span className="text-[11px] text-slate-500 block">صافي المبيعات</span><strong className="text-sm font-black text-blue-800 tabular-nums">{fmt(portfolioTotals.netSalesValue)}</strong></div>
-            <div className="px-2.5 py-2 bg-white"><span className="text-[11px] text-slate-500 block">تكلفة البضاعة المباعة</span><strong className="text-sm font-black text-amber-800 tabular-nums">{fmt(portfolioTotals.cogs)}</strong></div>
-            <div className="px-2.5 py-2 bg-white"><span className="text-[11px] text-slate-500 block">صافي الربح</span><strong className={`text-sm font-black tabular-nums ${portfolioTotals.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{fmt(portfolioTotals.netProfit)}</strong></div>
-            <div className="px-2.5 py-2 bg-white"><span className="text-[11px] text-slate-500 block">إجمالي الخسائر</span><strong className="text-sm font-black text-rose-700 tabular-nums">{fmt(portfolioTotals.totalLoss)}</strong></div>
-            <div className="px-2.5 py-2 bg-white"><span className="text-[11px] text-slate-500 block">قيمة المخزون الحالي</span><strong className="text-sm font-black text-slate-900 tabular-nums">{fmt(portfolioTotals.stockValuation)}</strong></div>
+            <div className="px-2.5 py-2 bg-white"><span className="text-[11px] text-slate-500 block">{t('إجمالي المشتريات', 'Total Purchases')}</span><strong className="text-sm font-black tabular-nums">{fmt(portfolioTotals.totalPurchaseValue)}</strong></div>
+            <div className="px-2.5 py-2 bg-white"><span className="text-[11px] text-slate-500 block">{t('صافي المبيعات', 'Net Sales')}</span><strong className="text-sm font-black text-blue-800 tabular-nums">{fmt(portfolioTotals.netSalesValue)}</strong></div>
+            <div className="px-2.5 py-2 bg-white"><span className="text-[11px] text-slate-500 block">{t('تكلفة البضاعة المباعة', 'COGS')}</span><strong className="text-sm font-black text-amber-800 tabular-nums">{fmt(portfolioTotals.cogs)}</strong></div>
+            <div className="px-2.5 py-2 bg-white"><span className="text-[11px] text-slate-500 block">{t('صافي الربح', 'Net Profit')}</span><strong className={`text-sm font-black tabular-nums ${portfolioTotals.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{fmt(portfolioTotals.netProfit)}</strong></div>
+            <div className="px-2.5 py-2 bg-white"><span className="text-[11px] text-slate-500 block">{t('إجمالي الخسائر', 'Total Losses')}</span><strong className="text-sm font-black text-rose-700 tabular-nums">{fmt(portfolioTotals.totalLoss)}</strong></div>
+            <div className="px-2.5 py-2 bg-white"><span className="text-[11px] text-slate-500 block">{t('قيمة المخزون الحالي', 'Current Stock Value')}</span><strong className="text-sm font-black text-slate-900 tabular-nums">{fmt(portfolioTotals.stockValuation)}</strong></div>
           </div>
 
           <UnifiedDataTable<ItemPnlSummary>
-            title="تحليل أرباح وخسائر الأصناف"
-            subtitle="اضغط على أي صنف لفتح تاريخه الكامل من أول يوم"
+            title={t('تحليل أرباح وخسائر الأصناف', 'Items Profit & Loss Analysis')}
+            subtitle={t('اضغط على أي صنف لفتح تاريخه الكامل من أول يوم', 'Click any item to open its full history from day one')}
             compact
             maxHeightClassName="max-h-[54vh]"
             data={filteredPortfolio}
             rowKey={(item) => item.productId}
             searchValue={portfolioSearch}
             onSearchChange={setPortfolioSearch}
-            searchPlaceholder="بحث باسم الصنف أو الكود..."
+            searchPlaceholder={t('بحث باسم الصنف أو الكود...', 'Search by item name or code...')}
             exportFilename="AWLAD_SELIM_ItemsPnL"
-            pdfTitle="تحليل أرباح وخسائر جميع الأصناف"
+            pdfTitle={t('تحليل أرباح وخسائر جميع الأصناف', 'All Items Profit & Loss Analysis')}
             defaultPageSize={50}
             onRowClick={(item) => {
               onSelectProduct(item.productId);
@@ -579,7 +582,7 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
             columns={[
               {
                 key: 'productName',
-                header: 'الصنف',
+                header: t('الصنف', 'Item'),
                 sortable: true,
                 sortValue: (it) => it.productName,
                 exportValue: (it) => `${it.productName} (${it.code})`,
@@ -592,15 +595,15 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
               },
               {
                 key: 'category',
-                header: 'المجموعة',
+                header: t('المجموعة', 'Category'),
                 sortable: true,
                 sortValue: (it) => it.category,
                 exportValue: (it) => it.category,
-                render: (it) => <span>{it.category}</span>,
+                render: (it) => <span>{t(it.category)}</span>,
               },
               {
                 key: 'totalPurchaseValue',
-                header: 'مشتريات',
+                header: t('مشتريات', 'Purchases'),
                 align: 'center',
                 sortable: true,
                 sortValue: (it) => it.totalPurchaseValue,
@@ -609,7 +612,7 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
               },
               {
                 key: 'netSalesValue',
-                header: 'صافي المبيعات',
+                header: t('صافي المبيعات', 'Net Sales'),
                 align: 'center',
                 sortable: true,
                 sortValue: (it) => it.netSalesValue,
@@ -618,7 +621,7 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
               },
               {
                 key: 'cogs',
-                header: 'تكلفة البضاعة المباعة',
+                header: t('تكلفة البضاعة المباعة', 'COGS'),
                 align: 'center',
                 sortable: true,
                 sortValue: (it) => it.cogs,
@@ -627,7 +630,7 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
               },
               {
                 key: 'totalDiscounts',
-                header: 'الخصومات',
+                header: t('الخصومات', 'Discounts'),
                 align: 'center',
                 sortable: true,
                 sortValue: (it) => it.totalDiscounts,
@@ -636,7 +639,7 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
               },
               {
                 key: 'salesReturnsValue',
-                header: 'مرتجعات بيع',
+                header: t('مرتجعات بيع', 'Sales Returns'),
                 align: 'center',
                 sortable: true,
                 sortValue: (it) => it.salesReturnsValue,
@@ -645,7 +648,7 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
               },
               {
                 key: 'allocatedExpenses',
-                header: 'التوالف / المصاريف',
+                header: t('التوالف / المصاريف', 'Damages / Expenses'),
                 align: 'center',
                 sortable: true,
                 sortValue: (it) => it.allocatedExpenses,
@@ -654,7 +657,7 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
               },
               {
                 key: 'netProfit',
-                header: 'صافي الربح',
+                header: t('صافي الربح', 'Net Profit'),
                 align: 'center',
                 sortable: true,
                 sortValue: (it) => it.netProfit,
@@ -667,25 +670,25 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
               },
               {
                 key: 'profitPercentOnCost',
-                header: 'نسبة الربح على التكلفة',
+                header: t('نسبة الربح على التكلفة', 'Profit % on Cost'),
                 align: 'center',
                 sortable: true,
                 sortValue: (it) => it.profitPercentOnCost,
                 exportValue: (it) => `${it.profitPercentOnCost}%`,
-                render: (it) => <span className="font-mono tabular-nums">{it.profitPercentOnCost}%</span>,
+                render: (it) => <span className="font-mono tabular-nums">{formatLocaleNumber(it.profitPercentOnCost)}%</span>,
               },
               {
                 key: 'profitMarginOnSales',
-                header: 'هامش المبيعات',
+                header: t('هامش المبيعات', 'Sales Margin'),
                 align: 'center',
                 sortable: true,
                 sortValue: (it) => it.profitMarginOnSales,
                 exportValue: (it) => `${it.profitMarginOnSales}%`,
-                render: (it) => <span className="font-mono tabular-nums">{it.profitMarginOnSales}%</span>,
+                render: (it) => <span className="font-mono tabular-nums">{formatLocaleNumber(it.profitMarginOnSales)}%</span>,
               },
               {
                 key: 'totalLoss',
-                header: 'الخسائر',
+                header: t('الخسائر', 'Losses'),
                 align: 'center',
                 sortable: true,
                 sortValue: (it) => it.totalLoss,
@@ -698,16 +701,16 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
               },
               {
                 key: 'currentStockQty',
-                header: 'المخزون الحالي',
+                header: t('المخزون الحالي', 'Current Stock'),
                 align: 'center',
                 sortable: true,
                 sortValue: (it) => it.currentStockQty,
-                exportValue: (it) => `${it.currentStockQty} ${it.baseUnit}`,
-                render: (it) => <span className="font-mono font-bold tabular-nums">{fmtQty(it.currentStockQty)} {it.baseUnit}</span>,
+                exportValue: (it) => `${it.currentStockQty} ${t(it.baseUnit)}`,
+                render: (it) => <span className="font-mono font-bold tabular-nums">{fmtQty(it.currentStockQty)} {t(it.baseUnit)}</span>,
               },
               {
                 key: 'currentStockValue',
-                header: 'قيمة المخزون',
+                header: t('قيمة المخزون', 'Stock Value'),
                 align: 'center',
                 sortable: true,
                 sortValue: (it) => it.currentStockValue,

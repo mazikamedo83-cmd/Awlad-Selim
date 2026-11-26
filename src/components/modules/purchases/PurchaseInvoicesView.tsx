@@ -16,6 +16,8 @@ import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { QuantityInput } from '../../common/QuantityInput';
 import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 import { computeLineTotal } from '../../../utils/quantity';
+import { usePreferences } from '../../../context/PreferencesContext';
+import { formatLocaleDateTime, formatLocaleNumber } from '../../../i18n/translator';
 
 export interface PurchaseInvoicesViewProps {
   initialStatusFilter?: 'all' | 'rep_incoming' | 'confirmed' | 'draft' | 'cancelled';
@@ -99,6 +101,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     sendPurchaseInvoice, receivePurchaseInvoice, rejectPurchaseInvoice, confirmDraftInvoice,
   } = useData();
   const { currentUser, hasPermission } = useAuth();
+  const { t, locale } = usePreferences();
   const canEditPurchase = currentUser?.role === 'admin' || (hasPermission('canManagePurchases') && hasPermission('canEdit'));
   const canCreatePurchaseDraft =
     currentUser?.role === 'admin' ||
@@ -315,20 +318,20 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
 
   const getPurchaseStatusBadge = (inv: Invoice) => {
     if (inv.status === 'cancelled') {
-      return { label: 'ملغاة', cls: 'bg-red-50 text-red-700 border border-red-200' };
+      return { label: t('ملغاة', 'Cancelled'), cls: 'bg-red-50 text-red-700 border border-red-200' };
     }
     if (inv.status === 'confirmed') {
-      return { label: 'مؤكدة ومعتمدة', cls: 'bg-emerald-50 text-emerald-800 border border-emerald-200' };
+      return { label: t('مؤكدة ومعتمدة', 'Confirmed & Approved'), cls: 'bg-emerald-50 text-emerald-800 border border-emerald-200' };
     }
     switch (inv.dispatchStatus) {
       case 'sent':
-        return { label: 'مرسلة بانتظار الاستلام', cls: 'bg-amber-50 text-amber-900 border border-amber-200' };
+        return { label: t('مرسلة بانتظار الاستلام', 'Sent (Awaiting Receipt)'), cls: 'bg-amber-50 text-amber-900 border border-amber-200' };
       case 'received':
-        return { label: 'تم الاستلام (بانتظار الاعتماد)', cls: 'bg-[#EEF3FA] text-[#011E58] border border-[#DCE6F5]' };
+        return { label: t('تم الاستلام (بانتظار الاعتماد)', 'Received (Pending Approval)'), cls: 'bg-[#EEF3FA] text-[#011E58] border border-[#DCE6F5]' };
       case 'rejected':
-        return { label: 'مرفوضة', cls: 'bg-rose-50 text-rose-800 border border-rose-200' };
+        return { label: t('مرفوضة', 'Rejected'), cls: 'bg-rose-50 text-rose-800 border border-rose-200' };
       default:
-        return { label: 'مسودة', cls: 'bg-slate-100 text-slate-700 border border-slate-200' };
+        return { label: t('مسودة', 'Draft'), cls: 'bg-slate-100 text-slate-700 border border-slate-200' };
     }
   };
 
@@ -377,12 +380,12 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
   const handleAddItem = () => {
     const prod = products.find(p => p.id === itemProdId);
     if (!prod) {
-      setError('يرجى اختيار الصنف أولاً');
+      setError(t('يرجى اختيار الصنف أولاً', 'Please select a product first'));
       return;
     }
     const qtyNum = Number(itemQty || 0);
     if (qtyNum <= 0) {
-      setError('يرجى إدخال كمية صحيحة أكبر من صفر');
+      setError(t('يرجى إدخال كمية صحيحة أكبر من صفر', 'Please enter a valid quantity greater than zero'));
       return;
     }
     const priceNum = Math.max(0, Number(itemPrice || 0));
@@ -431,12 +434,12 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
   const handleAddInlineNewProductItem = () => {
     const cleanName = newProdName.trim();
     if (!cleanName) {
-      setError('يرجى إدخال اسم الصنف الجديد');
+      setError(t('يرجى إدخال اسم الصنف الجديد', 'Please enter the new product name'));
       return;
     }
     const qtyNum = Number(newProdQty || 0);
     if (qtyNum <= 0) {
-      setError('يرجى إدخال كمية الشراء للصنف الجديد أكبر من صفر');
+      setError(t('يرجى إدخال كمية الشراء للصنف الجديد أكبر من صفر', 'Please enter purchase quantity greater than zero'));
       return;
     }
     const buyPrice = Math.max(0, Number(newProdPurchasePrice || 0));
@@ -480,7 +483,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
       });
       setActionMessage({
         type: 'success',
-        text: `تم ربط البند بالصنف المسجل مسبقاً (${exact.name}) لمنع التكرار في المخزن.`,
+        text: t(`تم ربط البند بالصنف المسجل مسبقاً (${exact.name}) لمنع التكرار في المخزن.`, `Linked line item to existing product (${exact.name}) to prevent warehouse duplication.`),
       });
     } else {
       const cleanCategory = newProdCategory.trim() || 'أصناف عامة';
@@ -550,18 +553,18 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
 
   const handlePrint = useCallback((inv: Invoice) => {
     setPrintData({
-      title: 'فاتورة مشتريات وتوريد بضائع',
+      title: t('فاتورة مشتريات وتوريد بضائع', 'Purchase & Supply Invoice'),
       docNumber: inv.invoiceNumber,
-      docType: 'فاتورة مشتريات',
+      docType: t('فاتورة مشتريات', 'Purchase Invoice'),
       date: inv.date,
-      partyName: inv.supplierName,
-      warehouseName: inv.warehouseName,
+      partyName: t(inv.supplierName),
+      warehouseName: t(inv.warehouseName),
       grandTotal: inv.grandTotal,
       paidAmount: inv.paidAmount,
       remainingAmount: inv.remainingAmount,
       items: inv.items.map(it => ({
         name: it.productName,
-        unit: it.unit,
+        unit: t(it.unit),
         quantity: it.quantity,
         price: it.unitPrice,
         total: it.total,
@@ -569,12 +572,12 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
       notes: inv.notes,
     });
     setIsPrintModalOpen(true);
-  }, []);
+  }, [t]);
 
   const handleSubmitPurchase = useCallback(async (shouldPrint: boolean, sendToAdmin = false) => {
     if (isSubmitting) return;
     if (items.length === 0) {
-      setError('يرجى إضافة أصناف لفاتورة الشراء');
+      setError(t('يرجى إضافة أصناف لفاتورة الشراء', 'Please add items to the purchase invoice'));
       return;
     }
     setError(null);
@@ -585,7 +588,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
       const wh = warehouses.find(w => w.id === selectedWarehouseId);
       const rawPaid = Number(paidAmount || 0);
       if (paymentType === 'partial' && rawPaid < 0) {
-        setError('المبلغ المدفوع لا يمكن أن يكون سالباً');
+        setError(t('المبلغ المدفوع لا يمكن أن يكون سالباً', 'Paid amount cannot be negative'));
         return;
       }
 
@@ -624,16 +627,16 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
         setActionMessage({
           type: 'success',
           text: !createAsDraft
-            ? `تم حفظ فاتورة المشتريات رقم (${res.invoice?.invoiceNumber || ''}) وتحديث المخزون والأصناف بنجاح.`
+            ? t(`تم حفظ فاتورة المشتريات رقم (${res.invoice?.invoiceNumber || ''}) وتحديث المخزون والأصناف بنجاح.`, `Purchase invoice (${res.invoice?.invoiceNumber || ''}) saved and inventory updated successfully.`)
             : sendToAdmin
-            ? `تم حفظ فاتورة الشراء وإرسالها للإدارة (${res.invoice?.invoiceNumber || ''}) بانتظار الاستلام والاعتماد دون تعديل الأرصدة.`
-            : `تم حفظ فاتورة الشراء كمسودة (${res.invoice?.invoiceNumber || ''}) بانتظار الإرسال أو المراجعة دون تعديل المخزون.`,
+            ? t(`تم حفظ فاتورة الشراء وإرسالها للإدارة (${res.invoice?.invoiceNumber || ''}) بانتظار الاستلام والاعتماد دون تعديل الأرصدة.`, `Purchase invoice (${res.invoice?.invoiceNumber || ''}) saved and sent to management pending receipt and approval without affecting balances.`)
+            : t(`تم حفظ فاتورة الشراء كمسودة (${res.invoice?.invoiceNumber || ''}) بانتظار الإرسال أو المراجعة دون تعديل المخزون.`, `Purchase invoice saved as draft (${res.invoice?.invoiceNumber || ''}) pending submission or review without modifying stock.`),
         });
         if (shouldPrint && res.invoice) {
           handlePrint(res.invoice);
         }
       } else {
-        setError(res.error || 'فشل حفظ فاتورة الشراء');
+        setError(res.error ? t(res.error) : t('فشل حفظ فاتورة الشراء', 'Failed to save purchase invoice'));
       }
     } finally {
       setIsSubmitting(false);
@@ -641,7 +644,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
   }, [
     isSubmitting, items, suppliers, selectedSupplierId, warehouses, selectedWarehouseId, paymentType, grandTotal,
     paidAmount, createPurchaseInvoice, invoiceDate, subtotal, numericDiscount, selectedCashboxId,
-    notes, handlePrint, resetPurchaseModalForm, canApprovePurchase, purchaseReceivers, newRecipientUserId
+    notes, handlePrint, resetPurchaseModalForm, canApprovePurchase, purchaseReceivers, newRecipientUserId, t
   ]);
 
   const submitPurchaseRef = useRef(handleSubmitPurchase);
@@ -667,9 +670,9 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     const res = await cancelInvoice(cancelTarget.id, reason);
     setIsCancelling(false);
     if (!res.success) {
-      setActionMessage({ type: 'error', text: res.error || 'تعذر إلغاء فاتورة الشراء' });
+      setActionMessage({ type: 'error', text: res.error ? t(res.error) : t('تعذر إلغاء فاتورة الشراء', 'Unable to cancel purchase invoice') });
     } else {
-      setActionMessage({ type: 'success', text: `تم إلغاء فاتورة الشراء (${cancelTarget.invoiceNumber}) بنجاح.` });
+      setActionMessage({ type: 'success', text: t(`تم إلغاء فاتورة الشراء (${cancelTarget.invoiceNumber}) بنجاح.`, `Purchase invoice (${cancelTarget.invoiceNumber}) cancelled successfully.`) });
       setCancelTarget(null);
     }
   };
@@ -697,12 +700,12 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
   const handleAddItemToEdit = () => {
     const prod = products.find((p) => p.id === editAddProdId);
     if (!prod) {
-      setEditError('يرجى اختيار الصنف أولاً لإضافته للفاتورة');
+      setEditError(t('يرجى اختيار الصنف أولاً لإضافته للفاتورة', 'Please select a product first to add it to the invoice'));
       return;
     }
     const qtyNum = Number(editAddQty || 0);
     if (qtyNum <= 0) {
-      setEditError('يرجى إدخال كمية صحيحة أكبر من صفر');
+      setEditError(t('يرجى إدخال كمية صحيحة أكبر من صفر', 'Please enter a valid quantity greater than zero'));
       return;
     }
     const priceNum = Math.max(0, Number(editAddPrice || 0));
@@ -747,18 +750,21 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     e.preventDefault();
     if (!editModalInvoice) return;
     if (editItems.length === 0) {
-      setEditError('يجب أن تحتوي فاتورة المشتريات على صنف واحد على الأقل.');
+      setEditError(t('يجب أن تحتوي فاتورة المشتريات على صنف واحد على الأقل.', 'Purchase invoice must contain at least one item.'));
       return;
     }
     if (editModalInvoice.status === 'confirmed' && !editReason.trim()) {
-      setEditError('يرجى كتابة سبب تعديل الفاتورة لتوثيقه في سجل المراجعة.');
+      setEditError(t('يرجى كتابة سبب تعديل الفاتورة لتوثيقه في سجل المراجعة.', 'Please enter the edit reason to log it in the audit trail.'));
       return;
     }
     const subtotalNext = editItems.reduce((s, it) => s + computeLineTotal(it.quantity, it.unitPrice, it.discount || 0), 0);
     const grandNext = Math.max(0, subtotalNext - Math.max(0, Number(editDiscount || 0)));
     if (grandNext < Number(editModalInvoice.paidAmount || 0) - 0.01) {
       setEditError(
-        `لا يمكن أن يكون الإجمالي المعدل (${grandNext.toLocaleString()}) أقل من المبلغ المدفوع مسبقاً (${Number(editModalInvoice.paidAmount || 0).toLocaleString()}).`
+        t(
+          `لا يمكن أن يكون الإجمالي المعدل (${formatLocaleNumber(grandNext)}) أقل من المبلغ المدفوع مسبقاً (${formatLocaleNumber(Number(editModalInvoice.paidAmount || 0))}).`,
+          `Edited total (${formatLocaleNumber(grandNext)}) cannot be less than previously paid amount (${formatLocaleNumber(Number(editModalInvoice.paidAmount || 0))}).`
+        )
       );
       return;
     }
@@ -780,14 +786,14 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     });
     setIsSubmittingEdit(false);
     if (!res.success) {
-      setEditError(res.error || 'تعذر تعديل فاتورة المشتريات');
+      setEditError(res.error ? t(res.error) : t('تعذر تعديل فاتورة المشتريات', 'Unable to update purchase invoice'));
     } else {
       setEditModalInvoice(null);
       setActionMessage({
         type: 'success',
         text: res.queuedOffline
-          ? `تم حفظ تعديل فاتورة المشتريات (${editModalInvoice.invoiceNumber}) محلياً للمزامنة عند عودة الاتصال.`
-          : `تم تحديث فاتورة المشتريات رقم (${editModalInvoice.invoiceNumber}) والمخزون ورصيد المورد بنجاح.`,
+          ? t(`تم حفظ تعديل فاتورة المشتريات (${editModalInvoice.invoiceNumber}) محلياً للمزامنة عند عودة الاتصال.`, `Purchase invoice (${editModalInvoice.invoiceNumber}) edit saved locally to sync once back online.`)
+          : t(`تم تحديث فاتورة المشتريات رقم (${editModalInvoice.invoiceNumber}) والمخزون ورصيد المورد بنجاح.`, `Purchase invoice (${editModalInvoice.invoiceNumber}), inventory, and supplier balance updated successfully.`),
       });
     }
   };
@@ -797,9 +803,9 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-white px-2.5 py-2 rounded-lg border border-slate-200">
         <div>
-          <h2 className="text-sm font-black text-slate-900 tracking-tight">إدارة فواتير المشتريات</h2>
+          <h2 className="text-sm font-black text-slate-900 tracking-tight">{t('إدارة فواتير المشتريات', 'Purchase Invoices Management')}</h2>
           <p className="text-[11px] text-slate-500">
-            توثيق توريدات البضائع الغذائية من المصانع والمطاحن وزيادة أرصدة المخازن آلياً
+            {t('توثيق توريدات البضائع الغذائية من المصانع والمطاحن وزيادة أرصدة المخازن آلياً', 'Record food supply deliveries from factories & mills and update warehouse stock automatically')}
           </p>
         </div>
 
@@ -811,7 +817,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
               className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-50 border border-amber-300 text-amber-900 text-xs font-black cursor-pointer hover:bg-amber-100"
             >
               <Send className="w-3.5 h-3.5 text-amber-700" />
-              <span>وارد من المناديب ({repIncomingPendingCount})</span>
+              <span>{t('وارد من المناديب', 'Incoming from Reps')} ({repIncomingPendingCount})</span>
             </button>
           )}
           <button
@@ -822,7 +828,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
             className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-black active:scale-95 transition-all cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>فاتورة شراء جديدة</span>
+            <span>{t('فاتورة شراء جديدة', 'New Purchase Invoice')}</span>
           </button>
         </div>
       </div>
@@ -840,7 +846,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
             <span>{actionMessage.text}</span>
           </div>
           <button onClick={() => setActionMessage(null)} className="text-xs underline cursor-pointer">
-            إغلاق
+            {t('إغلاق', 'Close')}
           </button>
         </div>
       )}
@@ -848,8 +854,8 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
       {/* Table */}
       <UnifiedDataTable<Invoice>
         compact
-        title="سجل فواتير المشتريات"
-        subtitle="فواتير الشراء المعتمدة والمسودات وفواتير المناديب الواردة"
+        title={t('سجل فواتير المشتريات', 'Purchase Invoices Log')}
+        subtitle={t('فواتير الشراء المعتمدة والمسودات وفواتير المناديب الواردة', 'Approved purchase invoices, drafts, and incoming representative invoices')}
         data={filteredPurchases}
         rowKey={(inv) => inv.id}
         onRowClick={(inv) => {
@@ -859,16 +865,16 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
         }}
         searchValue={searchTerm}
         onSearchChange={setSearchTerm}
-        searchPlaceholder="بحث برقم الفاتورة أو المورد أو المندوب..."
+        searchPlaceholder={t('بحث برقم الفاتورة أو المورد أو المندوب...', 'Search by invoice #, supplier, or rep...')}
         exportFilename="AWLAD_SELIM_PurchaseInvoices"
-        pdfTitle="سجل فواتير المشتريات"
-        emptyTitle="لا توجد فواتير مشتريات مسجلة"
+        pdfTitle={t('سجل فواتير المشتريات', 'Purchase Invoices Log')}
+        emptyTitle={t('لا توجد فواتير مشتريات مسجلة', 'No purchase invoices recorded')}
         toolbarFilters={
           <div className="flex flex-nowrap items-center gap-1.5 text-xs shrink-0">
             <div className="w-[165px] shrink-0">
               <SearchableFilterSelect
                 id="purchase-filter-supplier"
-                inlinePrefix="المورد"
+                inlinePrefix={t('المورد', 'Supplier')}
                 value={supplierFilter}
                 onChange={setSupplierFilter}
                 options={suppliers.map((s) => ({
@@ -877,9 +883,9 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   subtitle: s.phone || s.companyName,
                   searchText: `${s.name} ${s.phone || ''} ${s.companyName || ''}`,
                 }))}
-                allOptionLabel="الكل"
+                allOptionLabel={t('الكل', 'All')}
                 allOptionValue="all"
-                searchPlaceholder="ابحث باسم المورد أو الهاتف..."
+                searchPlaceholder={t('ابحث باسم المورد أو الهاتف...', 'Search supplier name or phone...')}
                 allowClear
                 buttonClassName="rounded-md h-8 min-h-[32px]"
               />
@@ -887,16 +893,16 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
             <div className="w-[165px] shrink-0">
               <SearchableFilterSelect
                 id="purchase-filter-status"
-                inlinePrefix="الحالة"
+                inlinePrefix={t('الحالة', 'Status')}
                 value={statusFilter}
                 onChange={(val) => setStatusFilter((val as any) || 'all')}
                 options={[
-                  { value: 'rep_incoming', label: 'فواتير شراء المناديب (الواردة)' },
-                  { value: 'confirmed', label: 'فواتير مؤكدة ومعتمدة' },
-                  { value: 'draft', label: 'مسودات وبانتظار الاعتماد' },
-                  { value: 'cancelled', label: 'ملغاة / محذوفة' },
+                  { value: 'rep_incoming', label: t('فواتير شراء المناديب (الواردة)', 'Rep Purchase Invoices (Incoming)') },
+                  { value: 'confirmed', label: t('فواتير مؤكدة ومعتمدة', 'Confirmed & Approved Invoices') },
+                  { value: 'draft', label: t('مسودات وبانتظار الاعتماد', 'Drafts & Pending Approval') },
+                  { value: 'cancelled', label: t('ملغاة / محذوفة', 'Cancelled / Deleted') },
                 ]}
-                allOptionLabel="الكل"
+                allOptionLabel={t('الكل', 'All')}
                 allOptionValue="all"
                 allowClear
                 buttonClassName="rounded-md h-8 min-h-[32px]"
@@ -907,7 +913,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
         columns={[
           {
             key: 'invoiceNumber',
-            header: 'رقم الفاتورة',
+            header: t('رقم الفاتورة', 'Invoice #'),
             sortable: true,
             sortValue: (inv) => inv.invoiceNumber,
             exportValue: (inv) => inv.invoiceNumber,
@@ -915,7 +921,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
           },
           {
             key: 'date',
-            header: 'التاريخ',
+            header: t('التاريخ', 'Date'),
             sortable: true,
             sortValue: (inv) => inv.date,
             exportValue: (inv) => inv.date,
@@ -923,16 +929,16 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
           },
           {
             key: 'supplierName',
-            header: 'المورد / المرسل',
+            header: t('المورد / المرسل', 'Supplier / Sender'),
             sortable: true,
             sortValue: (inv) => inv.supplierName || '',
             exportValue: (inv) => inv.supplierName || '-',
             render: (inv) => (
               <div>
-                <div className="font-bold text-slate-800">{inv.supplierName}</div>
+                <div className="font-bold text-slate-800">{t(inv.supplierName)}</div>
                 {(inv.representativeName || inv.sentBy) && (
                   <div className="text-[10px] text-[#003589] font-bold mt-0.5">
-                    المندوب / المرسل: {inv.representativeName || inv.sentBy}
+                    {t('المندوب / المرسل:', 'Rep / Sender:')} {inv.representativeName || inv.sentBy}
                   </div>
                 )}
               </div>
@@ -940,40 +946,40 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
           },
           {
             key: 'warehouseName',
-            header: 'المستودع المستلم',
-            exportValue: (inv) => inv.warehouseName || '-',
-            render: (inv) => <span className="text-slate-600">{inv.warehouseName}</span>,
+            header: t('المستودع المستلم', 'Receiving Warehouse'),
+            exportValue: (inv) => inv.warehouseName ? t(inv.warehouseName) : '-',
+            render: (inv) => <span className="text-slate-600">{inv.warehouseName ? t(inv.warehouseName) : '-'}</span>,
           },
           {
             key: 'grandTotal',
-            header: 'الإجمالي',
+            header: t('الإجمالي', 'Total'),
             align: 'center',
             sortable: true,
             sortValue: (inv) => inv.grandTotal,
             exportValue: (inv) => inv.grandTotal,
-            render: (inv) => <span className="font-black font-mono tabular-nums">{inv.grandTotal.toLocaleString()} {settings.currency}</span>,
+            render: (inv) => <span className="font-black font-mono tabular-nums">{formatLocaleNumber(inv.grandTotal)} {t(settings.currency)}</span>,
           },
           {
             key: 'paidAmount',
-            header: 'المدفوع',
+            header: t('المدفوع', 'Paid'),
             align: 'center',
             sortable: true,
             sortValue: (inv) => inv.paidAmount,
             exportValue: (inv) => inv.paidAmount,
-            render: (inv) => <span className="text-emerald-700 font-bold font-mono tabular-nums">{inv.paidAmount.toLocaleString()}</span>,
+            render: (inv) => <span className="text-emerald-700 font-bold font-mono tabular-nums">{formatLocaleNumber(inv.paidAmount)}</span>,
           },
           {
             key: 'remainingAmount',
-            header: 'المتبقي للمورد',
+            header: t('المتبقي للمورد', 'Balance Due'),
             align: 'center',
             sortable: true,
             sortValue: (inv) => inv.remainingAmount,
             exportValue: (inv) => inv.remainingAmount,
-            render: (inv) => <span className="text-red-700 font-bold font-mono tabular-nums">{inv.remainingAmount.toLocaleString()}</span>,
+            render: (inv) => <span className="text-red-700 font-bold font-mono tabular-nums">{formatLocaleNumber(inv.remainingAmount)}</span>,
           },
           {
             key: 'status',
-            header: 'الحالة',
+            header: t('الحالة', 'Status'),
             align: 'center',
             exportValue: (inv) => getPurchaseStatusBadge(inv).label,
             render: (inv) => {
@@ -987,7 +993,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
           },
           {
             key: 'actions',
-            header: 'الإجراءات',
+            header: t('الإجراءات', 'Actions'),
             align: 'center',
             render: (inv) => (
               <div className="flex items-center justify-center gap-1.5">
@@ -1000,7 +1006,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       setSendModalNotes('');
                     }}
                     className="p-1.5 text-[#003589] hover:text-[#011E58] hover:bg-[#EEF3FA] rounded-md cursor-pointer"
-                    title={inv.dispatchStatus === 'rejected' ? 'إعادة إرسال الفاتورة للإدارة' : 'إرسال الفاتورة للإدارة'}
+                    title={inv.dispatchStatus === 'rejected' ? t('إعادة إرسال الفاتورة للإدارة', 'Resend Invoice to Management') : t('إرسال الفاتورة للإدارة', 'Send Invoice to Management')}
                   >
                     <Send className="w-4 h-4" />
                   </button>
@@ -1010,7 +1016,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     type="button"
                     onClick={() => handleOpenEditModal(inv)}
                     className="p-1.5 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded-lg cursor-pointer"
-                    title="تعديل فاتورة الشراء والأصناف"
+                    title={t('تعديل فاتورة الشراء والأصناف', 'Edit Purchase Invoice & Items')}
                   >
                     <Edit className="w-4 h-4" />
                   </button>
@@ -1023,7 +1029,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     setActiveInvoice(inv);
                   }}
                   className="p-1.5 text-slate-500 hover:text-blue-900 hover:bg-blue-50 rounded-lg cursor-pointer"
-                  title="عرض تفاصيل الفاتورة وسجل الإرسال والتعديلات"
+                  title={t('عرض تفاصيل الفاتورة وسجل الإرسال والتعديلات', 'View Invoice Details, Dispatch & Edit History')}
                 >
                   <Eye className="w-4 h-4" />
                 </button>
@@ -1031,7 +1037,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   type="button"
                   onClick={() => handlePrint(inv)}
                   className="p-1.5 text-slate-500 hover:text-blue-900 hover:bg-blue-50 rounded-lg cursor-pointer"
-                  title="طباعة الفاتورة"
+                  title={t('طباعة الفاتورة', 'Print Invoice')}
                 >
                   <Printer className="w-4 h-4" />
                 </button>
@@ -1040,7 +1046,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     type="button"
                     onClick={() => setCancelTarget(inv)}
                     className="p-1.5 text-red-400 hover:text-red-700 hover:bg-red-50 rounded-lg cursor-pointer"
-                    title="إلغاء فاتورة الشراء"
+                    title={t('إلغاء فاتورة الشراء', 'Cancel Purchase Invoice')}
                   >
                     <XCircle className="w-4 h-4" />
                   </button>
@@ -1055,7 +1061,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
       <Modal
         isOpen={isNewModalOpen}
         onClose={() => setIsNewModalOpen(false)}
-        title="إنشاء فاتورة مشتريات وتوريد جديدة"
+        title={t('إنشاء فاتورة مشتريات وتوريد جديدة', 'Create New Purchase & Supply Invoice')}
         maxWidth="4xl"
       >
         <div className="space-y-2 text-xs">
@@ -1065,14 +1071,14 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-slate-50 p-2 rounded-lg border border-slate-200">
             <div>
-              <label className="block font-bold mb-0.5">المورد:</label>
+              <label className="block font-bold mb-0.5">{t('المورد:', 'Supplier:')}</label>
               <select
                 value={selectedSupplierId}
                 onChange={(e) => setSelectedSupplierId(e.target.value)}
                 className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 font-bold"
               >
                 {suppliers.length === 0 ? (
-                  <option value="">-- لا يوجد موردين مسجلين بعد --</option>
+                  <option value="">{t('-- لا يوجد موردين مسجلين بعد --', '-- No suppliers registered yet --')}</option>
                 ) : (
                   suppliers.map(s => (
                     <option key={s.id} value={s.id}>{s.name}</option>
@@ -1081,19 +1087,19 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
               </select>
             </div>
             <div>
-              <label className="block font-bold mb-0.5">المستودع المستلم:</label>
+              <label className="block font-bold mb-0.5">{t('المستودع المستلم:', 'Receiving Warehouse:')}</label>
               <select
                 value={selectedWarehouseId}
                 onChange={(e) => setSelectedWarehouseId(e.target.value)}
                 className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 font-bold"
               >
                 {warehouses.map(w => (
-                  <option key={w.id} value={w.id}>{w.name}</option>
+                  <option key={w.id} value={w.id}>{t(w.name)}</option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="block font-bold mb-0.5">التاريخ:</label>
+              <label className="block font-bold mb-0.5">{t('التاريخ:', 'Date:')}</label>
               <input
                 type="date"
                 value={invoiceDate}
@@ -1106,7 +1112,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
           {/* Add product to purchase using instant search + Inline New Product Creation */}
           <div className="bg-[#EEF3FA] p-2 rounded-lg border border-[#DCE6F5] space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="font-black text-slate-800">إضافة أصناف لفاتورة الشراء:</span>
+              <span className="font-black text-slate-800">{t('إضافة أصناف لفاتورة الشراء:', 'Add Items to Purchase Invoice:')}</span>
               <button
                 type="button"
                 onClick={() => {
@@ -1120,14 +1126,14 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 }`}
               >
                 <PackagePlus className="w-3.5 h-3.5" />
-                <span>{showInlineNewProduct ? 'إغلاق إنشاء الصنف الجديد' : 'إنشاء صنف جديد داخل الفاتورة'}</span>
+                <span>{showInlineNewProduct ? t('إغلاق إنشاء الصنف الجديد', 'Close New Product Form') : t('إنشاء صنف جديد داخل الفاتورة', 'Create New Product Inline')}</span>
               </button>
             </div>
 
             {!showInlineNewProduct ? (
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 items-end">
                 <div className="sm:col-span-6">
-                  <label className="block font-bold text-slate-700 mb-0.5">ابحث واختر السلعة المشتراة:</label>
+                  <label className="block font-bold text-slate-700 mb-0.5">{t('ابحث واختر السلعة المشتراة:', 'Search & Select Purchased Item:')}</label>
                   <ProductSearchSelect
                     products={products}
                     selectedProductId={itemProdId}
@@ -1136,7 +1142,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     priceMode="purchase"
                     currency={settings.currency}
                     inputRef={productSearchRef}
-                    placeholder="ابحث بالاسم أو الكود أو الباركود..."
+                    placeholder={t('ابحث بالاسم أو الكود أو الباركود...', 'Search by name, code, or barcode...')}
                     onSelect={(prod) => handleProductPick(prod.id)}
                     onAfterSelect={() => {
                       qtyInputRef.current?.focus();
@@ -1145,13 +1151,13 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   />
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="block font-bold text-slate-700 mb-0.5">الكمية:</label>
+                  <label className="block font-bold text-slate-700 mb-0.5">{t('الكمية:', 'Qty:')}</label>
                   <QuantityInput
                     inputRef={qtyInputRef}
                     allowDecimals
                     min={0.001}
                     value={itemQty}
-                    placeholder="الكمية"
+                    placeholder={t('الكمية', 'Qty')}
                     onChange={setItemQty}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
@@ -1159,17 +1165,17 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                         handleAddItem();
                       }
                     }}
-                    ariaLabel="كمية الشراء"
+                    ariaLabel={t('كمية الشراء', 'Purchase Qty')}
                     inputClassName="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 text-center font-mono font-bold outline-hidden focus:border-blue-700"
                   />
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="block font-bold text-slate-700 mb-0.5">سعر الشراء:</label>
+                  <label className="block font-bold text-slate-700 mb-0.5">{t('سعر الشراء:', 'Buy Price:')}</label>
                   <input
                     type="number"
                     step="0.5"
                     min="0"
-                    placeholder="السعر"
+                    placeholder={t('السعر', 'Price')}
                     value={itemPrice}
                     onChange={(e) => {
                       const raw = e.target.value;
@@ -1190,7 +1196,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     onClick={handleAddItem}
                     className="w-full h-8 px-2.5 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-bold cursor-pointer"
                   >
-                    + إضافة
+                    {t('+ إضافة', '+ Add')}
                   </button>
                 </div>
               </div>
@@ -1198,17 +1204,17 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
               <div className="bg-white dark:bg-[#0E1C36] p-2.5 rounded-lg border border-blue-200 dark:border-[#2A436E] space-y-2">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <div className="sm:col-span-2">
-                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">اسم الصنف الجديد: *</label>
+                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">{t('اسم الصنف الجديد: *', 'New Product Name: *')}</label>
                     <input
                       type="text"
                       value={newProdName}
                       onChange={(e) => setNewProdName(e.target.value)}
-                      placeholder="مثال: سكر الضحى 1 كجم"
+                      placeholder={t('مثال: سكر الضحى 1 كجم', 'e.g., Sugar 1kg')}
                       className="w-full h-8 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] rounded-md px-2.5 font-bold focus:border-blue-600 outline-hidden"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">الباركود (اختياري):</label>
+                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">{t('الباركود (اختياري):', 'Barcode (optional):')}</label>
                     <input
                       type="text"
                       value={newProdBarcode}
@@ -1218,7 +1224,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">الكود (اختياري):</label>
+                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">{t('الكود (اختياري):', 'Code (optional):')}</label>
                     <input
                       type="text"
                       value={newProdCode}
@@ -1228,7 +1234,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">التصنيف:</label>
+                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">{t('التصنيف:', 'Category:')}</label>
                     <input
                       type="text"
                       value={newProdCategory}
@@ -1237,34 +1243,34 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">الوحدة الأساسية:</label>
+                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">{t('الوحدة الأساسية:', 'Base Unit:')}</label>
                     <input
                       type="text"
                       value={newProdBaseUnit}
                       onChange={(e) => setNewProdBaseUnit(e.target.value)}
-                      placeholder="قطعة / كرتونة / كجم"
+                      placeholder={t('قطعة / كرتونة / كجم', 'Piece / Carton / Kg')}
                       className="w-full h-8 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] rounded-md px-2.5 font-semibold focus:border-blue-600 outline-hidden"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">الكمية المشتراة: *</label>
+                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">{t('الكمية المشتراة: *', 'Purchased Qty: *')}</label>
                     <QuantityInput
                       allowDecimals
                       min={0.001}
                       value={newProdQty}
-                      placeholder="الكمية"
+                      placeholder={t('الكمية', 'Qty')}
                       onChange={setNewProdQty}
-                      ariaLabel="كمية الصنف الجديد"
+                      ariaLabel={t('كمية الصنف الجديد', 'New Product Qty')}
                       inputClassName="w-full h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] text-slate-900 dark:text-[#EEF4FC] rounded-md px-2 text-center font-mono font-bold outline-hidden focus:border-blue-700"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">سعر الشراء: *</label>
+                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">{t('سعر الشراء: *', 'Buy Price: *')}</label>
                     <input
                       type="number"
                       step="0.5"
                       min="0"
-                      placeholder="سعر الشراء"
+                      placeholder={t('سعر الشراء', 'Buy Price')}
                       value={newProdPurchasePrice}
                       onChange={(e) => {
                         const raw = e.target.value;
@@ -1274,12 +1280,12 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">سعر البيع المقترح:</label>
+                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">{t('سعر البيع المقترح:', 'Suggested Sell Price:')}</label>
                     <input
                       type="number"
                       step="0.5"
                       min="0"
-                      placeholder="سعر البيع"
+                      placeholder={t('سعر البيع', 'Sell Price')}
                       value={newProdSellingPrice}
                       onChange={(e) => {
                         const raw = e.target.value;
@@ -1296,7 +1302,10 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     <div className="flex items-center gap-2 font-bold">
                       <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
                       <span>
-                        هذا الصنف مسجل مسبقاً ({duplicateCheckState.exactMatch.name} — {duplicateCheckState.exactMatch.code})! لن يُنشأ صنف مكرر.
+                        {t(
+                          `هذا الصنف مسجل مسبقاً (${duplicateCheckState.exactMatch.name} — ${duplicateCheckState.exactMatch.code})! لن يُنشأ صنف مكرر.`,
+                          `This product is already registered (${duplicateCheckState.exactMatch.name} — ${duplicateCheckState.exactMatch.code})! No duplicate will be created.`
+                        )}
                       </span>
                     </div>
                     <button
@@ -1304,7 +1313,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       onClick={() => handleUseExistingDuplicateProduct(duplicateCheckState.exactMatch!)}
                       className="px-2.5 py-1 rounded-lg bg-amber-700 hover:bg-amber-800 text-white font-bold cursor-pointer"
                     >
-                      استخدام الصنف الموجود
+                      {t('استخدام الصنف الموجود', 'Use Existing Product')}
                     </button>
                   </div>
                 )}
@@ -1313,7 +1322,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   <div className="p-2 rounded-lg border border-blue-200 bg-blue-50/70 text-blue-950 space-y-1.5">
                     <div className="font-bold flex items-center gap-1.5">
                       <AlertTriangle className="w-3.5 h-3.5 text-blue-700" />
-                      <span>توجد أصناف متشابهة بالاسم (اختر منها إن كان نفس الصنف):</span>
+                      <span>{t('توجد أصناف متشابهة بالاسم (اختر منها إن كان نفس الصنف):', 'Similar products found (select one if it matches):')}</span>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {duplicateCheckState.similarMatches.map((sim) => (
@@ -1323,7 +1332,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                           onClick={() => handleUseExistingDuplicateProduct(sim)}
                           className="px-2.5 py-1 rounded-lg bg-white border border-blue-300 hover:bg-blue-100 text-blue-900 font-bold text-[11px] cursor-pointer"
                         >
-                          {sim.name} ({sim.baseUnit}) — {sim.purchasePrice} {settings.currency}
+                          {sim.name} ({t(sim.baseUnit)}) — {sim.purchasePrice} {t(settings.currency)}
                         </button>
                       ))}
                     </div>
@@ -1336,14 +1345,14 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     onClick={() => setShowInlineNewProduct(false)}
                     className="px-3 py-1.5 rounded-lg border border-slate-300 font-bold text-slate-600 cursor-pointer"
                   >
-                    إلغاء
+                    {t('إلغاء', 'Cancel')}
                   </button>
                   <button
                     type="button"
                     onClick={handleAddInlineNewProductItem}
                     className="px-3.5 py-1.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
                   >
-                    {duplicateCheckState.exactMatch ? 'ربط بالصنف الموجود وإضافته' : '+ إضافة الصنف للفاتورة'}
+                    {duplicateCheckState.exactMatch ? t('ربط بالصنف الموجود وإضافته', 'Link & Add Existing Product') : t('+ إضافة الصنف للفاتورة', '+ Add Product to Invoice')}
                   </button>
                 </div>
               </div>
@@ -1352,21 +1361,21 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
 
           {/* Items list */}
           <div className="border rounded-lg awlad-table-scroll">
-            <table className="w-full text-right">
+            <table className="w-full text-start">
               <thead>
                 <tr className="bg-slate-100 font-bold border-b">
-                  <th className="p-1.5">الصنف</th>
-                  <th className="p-1.5 text-center">الكمية</th>
-                  <th className="p-1.5 text-center">سعر الشراء</th>
-                  <th className="p-1.5 text-center">الإجمالي</th>
-                  <th className="p-1.5 text-center w-12">حذف</th>
+                  <th className="p-1.5">{t('الصنف', 'Item')}</th>
+                  <th className="p-1.5 text-center">{t('الكمية', 'Qty')}</th>
+                  <th className="p-1.5 text-center">{t('سعر الشراء', 'Buy Price')}</th>
+                  <th className="p-1.5 text-center">{t('الإجمالي', 'Total')}</th>
+                  <th className="p-1.5 text-center w-12">{t('حذف', 'Del')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {items.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="p-4 text-center text-slate-400">
-                      لم تتم إضافة أصناف بعد. ابحث عن صنف أعلاه أو أنشئ صنفاً جديداً لإضافته.
+                      {t('لم تتم إضافة أصناف بعد. ابحث عن صنف أعلاه أو أنشئ صنفاً جديداً لإضافته.', 'No items added yet. Search for a product above or create a new one.')}
                     </td>
                   </tr>
                 ) : (
@@ -1377,7 +1386,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                           <span>{it.productName}</span>
                           {it.newProduct && (
                             <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold">
-                              صنف جديد ({it.unit})
+                              {t('صنف جديد', 'New Item')} ({t(it.unit)})
                             </span>
                           )}
                         </div>
@@ -1396,7 +1405,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                               )
                             );
                           }}
-                          ariaLabel={`كمية ${it.productName}`}
+                          ariaLabel={`${t('كمية', 'Qty')} ${it.productName}`}
                           inputClassName="w-20 border rounded-lg px-2 py-1 text-center font-mono font-bold outline-hidden focus:border-blue-700"
                         />
                       </td>
@@ -1425,7 +1434,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                           className="w-24 border rounded-lg px-2 py-1 text-center font-mono font-bold"
                         />
                       </td>
-                      <td className="p-2 text-center font-bold text-blue-900">{it.total.toLocaleString()}</td>
+                      <td className="p-2 text-center font-bold text-blue-900">{formatLocaleNumber(it.total)}</td>
                       <td className="p-2 text-center">
                         <button
                           type="button"
@@ -1446,42 +1455,42 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-slate-50 p-2 rounded-lg border border-slate-200">
             <div className="space-y-1.5">
               <div>
-                <label className="block font-bold mb-0.5">طريقة السداد للمورد:</label>
+                <label className="block font-bold mb-0.5">{t('طريقة السداد للمورد:', 'Supplier Payment Method:')}</label>
                 <div className="grid grid-cols-3 gap-1.5 font-bold">
                   <button
                     type="button"
                     onClick={() => setPaymentType('cash')}
                     className={`py-1 px-2 rounded-md border ${paymentType === 'cash' ? 'bg-[#011E58] text-white border-[#011E58]' : 'bg-white text-slate-700 border-slate-300'}`}
                   >
-                    نقدي كامل
+                    {t('نقدي كامل', 'Full Cash')}
                   </button>
                   <button
                     type="button"
                     onClick={() => setPaymentType('credit')}
                     className={`py-1 px-2 rounded-md border ${paymentType === 'credit' ? 'bg-[#011E58] text-white border-[#011E58]' : 'bg-white text-slate-700 border-slate-300'}`}
                   >
-                    آجل بالكامل
+                    {t('آجل بالكامل', 'Full Credit')}
                   </button>
                   <button
                     type="button"
                     onClick={() => setPaymentType('partial')}
                     className={`py-1 px-2 rounded-md border ${paymentType === 'partial' ? 'bg-[#011E58] text-white border-[#011E58]' : 'bg-white text-slate-700 border-slate-300'}`}
                   >
-                    دفعة + آجل
+                    {t('دفعة + آجل', 'Partial + Credit')}
                   </button>
                 </div>
               </div>
 
               {paymentType !== 'credit' && (
                 <div>
-                  <label className="block font-bold mb-0.5">الخزينة المسدد منها:</label>
+                  <label className="block font-bold mb-0.5">{t('الخزينة المسدد منها:', 'Paid from Cashbox:')}</label>
                   <select
                     value={selectedCashboxId}
                     onChange={(e) => setSelectedCashboxId(e.target.value)}
                     className="w-full h-8 bg-white border rounded-md px-2 py-1 font-bold"
                   >
                     {cashboxes.map(cb => (
-                      <option key={cb.id} value={cb.id}>{cb.name} ({cb.currentBalance})</option>
+                      <option key={cb.id} value={cb.id}>{t(cb.name)} ({formatLocaleNumber(cb.currentBalance)})</option>
                     ))}
                   </select>
                 </div>
@@ -1489,12 +1498,12 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
 
               {paymentType === 'partial' && (
                 <div>
-                  <label className="block font-bold mb-0.5">المدفوع نقداً للمورد:</label>
+                  <label className="block font-bold mb-0.5">{t('المدفوع نقداً للمورد:', 'Cash Paid to Supplier:')}</label>
                   <input
                     type="number"
                     min="0"
                     max={grandTotal}
-                    placeholder="أدخل المبلغ المدفوع"
+                    placeholder={t('أدخل المبلغ المدفوع', 'Enter paid amount')}
                     value={paidAmount}
                     onChange={(e) => {
                       const raw = e.target.value;
@@ -1506,12 +1515,12 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
               )}
 
               <div>
-                <label className="block font-bold mb-0.5">ملاحظات الفاتورة:</label>
+                <label className="block font-bold mb-0.5">{t('ملاحظات الفاتورة:', 'Invoice Notes:')}</label>
                 <input
                   type="text"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder="رقم بوليصة التوريد أو ملاحظات..."
+                  placeholder={t('رقم بوليصة التوريد أو ملاحظات...', 'Supply manifest # or notes...')}
                   className="w-full h-8 bg-white border rounded-md px-2 py-1"
                 />
               </div>
@@ -1519,11 +1528,11 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
 
             <div className="bg-white p-2 rounded-lg border space-y-1 font-bold">
               <div className="flex justify-between">
-                <span>المجموع الفرعي:</span>
-                <span className="font-mono tabular-nums">{subtotal.toLocaleString()} {settings.currency}</span>
+                <span>{t('المجموع الفرعي:', 'Subtotal:')}</span>
+                <span className="font-mono tabular-nums">{formatLocaleNumber(subtotal)} {t(settings.currency)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span>الخصم المكتسب:</span>
+                <span>{t('الخصم المكتسب:', 'Earned Discount:')}</span>
                 <input
                   type="number"
                   min="0"
@@ -1537,36 +1546,36 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 />
               </div>
               <div className="flex justify-between text-sm font-black text-blue-950 border-t pt-1">
-                <span>الإجمالي الصافي:</span>
-                <span className="font-mono tabular-nums">{grandTotal.toLocaleString()} {settings.currency}</span>
+                <span>{t('الإجمالي الصافي:', 'Net Total:')}</span>
+                <span className="font-mono tabular-nums">{formatLocaleNumber(grandTotal)} {t(settings.currency)}</span>
               </div>
               <div className="flex justify-between text-emerald-700">
-                <span>المدفوع:</span>
-                <span className="font-mono tabular-nums">{numericPaid.toLocaleString()}</span>
+                <span>{t('المدفوع:', 'Paid:')}</span>
+                <span className="font-mono tabular-nums">{formatLocaleNumber(numericPaid)}</span>
               </div>
               <div className="flex justify-between text-red-700 border-t pt-1">
-                <span>المتبقي للمورد:</span>
-                <span className="font-mono tabular-nums">{remainingAmount.toLocaleString()} {settings.currency}</span>
+                <span>{t('المتبقي للمورد:', 'Balance Due:')}</span>
+                <span className="font-mono tabular-nums">{formatLocaleNumber(remainingAmount)} {t(settings.currency)}</span>
               </div>
             </div>
           </div>
 
           <div className="bg-[#EEF3FA] border border-[#DCE6F5] rounded-lg p-2 flex flex-wrap items-center justify-between gap-2">
             <div className="flex-1 min-w-[200px]">
-              <label className="block font-bold text-[#011E58] mb-0.5">المسؤول الموجه إليه عند الإرسال للإدارة (اختياري):</label>
+              <label className="block font-bold text-[#011E58] mb-0.5">{t('المسؤول الموجه إليه عند الإرسال للإدارة (اختياري):', 'Target Manager When Sending to Management (optional):')}</label>
               <select
                 value={newRecipientUserId}
                 onChange={(e) => setNewRecipientUserId(e.target.value)}
                 className="w-full h-8 bg-white border border-[#DCE6F5] rounded-md px-2 py-1 font-bold"
               >
-                <option value="">الإدارة العامة (جميع المسؤولين المختصين)</option>
+                <option value="">{t('الإدارة العامة (جميع المسؤولين المختصين)', 'General Management (All Authorized Managers)')}</option>
                 {purchaseReceivers.map((r) => (
-                  <option key={r.id} value={r.id}>{r.fullName} ({r.role})</option>
+                  <option key={r.id} value={r.id}>{r.fullName} ({t(r.role)})</option>
                 ))}
               </select>
             </div>
             <span className="text-[11px] font-bold text-[#003589]">
-              «حفظ وإرسال للإدارة» يحفظها كمسودة مرسلة دون تعديل أرصدة المخزون أو المورد لحين الاعتماد.
+              {t('«حفظ وإرسال للإدارة» يحفظها كمسودة مرسلة دون تعديل أرصدة المخزون أو المورد لحين الاعتماد.', '"Save & Send to Management" saves it as a sent draft without modifying inventory or supplier balances until approved.')}
             </span>
           </div>
 
@@ -1576,7 +1585,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
               onClick={() => setIsNewModalOpen(false)}
               className="px-3 py-1 border rounded-md font-bold cursor-pointer"
             >
-              إلغاء
+              {t('إلغاء', 'Cancel')}
             </button>
             <div className="flex flex-wrap gap-1.5">
               <button
@@ -1586,7 +1595,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 className="flex items-center gap-1 px-3 py-1 bg-[#011E58] hover:bg-[#002160] text-white rounded-md font-bold cursor-pointer disabled:opacity-50"
               >
                 <Send className="w-3.5 h-3.5" />
-                <span>{isSubmitting ? 'جاري الإرسال...' : 'حفظ وإرسال للإدارة'}</span>
+                <span>{isSubmitting ? t('جاري الإرسال...', 'Sending...') : t('حفظ وإرسال للإدارة', 'Save & Send to Management')}</span>
               </button>
               <button
                 type="button"
@@ -1595,7 +1604,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 className="flex items-center gap-1 px-3 py-1 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-bold cursor-pointer disabled:opacity-50"
               >
                 <Save className="w-3.5 h-3.5" />
-                <span>{isSubmitting ? 'جاري الحفظ...' : canApprovePurchase ? 'حفظ واعتماد الفاتورة' : 'حفظ كمسودة'}</span>
+                <span>{isSubmitting ? t('جاري الحفظ...', 'Saving...') : canApprovePurchase ? t('حفظ واعتماد الفاتورة', 'Save & Approve Invoice') : t('حفظ كمسودة', 'Save as Draft')}</span>
               </button>
               <button
                 type="button"
@@ -1604,7 +1613,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 className="flex items-center gap-1 px-3 py-1 bg-[#002160] hover:bg-[#001A49] text-white rounded-md font-bold cursor-pointer disabled:opacity-50"
               >
                 <Printer className="w-3.5 h-3.5" />
-                <span>حفظ وطباعة الفاتورة</span>
+                <span>{t('حفظ وطباعة الفاتورة', 'Save & Print Invoice')}</span>
               </button>
             </div>
           </div>
@@ -1616,11 +1625,11 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
         const badge = getPurchaseStatusBadge(displayedActiveInvoice);
         return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-2 bg-slate-900/60 backdrop-blur-xs">
-          <div className="w-full max-w-3xl bg-white rounded-lg shadow-2xl border border-slate-200 p-2.5 text-right max-h-[90vh] overflow-y-auto">
+          <div className="w-full max-w-3xl bg-white rounded-lg shadow-2xl border border-slate-200 p-2.5 text-start max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b pb-2 mb-2">
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-sm font-black text-slate-900">
-                  تفاصيل فاتورة المشتريات: {displayedActiveInvoice.invoiceNumber}
+                  {t('تفاصيل فاتورة المشتريات:', 'Purchase Invoice Details:')} {displayedActiveInvoice.invoiceNumber}
                 </h3>
                 <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${badge.cls}`}>
                   {badge.label}
@@ -1634,38 +1643,38 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 }}
                 className="text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
               >
-                إغلاق ✕
+                {t('إغلاق ✕', 'Close ✕')}
               </button>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs mb-3 p-2.5 bg-slate-50 rounded-lg">
               <div className="space-y-1">
-                <p className="text-slate-500">المورد: <strong className="text-slate-800">{displayedActiveInvoice.supplierName || 'مورد نقدي'}</strong></p>
-                <p className="text-slate-500">المستودع المستلم: <strong className="text-slate-800">{displayedActiveInvoice.warehouseName}</strong></p>
-                <p className="text-slate-500">أنشئت بواسطة: <strong className="text-slate-800">{displayedActiveInvoice.createdBy}</strong></p>
+                <p className="text-slate-500">{t('المورد:', 'Supplier:')} <strong className="text-slate-800">{displayedActiveInvoice.supplierName ? t(displayedActiveInvoice.supplierName) : t('مورد نقدي', 'Cash Supplier')}</strong></p>
+                <p className="text-slate-500">{t('المستودع المستلم:', 'Receiving Warehouse:')} <strong className="text-slate-800">{t(displayedActiveInvoice.warehouseName)}</strong></p>
+                <p className="text-slate-500">{t('أنشئت بواسطة:', 'Created by:')} <strong className="text-slate-800">{displayedActiveInvoice.createdBy}</strong></p>
                 {(displayedActiveInvoice.sentBy || displayedActiveInvoice.representativeName) && (
                   <p className="text-[#011E58]">
-                    المرسل / المندوب: <strong>{displayedActiveInvoice.sentBy || displayedActiveInvoice.representativeName}</strong>
-                    {displayedActiveInvoice.sentAt ? ` (${new Date(displayedActiveInvoice.sentAt).toLocaleString('ar-EG')})` : ''}
+                    {t('المرسل / المندوب:', 'Sender / Rep:')} <strong>{displayedActiveInvoice.sentBy || displayedActiveInvoice.representativeName}</strong>
+                    {displayedActiveInvoice.sentAt ? ` (${formatLocaleDateTime(displayedActiveInvoice.sentAt)})` : ''}
                   </p>
                 )}
               </div>
               <div className="space-y-1">
-                <p className="text-slate-500">التاريخ: <strong className="font-mono text-slate-800">{displayedActiveInvoice.date}</strong></p>
+                <p className="text-slate-500">{t('التاريخ:', 'Date:')} <strong className="font-mono text-slate-800">{displayedActiveInvoice.date}</strong></p>
                 {displayedActiveInvoice.recipientName && (
-                  <p className="text-slate-500">الموجه إليه: <strong className="text-slate-800">{displayedActiveInvoice.recipientName}</strong></p>
+                  <p className="text-slate-500">{t('الموجه إليه:', 'Directed to:')} <strong className="text-slate-800">{t(displayedActiveInvoice.recipientName)}</strong></p>
                 )}
                 {displayedActiveInvoice.receivedBy && (
                   <p className="text-[#003589]">
-                    تم الاستلام بواسطة: <strong>{displayedActiveInvoice.receivedBy}</strong>
-                    {displayedActiveInvoice.receivedAt ? ` (${new Date(displayedActiveInvoice.receivedAt).toLocaleString('ar-EG')})` : ''}
+                    {t('تم الاستلام بواسطة:', 'Received by:')} <strong>{displayedActiveInvoice.receivedBy}</strong>
+                    {displayedActiveInvoice.receivedAt ? ` (${formatLocaleDateTime(displayedActiveInvoice.receivedAt)})` : ''}
                   </p>
                 )}
                 {displayedActiveInvoice.editedBy && (
-                  <p className="text-amber-700">آخر تعديل: <strong>{displayedActiveInvoice.editedBy}</strong></p>
+                  <p className="text-amber-700">{t('آخر تعديل:', 'Last edited by:')} <strong>{displayedActiveInvoice.editedBy}</strong></p>
                 )}
                 {displayedActiveInvoice.cancelledBy && (
-                  <p className="text-red-700">ألغيت بواسطة: <strong>{displayedActiveInvoice.cancelledBy}</strong> {displayedActiveInvoice.cancelReason ? `— ${displayedActiveInvoice.cancelReason}` : ''}</p>
+                  <p className="text-red-700">{t('ألغيت بواسطة:', 'Cancelled by:')} <strong>{displayedActiveInvoice.cancelledBy}</strong> {displayedActiveInvoice.cancelReason ? `— ${displayedActiveInvoice.cancelReason}` : ''}</p>
                 )}
               </div>
             </div>
@@ -1673,7 +1682,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
             {displayedActiveInvoice.dispatchStatus === 'rejected' && displayedActiveInvoice.rejectionReason && (
               <div className="mb-3 p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-900 text-xs">
                 <strong className="block mb-0.5">
-                  سبب الرفض ({displayedActiveInvoice.rejectedBy || 'الإدارة'}):
+                  {t('سبب الرفض', 'Rejection Reason')} ({displayedActiveInvoice.rejectedBy ? t(displayedActiveInvoice.rejectedBy) : t('الإدارة', 'Management')}):
                 </strong>
                 <span>{displayedActiveInvoice.rejectionReason}</span>
               </div>
@@ -1681,7 +1690,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
 
             <div className="mb-4">
               <UnifiedDataTable<InvoiceItem>
-                title="أصناف فاتورة الشراء"
+                title={t('أصناف فاتورة الشراء', 'Purchase Invoice Items')}
                 data={displayedActiveInvoice.items}
                 rowKey={(it, i) => `${it.productId || it.productName}-${i}`}
                 searchable={false}
@@ -1690,32 +1699,32 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 columns={[
                   {
                     key: 'productName',
-                    header: 'الصنف',
+                    header: t('الصنف', 'Item'),
                     render: (it) => <span className="font-semibold">{it.productName}</span>,
                   },
                   {
                     key: 'unit',
-                    header: 'الوحدة',
+                    header: t('الوحدة', 'Unit'),
                     align: 'center',
-                    render: (it) => <span>{it.unit}</span>,
+                    render: (it) => <span>{t(it.unit)}</span>,
                   },
                   {
                     key: 'quantity',
-                    header: 'الكمية',
+                    header: t('الكمية', 'Qty'),
                     align: 'center',
                     render: (it) => <span className="font-bold font-mono tabular-nums">{it.quantity}</span>,
                   },
                   {
                     key: 'unitPrice',
-                    header: 'سعر الشراء',
+                    header: t('سعر الشراء', 'Buy Price'),
                     align: 'center',
                     render: (it) => <span className="font-mono tabular-nums">{it.unitPrice}</span>,
                   },
                   {
                     key: 'total',
-                    header: 'الإجمالي',
+                    header: t('الإجمالي', 'Total'),
                     align: 'center',
-                    render: (it) => <span className="font-bold font-mono text-blue-900 tabular-nums">{it.total.toLocaleString()}</span>,
+                    render: (it) => <span className="font-bold font-mono text-blue-900 tabular-nums">{formatLocaleNumber(it.total)}</span>,
                   },
                 ]}
               />
@@ -1725,18 +1734,18 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
               <div className="flex items-center gap-2 mb-2">
                 <History className="w-4 h-4 text-emerald-700" />
                 <h4 className="text-xs font-black text-slate-800">
-                  سجل الدفعات المسددة ({displayedActiveInvoice.payments?.length || (displayedActiveInvoice.paidAmount > 0 ? 1 : 0)})
+                  {t('سجل الدفعات المسددة', 'Payment History')} ({displayedActiveInvoice.payments?.length || (displayedActiveInvoice.paidAmount > 0 ? 1 : 0)})
                 </h4>
               </div>
               {(!displayedActiveInvoice.payments || displayedActiveInvoice.payments.length === 0) ? (
                 <p className="text-[11px] text-slate-500">
                   {displayedActiveInvoice.paidAmount > 0
-                    ? `تم تسجيل دفعة مخططة بقيمة ${displayedActiveInvoice.paidAmount.toLocaleString()} ${settings.currency}.`
-                    : 'فاتورة آجلة بالكامل للمورد.'}
+                    ? t(`تم تسجيل دفعة مخططة بقيمة ${formatLocaleNumber(displayedActiveInvoice.paidAmount)} ${t(settings.currency)}.`, `A scheduled payment of ${formatLocaleNumber(displayedActiveInvoice.paidAmount)} ${t(settings.currency)} was recorded.`)
+                    : t('فاتورة آجلة بالكامل للمورد.', 'Full credit invoice to supplier.')}
                 </p>
               ) : (
                 <UnifiedDataTable
-                  title="سجل الدفعات المسددة"
+                  title={t('سجل الدفعات المسددة', 'Payment History')}
                   data={displayedActiveInvoice.payments}
                   rowKey={(p) => p.id}
                   searchable={false}
@@ -1745,22 +1754,22 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   columns={[
                     {
                       key: 'date',
-                      header: 'التاريخ',
+                      header: t('التاريخ', 'Date'),
                       render: (p) => <span className="font-mono">{p.date}</span>,
                     },
                     {
                       key: 'amount',
-                      header: 'المبلغ',
-                      render: (p) => <span className="font-black text-emerald-700 font-mono tabular-nums">{p.amount.toLocaleString()} {settings.currency}</span>,
+                      header: t('المبلغ', 'Amount'),
+                      render: (p) => <span className="font-black text-emerald-700 font-mono tabular-nums">{formatLocaleNumber(p.amount)} {t(settings.currency)}</span>,
                     },
                     {
                       key: 'cashboxName',
-                      header: 'الخزينة',
-                      render: (p) => <span className="text-slate-600">{p.cashboxName}</span>,
+                      header: t('الخزينة', 'Cashbox'),
+                      render: (p) => <span className="text-slate-600">{t(p.cashboxName)}</span>,
                     },
                     {
                       key: 'notes',
-                      header: 'ملاحظات',
+                      header: t('ملاحظات', 'Notes'),
                       render: (p) => <span className="text-slate-500">{p.notes || '-'}</span>,
                     },
                   ]}
@@ -1773,7 +1782,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 <div className="flex items-center gap-2">
                   <Send className="w-3.5 h-3.5 text-[#003589]" />
                   <h4 className="text-xs font-black text-[#011E58]">
-                    سجل الإرسال والاستلام والاعتماد ({displayedActiveInvoice.dispatchHistory.length})
+                    {t('سجل الإرسال والاستلام والاعتماد', 'Dispatch, Receipt & Approval History')} ({displayedActiveInvoice.dispatchHistory.length})
                   </h4>
                 </div>
                 <div className="space-y-1">
@@ -1781,19 +1790,19 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     <div key={`${h.at}-${idx}`} className="p-2 bg-white border border-[#DCE6F5] rounded-lg text-[11px] flex items-center justify-between gap-2">
                       <div>
                         <strong className="text-slate-900">
-                          {h.action === 'created' ? 'إنشاء الفاتورة' :
-                           h.action === 'sent' ? 'إرسال للإدارة' :
-                           h.action === 'resent' ? 'إعادة إرسال للإدارة' :
-                           h.action === 'received' ? 'استلام الفاتورة' :
-                           h.action === 'rejected' ? 'رفض الفاتورة' :
-                           h.action === 'confirmed' ? 'اعتماد وترحيل' : h.action}
+                          {h.action === 'created' ? t('إنشاء الفاتورة', 'Invoice Created') :
+                           h.action === 'sent' ? t('إرسال للإدارة', 'Sent to Management') :
+                           h.action === 'resent' ? t('إعادة إرسال للإدارة', 'Resent to Management') :
+                           h.action === 'received' ? t('استلام الفاتورة', 'Invoice Received') :
+                           h.action === 'rejected' ? t('رفض الفاتورة', 'Invoice Rejected') :
+                           h.action === 'confirmed' ? t('اعتماد وترحيل', 'Approved & Posted') : h.action}
                         </strong>
-                        {h.by && <span className="text-slate-600 mr-1.5">· {h.by}</span>}
-                        {h.recipientName && <span className="text-[#003589] mr-1.5">→ {h.recipientName}</span>}
+                        {h.by && <span className="text-slate-600 ms-1.5">· {h.by}</span>}
+                        {h.recipientName && <span className="text-[#003589] ms-1.5">→ {t(h.recipientName)}</span>}
                         {(h.notes || h.reason) && <p className="text-slate-500 mt-0.5">{h.notes || h.reason}</p>}
                       </div>
                       <span className="font-mono text-[10px] text-slate-400 shrink-0" dir="ltr">
-                        {h.at ? new Date(h.at).toLocaleString('ar-EG') : ''}
+                        {h.at ? formatLocaleDateTime(h.at) : ''}
                       </span>
                     </div>
                   ))}
@@ -1806,7 +1815,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 <div className="flex items-center gap-2">
                   <Clock className="w-3.5 h-3.5 text-amber-700" />
                   <h4 className="text-xs font-black text-amber-950">
-                    سجل التعديلات السابقة ({displayedActiveInvoice.editHistory.length})
+                    {t('سجل التعديلات السابقة', 'Previous Edit History')} ({displayedActiveInvoice.editHistory.length})
                   </h4>
                 </div>
                 <div className="space-y-1">
@@ -1817,18 +1826,18 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     >
                       <div className="space-y-0.5">
                         <div className="font-bold text-slate-900">
-                          بواسطة: {entry.editedBy || 'غير محدد'}
-                          {entry.reason ? ` · السبب: ${entry.reason}` : ''}
+                          {t('بواسطة:', 'By:')} {entry.editedBy || t('غير محدد', 'Unspecified')}
+                          {entry.reason ? ` · ${t('السبب:', 'Reason:')} ${entry.reason}` : ''}
                         </div>
                         {entry.before && entry.after && (
                           <div className="text-slate-600 font-mono">
-                            الإجمالي: {Number(entry.before.grandTotal ?? 0).toLocaleString()} →{' '}
-                            <strong className="text-blue-900">{Number(entry.after.grandTotal ?? 0).toLocaleString()} {settings.currency}</strong>
+                            {t('الإجمالي:', 'Total:')} {formatLocaleNumber(Number(entry.before.grandTotal ?? 0))} →{' '}
+                            <strong className="text-blue-900">{formatLocaleNumber(Number(entry.after.grandTotal ?? 0))} {t(settings.currency)}</strong>
                           </div>
                         )}
                       </div>
                       <span className="font-mono text-[10px] text-slate-500 shrink-0" dir="ltr">
-                        {entry.editedAt ? new Date(entry.editedAt).toLocaleString('ar-EG') : ''}
+                        {entry.editedAt ? formatLocaleDateTime(entry.editedAt) : ''}
                       </span>
                     </div>
                   ))}
@@ -1839,17 +1848,17 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
             {displayedActiveInvoice.status === 'draft' && (canCreatePurchaseDraft || canReceivePurchase || canApprovePurchase) && (
               <div className="mb-3 p-2.5 bg-slate-50 border border-slate-200 rounded-lg space-y-2.5 text-xs">
                 <p className="text-[11px] font-bold text-slate-600">
-                  ملاحظة محاسبية: هذه الفاتورة لا تزال مسودة ولم تؤثر على أرصدة المخازن أو المورد أو الخزينة بعد. يتم الترحيل الفعلي فقط عند الضغط على «اعتماد وترحيل الفاتورة».
+                  {t('ملاحظة محاسبية: هذه الفاتورة لا تزال مسودة ولم تؤثر على أرصدة المخازن أو المورد أو الخزينة بعد. يتم الترحيل الفعلي فقط عند الضغط على «اعتماد وترحيل الفاتورة».', 'Accounting Note: This invoice is still a draft and has not affected inventory, supplier, or treasury balances yet. Posting only occurs when clicking "Approve & Post Invoice".')}
                 </p>
 
                 {isRejectBoxOpen && (
                   <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg space-y-2">
-                    <label className="block font-black text-rose-900">سبب رفض الفاتورة وإعادتها للمندوب:</label>
+                    <label className="block font-black text-rose-900">{t('سبب رفض الفاتورة وإعادتها للمندوب:', 'Reason for Rejecting & Returning Invoice to Rep:')}</label>
                     <input
                       type="text"
                       value={rejectReasonText}
                       onChange={(e) => setRejectReasonText(e.target.value)}
-                      placeholder="اكتب سبب الرفض بوضوح..."
+                      placeholder={t('اكتب سبب الرفض بوضوح...', 'Write rejection reason clearly...')}
                       className="w-full px-2.5 py-1.5 rounded-lg border border-rose-300 bg-white font-semibold"
                     />
                     <div className="flex items-center justify-end gap-2">
@@ -1861,7 +1870,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                         }}
                         className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white font-bold cursor-pointer"
                       >
-                        تراجع
+                        {t('تراجع', 'Back')}
                       </button>
                       <button
                         type="button"
@@ -1874,14 +1883,14 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                           if (res.success) {
                             setIsRejectBoxOpen(false);
                             setRejectReasonText('');
-                            setActionMessage({ type: 'success', text: `تم رفض الفاتورة (${displayedActiveInvoice.invoiceNumber}) وإخطار المندوب.` });
+                            setActionMessage({ type: 'success', text: t(`تم رفض الفاتورة (${displayedActiveInvoice.invoiceNumber}) وإخطار المندوب.`, `Invoice (${displayedActiveInvoice.invoiceNumber}) rejected and representative notified.`) });
                           } else {
-                            setActionMessage({ type: 'error', text: res.error || 'تعذر رفض الفاتورة' });
+                            setActionMessage({ type: 'error', text: res.error ? t(res.error) : t('تعذر رفض الفاتورة', 'Unable to reject invoice') });
                           }
                         }}
                         className="px-3.5 py-1.5 rounded-lg bg-rose-700 hover:bg-rose-800 text-white font-black disabled:opacity-50 cursor-pointer"
                       >
-                        {isDispatchActionBusy ? 'جاري الرفض...' : 'تأكيد الرفض'}
+                        {isDispatchActionBusy ? t('جاري الرفض...', 'Rejecting...') : t('تأكيد الرفض', 'Confirm Rejection')}
                       </button>
                     </div>
                   </div>
@@ -1900,7 +1909,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-[#011E58] hover:bg-[#002160] text-white font-bold cursor-pointer disabled:opacity-50"
                     >
                       <Send className="w-3.5 h-3.5" />
-                      <span>{displayedActiveInvoice.dispatchStatus === 'rejected' ? 'إعادة إرسال للإدارة' : 'إرسال للإدارة'}</span>
+                      <span>{displayedActiveInvoice.dispatchStatus === 'rejected' ? t('إعادة إرسال للإدارة', 'Resend to Management') : t('إرسال للإدارة', 'Send to Management')}</span>
                     </button>
                   )}
 
@@ -1915,16 +1924,16 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                         if (res.success) {
                           setActionMessage({
                             type: 'success',
-                            text: `تم استلام فاتورة الشراء (${displayedActiveInvoice.invoiceNumber}) بنجاح وبانتظار الاعتماد النهائي.`,
+                            text: t(`تم استلام فاتورة الشراء (${displayedActiveInvoice.invoiceNumber}) بنجاح وبانتظار الاعتماد النهائي.`, `Purchase invoice (${displayedActiveInvoice.invoiceNumber}) received successfully, awaiting final approval.`),
                           });
                         } else {
-                          setActionMessage({ type: 'error', text: res.error || 'تعذر تأكيد استلام الفاتورة' });
+                          setActionMessage({ type: 'error', text: res.error ? t(res.error) : t('تعذر تأكيد استلام الفاتورة', 'Unable to confirm invoice receipt') });
                         }
                       }}
                       className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer disabled:opacity-50"
                     >
                       <UserCheck className="w-3.5 h-3.5" />
-                      <span>تأكيد استلام الفاتورة</span>
+                      <span>{t('تأكيد استلام الفاتورة', 'Confirm Receipt')}</span>
                     </button>
                   )}
 
@@ -1936,7 +1945,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-300 font-bold cursor-pointer disabled:opacity-50"
                     >
                       <XCircle className="w-3.5 h-3.5" />
-                      <span>رفض مع ذكر السبب</span>
+                      <span>{t('رفض مع ذكر السبب', 'Reject with Reason')}</span>
                     </button>
                   )}
 
@@ -1951,16 +1960,16 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                         if (res.success) {
                           setActionMessage({
                             type: 'success',
-                            text: `تم اعتماد وترحيل فاتورة الشراء (${displayedActiveInvoice.invoiceNumber}) للمخزون وحساب المورد بنجاح.`,
+                            text: t(`تم اعتماد وترحيل فاتورة الشراء (${displayedActiveInvoice.invoiceNumber}) للمخزون وحساب المورد بنجاح.`, `Purchase invoice (${displayedActiveInvoice.invoiceNumber}) approved and posted to inventory and supplier account.`),
                           });
                         } else {
-                          setActionMessage({ type: 'error', text: res.error || 'تعذر اعتماد الفاتورة' });
+                          setActionMessage({ type: 'error', text: res.error ? t(res.error) : t('تعذر اعتماد الفاتورة', 'Unable to approve invoice') });
                         }
                       }}
                       className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-black cursor-pointer disabled:opacity-50"
                     >
                       <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>اعتماد وترحيل الفاتورة</span>
+                      <span>{t('اعتماد وترحيل الفاتورة', 'Approve & Post Invoice')}</span>
                     </button>
                   )}
                 </div>
@@ -1969,9 +1978,9 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
 
             <div className="flex justify-between items-center pt-2.5 border-t text-xs">
               <div className="flex items-center gap-4 text-slate-600">
-                <span>الإجمالي: <strong className="text-sm font-black text-slate-900">{displayedActiveInvoice.grandTotal.toLocaleString()} {settings.currency}</strong></span>
-                <span>المدفوع: <strong className="text-sm font-bold text-emerald-700">{displayedActiveInvoice.paidAmount.toLocaleString()}</strong></span>
-                <span>المتبقي للمورد: <strong className="text-sm font-bold text-red-600">{displayedActiveInvoice.remainingAmount.toLocaleString()}</strong></span>
+                <span>{t('الإجمالي:', 'Total:')} <strong className="text-sm font-black text-slate-900">{formatLocaleNumber(displayedActiveInvoice.grandTotal)} {t(settings.currency)}</strong></span>
+                <span>{t('المدفوع:', 'Paid:')} <strong className="text-sm font-bold text-emerald-700">{formatLocaleNumber(displayedActiveInvoice.paidAmount)}</strong></span>
+                <span>{t('المتبقي للمورد:', 'Balance Due:')} <strong className="text-sm font-bold text-red-600">{formatLocaleNumber(displayedActiveInvoice.remainingAmount)}</strong></span>
               </div>
               <button
                 onClick={() => {
@@ -1982,7 +1991,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 className="flex items-center gap-1.5 px-3 py-1 bg-[#003589] text-white rounded-md font-bold hover:bg-[#0049B0] transition-colors cursor-pointer"
               >
                 <Printer className="w-3.5 h-3.5" />
-                <span>طباعة هذه الفاتورة</span>
+                <span>{t('طباعة هذه الفاتورة', 'Print This Invoice')}</span>
               </button>
             </div>
           </div>
@@ -1993,14 +2002,14 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
       {/* Edit Purchase Invoice Modal */}
       {editModalInvoice && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-2 bg-slate-900/60 backdrop-blur-xs">
-          <div className="w-full max-w-3xl bg-white rounded-lg shadow-2xl border border-slate-200 p-2.5 text-right max-h-[90vh] overflow-y-auto">
+          <div className="w-full max-w-3xl bg-white rounded-lg shadow-2xl border border-slate-200 p-2.5 text-start max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b pb-2 mb-2">
               <div>
                 <h3 className="text-sm font-black text-slate-900">
-                  تعديل فاتورة المشتريات رقم: {editModalInvoice.invoiceNumber}
+                  {t('تعديل فاتورة المشتريات رقم:', 'Edit Purchase Invoice #:')} {editModalInvoice.invoiceNumber}
                 </h3>
                 <p className="text-[11px] text-slate-500">
-                  المدفوع مسبقاً للمورد: <strong className="text-emerald-700">{editModalInvoice.paidAmount.toLocaleString()} {settings.currency}</strong>
+                  {t('المدفوع مسبقاً للمورد:', 'Previously Paid to Supplier:')} <strong className="text-emerald-700">{formatLocaleNumber(editModalInvoice.paidAmount)} {t(settings.currency)}</strong>
                 </p>
               </div>
               <button
@@ -2021,32 +2030,32 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
             <form onSubmit={handleSubmitEdit} className="space-y-2 text-xs">
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 bg-slate-50 p-2 rounded-lg border border-slate-200">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-0.5">المورد:</label>
+                  <label className="block font-bold text-slate-700 mb-0.5">{t('المورد:', 'Supplier:')}</label>
                   <select
                     value={editSupplierId}
                     onChange={(e) => setEditSupplierId(e.target.value)}
                     className="w-full h-8 px-2 py-1 rounded-md border border-slate-300 bg-white font-bold"
                   >
-                    <option value="">مورد نقدي</option>
+                    <option value="">{t('مورد نقدي', 'Cash Supplier')}</option>
                     {suppliers.map((s) => (
                       <option key={s.id} value={s.id}>{s.name}</option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-0.5">المستودع المستلم:</label>
+                  <label className="block font-bold text-slate-700 mb-0.5">{t('المستودع المستلم:', 'Receiving Warehouse:')}</label>
                   <select
                     value={editWarehouseId}
                     onChange={(e) => setEditWarehouseId(e.target.value)}
                     className="w-full h-8 px-2 py-1 rounded-md border border-slate-300 bg-white font-bold"
                   >
                     {warehouses.map((w) => (
-                      <option key={w.id} value={w.id}>{w.name}</option>
+                      <option key={w.id} value={w.id}>{t(w.name)}</option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-0.5">تاريخ الفاتورة:</label>
+                  <label className="block font-bold text-slate-700 mb-0.5">{t('تاريخ الفاتورة:', 'Invoice Date:')}</label>
                   <input
                     type="date"
                     required
@@ -2056,7 +2065,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-0.5">إجمالي الخصم ({settings.currency}):</label>
+                  <label className="block font-bold text-slate-700 mb-0.5">{t('إجمالي الخصم', 'Total Discount')} ({t(settings.currency)}):</label>
                   <input
                     type="number"
                     min={0}
@@ -2071,7 +2080,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
               {/* Add another item inside Edit Modal */}
               <div className="bg-blue-50/60 p-2.5 rounded-lg border border-blue-200 grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
                 <div className="sm:col-span-5">
-                  <label className="block font-bold text-slate-700 mb-1">إضافة صنف آخر للفاتورة:</label>
+                  <label className="block font-bold text-slate-700 mb-1">{t('إضافة صنف آخر للفاتورة:', 'Add Another Item to Invoice:')}</label>
                   <ProductSearchSelect
                     products={products}
                     selectedProductId={editAddProdId}
@@ -2079,29 +2088,29 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     warehouses={warehouses}
                     priceMode="purchase"
                     currency={settings.currency}
-                    placeholder="ابحث لإضافة صنف..."
+                    placeholder={t('ابحث لإضافة صنف...', 'Search to add item...')}
                     onSelect={handleEditPickProduct}
                   />
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="block font-bold text-slate-700 mb-1">الكمية:</label>
+                  <label className="block font-bold text-slate-700 mb-1">{t('الكمية:', 'Qty:')}</label>
                   <QuantityInput
                     allowDecimals
                     min={0.001}
                     value={editAddQty}
                     onChange={setEditAddQty}
-                    placeholder="الكمية"
-                    ariaLabel="كمية صنف مضاف"
+                    placeholder={t('الكمية', 'Qty')}
+                    ariaLabel={t('كمية صنف مضاف', 'Added Item Qty')}
                     inputClassName="w-full px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-center font-mono font-bold"
                   />
                 </div>
                 <div className="sm:col-span-3">
-                  <label className="block font-bold text-slate-700 mb-1">سعر الشراء:</label>
+                  <label className="block font-bold text-slate-700 mb-1">{t('سعر الشراء:', 'Buy Price:')}</label>
                   <input
                     type="number"
                     min={0}
                     step="0.5"
-                    placeholder="السعر"
+                    placeholder={t('السعر', 'Price')}
                     value={editAddPrice}
                     onChange={(e) => setEditAddPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
                     className="w-full px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-center font-mono font-bold"
@@ -2113,22 +2122,22 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     onClick={handleAddItemToEdit}
                     className="w-full py-1.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
                   >
-                    + إضافة
+                    {t('+ إضافة', '+ Add')}
                   </button>
                 </div>
               </div>
 
               {/* Editable items table */}
               <div className="border border-slate-200 rounded-lg overflow-hidden awlad-table-scroll">
-                <table className="w-full text-right text-xs">
+                <table className="w-full text-start text-xs">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold">
-                      <th className="p-2">الصنف</th>
-                      <th className="p-2 text-center">الوحدة</th>
-                      <th className="p-2 text-center w-24">الكمية</th>
-                      <th className="p-2 text-center w-28">سعر الشراء</th>
-                      <th className="p-2 text-center">الإجمالي</th>
-                      <th className="p-2 text-center w-12">حذف</th>
+                      <th className="p-2">{t('الصنف', 'Item')}</th>
+                      <th className="p-2 text-center">{t('الوحدة', 'Unit')}</th>
+                      <th className="p-2 text-center w-24">{t('الكمية', 'Qty')}</th>
+                      <th className="p-2 text-center w-28">{t('سعر الشراء', 'Buy Price')}</th>
+                      <th className="p-2 text-center">{t('الإجمالي', 'Total')}</th>
+                      <th className="p-2 text-center w-12">{t('حذف', 'Del')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -2164,7 +2173,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                               className="p-1.5 rounded-lg border border-slate-300 bg-white font-semibold"
                             >
                               {unitOptions.map((u) => (
-                                <option key={u.name} value={u.name}>{u.name}</option>
+                                <option key={u.name} value={u.name}>{t(u.name)}</option>
                               ))}
                             </select>
                           </td>
@@ -2182,7 +2191,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                                   )
                                 );
                               }}
-                              ariaLabel={`كمية ${item.productName}`}
+                              ariaLabel={`${t('كمية', 'Qty')} ${item.productName}`}
                               inputClassName="w-20 p-1.5 rounded-lg border border-slate-300 text-center font-bold font-mono outline-hidden focus:border-blue-700"
                             />
                           </td>
@@ -2211,7 +2220,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                             />
                           </td>
                           <td className="p-2.5 text-center font-black text-blue-900">
-                            {computeLineTotal(item.quantity, item.unitPrice, item.discount || 0).toLocaleString()} {settings.currency}
+                            {formatLocaleNumber(computeLineTotal(item.quantity, item.unitPrice, item.discount || 0), locale)} {t(settings.currency)}
                           </td>
                           <td className="p-2.5 text-center">
                             <button
@@ -2219,7 +2228,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                               disabled={editItems.length <= 1}
                               onClick={() => setEditItems((prev) => prev.filter((_, i) => i !== idx))}
                               className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded disabled:opacity-30 cursor-pointer"
-                              title="حذف البند"
+                              title={t('حذف البند', 'Delete Item')}
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -2232,7 +2241,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">ملاحظات الفاتورة:</label>
+                <label className="block font-bold text-slate-700 mb-1">{t('ملاحظات الفاتورة:', 'Invoice Notes:')}</label>
                 <textarea
                   rows={2}
                   value={editNotes}
@@ -2243,7 +2252,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
 
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
-                  سبب التعديل {editModalInvoice.status === 'confirmed' ? '(إلزامي للتدقيق):' : '(اختياري):'}{' '}
+                  {t('سبب التعديل', 'Edit Reason')} {editModalInvoice.status === 'confirmed' ? t('(إلزامي للتدقيق):', '(required for audit):') : t('(اختياري):', '(optional):')}{' '}
                   {editModalInvoice.status === 'confirmed' && <span className="text-red-500">*</span>}
                 </label>
                 <input
@@ -2251,7 +2260,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   required={editModalInvoice.status === 'confirmed'}
                   value={editReason}
                   onChange={(e) => setEditReason(e.target.value)}
-                  placeholder="مثال: تعديل كميات أو أسعار التوريد من المورد..."
+                  placeholder={t('مثال: تعديل كميات أو أسعار التوريد من المورد...', 'e.g., adjusting supply quantities or prices...')}
                   className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-semibold focus:border-blue-600 outline-hidden"
                 />
               </div>
@@ -2265,27 +2274,27 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   <div className="space-y-1.5">
                     <div className={`p-2.5 rounded-lg border flex flex-wrap items-center justify-between gap-2 text-xs ${belowPaid ? 'bg-red-50 border-red-300' : 'bg-blue-50/70 border-blue-200'}`}>
                       <div>
-                        <span className="text-slate-600 block text-[10px]">الإجمالي المعدّل:</span>
-                        <strong className="text-sm font-black text-blue-950">{grand.toLocaleString()} {settings.currency}</strong>
+                        <span className="text-slate-600 block text-[10px]">{t('الإجمالي المعدّل:', 'Adjusted Total:')}</span>
+                        <strong className="text-sm font-black text-blue-950">{formatLocaleNumber(grand)} {t(settings.currency)}</strong>
                       </div>
                       <div>
-                        <span className="text-slate-600 block text-[10px]">المدفوع مسبقاً:</span>
-                        <strong className="text-sm font-bold text-emerald-700">{editModalInvoice.paidAmount.toLocaleString()} {settings.currency}</strong>
+                        <span className="text-slate-600 block text-[10px]">{t('المدفوع مسبقاً:', 'Previously Paid:')}</span>
+                        <strong className="text-sm font-bold text-emerald-700">{formatLocaleNumber(editModalInvoice.paidAmount)} {t(settings.currency)}</strong>
                       </div>
                       <div>
-                        <span className="text-slate-600 block text-[10px]">المتبقي للمورد بعد التعديل:</span>
-                        <strong className="text-sm font-bold text-red-700">{Math.max(0, grand - editModalInvoice.paidAmount).toLocaleString()} {settings.currency}</strong>
+                        <span className="text-slate-600 block text-[10px]">{t('المتبقي للمورد بعد التعديل:', 'Remaining Due After Edit:')}</span>
+                        <strong className="text-sm font-bold text-red-700">{formatLocaleNumber(Math.max(0, grand - editModalInvoice.paidAmount))} {t(settings.currency)}</strong>
                       </div>
                       <div>
-                        <span className="text-slate-600 block text-[10px]">الفرق عن الأصل:</span>
+                        <span className="text-slate-600 block text-[10px]">{t('الفرق عن الأصل:', 'Diff from Original:')}</span>
                         <strong className={`text-sm font-black ${diff > 0 ? 'text-red-700' : diff < 0 ? 'text-emerald-700' : 'text-slate-600'}`}>
-                          {diff > 0 ? `+${diff.toLocaleString()}` : diff.toLocaleString()} {settings.currency}
+                          {diff > 0 ? `+${formatLocaleNumber(diff)}` : formatLocaleNumber(diff)} {t(settings.currency)}
                         </strong>
                       </div>
                     </div>
                     {belowPaid && (
                       <div className="text-[11px] font-bold text-red-700">
-                        تحذير: الإجمالي المعدّل أقل من المبلغ المدفوع مسبقاً للمورد ولن يُسمح بالحفظ.
+                        {t('تحذير: الإجمالي المعدّل أقل من المبلغ المدفوع مسبقاً للمورد ولن يُسمح بالحفظ.', 'Warning: Adjusted total is less than the amount already paid to supplier and cannot be saved.')}
                       </div>
                     )}
                   </div>
@@ -2298,14 +2307,14 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   onClick={() => setEditModalInvoice(null)}
                   className="px-3 py-1 rounded-md border border-slate-300 text-slate-600 font-bold hover:bg-slate-50 cursor-pointer"
                 >
-                  إلغاء
+                  {t('إلغاء', 'Cancel')}
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmittingEdit || editItems.length === 0 || (editItems.reduce((acc, it) => acc + computeLineTotal(it.quantity, it.unitPrice, it.discount || 0), 0) - Math.max(0, Number(editDiscount || 0))) < Number(editModalInvoice.paidAmount || 0) - 0.01}
                   className="px-3 py-1 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-black transition-colors disabled:opacity-50 cursor-pointer"
                 >
-                  {isSubmittingEdit ? 'جاري حفظ التعديل...' : 'حفظ وتحديث الفاتورة'}
+                  {isSubmittingEdit ? t('جاري حفظ التعديل...', 'Saving Changes...') : t('حفظ وتحديث الفاتورة', 'Save & Update Invoice')}
                 </button>
               </div>
             </form>
@@ -2317,12 +2326,12 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
         isOpen={!!cancelTarget}
         onClose={() => setCancelTarget(null)}
         onConfirm={handleConfirmCancelPurchase}
-        title={`إلغاء فاتورة الشراء ${cancelTarget?.invoiceNumber || ''}`}
-        message="سيتم إلغاء فاتورة المشتريات وتحديث المخزون وحساب المورد والخزينة. يرجى كتابة السبب:"
-        confirmLabel="تأكيد الإلغاء"
+        title={`${t('إلغاء فاتورة الشراء', 'Cancel Purchase Invoice')} ${cancelTarget?.invoiceNumber || ''}`}
+        message={t('سيتم إلغاء فاتورة المشتريات وتحديث المخزون وحساب المورد والخزينة. يرجى كتابة السبب:', 'The purchase invoice will be cancelled and inventory, supplier account, and treasury updated. Please enter the reason:')}
+        confirmLabel={t('تأكيد الإلغاء', 'Confirm Cancellation')}
         variant="danger"
         requireInput
-        inputLabel="سبب الإلغاء:"
+        inputLabel={t('سبب الإلغاء:', 'Cancellation Reason:')}
         isLoading={isCancelling}
       />
 
@@ -2330,33 +2339,33 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
         <Modal
           isOpen={Boolean(sendModalInvoice)}
           onClose={() => !isSendingModalBusy && setSendModalInvoice(null)}
-          title={`${sendModalInvoice.dispatchStatus === 'rejected' ? 'إعادة إرسال' : 'إرسال'} فاتورة الشراء (${sendModalInvoice.invoiceNumber}) للإدارة`}
+          title={`${sendModalInvoice.dispatchStatus === 'rejected' ? t('إعادة إرسال', 'Resend') : t('إرسال', 'Send')} ${t('فاتورة الشراء', 'Purchase Invoice')} (${sendModalInvoice.invoiceNumber}) ${t('للإدارة', 'to Management')}`}
           maxWidth="md"
         >
           <div className="space-y-2 text-xs">
             <div className="p-2 rounded-md bg-amber-50 border border-amber-200 text-amber-900 font-bold">
-              سيتم توجيه الفاتورة للإدارة للاستلام والمراجعة فقط دون تعديل المخزون أو حساب المورد أو الخزينة حتى الاعتماد.
+              {t('سيتم توجيه الفاتورة للإدارة للاستلام والمراجعة فقط دون تعديل المخزون أو حساب المورد أو الخزينة حتى الاعتماد.', 'The invoice will be routed to management for receipt and review only without modifying inventory, supplier balance, or treasury until approved.')}
             </div>
             <div>
-              <label className="block font-bold text-slate-700 mb-0.5">المسؤول الموجه إليه:</label>
+              <label className="block font-bold text-slate-700 mb-0.5">{t('المسؤول الموجه إليه:', 'Target Manager:')}</label>
               <select
                 value={sendModalRecipientId}
                 onChange={(e) => setSendModalRecipientId(e.target.value)}
                 className="w-full h-8 px-2 py-1 rounded-md border border-slate-300 bg-white font-bold"
               >
-                <option value="">الإدارة العامة (جميع المسؤولين المختصين)</option>
+                <option value="">{t('الإدارة العامة (جميع المسؤولين المختصين)', 'General Management (All Authorized Managers)')}</option>
                 {purchaseReceivers.map((r) => (
-                  <option key={r.id} value={r.id}>{r.fullName} ({r.role})</option>
+                  <option key={r.id} value={r.id}>{r.fullName} ({t(r.role)})</option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="block font-bold text-slate-700 mb-0.5">ملاحظة للإدارة (اختياري):</label>
+              <label className="block font-bold text-slate-700 mb-0.5">{t('ملاحظة للإدارة (اختياري):', 'Note to Management (optional):')}</label>
               <input
                 type="text"
                 value={sendModalNotes}
                 onChange={(e) => setSendModalNotes(e.target.value)}
-                placeholder="مثال: تم شراء البضاعة وبانتظار مراجعة التسعير والكميات..."
+                placeholder={t('مثال: تم شراء البضاعة وبانتظار مراجعة التسعير والكميات...', 'e.g., Goods purchased, awaiting pricing and qty review...')}
                 className="w-full h-8 px-2 py-1 rounded-md border border-slate-300"
               />
             </div>
@@ -2367,7 +2376,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 onClick={() => setSendModalInvoice(null)}
                 className="px-3 py-1 rounded-md border border-slate-300 font-bold cursor-pointer"
               >
-                إلغاء
+                {t('إلغاء', 'Cancel')}
               </button>
               <button
                 type="button"
@@ -2385,16 +2394,19 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     setSendModalInvoice(null);
                     setActionMessage({
                       type: 'success',
-                      text: `تم إرسال فاتورة الشراء (${sendModalInvoice.invoiceNumber}) إلى ${chosen?.fullName || 'الإدارة العامة'} بانتظار الاستلام والاعتماد.`,
+                      text: t(
+                        `تم إرسال فاتورة الشراء (${sendModalInvoice.invoiceNumber}) إلى ${chosen?.fullName || 'الإدارة العامة'} بانتظار الاستلام والاعتماد.`,
+                        `Purchase invoice (${sendModalInvoice.invoiceNumber}) sent to ${chosen?.fullName || t('الإدارة العامة', 'General Management')} awaiting receipt and approval.`
+                      ),
                     });
                   } else {
-                    setActionMessage({ type: 'error', text: res.error || 'تعذر إرسال الفاتورة' });
+                    setActionMessage({ type: 'error', text: res.error ? t(res.error) : t('تعذر إرسال الفاتورة', 'Unable to send invoice') });
                   }
                 }}
                 className="px-3 py-1 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-black inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
               >
                 <Send className="w-3.5 h-3.5" />
-                <span>{isSendingModalBusy ? 'جاري الإرسال...' : 'تأكيد الإرسال'}</span>
+                <span>{isSendingModalBusy ? t('جاري الإرسال...', 'Sending...') : t('تأكيد الإرسال', 'Confirm Send')}</span>
               </button>
             </div>
           </div>

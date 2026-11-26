@@ -10,6 +10,7 @@ import { Check, LocateFixed, MapPin, Search, X, AlertTriangle } from 'lucide-rea
 import { fetchMapsClientConfigApi, geocodeAddressViaServerApi, getConfiguredApiBaseUrl } from '../../services/api';
 import { getCurrentLocationSafe, parseLatLngCoords, reverseGeocodeCoords } from '../../services/native';
 import { isZeroZeroLocation } from '../../utils/storefront';
+import { usePreferences } from '../../context/PreferencesContext';
 
 const DEFAULT_EGYPT_CENTER = { lat: 30.0444, lng: 31.2357 };
 const SOLUTION_ATTRIBUTION_ID = 'gmp_mcp_codeassist_v1_aistudio';
@@ -44,6 +45,7 @@ const PlacesAutocompleteBox: React.FC<{
   onSearchFallback: (query: string) => Promise<void>;
   searching: boolean;
 }> = ({ onSelectPlace, onSearchFallback, searching }) => {
+  const { t, language } = usePreferences();
   const placesLib = useMapsLibrary('places');
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<any[]>([]);
@@ -66,7 +68,7 @@ const PlacesAutocompleteBox: React.FC<{
         }
         const res = await AutocompleteSuggestion.fetchAutocompleteSuggestions({
           input: clean,
-          language: 'ar',
+          language,
           region: 'eg',
         });
         setSuggestions(Array.isArray(res?.suggestions) ? res.suggestions.slice(0, 5) : []);
@@ -79,7 +81,7 @@ const PlacesAutocompleteBox: React.FC<{
     return () => {
       if (timerRef.current) window.clearTimeout(timerRef.current);
     };
-  }, [query, placesLib]);
+  }, [query, placesLib, language]);
 
   const handleChooseSuggestion = async (item: any) => {
     try {
@@ -117,7 +119,7 @@ const PlacesAutocompleteBox: React.FC<{
     <div className="relative">
       <div className="flex gap-2">
         <div className="relative flex-1">
-          <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <Search className="w-4 h-4 text-slate-400 absolute start-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
             value={query}
@@ -129,8 +131,8 @@ const PlacesAutocompleteBox: React.FC<{
                 onSearchFallback(query);
               }
             }}
-            placeholder="ابحث عن الشارع أو المنطقة أو اسم المعلم..."
-            className="w-full pr-8 pl-2.5 py-1.5 h-8 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC] dark:placeholder-[#7F96BA] outline-none focus:border-[#003589] dark:focus:border-[#3B82F6]"
+            placeholder={t('ابحث عن الشارع أو المنطقة أو اسم المعلم...', 'Search street, area, or landmark...')}
+            className="w-full ps-8 pe-2.5 py-1.5 h-8 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC] dark:placeholder-[#7F96BA] outline-none focus:border-[#003589] dark:focus:border-[#3B82F6]"
           />
         </div>
         <button
@@ -142,19 +144,19 @@ const PlacesAutocompleteBox: React.FC<{
           }}
           className="px-3 py-1.5 h-8 rounded-md bg-[#003589] hover:bg-[#0049B0] dark:bg-[#1659C8] dark:hover:bg-[#1F6BE6] text-white text-xs font-bold disabled:opacity-50 cursor-pointer shrink-0"
         >
-          {searching ? 'بحث...' : 'بحث'}
+          {searching ? t('بحث...', 'Searching...') : t('بحث', 'Search')}
         </button>
       </div>
       {openList && suggestions.length > 0 && (
         <div className="absolute left-0 right-0 top-full mt-1 z-30 bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#21375C] rounded-lg shadow-lg max-h-48 overflow-y-auto">
           {suggestions.map((s, idx) => {
-            const label = s?.placePrediction?.text?.text || s?.placePrediction?.structuredFormat?.mainText?.text || 'مكان';
+            const label = s?.placePrediction?.text?.text || s?.placePrediction?.structuredFormat?.mainText?.text || t('مكان', 'Place');
             return (
               <button
                 key={idx}
                 type="button"
                 onClick={() => handleChooseSuggestion(s)}
-                className="w-full text-right px-3 py-2 text-xs font-bold text-slate-700 dark:text-[#DCE6F5] hover:bg-[#EEF3FA] dark:hover:bg-[#1A3461] border-b last:border-b-0 border-slate-100 dark:border-[#1B2F52] cursor-pointer"
+                className="w-full text-start px-3 py-2 text-xs font-bold text-slate-700 dark:text-[#DCE6F5] hover:bg-[#EEF3FA] dark:hover:bg-[#1A3461] border-b last:border-b-0 border-slate-100 dark:border-[#1B2F52] cursor-pointer"
               >
                 {label}
               </button>
@@ -177,8 +179,10 @@ export const CustomerLocationPickerModal: React.FC<CustomerLocationPickerModalPr
   initialCity = '',
   initialArea = '',
   initialGovernorate = '',
-  title = 'تحديد موقع المحل على الخريطة',
+  title,
 }) => {
+  const { t, language, dir } = usePreferences();
+  const resolvedTitle = title ?? t('تحديد موقع المحل على الخريطة', 'Pin Shop Location on Map');
   const [mapsKey, setMapsKey] = useState<string>(() =>
     String((import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY || '').trim()
   );
@@ -247,21 +251,21 @@ export const CustomerLocationPickerModal: React.FC<CustomerLocationPickerModalPr
 
   const applyReverseGeocode = async (lat: number, lng: number) => {
     if (isZeroZeroLocation(lat, lng)) {
-      setErrorMsg('إحداثيات (0, 0) غير صالحة؛ يرجى اختيار موقع حقيقي على الخريطة.');
+      setErrorMsg(t('إحداثيات (0, 0) غير صالحة؛ يرجى اختيار موقع حقيقي على الخريطة.', 'Coordinates (0, 0) are invalid; please select a real map location.'));
       return;
     }
     setPinPos({ lat: Number(lat.toFixed(6)), lng: Number(lng.toFixed(6)) });
     setErrorMsg('');
-    setStatusMsg('جاري قراءة العنوان من الإحداثيات...');
+    setStatusMsg(t('جاري قراءة العنوان من الإحداثيات...', 'Reading address from coordinates...'));
     const rev = await reverseGeocodeCoords(lat, lng, getConfiguredApiBaseUrl());
     if (rev.ok) {
       if (rev.address) setAddress(rev.address);
       if (rev.area) setArea(rev.area);
       if (rev.city) setCity(rev.city);
       if (rev.governorate) setGovernorate(rev.governorate);
-      setStatusMsg('تم تحديث العنوان تلقائياً من الخريطة.');
+      setStatusMsg(t('تم تحديث العنوان تلقائياً من الخريطة.', 'Address automatically updated from map.'));
     } else {
-      setStatusMsg('تم تثبيت الإحداثيات بنجاح — يمكنك مراجعة العنوان يدوياً أدناه.');
+      setStatusMsg(t('تم تثبيت الإحداثيات بنجاح — يمكنك مراجعة العنوان يدوياً أدناه.', 'Coordinates pinned — you can review the address manually below.'));
     }
   };
 
@@ -269,17 +273,17 @@ export const CustomerLocationPickerModal: React.FC<CustomerLocationPickerModalPr
     setShowGpsRationale(false);
     setLocatingGps(true);
     setErrorMsg('');
-    setStatusMsg('جاري تحديد موقعك الحالي عبر GPS...');
+    setStatusMsg(t('جاري تحديد موقعك الحالي عبر GPS...', 'Detecting your current location via GPS...'));
     try {
       const gps = await getCurrentLocationSafe();
       if (!gps.ok || !gps.coords) {
-        setErrorMsg(gps.error || 'تعذر الحصول على الموقع الحالي من GPS.');
+        setErrorMsg(gps.error || t('تعذر الحصول على الموقع الحالي من GPS.', 'Could not get current GPS location.'));
         setStatusMsg('');
         return;
       }
       const parsed = parseLatLngCoords(gps.coords);
       if (!parsed || isZeroZeroLocation(parsed.lat, parsed.lng)) {
-        setErrorMsg('تعذر التقاط إحداثيات صالحة من GPS.');
+        setErrorMsg(t('تعذر التقاط إحداثيات صالحة من GPS.', 'Failed to capture valid GPS coordinates.'));
         setStatusMsg('');
         return;
       }
@@ -302,10 +306,10 @@ export const CustomerLocationPickerModal: React.FC<CustomerLocationPickerModalPr
         if (res.area) setArea(res.area);
         if (res.city) setCity(res.city);
         if (res.governorate) setGovernorate(res.governorate);
-        setStatusMsg('تم تحديد الموقع من البحث؛ يمكنك سحب الدبوس لضبطه بدقة.');
+        setStatusMsg(t('تم تحديد الموقع من البحث؛ يمكنك سحب الدبوس لضبطه بدقة.', 'Location found from search; drag the pin to adjust accurately.'));
       }
     } catch (err: any) {
-      setErrorMsg(err?.message || 'تعذر العثور على هذا العنوان؛ اضغط على الخريطة أو استخدم GPS.');
+      setErrorMsg(err?.message || t('تعذر العثور على هذا العنوان؛ اضغط على الخريطة أو استخدم GPS.', 'Could not find this address; tap on the map or use GPS.'));
     } finally {
       setSearchingAddr(false);
     }
@@ -313,7 +317,7 @@ export const CustomerLocationPickerModal: React.FC<CustomerLocationPickerModalPr
 
   const handleSave = () => {
     if (!pinPos || isZeroZeroLocation(pinPos.lat, pinPos.lng)) {
-      setErrorMsg('يرجى تحديد موقع حقيقي على الخريطة أو عبر GPS قبل الحفظ (لا يمكن حفظ 0,0).');
+      setErrorMsg(t('يرجى تحديد موقع حقيقي على الخريطة أو عبر GPS قبل الحفظ (لا يمكن حفظ 0,0).', 'Please select a valid location on the map or via GPS before saving.'));
       return;
     }
     onConfirm({
@@ -334,20 +338,20 @@ export const CustomerLocationPickerModal: React.FC<CustomerLocationPickerModalPr
 
   return (
     <div className="fixed inset-0 z-[80] bg-black/60 dark:bg-[#040B17]/75 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-3">
-      <div className="bg-white dark:bg-[#0E1C36] w-full sm:max-w-2xl rounded-t-lg sm:rounded-lg border border-slate-200 dark:border-[#21375C] overflow-hidden flex flex-col max-h-[92vh]">
+      <div dir={dir} className="bg-white dark:bg-[#0E1C36] w-full sm:max-w-2xl rounded-t-lg sm:rounded-lg border border-slate-200 dark:border-[#21375C] overflow-hidden flex flex-col max-h-[92vh]">
         <div className="px-2.5 py-2 awlad-brand-gradient text-white flex items-center justify-between gap-2 shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <MapPin className="w-4 h-4 shrink-0" />
             <div className="min-w-0">
-              <h3 className="text-xs font-black truncate">{title}</h3>
-              <p className="text-[10.5px] text-[#DCE6F5] truncate">اضغط على الخريطة أو اسحب العلامة لتحديد موقع المحل بدقة</p>
+              <h3 className="text-xs font-black truncate">{resolvedTitle}</h3>
+              <p className="text-[10.5px] text-[#DCE6F5] truncate">{t('اضغط على الخريطة أو اسحب العلامة لتحديد موقع المحل بدقة', 'Tap the map or drag the pin to accurately set the shop location')}</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="h-7 w-7 flex items-center justify-center rounded-md bg-white/15 hover:bg-white/25 cursor-pointer shrink-0"
-            aria-label="إغلاق"
+            aria-label={t('إغلاق', 'Close')}
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -362,7 +366,7 @@ export const CustomerLocationPickerModal: React.FC<CustomerLocationPickerModalPr
               className="h-8 px-2.5 rounded-md bg-[#EEF3FA] dark:bg-[#132544] border border-[#DCE6F5] dark:border-[#2A436E] text-[#011E58] dark:text-[#85B8FF] text-xs font-black flex items-center gap-1.5 hover:bg-[#DCE6F5] dark:hover:bg-[#1A3461] cursor-pointer"
             >
               <LocateFixed className={`w-3.5 h-3.5 ${locatingGps ? 'animate-spin' : ''}`} />
-              <span>{locatingGps ? 'جاري التحديد...' : 'تحديد موقعي الحالي (GPS)'}</span>
+              <span>{locatingGps ? t('جاري التحديد...', 'Locating...') : t('تحديد موقعي الحالي (GPS)', 'Use Current Location (GPS)')}</span>
             </button>
             {pinPos && (
               <span className="h-8 inline-flex items-center text-[11px] font-bold text-slate-600 dark:text-[#A9BCD9] bg-slate-100 dark:bg-[#132544] border border-transparent dark:border-[#21375C] px-2 rounded-md awlad-tabular" dir="ltr">
@@ -373,28 +377,28 @@ export const CustomerLocationPickerModal: React.FC<CustomerLocationPickerModalPr
 
           {showGpsRationale && (
             <div className="p-2 rounded-md bg-amber-50 dark:bg-amber-500/15 border border-amber-200 dark:border-amber-400/30 text-xs text-amber-900 dark:text-amber-200 flex flex-wrap items-center justify-between gap-1.5">
-              <span className="font-bold">سيطلب التطبيق الوصول لموقع الجهاز (GPS) لتحديد إحداثيات المحل وتسهيل التوصيل.</span>
+              <span className="font-bold">{t('سيطلب التطبيق الوصول لموقع الجهاز (GPS) لتحديد إحداثيات المحل وتسهيل التوصيل.', 'The app will request device location (GPS) to pin shop coordinates for delivery.')}</span>
               <div className="flex items-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => setShowGpsRationale(false)}
                   className="h-7 px-2 rounded-md bg-white dark:bg-[#132544] border border-amber-300 dark:border-[#2A436E] text-slate-700 dark:text-[#DCE6F5] text-[11px] font-bold cursor-pointer"
                 >
-                  إلغاء
+                  {t('إلغاء', 'Cancel')}
                 </button>
                 <button
                   type="button"
                   onClick={runGpsCapture}
                   className="h-7 px-2 rounded-md bg-[#003589] hover:bg-[#0049B0] dark:bg-[#1659C8] dark:hover:bg-[#1F6BE6] text-white text-[11px] font-bold cursor-pointer"
                 >
-                  موافق، حدّد موقعي
+                  {t('موافق، حدّد موقعي', 'Allow & Locate Me')}
                 </button>
               </div>
             </div>
           )}
 
           {canRenderGoogleMap ? (
-            <APIProvider apiKey={mapsKey} language="ar" region="EG">
+            <APIProvider apiKey={mapsKey} language={language} region="EG">
               <div className="space-y-1.5">
                 <PlacesAutocompleteBox
                   searching={searchingAddr}
@@ -405,7 +409,7 @@ export const CustomerLocationPickerModal: React.FC<CustomerLocationPickerModalPr
                     if (loc.area) setArea(loc.area);
                     if (loc.city) setCity(loc.city);
                     if (loc.governorate) setGovernorate(loc.governorate);
-                    setStatusMsg('تم اختيار الموقع من البحث؛ يمكنك سحب الدبوس للتعديل.');
+                    setStatusMsg(t('تم اختيار الموقع من البحث؛ يمكنك سحب الدبوس للتعديل.', 'Location selected from search; drag the pin to adjust.'));
                   }}
                 />
                 <div className="w-full h-56 sm:h-64 rounded-lg overflow-hidden border border-slate-200 dark:border-[#21375C] bg-slate-100 dark:bg-[#132544]">
@@ -451,8 +455,8 @@ export const CustomerLocationPickerModal: React.FC<CustomerLocationPickerModalPr
                 <AlertTriangle className="w-4 h-4 shrink-0" />
                 <span>
                   {!mapsKey
-                    ? 'عرض الخريطة التفاعلية غير مفعّل (مفتاح الخرائط غير مضبوط) — يمكنك استخدام زر GPS أعلاه أو إدخال العنوان يدوياً.'
-                    : 'الاتصال بالإنترنت غير متاح لعرض الخريطة — يمكنك التقاط موقع GPS أو كتابة العنوان يدوياً.'}
+                    ? t('عرض الخريطة التفاعلية غير مفعّل (مفتاح الخرائط غير مضبوط) — يمكنك استخدام زر GPS أعلاه أو إدخال العنوان يدوياً.', 'Interactive map display is disabled (Maps key not configured) — you can use the GPS button above or enter address manually.')
+                    : t('الاتصال بالإنترنت غير متاح لعرض الخريطة — يمكنك التقاط موقع GPS أو كتابة العنوان يدوياً.', 'No internet connection to display map — you can capture GPS location or type the address manually.')}
                 </span>
               </div>
               <div className="flex gap-1.5">
@@ -466,7 +470,7 @@ export const CustomerLocationPickerModal: React.FC<CustomerLocationPickerModalPr
                       handleServerGeocodeSearch(address);
                     }
                   }}
-                  placeholder="ابحث بالعنوان أو اكتب تفاصيل الموقع..."
+                  placeholder={t('ابحث بالعنوان أو اكتب تفاصيل الموقع...', 'Search by address or enter location details...')}
                   className="flex-1 h-8 px-2 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC]"
                 />
                 <button
@@ -475,7 +479,7 @@ export const CustomerLocationPickerModal: React.FC<CustomerLocationPickerModalPr
                   onClick={() => handleServerGeocodeSearch(address)}
                   className="h-8 px-2.5 rounded-md bg-[#003589] hover:bg-[#0049B0] dark:bg-[#1659C8] dark:hover:bg-[#1F6BE6] text-white text-xs font-bold cursor-pointer"
                 >
-                  بحث
+                  {t('بحث', 'Search')}
                 </button>
               </div>
             </div>
@@ -494,17 +498,17 @@ export const CustomerLocationPickerModal: React.FC<CustomerLocationPickerModalPr
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-0.5">
             <div>
-              <label className="block text-[11px] font-black text-slate-600 dark:text-[#A9BCD9] mb-0.5">المحافظة</label>
+              <label className="block text-[11px] font-black text-slate-600 dark:text-[#A9BCD9] mb-0.5">{t('المحافظة', 'Governorate')}</label>
               <input
                 type="text"
                 value={governorate}
                 onChange={(e) => setGovernorate(e.target.value)}
-                placeholder="مثال: القاهرة / الجيزة"
+                placeholder={t('مثال: القاهرة / الجيزة', 'e.g. Cairo / Giza')}
                 className="w-full h-8 px-2 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC]"
               />
             </div>
             <div>
-              <label className="block text-[11px] font-black text-slate-600 dark:text-[#A9BCD9] mb-0.5">المدينة / المنطقة</label>
+              <label className="block text-[11px] font-black text-slate-600 dark:text-[#A9BCD9] mb-0.5">{t('المدينة / المنطقة', 'City / Area')}</label>
               <input
                 type="text"
                 value={city || area}
@@ -512,17 +516,17 @@ export const CustomerLocationPickerModal: React.FC<CustomerLocationPickerModalPr
                   setCity(e.target.value);
                   if (!area) setArea(e.target.value);
                 }}
-                placeholder="المدينة أو الحي"
+                placeholder={t('المدينة أو الحي', 'City or district')}
                 className="w-full h-8 px-2 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC]"
               />
             </div>
             <div className="sm:col-span-2">
-              <label className="block text-[11px] font-black text-slate-600 dark:text-[#A9BCD9] mb-0.5">العنوان التفصيلي</label>
+              <label className="block text-[11px] font-black text-slate-600 dark:text-[#A9BCD9] mb-0.5">{t('العنوان التفصيلي', 'Detailed Address')}</label>
               <input
                 type="text"
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
-                placeholder="اسم الشارع، رقم المحل، أقرب علامة مميزة..."
+                placeholder={t('اسم الشارع، رقم المحل، أقرب علامة مميزة...', 'Street name, shop number, nearest landmark...')}
                 className="w-full h-8 px-2 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC]"
               />
             </div>
@@ -535,7 +539,7 @@ export const CustomerLocationPickerModal: React.FC<CustomerLocationPickerModalPr
             onClick={onClose}
             className="h-8 px-3 rounded-md border border-slate-300 dark:border-[#2A436E] dark:bg-[#0E1C36] text-xs font-bold text-slate-700 dark:text-[#DCE6F5] cursor-pointer"
           >
-            إلغاء
+            {t('إلغاء', 'Cancel')}
           </button>
           <button
             type="button"
@@ -543,7 +547,7 @@ export const CustomerLocationPickerModal: React.FC<CustomerLocationPickerModalPr
             className="h-8 px-3 rounded-md bg-[#003589] hover:bg-[#0049B0] dark:bg-[#1659C8] dark:hover:bg-[#1F6BE6] text-white text-xs font-black flex items-center gap-1.5 cursor-pointer"
           >
             <Check className="w-3.5 h-3.5" />
-            <span>تأكيد حفظ الموقع</span>
+            <span>{t('تأكيد حفظ الموقع', 'Confirm & Save Location')}</span>
           </button>
         </div>
       </div>

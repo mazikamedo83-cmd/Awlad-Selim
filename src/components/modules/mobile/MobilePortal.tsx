@@ -19,6 +19,7 @@ import {
   FileText,
   X,
   ChevronLeft,
+  ChevronRight,
   AlertCircle,
   Settings,
   Lock,
@@ -33,6 +34,7 @@ import {
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
 import { usePreferences } from '../../../context/PreferencesContext';
+import { formatLocaleNumber, formatLocaleTime } from '../../../i18n/translator';
 import { getStoredTokens } from '../../../services/api';
 import { registerAndroidBackButton } from '../../../services/native';
 import { MobileNotificationItem } from '../../../types';
@@ -56,7 +58,8 @@ export const MobilePortal: React.FC = () => {
     updatePassword,
   } = useAuth();
   const data = useData();
-  const { themePreference, setThemePreference, language, setLanguage, t } = usePreferences();
+  const { themePreference, setThemePreference, language, setLanguage, isRtl, t } = usePreferences();
+  const NavChevron = isRtl ? ChevronLeft : ChevronRight;
   const isRep = currentUser?.role === 'representative';
 
   const [customerTab, setCustomerTab] = useState<CustomerTabKey>('home');
@@ -272,19 +275,19 @@ export const MobilePortal: React.FC = () => {
   // Fixed 5-tab bottom navigation bar items
   const bottomNavItems = isRep
     ? [
-        { key: 'home', label: 'الرئيسية', icon: Home, active: repTab === 'home', badge: 0, onSelect: () => requestRepTabChange('home') },
-        { key: 'customers', label: 'العملاء', icon: Users, active: repTab === 'customers', badge: 0, onSelect: () => requestRepTabChange('customers') },
+        { key: 'home', label: t('الرئيسية', 'Home'), icon: Home, active: repTab === 'home', badge: 0, onSelect: () => requestRepTabChange('home') },
+        { key: 'customers', label: t('العملاء', 'Customers'), icon: Users, active: repTab === 'customers', badge: 0, onSelect: () => requestRepTabChange('customers') },
         canRepSales
-          ? { key: 'new-invoice', label: 'فاتورة', icon: FilePlus2, active: repTab === 'new-invoice', badge: 0, onSelect: () => requestRepTabChange('new-invoice') }
+          ? { key: 'new-invoice', label: t('فاتورة', 'Invoice'), icon: FilePlus2, active: repTab === 'new-invoice', badge: 0, onSelect: () => requestRepTabChange('new-invoice') }
           : canRepCreatePurchase
-          ? { key: 'new-purchase', label: 'شراء', icon: Receipt, active: repTab === 'new-purchase', badge: 0, onSelect: () => requestRepTabChange('new-purchase') }
-          : { key: 'orders', label: 'الطلبات', icon: ClipboardList, active: repTab === 'orders', badge: 0, onSelect: () => requestRepTabChange('orders') },
+          ? { key: 'new-purchase', label: t('شراء', 'Purchase'), icon: Receipt, active: repTab === 'new-purchase', badge: 0, onSelect: () => requestRepTabChange('new-purchase') }
+          : { key: 'orders', label: t('الطلبات', 'Orders'), icon: ClipboardList, active: repTab === 'orders', badge: 0, onSelect: () => requestRepTabChange('orders') },
         canRepCash
-          ? { key: 'cash', label: 'النقدية', icon: Receipt, active: repTab === 'cash', badge: 0, onSelect: () => requestRepTabChange('cash') }
-          : { key: 'rep-reports', label: 'التقارير', icon: FileText, active: repTab === 'rep-reports', badge: 0, onSelect: () => requestRepTabChange('rep-reports') },
+          ? { key: 'cash', label: t('النقدية', 'Cash'), icon: Receipt, active: repTab === 'cash', badge: 0, onSelect: () => requestRepTabChange('cash') }
+          : { key: 'rep-reports', label: t('التقارير', 'Reports'), icon: FileText, active: repTab === 'rep-reports', badge: 0, onSelect: () => requestRepTabChange('rep-reports') },
         {
           key: 'more',
-          label: 'المزيد',
+          label: t('المزيد', 'More'),
           icon: Menu,
           active: repMoreSecondaryTabs.includes(repTab) && !(repTab === 'rep-reports' && !canRepCash) && !(repTab === 'new-purchase' && !canRepSales) && !(repTab === 'orders' && !canRepSales && !canRepCreatePurchase),
           badge: 0,
@@ -292,11 +295,11 @@ export const MobilePortal: React.FC = () => {
         },
       ]
     : [
-        { key: 'home', label: 'الرئيسية', icon: Home, active: customerTab === 'home', badge: 0, onSelect: () => setCustomerTab('home') },
-        { key: 'categories', label: 'الأقسام', icon: Package, active: customerTab === 'categories', badge: 0, onSelect: () => setCustomerTab('categories') },
-        { key: 'offers', label: 'العروض', icon: Tag, active: customerTab === 'offers', badge: 0, onSelect: () => setCustomerTab('offers') },
-        { key: 'favorites', label: 'المفضلة', icon: Heart, active: customerTab === 'favorites', badge: data.customerFavorites?.length || 0, onSelect: () => setCustomerTab('favorites') },
-        { key: 'more', label: 'المزيد', icon: Menu, active: ['more', 'orders', 'account'].includes(customerTab), badge: 0, onSelect: () => setCustomerTab('more') },
+        { key: 'home', label: t('الرئيسية', 'Home'), icon: Home, active: customerTab === 'home', badge: 0, onSelect: () => setCustomerTab('home') },
+        { key: 'categories', label: t('الأقسام', 'Categories'), icon: Package, active: customerTab === 'categories', badge: 0, onSelect: () => setCustomerTab('categories') },
+        { key: 'offers', label: t('العروض', 'Offers'), icon: Tag, active: customerTab === 'offers', badge: 0, onSelect: () => setCustomerTab('offers') },
+        { key: 'favorites', label: t('المفضلة', 'Favorites'), icon: Heart, active: customerTab === 'favorites', badge: data.customerFavorites?.length || 0, onSelect: () => setCustomerTab('favorites') },
+        { key: 'more', label: t('المزيد', 'More'), icon: Menu, active: ['more', 'orders', 'account'].includes(customerTab), badge: 0, onSelect: () => setCustomerTab('more') },
       ];
 
   return (
@@ -312,9 +315,9 @@ export const MobilePortal: React.FC = () => {
                 className="no-dark-surface h-7 w-7 object-contain bg-white dark:bg-white rounded-md p-0.5 shrink-0"
               />
               <div className="min-w-0">
-                <h1 className="text-xs sm:text-sm font-black truncate leading-tight">أولاد سليم</h1>
+                <h1 className="text-xs sm:text-sm font-black truncate leading-tight">{t('أولاد سليم', 'AWLAD SELIM')}</h1>
                 <p className="text-[10px] text-blue-100 truncate">
-                  {isRep ? 'بوابة المندوب' : 'متجر العملاء'} · {currentUser?.fullName}
+                  {isRep ? t('بوابة المندوب', 'Rep Portal') : t('متجر العملاء', 'Customer Store')} · {currentUser?.fullName}
                 </p>
               </div>
             </div>
@@ -330,13 +333,13 @@ export const MobilePortal: React.FC = () => {
                     ? 'bg-amber-600 hover:bg-amber-700'
                     : 'bg-white/10 hover:bg-white/20'
                 }`}
-                title="مركز المزامنة"
-                aria-label="مركز المزامنة"
+                title={t('مركز المزامنة', 'Sync Center')}
+                aria-label={t('مركز المزامنة', 'Sync Center')}
               >
                 <CloudOff className="w-4 h-4" />
                 {syncBadgeCount > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded bg-slate-900 dark:bg-[#1659C8] text-white text-[9px] font-black flex items-center justify-center tabular-nums">
-                    {syncBadgeCount}
+                  <span className="absolute -top-1 -end-1 min-w-[16px] h-[16px] px-1 rounded bg-slate-900 dark:bg-[#1659C8] text-white text-[9px] font-black flex items-center justify-center tabular-nums">
+                    {formatLocaleNumber(syncBadgeCount)}
                   </span>
                 )}
               </button>
@@ -348,13 +351,13 @@ export const MobilePortal: React.FC = () => {
                   data.markNotificationsRead();
                 }}
                 className="relative min-h-[34px] min-w-[34px] flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-white cursor-pointer"
-                title="الإشعارات"
-                aria-label="الإشعارات"
+                title={t('الإشعارات', 'Notifications')}
+                aria-label={t('الإشعارات', 'Notifications')}
               >
                 <Bell className="w-4 h-4" />
                 {data.unreadNotificationCount > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded bg-red-600 text-white text-[9px] font-black flex items-center justify-center tabular-nums">
-                    {data.unreadNotificationCount}
+                  <span className="absolute -top-1 -end-1 min-w-[16px] h-[16px] px-1 rounded bg-red-600 text-white text-[9px] font-black flex items-center justify-center tabular-nums">
+                    {formatLocaleNumber(data.unreadNotificationCount)}
                   </span>
                 )}
               </button>
@@ -363,8 +366,8 @@ export const MobilePortal: React.FC = () => {
                 type="button"
                 onClick={() => data.triggerManualSync()}
                 className="min-h-[34px] min-w-[34px] flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-white cursor-pointer"
-                title="تحديث ومزامنة"
-                aria-label="تحديث ومزامنة"
+                title={t('تحديث ومزامنة', 'Refresh & Sync')}
+                aria-label={t('تحديث ومزامنة', 'Refresh & Sync')}
               >
                 <RefreshCw className={`w-4 h-4 ${data.networkStatus === 'synchronizing' ? 'animate-spin' : ''}`} />
               </button>
@@ -373,8 +376,8 @@ export const MobilePortal: React.FC = () => {
                 type="button"
                 onClick={() => setIsSettingsModalOpen(true)}
                 className="min-h-[34px] min-w-[34px] flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-white cursor-pointer"
-                title="الإعدادات"
-                aria-label="الإعدادات"
+                title={t('الإعدادات', 'Settings')}
+                aria-label={t('الإعدادات', 'Settings')}
               >
                 <Settings className="w-4 h-4" />
               </button>
@@ -383,8 +386,8 @@ export const MobilePortal: React.FC = () => {
                 type="button"
                 onClick={logout}
                 className="min-h-[34px] min-w-[34px] flex items-center justify-center rounded-lg bg-red-600/90 hover:bg-red-700 text-white cursor-pointer"
-                title="تسجيل الخروج"
-                aria-label="تسجيل الخروج"
+                title={t('تسجيل الخروج', 'Logout')}
+                aria-label={t('تسجيل الخروج', 'Logout')}
               >
                 <LogOut className="w-4 h-4" />
               </button>
@@ -396,7 +399,7 @@ export const MobilePortal: React.FC = () => {
       <main className="flex-1 min-w-0 min-h-0 overflow-y-auto p-1.5 sm:p-2 space-y-2">
         {linkWarning && (
           <div className="px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900">
-            {linkWarning}
+            {t(linkWarning)}
           </div>
         )}
 
@@ -406,8 +409,8 @@ export const MobilePortal: React.FC = () => {
               <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
               <span>
                 {isDatabaseUnavailable
-                  ? databaseUnavailableMessage || data.lastError
-                  : data.lastError}
+                  ? t(databaseUnavailableMessage || data.lastError || '')
+                  : t(data.lastError || '')}
               </span>
             </div>
             <button
@@ -419,7 +422,7 @@ export const MobilePortal: React.FC = () => {
               }}
               className="px-2 py-1 rounded-md bg-red-600 text-white text-[11px] font-bold shrink-0 disabled:opacity-50 cursor-pointer"
             >
-              {data.isSyncing ? 'جاري الفحص...' : 'إعادة المحاولة'}
+              {data.isSyncing ? t('جاري الفحص...', 'Checking...') : t('إعادة المحاولة', 'Retry')}
             </button>
           </div>
         )}
@@ -428,7 +431,7 @@ export const MobilePortal: React.FC = () => {
           <div className="px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900 flex items-center gap-2">
             <ShieldAlert className="w-4 h-4 text-amber-700 shrink-0" />
             <span>
-              وضع الدخول المحلي الموثق — يتم تطبيق آخر صلاحيات موثقة من السيرفر وقد تتحدث فور عودة الاتصال.
+              {t('وضع الدخول المحلي الموثق — يتم تطبيق آخر صلاحيات موثقة من السيرفر وقد تتحدث فور عودة الاتصال.', 'Trusted offline login mode — latest verified server permissions apply and will update on reconnect.')}
             </span>
           </div>
         )}
@@ -440,8 +443,8 @@ export const MobilePortal: React.FC = () => {
               <div className="flex items-center gap-2">
                 <WifiOff className="w-4 h-4 text-amber-700 shrink-0" />
                 <span>
-                  العمل دون اتصال — تُحفظ عملياتك في قاعدة البيانات المحلية وتُزامن تلقائياً فور عودة الشبكة
-                  {data.lastServerSyncAt ? ` · آخر مزامنة: ${new Date(data.lastServerSyncAt).toLocaleTimeString('ar-EG')}` : ''}
+                  {t('العمل دون اتصال — تُحفظ عملياتك في قاعدة البيانات المحلية وتُزامن تلقائياً فور عودة الشبكة', 'Offline mode — operations are saved locally and will sync automatically when reconnected')}
+                  {data.lastServerSyncAt ? ` · ${t('آخر مزامنة:', 'Last sync:')} ${formatLocaleTime(data.lastServerSyncAt)}` : ''}
                 </span>
               </div>
               <button
@@ -449,7 +452,7 @@ export const MobilePortal: React.FC = () => {
                 onClick={() => data.triggerManualSync()}
                 className="px-2 py-1 rounded-md bg-amber-600 text-white text-[11px] font-bold shrink-0 cursor-pointer"
               >
-                إعادة المحاولة
+                {t('إعادة المحاولة', 'Retry')}
               </button>
             </div>
           )}
@@ -458,8 +461,14 @@ export const MobilePortal: React.FC = () => {
           <div className="px-2.5 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-xs font-bold text-blue-900 flex items-center justify-between gap-2">
             <span>
               {data.conflictsCount > 0
-                ? `توجد (${data.conflictsCount}) تعارضات مزامنة تحتاج مراجعة و(${data.pendingSyncCount}) عمليات محلية بانتظار الاعتماد المركزي.`
-                : `توجد (${data.pendingSyncCount}) عمليات محلية بانتظار المزامنة (الأرصدة الحالية مبدئية لحين الاعتماد المركزي).`}
+                ? t(
+                    `توجد (${data.conflictsCount}) تعارضات مزامنة تحتاج مراجعة و(${data.pendingSyncCount}) عمليات محلية بانتظار الاعتماد المركزي.`,
+                    `${data.conflictsCount} sync conflict(s) need review and ${data.pendingSyncCount} local operation(s) pending central approval.`
+                  )
+                : t(
+                    `توجد (${data.pendingSyncCount}) عمليات محلية بانتظار المزامنة (الأرصدة الحالية مبدئية لحين الاعتماد المركزي).`,
+                    `${data.pendingSyncCount} local operation(s) pending sync (current balances are provisional until central approval).`
+                  )}
             </span>
             <div className="flex items-center gap-1 shrink-0">
               <button
@@ -467,14 +476,14 @@ export const MobilePortal: React.FC = () => {
                 onClick={() => setIsSyncCenterOpen(true)}
                 className="px-2 py-1 rounded-md bg-white border border-blue-300 text-blue-900 text-[11px] font-bold cursor-pointer"
               >
-                مركز المزامنة
+                {t('مركز المزامنة', 'Sync Center')}
               </button>
               <button
                 type="button"
                 onClick={() => data.triggerManualSync()}
                 className="px-2 py-1 rounded-md bg-blue-900 text-white text-[11px] font-bold cursor-pointer"
               >
-                مزامنة الآن
+                {t('مزامنة الآن', 'Sync Now')}
               </button>
             </div>
           </div>
@@ -506,7 +515,7 @@ export const MobilePortal: React.FC = () => {
 
       {/* Compact 5-Tab Mobile Bottom Navigation Bar */}
       <nav
-        aria-label="شريط التنقل السفلي"
+        aria-label={t('شريط التنقل السفلي', 'Bottom Navigation Bar')}
         className="shrink-0 z-30 bg-white dark:bg-[#0E1C36] border-t border-slate-200 dark:border-[#21375C] pb-safe shadow-sm dark:shadow-[0_-4px_16px_rgba(0,0,0,0.35)]"
       >
         <div className="max-w-5xl mx-auto grid grid-cols-5 gap-0.5 px-1">
@@ -530,8 +539,8 @@ export const MobilePortal: React.FC = () => {
                 <div className="relative">
                   <Icon className="w-4 h-4 shrink-0" />
                   {item.badge > 0 && (
-                    <span className="absolute -top-1.5 -left-2 min-w-[15px] h-[15px] px-1 rounded bg-[var(--awlad-royal-700)] text-white text-[9px] font-black flex items-center justify-center tabular-nums">
-                      {item.badge}
+                    <span className="absolute -top-1.5 -start-2 min-w-[15px] h-[15px] px-1 rounded bg-[var(--awlad-royal-700)] text-white text-[9px] font-black flex items-center justify-center tabular-nums">
+                      {formatLocaleNumber(item.badge)}
                     </span>
                   )}
                 </div>
@@ -555,10 +564,13 @@ export const MobilePortal: React.FC = () => {
           >
             <div className="flex items-center gap-1.5 font-black text-sm text-amber-800">
               <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>توجد أصناف غير محفوظة في الفاتورة</span>
+              <span>{t('توجد أصناف غير محفوظة في الفاتورة', 'Unsaved Invoice Items')}</span>
             </div>
             <p className="text-slate-600 leading-snug">
-              توجد أصناف مضافة في شاشة فاتورة البيع لم تُحفظ بعد. هل تود البقاء لإكمال الفاتورة أم الانتقال مع الاحتفاظ بالبيانات مؤقتاً؟
+              {t(
+                'توجد أصناف مضافة في شاشة فاتورة البيع لم تُحفظ بعد. هل تود البقاء لإكمال الفاتورة أم الانتقال مع الاحتفاظ بالبيانات مؤقتاً؟',
+                'There are unsaved items added to the sales invoice. Would you like to stay and complete the invoice or navigate away while keeping draft data?'
+              )}
             </p>
             <div className="grid grid-cols-2 gap-1.5 pt-0.5">
               <button
@@ -566,7 +578,7 @@ export const MobilePortal: React.FC = () => {
                 onClick={() => setPendingRepTab(null)}
                 className="h-8 rounded-md bg-blue-900 text-white font-black cursor-pointer"
               >
-                البقاء في الفاتورة
+                {t('البقاء في الفاتورة', 'Stay on Invoice')}
               </button>
               <button
                 type="button"
@@ -577,7 +589,7 @@ export const MobilePortal: React.FC = () => {
                 }}
                 className="h-8 rounded-md bg-slate-100 text-slate-800 font-bold cursor-pointer"
               >
-                الانتقال مؤقتاً
+                {t('الانتقال مؤقتاً', 'Leave Temporarily')}
               </button>
             </div>
           </div>
@@ -626,9 +638,9 @@ export const MobilePortal: React.FC = () => {
                   <Settings className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-black text-xs text-slate-900 dark:text-[#F3F7FC]">إعدادات التطبيق والحساب</h3>
+                  <h3 className="font-black text-xs text-slate-900 dark:text-[#F3F7FC]">{t('إعدادات التطبيق والحساب', 'App & Account Settings')}</h3>
                   <p className="text-[11px] text-slate-500 dark:text-[#97AECE]">
-                    {isRep ? 'بوابة المندوب' : 'بوابة العميل'} · {currentUser?.fullName}
+                    {isRep ? t('بوابة المندوب', 'Rep Portal') : t('بوابة العميل', 'Customer Portal')} · {currentUser?.fullName}
                   </p>
                 </div>
               </div>
@@ -636,22 +648,22 @@ export const MobilePortal: React.FC = () => {
                 type="button"
                 onClick={() => setIsSettingsModalOpen(false)}
                 className="h-8 w-8 rounded-md bg-slate-100 dark:bg-[#132544] hover:bg-slate-200 dark:hover:bg-[#1A3461] flex items-center justify-center text-slate-700 dark:text-[#DCE6F5] cursor-pointer"
-                aria-label="إغلاق"
+                aria-label={t('إغلاق', 'Close')}
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="space-y-1.5 max-h-[72vh] overflow-y-auto pr-0.5">
+            <div className="space-y-1.5 max-h-[72vh] overflow-y-auto pe-0.5">
               {/* Theme Switcher */}
               <div className="p-2 rounded-md bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C] space-y-1">
-                <p className="font-black text-[11px] text-slate-800 dark:text-[#F3F7FC]">مظهر التطبيق</p>
+                <p className="font-black text-[11px] text-slate-800 dark:text-[#F3F7FC]">{t('مظهر التطبيق', 'App Theme')}</p>
                 <div className="grid grid-cols-3 gap-1">
                   {(
                     [
-                      { key: 'light', label: 'نهاري', icon: Sun },
-                      { key: 'dark', label: 'داكن', icon: Moon },
-                      { key: 'system', label: 'تلقائي', icon: Monitor },
+                      { key: 'light', label: t('نهاري', 'Light'), icon: Sun },
+                      { key: 'dark', label: t('داكن', 'Dark'), icon: Moon },
+                      { key: 'system', label: t('تلقائي', 'System'), icon: Monitor },
                     ] as const
                   ).map((opt) => {
                     const Icon = opt.icon;
@@ -717,7 +729,7 @@ export const MobilePortal: React.FC = () => {
                   <label className="flex items-center justify-between gap-2 px-1.5 py-1 rounded bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#21375C] cursor-pointer">
                     <span className="flex items-center gap-1.5 font-bold text-[11px] text-slate-700 dark:text-[#DCE6F5]">
                       <Volume2 className="w-3.5 h-3.5 text-slate-500 dark:text-[#8CA3C7]" />
-                      <span>أصوات التنبيه والباركود</span>
+                      <span>{t('أصوات التنبيه والباركود', 'Alert & Barcode Sounds')}</span>
                     </span>
                     <input
                       type="checkbox"
@@ -728,7 +740,7 @@ export const MobilePortal: React.FC = () => {
                   </label>
                   <label className="flex items-center justify-between gap-2 px-1.5 py-1 rounded bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#21375C] cursor-pointer">
                     <span className="font-bold text-[11px] text-slate-700 dark:text-[#DCE6F5]">
-                      تنبيهات الإرسال والاستلام والترحيل
+                      {t('تنبيهات الإرسال والاستلام والترحيل', 'Dispatch & Posting Alerts')}
                     </span>
                     <input
                       type="checkbox"
@@ -739,7 +751,7 @@ export const MobilePortal: React.FC = () => {
                   </label>
                   <label className="flex items-center justify-between gap-2 px-1.5 py-1 rounded bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#21375C] cursor-pointer">
                     <span className="font-bold text-[11px] text-slate-700 dark:text-[#DCE6F5]">
-                      تنبيهات الطلبات والموافقات الفورية
+                      {t('تنبيهات الطلبات والموافقات الفورية', 'Order & Instant Approval Alerts')}
                     </span>
                     <input
                       type="checkbox"
@@ -756,10 +768,10 @@ export const MobilePortal: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5 font-black text-slate-800 dark:text-[#F3F7FC]">
                     <ShieldCheck className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400 shrink-0" />
-                    <span>حالة الحساب والصلاحيات</span>
+                    <span>{t('حالة الحساب والصلاحيات', 'Account Status & Permissions')}</span>
                   </div>
                   <span className="text-[10px] text-slate-500 dark:text-[#97AECE] font-mono">
-                    @{currentUser?.username} · {isRep ? 'مندوب' : 'عميل'}
+                    @{currentUser?.username} · {isRep ? t('مندوب', 'Rep') : t('عميل', 'Customer')}
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-700 dark:text-[#CBD9EE] font-bold leading-snug">
@@ -768,26 +780,26 @@ export const MobilePortal: React.FC = () => {
                     .slice(0, 8)
                     .map(([k]) =>
                       k === 'canManageSales'
-                        ? 'المبيعات'
+                        ? t('المبيعات', 'Sales')
                         : k === 'canCreatePurchase'
-                        ? 'فواتير الشراء'
+                        ? t('فواتير الشراء', 'Purchase Invoices')
                         : k === 'canManageTransfers'
-                        ? 'العهد والتحويل'
+                        ? t('العهد والتحويل', 'Custody & Transfers')
                         : k === 'canView'
-                        ? 'العرض'
+                        ? t('العرض', 'View')
                         : k === 'canAdd'
-                        ? 'الإضافة'
+                        ? t('الإضافة', 'Add')
                         : k === 'canEdit'
-                        ? 'التعديل'
+                        ? t('التعديل', 'Edit')
                         : k === 'canPrint'
-                        ? 'الطباعة'
+                        ? t('الطباعة', 'Print')
                         : k === 'canSend'
-                        ? 'الإرسال'
+                        ? t('الإرسال', 'Send')
                         : k === 'canReceive'
-                        ? 'الاستلام'
+                        ? t('الاستلام', 'Receive')
                         : k
                     )
-                    .join(' · ') || 'صلاحيات العرض الأساسية'}
+                    .join(' · ') || t('صلاحيات العرض الأساسية', 'Basic view permissions')}
                 </p>
               </div>
 
@@ -802,9 +814,9 @@ export const MobilePortal: React.FC = () => {
               >
                 <span className="flex items-center gap-2">
                   <Lock className="w-3.5 h-3.5 text-[var(--awlad-royal-700)] dark:text-[#85B8FF]" />
-                  <span>تغيير كلمة المرور</span>
+                  <span>{t('تغيير كلمة المرور', 'Change Password')}</span>
                 </span>
-                <ChevronLeft className={`w-3.5 h-3.5 text-slate-400 dark:text-[#849BBF] transition-transform ${showPasswordBox ? '-rotate-90' : ''}`} />
+                <NavChevron className={`w-3.5 h-3.5 text-slate-400 dark:text-[#849BBF] transition-transform ${showPasswordBox ? (isRtl ? '-rotate-90' : 'rotate-90') : ''}`} />
               </button>
 
               {showPasswordBox && (
@@ -813,11 +825,11 @@ export const MobilePortal: React.FC = () => {
                     e.preventDefault();
                     setPwdFeedback(null);
                     if (newPwd.length < 4) {
-                      setPwdFeedback({ type: 'error', text: 'كلمة المرور يجب أن تكون 4 أحرف على الأقل.' });
+                      setPwdFeedback({ type: 'error', text: t('كلمة المرور يجب أن تكون 4 أحرف على الأقل.', 'Password must be at least 4 characters.') });
                       return;
                     }
                     if (newPwd !== confirmPwd) {
-                      setPwdFeedback({ type: 'error', text: 'تأكيد كلمة المرور غير مطابق.' });
+                      setPwdFeedback({ type: 'error', text: t('تأكيد كلمة المرور غير مطابق.', 'Password confirmation does not match.') });
                       return;
                     }
                     setIsSavingPwd(true);
@@ -827,9 +839,9 @@ export const MobilePortal: React.FC = () => {
                       setCurrPwd('');
                       setNewPwd('');
                       setConfirmPwd('');
-                      setPwdFeedback({ type: 'success', text: 'تم تحديث كلمة المرور بنجاح.' });
+                      setPwdFeedback({ type: 'success', text: t('تم تحديث كلمة المرور بنجاح.', 'Password updated successfully.') });
                     } else {
-                      setPwdFeedback({ type: 'error', text: res.error || 'تعذر تغيير كلمة المرور.' });
+                      setPwdFeedback({ type: 'error', text: res.error ? t(res.error) : t('تعذر تغيير كلمة المرور.', 'Failed to update password.') });
                     }
                   }}
                   className="p-2 rounded-md bg-[#EEF3FA] dark:bg-[#132544] border border-[#DCE6F5] dark:border-[#21375C] space-y-1.5"
@@ -841,28 +853,31 @@ export const MobilePortal: React.FC = () => {
                   )}
                   <input
                     type="password"
+                    dir="ltr"
                     required
                     value={currPwd}
                     onChange={(e) => setCurrPwd(e.target.value)}
-                    placeholder="كلمة المرور الحالية"
+                    placeholder={t('كلمة المرور الحالية', 'Current Password')}
                     className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] px-2 bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-500 dark:placeholder:text-[#8CA3C7] font-mono"
                   />
                   <input
                     type="password"
+                    dir="ltr"
                     required
                     minLength={4}
                     value={newPwd}
                     onChange={(e) => setNewPwd(e.target.value)}
-                    placeholder="كلمة المرور الجديدة"
+                    placeholder={t('كلمة المرور الجديدة', 'New Password')}
                     className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] px-2 bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-500 dark:placeholder:text-[#8CA3C7] font-mono"
                   />
                   <input
                     type="password"
+                    dir="ltr"
                     required
                     minLength={4}
                     value={confirmPwd}
                     onChange={(e) => setConfirmPwd(e.target.value)}
-                    placeholder="تأكيد كلمة المرور الجديدة"
+                    placeholder={t('تأكيد كلمة المرور الجديدة', 'Confirm New Password')}
                     className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] px-2 bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-500 dark:placeholder:text-[#8CA3C7] font-mono"
                   />
                   <button
@@ -870,7 +885,7 @@ export const MobilePortal: React.FC = () => {
                     disabled={isSavingPwd}
                     className="w-full h-8 rounded-md bg-[var(--awlad-royal-700)] dark:bg-[#1659C8] hover:bg-[var(--awlad-royal-600)] dark:hover:bg-[#1F6BE6] text-white font-black cursor-pointer disabled:opacity-50"
                   >
-                    {isSavingPwd ? 'جاري التحديث...' : 'حفظ كلمة المرور'}
+                    {isSavingPwd ? t('جاري التحديث...', 'Updating...') : t('حفظ كلمة المرور', 'Save Password')}
                   </button>
                 </form>
               )}
@@ -885,9 +900,9 @@ export const MobilePortal: React.FC = () => {
               >
                 <span className="flex items-center gap-2">
                   <Server className="w-3.5 h-3.5 text-[var(--awlad-royal-700)] dark:text-[#85B8FF]" />
-                  <span>عنوان السيرفر والاتصال المركزي</span>
+                  <span>{t('عنوان السيرفر والاتصال المركزي', 'Server Address & Central Connection')}</span>
                 </span>
-                <ChevronLeft className="w-3.5 h-3.5 text-slate-400 dark:text-[#849BBF]" />
+                <NavChevron className="w-3.5 h-3.5 text-slate-400 dark:text-[#849BBF]" />
               </button>
 
               <button
@@ -900,10 +915,10 @@ export const MobilePortal: React.FC = () => {
               >
                 <span className="flex items-center gap-2">
                   <CloudOff className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                  <span>مركز المزامنة والعمليات المعلقة</span>
+                  <span>{t('مركز المزامنة والعمليات المعلقة', 'Sync Center & Pending Operations')}</span>
                 </span>
                 <span className="font-mono font-black text-slate-800 dark:text-[#F3F7FC] tabular-nums">
-                  {syncBadgeCount}
+                  {formatLocaleNumber(syncBadgeCount)}
                 </span>
               </button>
 
@@ -916,7 +931,7 @@ export const MobilePortal: React.FC = () => {
                 className="w-full min-h-[34px] px-2.5 rounded-md bg-[var(--awlad-navy-900)] dark:bg-[#1659C8] hover:bg-[var(--awlad-navy-950)] dark:hover:bg-[#1F6BE6] text-white flex items-center justify-center gap-1.5 font-black cursor-pointer"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${data.networkStatus === 'synchronizing' ? 'animate-spin' : ''}`} />
-                <span>مزامنة البيانات الآن</span>
+                <span>{t('مزامنة البيانات الآن', 'Sync Data Now')}</span>
               </button>
 
               <button
@@ -928,7 +943,7 @@ export const MobilePortal: React.FC = () => {
                 className="w-full min-h-[34px] px-2.5 rounded-md bg-red-50 dark:bg-red-500/15 hover:bg-red-100 dark:hover:bg-red-500/25 border border-red-200 dark:border-red-500/35 text-red-700 dark:text-red-300 flex items-center justify-center gap-1.5 font-black cursor-pointer"
               >
                 <LogOut className="w-3.5 h-3.5" />
-                <span>تسجيل الخروج من الحساب</span>
+                <span>{t('تسجيل الخروج من الحساب', 'Log Out of Account')}</span>
               </button>
             </div>
           </div>

@@ -5,13 +5,19 @@ import {
   History, ShieldAlert, RefreshCw, Share2, FileDown, Boxes, ArrowLeftRight,
   CloudOff, CloudCheck, Camera, ShoppingBag, RotateCcw, ArrowDownCircle,
   ArrowUpCircle, UserPlus, Building2, Receipt, CreditCard, FileSpreadsheet,
-  Wallet, Settings, LogOut, ChevronLeft, Lock, Warehouse as WarehouseIcon,
+  Wallet, Settings, LogOut, ChevronLeft, ChevronRight, Lock, Warehouse as WarehouseIcon,
   Barcode, X, Eye, Calculator, ClipboardCheck, Send, Clock, Edit, Upload, ExternalLink, Store, PackagePlus,
-  ArrowRight, Printer, Info, Calendar, ChevronDown, ChevronUp, Sun, Moon, Monitor, Globe, BellRing, Volume2
+  ArrowRight, ArrowLeft, Printer, Info, Calendar, ChevronDown, ChevronUp, Sun, Moon, Monitor, Globe, BellRing, Volume2
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
 import { usePreferences } from '../../../context/PreferencesContext';
+import {
+  formatLocaleDate,
+  formatLocaleDateTime,
+  formatLocaleNumber,
+  formatLocaleTime,
+} from '../../../i18n/translator';
 import {
   Customer,
   CustomerPhoneEntry,
@@ -135,6 +141,22 @@ const REP_ORDER_STATUS_LABELS: Record<string, string> = {
   cancelled: 'ملغى',
 };
 
+const REP_ORDER_STATUS_LABELS_EN: Record<string, string> = {
+  pending: 'New',
+  under_review: 'Under Review',
+  approved: 'Approved',
+  invoiced: 'Invoiced',
+  preparing: 'Preparing',
+  rep_assigned: 'Rep Assigned',
+  out_for_delivery: 'Out for Delivery',
+  delivered: 'Delivered',
+  collected: 'Collected',
+  closed: 'Closed',
+  needs_review: 'Needs Review',
+  rejected: 'Rejected',
+  cancelled: 'Cancelled',
+};
+
 export type RepTabKey =
   | 'home'
   | 'cash'
@@ -178,7 +200,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 }) => {
   const { currentUser, representativeProfile, mobileConfig, hasPermission, updatePassword } = useAuth();
   const data = useData();
-  const { themePreference, setThemePreference, language, setLanguage, t } = usePreferences();
+  const { themePreference, setThemePreference, language, setLanguage, t, dir, isRtl } = usePreferences();
   const isNative = isNativeCapacitor();
 
   const repNotifStorageKey = `awlad_selim_notif_prefs_${currentUser?.id || 'guest'}`;
@@ -734,11 +756,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         if (res) {
           setSupplierStatement(res);
         } else {
-          setSupStmtError('تعذر تحميل كشف حساب المورد.');
+          setSupStmtError(t('تعذر تحميل كشف حساب المورد.', 'Failed to load supplier statement.'));
         }
       })
       .catch((err: any) => {
-        if (active) setSupStmtError(err?.message || 'تعذر تحميل كشف حساب المورد.');
+        if (active) setSupStmtError(err?.message || t('تعذر تحميل كشف حساب المورد.', 'Failed to load supplier statement.'));
       })
       .finally(() => {
         if (active) setIsLoadingSupplierStmt(false);
@@ -985,7 +1007,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           date: tx.date,
           amount: Number(tx.amount || 0),
           partyId: tx.partyId,
-          partyName: tx.partyName || 'عميل',
+          partyName: tx.partyName || t('عميل', 'Customer'),
           paymentMethod: tx.paymentMethod,
           relatedDocId: tx.relatedDocId,
           relatedDocNumber: tx.relatedDocNumber || linked?.invoiceNumber,
@@ -1050,8 +1072,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         representativeId: rep?.id,
         representativeName: rep?.name || currentUser?.fullName,
         canViewSuppliers: canCreatePurchase,
-        accountBalanceNote:
+        accountBalanceNote: t(
           'الأرصدة الظاهرة للعملاء والموردين تمثل الرصيد المالي العام على مستوى الشركة بالكامل، بينما إحصائيات وفواتير وتحصيلات التقرير تمثل عمليات هذا المندوب فقط.',
+          'Displayed customer and supplier balances represent the company-wide financial balance, while report statistics, invoices, and collections reflect this representative’s operations only.'
+        ),
       },
       summary: summaryOut,
       pagination: {
@@ -1162,7 +1186,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       setRepReportData(fallback);
       setRepReportIsOfflineFallback(true);
       if (err?.status && err.status >= 400 && err.status < 500) {
-        setRepReportError(err?.message || 'تعذر تحميل التقرير من الخادم.');
+        setRepReportError(err?.message || t('تعذر تحميل التقرير من الخادم.', 'Failed to load report from server.'));
       }
     } finally {
       setIsLoadingRepReport(false);
@@ -1376,21 +1400,24 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
   const handleCreateInvoice = async (mode: 'confirmed' | 'draft_with_transfer' | 'draft') => {
     if (!invCustomerId) {
-      setFeedback({ type: 'error', text: 'يرجى اختيار العميل أولاً.' });
+      setFeedback({ type: 'error', text: t('يرجى اختيار العميل أولاً.', 'Please select a customer first.') });
       return;
     }
     if (!invItems.length) {
-      setFeedback({ type: 'error', text: 'يرجى إضافة صنف واحد على الأقل للفاتورة.' });
+      setFeedback({ type: 'error', text: t('يرجى إضافة صنف واحد على الأقل للفاتورة.', 'Please add at least one item to the invoice.') });
       return;
     }
     if (!rep) {
-      setFeedback({ type: 'error', text: 'حسابك غير مرتبط بملف مندوب نشط.' });
+      setFeedback({ type: 'error', text: t('حسابك غير مرتبط بملف مندوب نشط.', 'Your account is not linked to an active representative profile.') });
       return;
     }
     if (mode === 'confirmed' && shortageItems.length > 0) {
       setFeedback({
         type: 'error',
-        text: 'لا يمكن اعتماد فاتورة بيع بكمية تتجاوز مخزون عهدة السيارة. اطلب تحويل الأصناف أو احفظها كمسودة.',
+        text: t(
+          'لا يمكن اعتماد فاتورة بيع بكمية تتجاوز مخزون عهدة السيارة. اطلب تحويل الأصناف أو احفظها كمسودة.',
+          'Cannot confirm a sales invoice exceeding van custody stock. Request an item transfer or save as draft.'
+        ),
       });
       return;
     }
@@ -1411,11 +1438,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     const res = await data.createSalesInvoice({
       date: new Date().toISOString().split('T')[0],
       customerId: invCustomerId,
-      customerName: cust?.name || 'عميل',
+      customerName: cust?.name || t('عميل', 'Customer'),
       representativeId: rep.id,
       representativeName: rep.name,
       warehouseId: effectiveVanId,
-      warehouseName: wh?.name || `سيارة المندوب (${rep.name})`,
+      warehouseName: wh?.name || `${t('سيارة المندوب', 'Rep Van')} (${rep.name})`,
       items: invItems,
       subtotal: invGrandTotal,
       discountTotal: 0,
@@ -1432,7 +1459,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
     if (!res.success || !res.invoice) {
       setIsSubmittingInvoice(false);
-      setFeedback({ type: 'error', text: res.error || 'تعذر حفظ الفاتورة' });
+      setFeedback({ type: 'error', text: res.error || t('تعذر حفظ الفاتورة', 'Failed to save invoice') });
       return;
     }
 
@@ -1446,7 +1473,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         sourceWarehouseId: mainWarehouse.id,
         sourceWarehouseName: mainWarehouse.name,
         targetWarehouseId: effectiveVanId,
-        targetWarehouseName: wh?.name || `سيارة المندوب (${rep.name})`,
+        targetWarehouseName: wh?.name || `${t('سيارة المندوب', 'Rep Van')} (${rep.name})`,
         items: shortageItems.map((sh) => ({
           productId: sh.productId,
           productName: sh.productName,
@@ -1455,7 +1482,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           availableInVanQty: sh.availableInVanQty,
           shortageQty: sh.shortageQty,
         })),
-        notes: `طلب تحويل عجز آلي مرتبط بمسودة فاتورة ${res.invoice.invoiceNumber}`,
+        notes: `${t('طلب تحويل عجز آلي مرتبط بمسودة فاتورة', 'Auto shortage transfer request linked to draft invoice')} ${res.invoice.invoiceNumber}`,
       });
       setIsSubmittingInvoice(false);
       setInvItems([]);
@@ -1463,8 +1490,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       setFeedback({
         type: trRes.success ? 'success' : 'warning',
         text: trRes.success
-          ? `تم حفظ الفاتورة كمسودة (${res.invoice.invoiceNumber}) وإرسال طلب التحويل رقم ${trRes.request?.requestNumber || ''} للإدارة.`
-          : `تم حفظ الفاتورة كمسودة (${res.invoice.invoiceNumber}) لكن تعذر إرسال طلب التحويل: ${trRes.error}`,
+          ? t(
+              `تم حفظ الفاتورة كمسودة (${res.invoice.invoiceNumber}) وإرسال طلب التحويل رقم ${trRes.request?.requestNumber || ''} للإدارة.`,
+              `Invoice saved as draft (${res.invoice.invoiceNumber}) and transfer request #${trRes.request?.requestNumber || ''} sent to management.`
+            )
+          : t(
+              `تم حفظ الفاتورة كمسودة (${res.invoice.invoiceNumber}) لكن تعذر إرسال طلب التحويل: ${trRes.error}`,
+              `Invoice saved as draft (${res.invoice.invoiceNumber}), but failed to send transfer request: ${trRes.error}`
+            ),
       });
       onTabChange('invoices');
       return;
@@ -1476,10 +1509,19 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     setFeedback({
       type: res.queuedOffline ? 'warning' : 'success',
       text: res.queuedOffline
-        ? `تم حفظ الفاتورة محلياً (${res.invoice.invoiceNumber}) في طابور المزامنة بانتظار الإرسال من REFRESH.`
+        ? t(
+            `تم حفظ الفاتورة محلياً (${res.invoice.invoiceNumber}) في طابور المزامنة بانتظار الإرسال من REFRESH.`,
+            `Invoice saved locally (${res.invoice.invoiceNumber}) in sync queue pending send from REFRESH.`
+          )
         : forceDraft
-        ? `تم حفظ الفاتورة كمسودة (${res.invoice.invoiceNumber}).`
-        : `تم اعتماد وإصدار الفاتورة (${res.invoice.invoiceNumber}) فوراً وإدراجها لمراجعة الإدارة.`,
+        ? t(
+            `تم حفظ الفاتورة كمسودة (${res.invoice.invoiceNumber}).`,
+            `Invoice saved as draft (${res.invoice.invoiceNumber}).`
+          )
+        : t(
+            `تم اعتماد وإصدار الفاتورة (${res.invoice.invoiceNumber}) فوراً وإدراجها لمراجعة الإدارة.`,
+            `Invoice (${res.invoice.invoiceNumber}) confirmed, issued immediately, and listed for management review.`
+          ),
     });
     onTabChange('invoices');
   };
@@ -1490,20 +1532,20 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
   const getPurchaseDispatchMeta = (inv: Invoice) => {
     if (inv.status === 'cancelled') {
-      return { key: 'cancelled', label: 'ملغاة', badgeClass: 'bg-red-50 text-red-700 border border-red-200' };
+      return { key: 'cancelled', label: t('ملغاة', 'Cancelled'), badgeClass: 'bg-red-50 text-red-700 border border-red-200' };
     }
     if (inv.status === 'confirmed') {
-      return { key: 'confirmed', label: 'معتمدة ومرحّلة', badgeClass: 'bg-emerald-50 text-emerald-800 border border-emerald-200' };
+      return { key: 'confirmed', label: t('معتمدة ومرحّلة', 'Confirmed & Posted'), badgeClass: 'bg-emerald-50 text-emerald-800 border border-emerald-200' };
     }
     switch (inv.dispatchStatus) {
       case 'sent':
-        return { key: 'sent', label: 'مرسلة بانتظار الاستلام', badgeClass: 'bg-amber-50 text-amber-900 border border-amber-200' };
+        return { key: 'sent', label: t('مرسلة بانتظار الاستلام', 'Sent (Awaiting Receipt)'), badgeClass: 'bg-amber-50 text-amber-900 border border-amber-200' };
       case 'received':
-        return { key: 'received', label: 'تم الاستلام (بانتظار الاعتماد)', badgeClass: 'bg-[#EEF3FA] text-[#003589] border border-[#DCE6F5]' };
+        return { key: 'received', label: t('تم الاستلام (بانتظار الاعتماد)', 'Received (Pending Approval)'), badgeClass: 'bg-[#EEF3FA] text-[#003589] border border-[#DCE6F5]' };
       case 'rejected':
-        return { key: 'rejected', label: 'مرفوضة', badgeClass: 'bg-rose-50 text-rose-800 border border-rose-200' };
+        return { key: 'rejected', label: t('مرفوضة', 'Rejected'), badgeClass: 'bg-rose-50 text-rose-800 border border-rose-200' };
       default:
-        return { key: 'draft', label: 'مسودة', badgeClass: 'bg-slate-100 text-slate-700 border border-slate-200' };
+        return { key: 'draft', label: t('مسودة', 'Draft'), badgeClass: 'bg-slate-100 text-slate-700 border border-slate-200' };
     }
   };
 
@@ -1624,12 +1666,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const handleAddPurInlineNewProduct = () => {
     const cleanName = newPurProdName.trim();
     if (!cleanName) {
-      setFeedback({ type: 'error', text: 'يرجى إدخال اسم الصنف الجديد أولاً.' });
+      setFeedback({ type: 'error', text: t('يرجى إدخال اسم الصنف الجديد أولاً.', 'Please enter the new product name first.') });
       return;
     }
     const qtyNum = Number(newPurProdQty || 0);
     if (qtyNum <= 0) {
-      setFeedback({ type: 'error', text: 'يرجى إدخال كمية الشراء للصنف الجديد أكبر من صفر.' });
+      setFeedback({ type: 'error', text: t('يرجى إدخال كمية الشراء للصنف الجديد أكبر من صفر.', 'Please enter a purchase quantity greater than zero for the new product.') });
       return;
     }
     const buyPrice = Math.max(0, Number(newPurProdBuyPrice || 0));
@@ -1671,7 +1713,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       });
       setFeedback({
         type: 'success',
-        text: `تم ربط البند بالصنف الموجود (${exact.name}) لمنع التكرار في المخزن.`,
+        text: t(
+          `تم ربط البند بالصنف الموجود (${exact.name}) لمنع التكرار في المخزن.`,
+          `Line item linked to existing product (${exact.name}) to prevent inventory duplication.`
+        ),
       });
     } else {
       const cleanCategory = newPurProdCategory.trim() || 'أصناف عامة';
@@ -1704,7 +1749,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       ]);
       setFeedback({
         type: 'success',
-        text: `تمت إضافة الصنف الجديد (${cleanName}) لبنود المسودة؛ سيُدرج بالمخزون عند اعتماد الإدارة.`,
+        text: t(
+          `تمت إضافة الصنف الجديد (${cleanName}) لبنود المسودة؛ سيُدرج بالمخزون عند اعتماد الإدارة.`,
+          `New product (${cleanName}) added to draft items; it will be added to inventory upon management approval.`
+        ),
       });
     }
 
@@ -1796,7 +1844,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const handleOpenPurchaseReview = (e: React.FormEvent) => {
     e.preventDefault();
     if (!purSupplierId || !purItems.length) {
-      setFeedback({ type: 'error', text: 'يرجى اختيار المورد وإضافة صنف واحد على الأقل.' });
+      setFeedback({ type: 'error', text: t('يرجى اختيار المورد وإضافة صنف واحد على الأقل.', 'Please select a supplier and add at least one item.') });
       return;
     }
     setFeedback(null);
@@ -1805,7 +1853,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
   const handleSubmitPurchaseInvoice = async (sendNow: boolean) => {
     if (!purSupplierId || !purItems.length) {
-      setFeedback({ type: 'error', text: 'يرجى اختيار المورد وإضافة صنف واحد على الأقل.' });
+      setFeedback({ type: 'error', text: t('يرجى اختيار المورد وإضافة صنف واحد على الأقل.', 'Please select a supplier and add at least one item.') });
       return;
     }
     const sup = data.suppliers.find((s) => s.id === purSupplierId);
@@ -1826,30 +1874,30 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       const editRes = await data.editPurchaseInvoice(purEditingInvoiceId, {
         date: new Date().toISOString().split('T')[0],
         supplierId: purSupplierId,
-        supplierName: sup?.name || 'مورد',
+        supplierName: sup?.name || t('مورد', 'Supplier'),
         warehouseId: whId,
-        warehouseName: wh?.name || 'المخزن الرئيسي',
+        warehouseName: wh?.name || t('المخزن الرئيسي', 'Main Warehouse'),
         discountTotal: Math.max(0, Number(purDiscount || 0)),
         paidAmount: paid,
         paymentType: purPaymentType,
         notes: purNotes.trim() || undefined,
-        reason: 'تعديل فاتورة الشراء قبل الإرسال',
+        reason: t('تعديل فاتورة الشراء قبل الإرسال', 'Purchase invoice edited prior to dispatch'),
         items: purItems,
       });
       if (!editRes.success) {
         setIsSubmittingPurchase(false);
-        setFeedback({ type: 'error', text: editRes.error || 'تعذر حفظ تعديلات فاتورة الشراء' });
+        setFeedback({ type: 'error', text: editRes.error || t('تعذر حفظ تعديلات فاتورة الشراء', 'Failed to save purchase invoice changes') });
         return;
       }
 
       if (sendNow) {
         const sendRes = await data.sendPurchaseInvoice(purEditingInvoiceId, {
           recipientUserId: chosenRecipient?.id || undefined,
-          recipientName: chosenRecipient?.fullName || 'الإدارة العامة',
+          recipientName: chosenRecipient?.fullName || t('الإدارة العامة', 'General Management'),
         });
         setIsSubmittingPurchase(false);
         if (!sendRes.success) {
-          setFeedback({ type: 'error', text: sendRes.error || 'تم حفظ التعديل لكن تعذر إرسال الفاتورة للإدارة' });
+          setFeedback({ type: 'error', text: sendRes.error || t('تم حفظ التعديل لكن تعذر إرسال الفاتورة للإدارة', 'Changes saved, but failed to send invoice to management') });
           return;
         }
       } else {
@@ -1864,8 +1912,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       setFeedback({
         type: editRes.queuedOffline ? 'warning' : 'success',
         text: sendNow
-          ? 'تم تحديث فاتورة الشراء وإرسالها للإدارة بانتظار الاستلام والمراجعة.'
-          : 'تم تحديث وحفظ فاتورة الشراء كمسودة دون تعديل أرصدة المخازن.',
+          ? t('تم تحديث فاتورة الشراء وإرسالها للإدارة بانتظار الاستلام والمراجعة.', 'Purchase invoice updated and sent to management for receipt and review.')
+          : t('تم تحديث وحفظ فاتورة الشراء كمسودة دون تعديل أرصدة المخازن.', 'Purchase invoice updated and saved as draft without modifying inventory balances.'),
       });
       onTabChange('purchases-list');
       return;
@@ -1874,11 +1922,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     const res = await data.createPurchaseInvoice({
       date: new Date().toISOString().split('T')[0],
       supplierId: purSupplierId,
-      supplierName: sup?.name || 'مورد',
+      supplierName: sup?.name || t('مورد', 'Supplier'),
       representativeId: rep?.id,
       representativeName: rep?.name,
       warehouseId: whId,
-      warehouseName: wh?.name || 'المخزن الرئيسي',
+      warehouseName: wh?.name || t('المخزن الرئيسي', 'Main Warehouse'),
       items: purItems,
       subtotal: purSubtotal,
       discountTotal: Math.max(0, Number(purDiscount || 0)),
@@ -1893,7 +1941,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       dispatchStatus: sendNow ? 'sent' : 'draft',
       sendNow,
       recipientUserId: sendNow ? chosenRecipient?.id : undefined,
-      recipientName: sendNow ? (chosenRecipient?.fullName || 'الإدارة العامة') : undefined,
+      recipientName: sendNow ? (chosenRecipient?.fullName || t('الإدارة العامة', 'General Management')) : undefined,
       isRepPurchase: true,
       notes: purNotes.trim() || undefined,
     });
@@ -1906,14 +1954,23 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       setFeedback({
         type: res.queuedOffline ? 'warning' : 'success',
         text: res.queuedOffline
-          ? `تم حفظ فاتورة الشراء كمسودة (${res.invoice?.invoiceNumber || ''}) محلياً للمزامنة عبر REFRESH.`
+          ? t(
+              `تم حفظ فاتورة الشراء كمسودة (${res.invoice?.invoiceNumber || ''}) محلياً للمزامنة عبر REFRESH.`,
+              `Purchase invoice saved as draft (${res.invoice?.invoiceNumber || ''}) locally to sync via REFRESH.`
+            )
           : sendNow
-          ? `تم إرسال فاتورة الشراء (${res.invoice?.invoiceNumber || ''}) للإدارة بانتظار الاستلام والاعتماد.`
-          : `تم حفظ فاتورة الشراء كمسودة (${res.invoice?.invoiceNumber || ''}) دون ترحيل للمخزون.`,
+          ? t(
+              `تم إرسال فاتورة الشراء (${res.invoice?.invoiceNumber || ''}) للإدارة بانتظار الاستلام والاعتماد.`,
+              `Purchase invoice (${res.invoice?.invoiceNumber || ''}) sent to management for receipt and approval.`
+            )
+          : t(
+              `تم حفظ فاتورة الشراء كمسودة (${res.invoice?.invoiceNumber || ''}) دون ترحيل للمخزون.`,
+              `Purchase invoice saved as draft (${res.invoice?.invoiceNumber || ''}) without posting to inventory.`
+            ),
       });
       onTabChange('purchases-list');
     } else {
-      setFeedback({ type: 'error', text: res.error || 'تعذر حفظ فاتورة الشراء' });
+      setFeedback({ type: 'error', text: res.error || t('تعذر حفظ فاتورة الشراء', 'Failed to save purchase invoice') });
     }
   };
 
@@ -1924,7 +1981,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const handleSubmitSalesReturn = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!sRetCustomerId || !sRetItems.length) {
-      setFeedback({ type: 'error', text: 'يرجى اختيار العميل وإضافة صنف للمرتجع.' });
+      setFeedback({ type: 'error', text: t('يرجى اختيار العميل وإضافة صنف للمرتجع.', 'Please select a customer and add an item to return.') });
       return;
     }
     const cust = data.customers.find((c) => c.id === sRetCustomerId);
@@ -1935,7 +1992,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     if ((isRepRoleAccount || !canCashOps) && (!inv || inv.status !== 'confirmed')) {
       setFeedback({
         type: 'error',
-        text: 'يرجى اختيار فاتورة مبيعات أصلية معتمدة أولاً لإتمام المرتجع.',
+        text: t('يرجى اختيار فاتورة مبيعات أصلية معتمدة أولاً لإتمام المرتجع.', 'Please select a confirmed original sales invoice first to complete the return.'),
       });
       return;
     }
@@ -1943,11 +2000,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     const requiresSalesRequest = sRetSettlement === 'cash' && (isRepRoleAccount || !canCashOps);
     if (requiresSalesRequest) {
       if (!inv || inv.status !== 'confirmed') {
-        setFeedback({ type: 'error', text: 'لرفع طلب مرتجع مبيعات نقدي، يجب اختيار فاتورة مبيعات أصلية معتمدة أولاً.' });
+        setFeedback({ type: 'error', text: t('لرفع طلب مرتجع مبيعات نقدي، يجب اختيار فاتورة مبيعات أصلية معتمدة أولاً.', 'To submit a cash sales return request, select a confirmed original sales invoice first.') });
         return;
       }
       if (!sRetReason.trim()) {
-        setFeedback({ type: 'error', text: 'يرجى كتابة سبب طلب مرتجع المبيعات النقدي.' });
+        setFeedback({ type: 'error', text: t('يرجى كتابة سبب طلب مرتجع المبيعات النقدي.', 'Please enter a reason for the cash sales return request.') });
         return;
       }
       setIsSubmittingSRet(true);
@@ -1973,12 +2030,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         setFeedback({
           type: reqRes.queuedOffline ? 'warning' : 'success',
           text: reqRes.queuedOffline
-            ? 'تم حفظ طلب مرتجع المبيعات النقدي محلياً في طابور المزامنة لمراجعة الخزينة والإدارة — لن يتغير رصيد الخزينة قبل الاعتماد.'
-            : `تم رفع طلب مرتجع المبيعات النقدي (${reqRes.request?.requestNumber || ''}) لمراجعة الإدارة والخزينة دون التأثير على الخزينة حتى الاعتماد.`,
+            ? t(
+                'تم حفظ طلب مرتجع المبيعات النقدي محلياً في طابور المزامنة لمراجعة الخزينة والإدارة — لن يتغير رصيد الخزينة قبل الاعتماد.',
+                'Cash sales return request saved locally in sync queue for treasury and management review — cashbox balance will not change until approved.'
+              )
+            : t(
+                `تم رفع طلب مرتجع المبيعات النقدي (${reqRes.request?.requestNumber || ''}) لمراجعة الإدارة والخزينة دون التأثير على الخزينة حتى الاعتماد.`,
+                `Cash sales return request (${reqRes.request?.requestNumber || ''}) submitted for management and treasury review without affecting cashbox until approved.`
+              ),
         });
         onTabChange('sales-returns-list');
       } else {
-        setFeedback({ type: 'error', text: reqRes.error || 'تعذر رفع طلب مرتجع البيع النقدي' });
+        setFeedback({ type: 'error', text: reqRes.error || t('تعذر رفع طلب مرتجع البيع النقدي', 'Failed to submit cash sales return request') });
       }
       return;
     }
@@ -1991,14 +2054,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       originalInvoiceId: inv?.id || '',
       originalInvoiceNumber: inv?.invoiceNumber || '',
       partyId: sRetCustomerId,
-      partyName: cust?.name || 'عميل',
+      partyName: cust?.name || t('عميل', 'Customer'),
       warehouseId: whId,
-      warehouseName: wh?.name || 'سيارة المندوب',
+      warehouseName: wh?.name || t('سيارة المندوب', 'Rep Van'),
       items: sRetItems,
       grandTotal: sRetTotal,
       refundType: sRetSettlement === 'cash' && canCashOps && !isRepRoleAccount ? 'cash' : 'balance',
       cashboxId: sRetSettlement === 'cash' && canCashOps && !isRepRoleAccount ? sRetCashboxId : undefined,
-      reason: sRetReason.trim() || 'مرتجع مبيعات من المندوب',
+      reason: sRetReason.trim() || t('مرتجع مبيعات من المندوب', 'Sales return by representative'),
     });
     setIsSubmittingSRet(false);
     if (res.success) {
@@ -2007,12 +2070,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       setFeedback({
         type: res.queuedOffline ? 'warning' : 'success',
         text: res.queuedOffline
-          ? 'تم حفظ مرتجع البيع محلياً في طابور المزامنة.'
-          : 'تم تسجيل مرتجع البيع وتحديث المخزون وحساب العميل.',
+          ? t('تم حفظ مرتجع البيع محلياً في طابور المزامنة.', 'Sales return saved locally in sync queue.')
+          : t('تم تسجيل مرتجع البيع وتحديث المخزون وحساب العميل.', 'Sales return recorded and inventory and customer balance updated.'),
       });
       onTabChange('sales-returns-list');
     } else {
-      setFeedback({ type: 'error', text: res.error || 'تعذر تسجيل مرتجع البيع' });
+      setFeedback({ type: 'error', text: res.error || t('تعذر تسجيل مرتجع البيع', 'Failed to record sales return') });
     }
   };
 
@@ -2080,15 +2143,15 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
     if (useRequestFlow) {
       if (!selectedPRetOrigInvoice) {
-        setFeedback({ type: 'error', text: 'يرجى اختيار فاتورة شراء معتمدة خاصة بك أولاً.' });
+        setFeedback({ type: 'error', text: t('يرجى اختيار فاتورة شراء معتمدة خاصة بك أولاً.', 'Please select one of your confirmed purchase invoices first.') });
         return;
       }
       if (!pRetItems.length) {
-        setFeedback({ type: 'error', text: 'يرجى إضافة صنف واحد على الأقل من بنود الفاتورة المحددة.' });
+        setFeedback({ type: 'error', text: t('يرجى إضافة صنف واحد على الأقل من بنود الفاتورة المحددة.', 'Please add at least one item from the selected invoice.') });
         return;
       }
       if (!pRetReason.trim()) {
-        setFeedback({ type: 'error', text: 'يرجى كتابة سبب طلب مرتجع المشتريات (حقل إلزامي).' });
+        setFeedback({ type: 'error', text: t('يرجى كتابة سبب طلب مرتجع المشتريات (حقل إلزامي).', 'Please enter a reason for the purchase return request (required).') });
         return;
       }
       setIsSubmittingPRet(true);
@@ -2118,18 +2181,24 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         setFeedback({
           type: res.queuedOffline ? 'warning' : 'success',
           text: res.queuedOffline
-            ? 'تم حفظ طلب مرتجع المشتريات محلياً في طابور المزامنة — سيتم إرساله للإدارة عند المزامنة ولن يتغير المخزون أو حساب المورد قبل الاعتماد.'
-            : `تم إرسال طلب مرتجع المشتريات (${res.request?.requestNumber || ''}) للإدارة للمراجعة والاعتماد — لن يتغير المخزون أو حساب المورد قبل اعتماد الإدارة.`,
+            ? t(
+                'تم حفظ طلب مرتجع المشتريات محلياً في طابور المزامنة — سيتم إرساله للإدارة عند المزامنة ولن يتغير المخزون أو حساب المورد قبل الاعتماد.',
+                'Purchase return request saved locally in sync queue — it will be sent upon sync, and stock/supplier balance will not change before approval.'
+              )
+            : t(
+                `تم إرسال طلب مرتجع المشتريات (${res.request?.requestNumber || ''}) للإدارة للمراجعة والاعتماد — لن يتغير المخزون أو حساب المورد قبل اعتماد الإدارة.`,
+                `Purchase return request (${res.request?.requestNumber || ''}) sent to management for review — stock and supplier balance will not change until approved.`
+              ),
         });
         onTabChange('purchase-returns-list');
       } else {
-        setFeedback({ type: 'error', text: res.error || 'تعذر إرسال طلب مرتجع المشتريات.' });
+        setFeedback({ type: 'error', text: res.error || t('تعذر إرسال طلب مرتجع المشتريات.', 'Failed to submit purchase return request.') });
       }
       return;
     }
 
     if (!pRetSupplierId || !pRetItems.length) {
-      setFeedback({ type: 'error', text: 'يرجى اختيار المورد وإضافة صنف لمرتجع الشراء.' });
+      setFeedback({ type: 'error', text: t('يرجى اختيار المورد وإضافة صنف لمرتجع الشراء.', 'Please select a supplier and add an item to return.') });
       return;
     }
     const sup = data.suppliers.find((s) => s.id === pRetSupplierId);
@@ -2144,14 +2213,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       originalInvoiceId: inv?.id || '',
       originalInvoiceNumber: inv?.invoiceNumber || '',
       partyId: pRetSupplierId,
-      partyName: sup?.name || 'مورد',
+      partyName: sup?.name || t('مورد', 'Supplier'),
       warehouseId: whId,
-      warehouseName: wh?.name || 'المخزن الرئيسي',
+      warehouseName: wh?.name || t('المخزن الرئيسي', 'Main Warehouse'),
       items: pRetItems,
       grandTotal: pRetTotal,
       refundType: pRetSettlement === 'cash' && !isRepRoleAccount && canCashOps ? 'cash' : 'balance',
       cashboxId: pRetSettlement === 'cash' && !isRepRoleAccount && canCashOps ? pRetCashboxId : undefined,
-      reason: pRetReason.trim() || 'مرتجع مشتريات للمورد',
+      reason: pRetReason.trim() || t('مرتجع مشتريات للمورد', 'Purchase return to supplier'),
     });
     setIsSubmittingPRet(false);
     if (res.success) {
@@ -2160,12 +2229,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       setFeedback({
         type: res.queuedOffline ? 'warning' : 'success',
         text: res.queuedOffline
-          ? 'تم حفظ مرتجع الشراء محلياً في طابور المزامنة.'
-          : 'تم تسجيل مرتجع المشتريات وتحديث المخزون وحساب المورد.',
+          ? t('تم حفظ مرتجع الشراء محلياً في طابور المزامنة.', 'Purchase return saved locally in sync queue.')
+          : t('تم تسجيل مرتجع المشتريات وتحديث المخزون وحساب المورد.', 'Purchase return recorded and inventory and supplier balance updated.'),
       });
       onTabChange('purchase-returns-list');
     } else {
-      setFeedback({ type: 'error', text: res.error || 'تعذر تسجيل مرتجع الشراء' });
+      setFeedback({ type: 'error', text: res.error || t('تعذر تسجيل مرتجع الشراء', 'Failed to record purchase return') });
     }
   };
 
@@ -2174,13 +2243,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     e.preventDefault();
     const depNum = Number(depAmount || 0);
     if (depNum <= 0) {
-      setFeedback({ type: 'error', text: 'يرجى إدخال مبلغ صحيح أكبر من الصفر.' });
+      setFeedback({ type: 'error', text: t('يرجى إدخال مبلغ صحيح أكبر من الصفر.', 'Please enter a valid amount greater than zero.') });
       return;
     }
     if (isRepRoleAccount && depMode === 'cashbox_deposit') {
       setFeedback({
         type: 'error',
-        text: 'غير مصرح للمندوب بتنفيذ إيداع مباشر بالخزينة؛ استخدم تحصيل من عميل أو توريد عهدة.',
+        text: t(
+          'غير مصرح للمندوب بتنفيذ إيداع مباشر بالخزينة؛ استخدم تحصيل من عميل أو توريد عهدة.',
+          'Representatives are not authorized for direct cashbox deposits; use customer collection or custody remittance.'
+        ),
       });
       return;
     }
@@ -2189,14 +2261,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     try {
       if (depMode === 'customer_collection') {
         if (!depCustomerId) {
-          setFeedback({ type: 'error', text: 'يرجى اختيار العميل للتحصيل منه.' });
+          setFeedback({ type: 'error', text: t('يرجى اختيار العميل للتحصيل منه.', 'Please select a customer to collect from.') });
           return;
         }
         const res = await data.recordCustomerPayment(
           depCustomerId,
           depNum,
           isRepRoleAccount || !canCashOps ? '' : depCashboxId,
-          depNotes.trim() || 'تحصيل نقدي عبر تطبيق المندوب',
+          depNotes.trim() || t('تحصيل نقدي عبر تطبيق المندوب', 'Cash collection via representative app'),
           depMethod,
           depInvoiceId || undefined
         );
@@ -2213,11 +2285,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           setFeedback({
             type: res.queuedOffline ? 'warning' : 'success',
             text: res.queuedOffline
-              ? 'تم حفظ التحصيل محلياً بانتظار المزامنة.'
-              : 'تم تسجيل التحصيل من العميل وتحديث الرصيد.',
+              ? t('تم حفظ التحصيل محلياً بانتظار المزامنة.', 'Collection saved locally pending sync.')
+              : t('تم تسجيل التحصيل من العميل وتحديث الرصيد.', 'Customer collection recorded and balance updated.'),
           });
         } else {
-          setFeedback({ type: 'error', text: res.error || 'تعذر تسجيل التحصيل' });
+          setFeedback({ type: 'error', text: res.error || t('تعذر تسجيل التحصيل', 'Failed to record collection') });
         }
       } else {
         const res = await data.executeCashOperation({
@@ -2226,8 +2298,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           amount: depNum,
           date: depDate || new Date().toISOString().split('T')[0],
           category: 'إيداع نقدي',
-          recipientOrPayer: rep?.name || currentUser?.fullName || 'المندوب',
-          notes: depNotes.trim() || 'إيداع نقدي من الشاشة الرئيسية',
+          recipientOrPayer: rep?.name || currentUser?.fullName || t('المندوب', 'Representative'),
+          notes: depNotes.trim() || t('إيداع نقدي من الشاشة الرئيسية', 'Cash deposit from main screen'),
         });
         if (res.success) {
           setDepAmount('');
@@ -2235,15 +2307,15 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           setFeedback({
             type: res.queuedOffline ? 'warning' : 'success',
             text: res.queuedOffline
-              ? 'تم حفظ الإيداع النقدي محلياً في طابور المزامنة بانتظار الإرسال.'
-              : 'تم تسجيل الإيداع النقدي بالخزينة بنجاح.',
+              ? t('تم حفظ الإيداع النقدي محلياً في طابور المزامنة بانتظار الإرسال.', 'Cash deposit saved locally in sync queue pending send.')
+              : t('تم تسجيل الإيداع النقدي بالخزينة بنجاح.', 'Cashbox deposit recorded successfully.'),
           });
         } else {
-          setFeedback({ type: 'error', text: res.error || 'تعذر تسجيل الإيداع النقدي' });
+          setFeedback({ type: 'error', text: res.error || t('تعذر تسجيل الإيداع النقدي', 'Failed to record cash deposit') });
         }
       }
     } catch (err: any) {
-      setFeedback({ type: 'error', text: err?.message || 'تعذر تسجيل الإيداع النقدي' });
+      setFeedback({ type: 'error', text: err?.message || t('تعذر تسجيل الإيداع النقدي', 'Failed to record cash deposit') });
     } finally {
       setIsSubmittingDeposit(false);
     }
@@ -2254,13 +2326,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     if (isRepRoleAccount || !canCashOps) {
       setFeedback({
         type: 'error',
-        text: 'غير مصرح لحساب المندوب بتنفيذ سحب أو مصروف مباشر من الخزينة.',
+        text: t(
+          'غير مصرح لحساب المندوب بتنفيذ سحب أو مصروف مباشر من الخزينة.',
+          'Representative accounts are not authorized for direct cashbox withdrawals or expenses.'
+        ),
       });
       return;
     }
     const wdNum = Number(wdAmount || 0);
     if (wdNum <= 0) {
-      setFeedback({ type: 'error', text: 'يرجى إدخال مبلغ سحب صحيح أكبر من الصفر.' });
+      setFeedback({ type: 'error', text: t('يرجى إدخال مبلغ سحب صحيح أكبر من الصفر.', 'Please enter a valid withdrawal amount greater than zero.') });
       return;
     }
     setIsSubmittingWithdrawal(true);
@@ -2273,7 +2348,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         date: new Date().toISOString().split('T')[0],
         category: wdCategory.trim() || 'سحب نقدي ومصروفات',
         recipientOrPayer: wdBeneficiary.trim() || rep?.name || currentUser?.fullName || '',
-        notes: wdNotes.trim() || 'سحب نقدي عبر تطبيق المندوب',
+        notes: wdNotes.trim() || t('سحب نقدي عبر تطبيق المندوب', 'Cash withdrawal via representative app'),
       });
       if (res.success) {
         setWdAmount('');
@@ -2282,14 +2357,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         setFeedback({
           type: res.queuedOffline ? 'warning' : 'success',
           text: res.queuedOffline
-            ? 'تم حفظ السحب / المصروف محلياً في طابور المزامنة بانتظار الإرسال.'
-            : 'تم تسجيل السحب / المصروف النقدي بنجاح.',
+            ? t('تم حفظ السحب / المصروف محلياً في طابور المزامنة بانتظار الإرسال.', 'Withdrawal / expense saved locally in sync queue pending send.')
+            : t('تم تسجيل السحب / المصروف النقدي بنجاح.', 'Cash withdrawal / expense recorded successfully.'),
         });
       } else {
-        setFeedback({ type: 'error', text: res.error || 'تعذر تسجيل السحب النقدي' });
+        setFeedback({ type: 'error', text: res.error || t('تعذر تسجيل السحب النقدي', 'Failed to record cash withdrawal') });
       }
     } catch (err: any) {
-      setFeedback({ type: 'error', text: err?.message || 'تعذر تسجيل السحب النقدي' });
+      setFeedback({ type: 'error', text: err?.message || t('تعذر تسجيل السحب النقدي', 'Failed to record cash withdrawal') });
     } finally {
       setIsSubmittingWithdrawal(false);
     }
@@ -2308,11 +2383,17 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     if (!payingPurchaseTarget) return;
     const rem = Math.max(0, Number(payingPurchaseTarget.remainingAmount || 0));
     if (purPayAmount <= 0) {
-      setFeedback({ type: 'error', text: 'يرجى إدخال مبلغ سداد صحيح أكبر من الصفر.' });
+      setFeedback({ type: 'error', text: t('يرجى إدخال مبلغ سداد صحيح أكبر من الصفر.', 'Please enter a valid payment amount greater than zero.') });
       return;
     }
     if (purPayAmount > rem + 0.01) {
-      setFeedback({ type: 'error', text: `مبلغ السداد يتجاوز المتبقي على الفاتورة (${rem.toLocaleString()}).` });
+      setFeedback({
+        type: 'error',
+        text: t(
+          `مبلغ السداد يتجاوز المتبقي على الفاتورة (${formatLocaleNumber(rem)}).`,
+          `Payment amount exceeds the invoice remaining balance (${formatLocaleNumber(rem)}).`
+        ),
+      });
       return;
     }
     setIsSubmittingPurPayment(true);
@@ -2324,7 +2405,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         paymentMethod: purPayMethod,
         cashboxId: defaultCb,
         date: purPayDate || new Date().toISOString().split('T')[0],
-        notes: purPayNotes.trim() || `دفعة سداد فاتورة شراء ${payingPurchaseTarget.invoiceNumber}`,
+        notes: purPayNotes.trim() || `${t('دفعة سداد فاتورة شراء', 'Purchase invoice payment')} ${payingPurchaseTarget.invoiceNumber}`,
       });
       if (res.success) {
         const paidNum = payingPurchaseTarget.invoiceNumber;
@@ -2332,11 +2413,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         setFeedback({
           type: res.queuedOffline ? 'warning' : 'success',
           text: res.queuedOffline
-            ? `تم حفظ دفعة السداد للفاتورة ${paidNum} محلياً بانتظار المزامنة.`
-            : `تم تسجيل دفعة سداد للفاتورة ${paidNum} وتحديث رصيد المورد بنجاح.`,
+            ? t(`تم حفظ دفعة السداد للفاتورة ${paidNum} محلياً بانتظار المزامنة.`, `Payment for invoice ${paidNum} saved locally pending sync.`)
+            : t(`تم تسجيل دفعة سداد للفاتورة ${paidNum} وتحديث رصيد المورد بنجاح.`, `Payment for invoice ${paidNum} recorded and supplier balance updated.`),
         });
       } else {
-        setFeedback({ type: 'error', text: res.error || 'تعذر تسجيل دفعة السداد' });
+        setFeedback({ type: 'error', text: res.error || t('تعذر تسجيل دفعة السداد', 'Failed to record payment') });
       }
     } finally {
       setIsSubmittingPurPayment(false);
@@ -2352,7 +2433,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       const dataUrl = await compressImageFileToDataUrl(file);
       setNewCustShopPhoto(dataUrl);
     } catch (err: any) {
-      setFeedback({ type: 'error', text: err?.message || 'تعذر معالجة صورة المحل' });
+      setFeedback({ type: 'error', text: err?.message || t('تعذر معالجة صورة المحل', 'Failed to process shop photo') });
     } finally {
       setIsUploadingCustPhoto(false);
     }
@@ -2372,16 +2453,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             setNewCustAddress((prev) => prev.trim() || rev.address);
             if (rev.area) setNewCustArea((prev) => prev.trim() || rev.area || '');
             if (rev.governorate) setNewCustGovernorate((prev) => prev.trim() || rev.governorate || '');
-            setFeedback({ type: 'success', text: 'تم التقاط إحداثيات GPS وجلب العنوان والمحافظة تلقائياً.' });
+            setFeedback({ type: 'success', text: t('تم التقاط إحداثيات GPS وجلب العنوان والمحافظة تلقائياً.', 'GPS coordinates captured and address/governorate fetched automatically.') });
             return;
           }
           setCustMapNotice(rev.error);
-          setFeedback({ type: 'warning', text: 'تم التقاط إحداثيات GPS، وتعذر جلب العنوان تلقائياً — يمكنك كتابته يدوياً.' });
+          setFeedback({ type: 'warning', text: t('تم التقاط إحداثيات GPS، وتعذر جلب العنوان تلقائياً — يمكنك كتابته يدوياً.', 'GPS coordinates captured, but auto address lookup failed — you can enter it manually.') });
           return;
         }
-        setFeedback({ type: 'success', text: 'تم التقاط إحداثيات GPS للعميل.' });
+        setFeedback({ type: 'success', text: t('تم التقاط إحداثيات GPS للعميل.', 'Customer GPS coordinates captured.') });
       } else {
-        setFeedback({ type: 'error', text: res.error || 'تعذر تحديد الموقع الجغرافي' });
+        setFeedback({ type: 'error', text: res.error || t('تعذر تحديد الموقع الجغرافي', 'Failed to determine geographic location') });
       }
     } finally {
       setIsLocatingCust(false);
@@ -2401,7 +2482,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       .filter((p) => p.phone && p.phone !== primaryPhoneClean);
 
     if (!newCustName.trim() || !primaryPhoneClean) {
-      setFeedback({ type: 'error', text: 'يرجى إدخال اسم العميل ورقم الهاتف الرئيسي.' });
+      setFeedback({ type: 'error', text: t('يرجى إدخال اسم العميل ورقم الهاتف الرئيسي.', 'Please enter customer name and primary phone number.') });
       return;
     }
 
@@ -2414,7 +2495,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     const resolvedNewLat = newCustLat ?? parsedNewGeo?.lat;
     const resolvedNewLng = newCustLng ?? parsedNewGeo?.lng;
     if (isZeroZeroLocation(resolvedNewLat, resolvedNewLng)) {
-      setFeedback({ type: 'error', text: 'إحداثيات (0, 0) غير صالحة — يرجى تحديد موقع حقيقي على الخريطة.' });
+      setFeedback({ type: 'error', text: t('إحداثيات (0, 0) غير صالحة — يرجى تحديد موقع حقيقي على الخريطة.', 'Coordinates (0, 0) are invalid — please pick a real location on the map.') });
       return;
     }
 
@@ -2461,10 +2542,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       if (custCameraInputRef.current) custCameraInputRef.current.value = '';
       if (custGalleryInputRef.current) custGalleryInputRef.current.value = '';
       setInvCustomerId(cust.id);
-      setFeedback({ type: 'success', text: `تم إضافة العميل (${cust.shopName || cust.name}) بجميع بياناته وصورته بنجاح.` });
+      setFeedback({
+        type: 'success',
+        text: t(
+          `تم إضافة العميل (${cust.shopName || cust.name}) بجميع بياناته وصورته بنجاح.`,
+          `Customer (${cust.shopName || cust.name}) added with all details and photo successfully.`
+        ),
+      });
       onTabChange('customers');
     } catch (err: any) {
-      setFeedback({ type: 'error', text: err?.message || 'تعذر إضافة العميل' });
+      setFeedback({ type: 'error', text: err?.message || t('تعذر إضافة العميل', 'Failed to add customer') });
     } finally {
       setIsSavingCustomer(false);
     }
@@ -2528,7 +2615,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       setEditCustPhotoChanged(true);
       setEditCustClearPhoto(false);
     } catch (err: any) {
-      setFeedback({ type: 'error', text: err?.message || 'تعذر معالجة صورة المحل' });
+      setFeedback({ type: 'error', text: err?.message || t('تعذر معالجة صورة المحل', 'Failed to process shop photo') });
     } finally {
       setIsUploadingEditCustPhoto(false);
     }
@@ -2548,16 +2635,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             setEditCustAddress((prev) => (prev.trim() && prev.trim() !== '-' ? prev : rev.address));
             if (rev.area) setEditCustArea((prev) => prev.trim() || rev.area || '');
             if (rev.governorate) setEditCustGovernorate((prev) => prev.trim() || rev.governorate || '');
-            setFeedback({ type: 'success', text: 'تم تحديث إحداثيات GPS وجلب العنوان والمحافظة تلقائياً.' });
+            setFeedback({ type: 'success', text: t('تم تحديث إحداثيات GPS وجلب العنوان والمحافظة تلقائياً.', 'GPS coordinates updated and address/governorate fetched automatically.') });
             return;
           }
           setEditCustMapNotice(rev.error);
-          setFeedback({ type: 'warning', text: 'تم تحديث إحداثيات GPS، وتعذر جلب العنوان تلقائياً — يمكنك كتابته يدوياً.' });
+          setFeedback({ type: 'warning', text: t('تم تحديث إحداثيات GPS، وتعذر جلب العنوان تلقائياً — يمكنك كتابته يدوياً.', 'GPS coordinates updated, but auto address lookup failed — you can enter it manually.') });
           return;
         }
-        setFeedback({ type: 'success', text: 'تم تحديث إحداثيات GPS للعميل.' });
+        setFeedback({ type: 'success', text: t('تم تحديث إحداثيات GPS للعميل.', 'Customer GPS coordinates updated.') });
       } else {
-        setFeedback({ type: 'error', text: res.error || 'تعذر تحديد الموقع الجغرافي' });
+        setFeedback({ type: 'error', text: res.error || t('تعذر تحديد الموقع الجغرافي', 'Failed to determine geographic location') });
       }
     } finally {
       setIsLocatingEditCust(false);
@@ -2578,7 +2665,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       .filter((p) => p.phone && p.phone !== primaryPhoneClean);
 
     if (!editCustName.trim() || !primaryPhoneClean) {
-      setFeedback({ type: 'error', text: 'يرجى إدخال اسم العميل ورقم الهاتف الرئيسي.' });
+      setFeedback({ type: 'error', text: t('يرجى إدخال اسم العميل ورقم الهاتف الرئيسي.', 'Please enter customer name and primary phone number.') });
       return;
     }
 
@@ -2591,7 +2678,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     const resolvedEditLat = editCustLat ?? parsedEditGeo?.lat;
     const resolvedEditLng = editCustLng ?? parsedEditGeo?.lng;
     if (isZeroZeroLocation(resolvedEditLat, resolvedEditLng)) {
-      setFeedback({ type: 'error', text: 'إحداثيات (0, 0) غير صالحة — يرجى تحديد موقع حقيقي على الخريطة.' });
+      setFeedback({ type: 'error', text: t('إحداثيات (0, 0) غير صالحة — يرجى تحديد موقع حقيقي على الخريطة.', 'Coordinates (0, 0) are invalid — please pick a real location on the map.') });
       return;
     }
 
@@ -2639,11 +2726,17 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       setFeedback({
         type: (res as any)?.queuedOffline ? 'warning' : 'success',
         text: (res as any)?.queuedOffline
-          ? `تم حفظ تعديل بيانات (${nextDetail.shopName || nextDetail.name}) محلياً بانتظار المزامنة.`
-          : `تم تحديث بيانات (${nextDetail.shopName || nextDetail.name}) بنجاح.`,
+          ? t(
+              `تم حفظ تعديل بيانات (${nextDetail.shopName || nextDetail.name}) محلياً بانتظار المزامنة.`,
+              `Changes for (${nextDetail.shopName || nextDetail.name}) saved locally pending sync.`
+            )
+          : t(
+              `تم تحديث بيانات (${nextDetail.shopName || nextDetail.name}) بنجاح.`,
+              `Customer (${nextDetail.shopName || nextDetail.name}) details updated successfully.`
+            ),
       });
     } catch (err: any) {
-      setFeedback({ type: 'error', text: err?.message || 'تعذر حفظ تعديلات العميل' });
+      setFeedback({ type: 'error', text: err?.message || t('تعذر حفظ تعديلات العميل', 'Failed to save customer updates') });
     } finally {
       setIsSavingEditCustomer(false);
     }
@@ -2652,7 +2745,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const handleSaveNewSupplier = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSupName.trim() || !newSupPhone.trim()) {
-      setFeedback({ type: 'error', text: 'يرجى إدخال اسم المورد ورقم الهاتف.' });
+      setFeedback({ type: 'error', text: t('يرجى إدخال اسم المورد ورقم الهاتف.', 'Please enter supplier name and phone number.') });
       return;
     }
     setIsSavingSupplier(true);
@@ -2663,7 +2756,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         name: newSupName.trim(),
         phone: newSupPhone.trim(),
         address: newSupAddress.trim() || '-',
-        notes: newSupCompany.trim() ? `الشركة: ${newSupCompany.trim()}` : undefined,
+        notes: newSupCompany.trim() ? `${t('الشركة:', 'Company:')} ${newSupCompany.trim()}` : undefined,
         openingBalance: Number(newSupOpening) || 0,
         status: 'active',
       });
@@ -2675,10 +2768,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       setPurSupplierId(sup.id);
       setFeedback({
         type: 'success',
-        text: `تم تسجيل المورد (${sup.name}) بنجاح.`,
+        text: t(`تم تسجيل المورد (${sup.name}) بنجاح.`, `Supplier (${sup.name}) registered successfully.`),
       });
     } catch (err: any) {
-      setFeedback({ type: 'error', text: err?.message || 'تعذر حفظ المورد' });
+      setFeedback({ type: 'error', text: err?.message || t('تعذر حفظ المورد', 'Failed to save supplier') });
     } finally {
       setIsSavingSupplier(false);
     }
@@ -2745,7 +2838,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const handleCreateQuote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!quoteItems.length) {
-      setFeedback({ type: 'error', text: 'يرجى إضافة صنف واحد على الأقل لعرض السعر.' });
+      setFeedback({ type: 'error', text: t('يرجى إضافة صنف واحد على الأقل لعرض السعر.', 'Please add at least one item to the price quote.') });
       return;
     }
     const cust = data.customers.find((c) => c.id === quoteCustomerId);
@@ -2754,7 +2847,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     const res = await data.createSalesQuote({
       date: new Date().toISOString().split('T')[0],
       customerId: quoteCustomerId || undefined,
-      customerName: cust?.name || 'عميل عام',
+      customerName: cust?.name || t('عميل عام', 'Walk-in Customer'),
       representativeId: rep?.id,
       representativeName: rep?.name,
       warehouseId: effectiveVanId || mainWarehouse?.id || '',
@@ -2770,7 +2863,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       paymentMethod: 'cash',
       cashboxId: isRepRoleAccount || !canCashOps ? '' : (data.cashboxes[0]?.id || ''),
       status: 'confirmed',
-      notes: quoteNotes.trim() || 'عرض سعر بدون تأثير مخزني أو مالي',
+      notes: quoteNotes.trim() || t('عرض سعر بدون تأثير مخزني أو مالي', 'Price quote without stock or financial impact'),
     });
     setIsSubmittingQuote(false);
     if (res.success) {
@@ -2779,11 +2872,17 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       setFeedback({
         type: res.queuedOffline ? 'warning' : 'success',
         text: res.queuedOffline
-          ? `تم حفظ عرض السعر (${res.invoice?.invoiceNumber || ''}) محلياً بانتظار المزامنة.`
-          : `تم إنشاء عرض السعر (${res.invoice?.invoiceNumber || ''}) دون أي تأثير على المخزون أو الحسابات.`,
+          ? t(
+              `تم حفظ عرض السعر (${res.invoice?.invoiceNumber || ''}) محلياً بانتظار المزامنة.`,
+              `Price quote (${res.invoice?.invoiceNumber || ''}) saved locally pending sync.`
+            )
+          : t(
+              `تم إنشاء عرض السعر (${res.invoice?.invoiceNumber || ''}) دون أي تأثير على المخزون أو الحسابات.`,
+              `Price quote (${res.invoice?.invoiceNumber || ''}) created with no impact on stock or accounts.`
+            ),
       });
     } else {
-      setFeedback({ type: 'error', text: res.error || 'تعذر حفظ عرض السعر' });
+      setFeedback({ type: 'error', text: res.error || t('تعذر حفظ عرض السعر', 'Failed to save price quote') });
     }
   };
 
@@ -2795,10 +2894,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     if (res.success) {
       setFeedback({
         type: 'success',
-        text: `تم تحويل عرض السعر إلى فاتورة مبيعات (${res.invoice?.invoiceNumber || ''}) بنجاح.`,
+        text: t(
+          `تم تحويل عرض السعر إلى فاتورة مبيعات (${res.invoice?.invoiceNumber || ''}) بنجاح.`,
+          `Price quote converted to sales invoice (${res.invoice?.invoiceNumber || ''}) successfully.`
+        ),
       });
     } else {
-      setFeedback({ type: 'error', text: res.error || 'تعذر تحويل عرض السعر لفاتورة' });
+      setFeedback({ type: 'error', text: res.error || t('تعذر تحويل عرض السعر لفاتورة', 'Failed to convert quote to invoice') });
     }
   };
 
@@ -2807,7 +2909,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     e.preventDefault();
     const chqNumAmt = Number(chqAmount || 0);
     if (!chqNumber.trim() || !chqPartyName.trim() || chqNumAmt <= 0) {
-      setFeedback({ type: 'error', text: 'يرجى استكمال رقم الشيك والجهة والمبلغ.' });
+      setFeedback({ type: 'error', text: t('يرجى استكمال رقم الشيك والجهة والمبلغ.', 'Please complete cheque number, party, and amount.') });
       return;
     }
     setIsSavingCheque(true);
@@ -2818,7 +2920,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         type: chqType,
         partyId: '',
         partyName: chqPartyName.trim(),
-        bankName: chqBank.trim() || 'بنك',
+        bankName: chqBank.trim() || t('بنك', 'Bank'),
         amount: chqNumAmt,
         dueDate: chqDueDate,
         issueDate: new Date().toISOString().split('T')[0],
@@ -2828,9 +2930,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       setChqPartyName('');
       setChqBank('');
       setChqAmount('');
-      setFeedback({ type: 'success', text: 'تم تسجيل الشيك بنجاح.' });
+      setFeedback({ type: 'success', text: t('تم تسجيل الشيك بنجاح.', 'Cheque recorded successfully.') });
     } catch (err: any) {
-      setFeedback({ type: 'error', text: err?.message || 'تعذر حفظ الشيك' });
+      setFeedback({ type: 'error', text: err?.message || t('تعذر حفظ الشيك', 'Failed to save cheque') });
     } finally {
       setIsSavingCheque(false);
     }
@@ -2910,7 +3012,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const handleSubmitRepOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!ordCustomerId || !ordItems.length) {
-      setFeedback({ type: 'error', text: 'يرجى اختيار العميل وإضافة صنف واحد على الأقل.' });
+      setFeedback({ type: 'error', text: t('يرجى اختيار العميل وإضافة صنف واحد على الأقل.', 'Please select a customer and add at least one item.') });
       return;
     }
     const cust = data.customers.find((c) => c.id === ordCustomerId);
@@ -2918,7 +3020,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     setFeedback(null);
     const res = await data.createCustomerItemOrder({
       customerId: ordCustomerId,
-      customerName: cust?.name || 'عميل',
+      customerName: cust?.name || t('عميل', 'Customer'),
       customerPhone: cust?.phone,
       shopName: cust?.shopName || cust?.name,
       deliveryAddress: cust?.address,
@@ -2926,7 +3028,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       requesterType: 'representative',
       items: ordItems,
       totalAmount: ordTotalAmount,
-      notes: ordNotes.trim() || 'طلب شراء مرسل من المندوب',
+      notes: ordNotes.trim() || t('طلب شراء مرسل من المندوب', 'Purchase order submitted by representative'),
     });
     setIsSubmittingOrder(false);
     if (res.success || res.queuedOffline) {
@@ -2935,11 +3037,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       setFeedback({
         type: res.queuedOffline ? 'warning' : 'success',
         text: res.queuedOffline
-          ? `تم حفظ الطلب محلياً (${res.order?.requestNumber || ''}) بانتظار المزامنة.`
-          : `تم إرسال الطلب رقم ${res.order?.requestNumber || ''} للإدارة.`,
+          ? t(`تم حفظ الطلب محلياً (${res.order?.requestNumber || ''}) بانتظار المزامنة.`, `Order saved locally (${res.order?.requestNumber || ''}) pending sync.`)
+          : t(`تم إرسال الطلب رقم ${res.order?.requestNumber || ''} للإدارة.`, `Order #${res.order?.requestNumber || ''} sent to management.`),
       });
     } else {
-      setFeedback({ type: 'error', text: res.error || 'تعذر إرسال الطلب' });
+      setFeedback({ type: 'error', text: res.error || t('تعذر إرسال الطلب', 'Failed to send order') });
     }
   };
 
@@ -2962,11 +3064,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         setFeedback({
           type: res.queuedOffline ? 'warning' : 'success',
           text: res.queuedOffline
-            ? `تم تسجيل بدء التوصيل للطلب ${ord.requestNumber} محلياً.`
-            : `الطلب ${ord.requestNumber} الآن في حالة (جاري التوصيل).`,
+            ? t(`تم تسجيل بدء التوصيل للطلب ${ord.requestNumber} محلياً.`, `Delivery start for order ${ord.requestNumber} saved locally.`)
+            : t(`الطلب ${ord.requestNumber} الآن في حالة (جاري التوصيل).`, `Order ${ord.requestNumber} is now Out for Delivery.`),
         });
       } else {
-        setFeedback({ type: 'error', text: res.error || 'تعذر تحديث حالة التوصيل' });
+        setFeedback({ type: 'error', text: res.error || t('تعذر تحديث حالة التوصيل', 'Failed to update delivery status') });
       }
     } finally {
       setIsUpdatingDelivery(false);
@@ -3001,12 +3103,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         setFeedback({
           type: res.queuedOffline ? 'warning' : 'success',
           text: res.queuedOffline
-            ? `تم حفظ تأكيد تسليم الطلب ${deliveringOrder.requestNumber} محلياً.`
-            : `تم تسجيل تسليم الطلب ${deliveringOrder.requestNumber} بنجاح.`,
+            ? t(`تم حفظ تأكيد تسليم الطلب ${deliveringOrder.requestNumber} محلياً.`, `Delivery confirmation for order ${deliveringOrder.requestNumber} saved locally.`)
+            : t(`تم تسجيل تسليم الطلب ${deliveringOrder.requestNumber} بنجاح.`, `Order ${deliveringOrder.requestNumber} delivery recorded successfully.`),
         });
         setDeliveringOrder(null);
       } else {
-        setFeedback({ type: 'error', text: res.error || 'تعذر تأكيد التسليم' });
+        setFeedback({ type: 'error', text: res.error || t('تعذر تأكيد التسليم', 'Failed to confirm delivery') });
       }
     } finally {
       setIsUpdatingDelivery(false);
@@ -3103,9 +3205,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       if (customerSortMode === 'credit_desc') {
         return Number(a.currentBalance || 0) - Number(b.currentBalance || 0);
       }
-      return (a.shopName || a.name).localeCompare(b.shopName || b.name, 'ar');
+      return (a.shopName || a.name).localeCompare(b.shopName || b.name, language);
     });
-  }, [data.customers, customerSearch, customerFilterMode, customerSortMode]);
+  }, [data.customers, customerSearch, customerFilterMode, customerSortMode, language]);
 
   const repCustomersStats = useMemo(() => {
     const total = data.customers.length;
@@ -3140,13 +3242,19 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     const res = await data.deleteCustomer(deleteCustomerTarget.id);
     setIsDeletingCustomer(false);
     if (res.success) {
-      setFeedback({ type: 'success', text: `تم حذف العميل (${deleteCustomerTarget.shopName || deleteCustomerTarget.name}) بنجاح.` });
+      setFeedback({
+        type: 'success',
+        text: t(
+          `تم حذف العميل (${deleteCustomerTarget.shopName || deleteCustomerTarget.name}) بنجاح.`,
+          `Customer (${deleteCustomerTarget.shopName || deleteCustomerTarget.name}) deleted successfully.`
+        ),
+      });
       if (selectedCustomerDetail?.id === deleteCustomerTarget.id) {
         setSelectedCustomerDetail(null);
       }
       setDeleteCustomerTarget(null);
     } else {
-      setFeedback({ type: 'error', text: res.error || 'تعذر حذف العميل.' });
+      setFeedback({ type: 'error', text: res.error || t('تعذر حذف العميل.', 'Failed to delete customer.') });
       setDeleteCustomerTarget(null);
     }
   };
@@ -3159,8 +3267,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           ready: false,
           reason:
             tr.status === 'rejected'
-              ? 'تم رفض طلب تحويل الأصناف المرتبط من الإدارة'
-              : 'بانتظار موافقة وصرف الإدارة لطلب التحويل المرتبط',
+              ? t('تم رفض طلب تحويل الأصناف المرتبط من الإدارة', 'Linked item transfer request was rejected by management')
+              : t('بانتظار موافقة وصرف الإدارة لطلب التحويل المرتبط', 'Awaiting management approval and dispatch for linked transfer request'),
         };
       }
     }
@@ -3171,9 +3279,15 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     setFeedback(null);
     const res = await data.confirmDraftInvoice(inv.id);
     if (res.success) {
-      setFeedback({ type: 'success', text: `تم اعتماد الفاتورة ${inv.invoiceNumber} نهائياً وتحديث المخزون والحساب.` });
+      setFeedback({
+        type: 'success',
+        text: t(
+          `تم اعتماد الفاتورة ${inv.invoiceNumber} نهائياً وتحديث المخزون والحساب.`,
+          `Invoice ${inv.invoiceNumber} confirmed finally and stock/account updated.`
+        ),
+      });
     } else {
-      setFeedback({ type: 'error', text: res.error || 'تعذر اعتماد المسودة' });
+      setFeedback({ type: 'error', text: res.error || t('تعذر اعتماد المسودة', 'Failed to confirm draft') });
     }
   };
 
@@ -3184,11 +3298,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       setFeedback({
         type: res.queuedOffline ? 'warning' : 'success',
         text: res.queuedOffline
-          ? `تم تسجيل استلام ${reqNum} محلياً بانتظار المزامنة.`
-          : `تم تأكيد استلام أصناف التحويل ${reqNum} على سيارتك.`,
+          ? t(`تم تسجيل استلام ${reqNum} محلياً بانتظار المزامنة.`, `Receipt of ${reqNum} saved locally pending sync.`)
+          : t(`تم تأكيد استلام أصناف التحويل ${reqNum} على سيارتك.`, `Transfer items for ${reqNum} confirmed received in your van.`),
       });
     } else {
-      setFeedback({ type: 'error', text: res.error || 'تعذر تأكيد الاستلام' });
+      setFeedback({ type: 'error', text: res.error || t('تعذر تأكيد الاستلام', 'Failed to confirm receipt') });
     }
   };
 
@@ -3196,7 +3310,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     e.preventDefault();
     const dQty = Number(delivQty || 0);
     if (!delivProdId || dQty <= 0) {
-      setFeedback({ type: 'error', text: 'يرجى اختيار الصنف وكمية التسليم الجزئي.' });
+      setFeedback({ type: 'error', text: t('يرجى اختيار الصنف وكمية التسليم الجزئي.', 'Please select product and partial delivery quantity.') });
       return;
     }
     const cust = data.customers.find((c) => c.id === delivCustomerId);
@@ -3209,7 +3323,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       productId: delivProdId,
       quantity: dQty,
       date: new Date().toISOString().split('T')[0],
-      notes: delivNotes.trim() || 'تسليم عهدة جزئي لعميل من تطبيق المندوب',
+      notes: delivNotes.trim() || t('تسليم عهدة جزئي لعميل من تطبيق المندوب', 'Partial custody delivery to customer from representative app'),
     });
     setIsSendingTransfer(false);
     if (res.success) {
@@ -3219,12 +3333,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       setFeedback({
         type: res.queuedOffline ? 'warning' : 'success',
         text: res.queuedOffline
-          ? 'تم تسجيل تسليم العهدة محلياً بانتظار المزامنة.'
-          : 'تم تسجيل تسليم العهدة وتحديث المتبقي في سيارة المندوب.',
+          ? t('تم تسجيل تسليم العهدة محلياً بانتظار المزامنة.', 'Custody delivery saved locally pending sync.')
+          : t('تم تسجيل تسليم العهدة وتحديث المتبقي في سيارة المندوب.', 'Custody delivery recorded and van balance updated.'),
       });
       loadCustodyStatement();
     } else {
-      setFeedback({ type: 'error', text: res.error || 'تعذر تسجيل تسليم العهدة' });
+      setFeedback({ type: 'error', text: res.error || t('تعذر تسجيل تسليم العهدة', 'Failed to record custody delivery') });
     }
   };
 
@@ -3232,7 +3346,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     e.preventDefault();
     const rQty = Number(retCustodyQty || 0);
     if (!retCustodyProdId || rQty <= 0) {
-      setFeedback({ type: 'error', text: 'يرجى اختيار الصنف والكمية المرتجعة للمخزن.' });
+      setFeedback({ type: 'error', text: t('يرجى اختيار الصنف والكمية المرتجعة للمخزن.', 'Please select product and quantity to return to warehouse.') });
       return;
     }
     const prod = activeProducts.find((p) => p.id === retCustodyProdId);
@@ -3246,7 +3360,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     if (rQty * factor > vanAvail) {
       setFeedback({
         type: 'error',
-        text: `الكمية المطلوب إرجاعها (${rQty * factor} ${prod?.baseUnit || ''}) تتجاوز المتاح في عهدة السيارة (${vanAvail}).`,
+        text: t(
+          `الكمية المطلوب إرجاعها (${formatLocaleNumber(rQty * factor)} ${prod?.baseUnit || ''}) تتجاوز المتاح في عهدة السيارة (${formatLocaleNumber(vanAvail)}).`,
+          `Requested return quantity (${formatLocaleNumber(rQty * factor)} ${prod?.baseUnit || ''}) exceeds available van custody (${formatLocaleNumber(vanAvail)}).`
+        ),
       });
       return;
     }
@@ -3260,7 +3377,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       unit: chosenUnit,
       unitFactor: factor,
       date: new Date().toISOString().split('T')[0],
-      notes: retCustodyNotes.trim() || 'إرجاع بضاعة من عهدة المندوب للمخزن الرئيسي',
+      notes: retCustodyNotes.trim() || t('إرجاع بضاعة من عهدة المندوب للمخزن الرئيسي', 'Return goods from representative custody to main warehouse'),
     });
     setIsSendingTransfer(false);
     if (res.success) {
@@ -3271,12 +3388,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       setFeedback({
         type: res.queuedOffline ? 'warning' : 'success',
         text: res.queuedOffline
-          ? 'تم حفظ إرجاع العهدة للمخزن محلياً بانتظار المزامنة.'
-          : 'تم تسجيل إرجاع العهدة إلى المخزن وتحديث الأرصدة بنجاح.',
+          ? t('تم حفظ إرجاع العهدة للمخزن محلياً بانتظار المزامنة.', 'Custody return to warehouse saved locally pending sync.')
+          : t('تم تسجيل إرجاع العهدة إلى المخزن وتحديث الأرصدة بنجاح.', 'Custody return to warehouse recorded and balances updated.'),
       });
       loadCustodyStatement();
     } else {
-      setFeedback({ type: 'error', text: res.error || 'تعذر إرجاع الصنف للمخزن' });
+      setFeedback({ type: 'error', text: res.error || t('تعذر إرجاع الصنف للمخزن', 'Failed to return item to warehouse') });
     }
   };
 
@@ -3292,16 +3409,22 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       sourceWarehouseId: mainWarehouse.id,
       sourceWarehouseName: mainWarehouse.name,
       targetWarehouseId: effectiveVanId,
-      targetWarehouseName: wh?.name || `سيارة المندوب (${rep.name})`,
+      targetWarehouseName: wh?.name || `${t('سيارة المندوب', 'Rep Van')} (${rep.name})`,
       items: reqItems,
-      notes: 'طلب تغذية عهدة سيارة من تطبيق المندوب',
+      notes: t('طلب تغذية عهدة سيارة من تطبيق المندوب', 'Van custody replenishment request from representative app'),
     });
     setIsSendingTransfer(false);
     if (res.success) {
       setReqItems([]);
-      setFeedback({ type: 'success', text: `تم إرسال طلب التحويل ${res.request?.requestNumber || ''} للإدارة.` });
+      setFeedback({
+        type: 'success',
+        text: t(
+          `تم إرسال طلب التحويل ${res.request?.requestNumber || ''} للإدارة.`,
+          `Transfer request ${res.request?.requestNumber || ''} sent to management.`
+        ),
+      });
     } else {
-      setFeedback({ type: 'error', text: res.error || 'تعذر إرسال طلب التحويل' });
+      setFeedback({ type: 'error', text: res.error || t('تعذر إرسال طلب التحويل', 'Failed to send transfer request') });
     }
   };
 
@@ -3314,27 +3437,33 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       senderId: rep.id,
       senderName: rep.name,
       receiverId: 'OWNER',
-      receiverName: 'الفرع الرئيسي (الخزينة)',
+      receiverName: t('الفرع الرئيسي (الخزينة)', 'Main Branch (Treasury)'),
       amount: cashAmount,
       cashboxId: data.cashboxes[0]?.id || 'CASH-01',
-      notes: cashNotes.trim() || 'توريد تحصيلات من تطبيق المندوب',
+      notes: cashNotes.trim() || t('توريد تحصيلات من تطبيق المندوب', 'Collections remittance from representative app'),
     });
     setIsSendingTransfer(false);
     if (res.success) {
       setCashAmount(0);
       setCashNotes('');
-      setFeedback({ type: 'success', text: `تم إرسال إشعار التوريد النقدي رقم ${res.transfer?.transferNumber || ''} بانتظار تأكيد الخزينة.` });
+      setFeedback({
+        type: 'success',
+        text: t(
+          `تم إرسال إشعار التوريد النقدي رقم ${res.transfer?.transferNumber || ''} بانتظار تأكيد الخزينة.`,
+          `Cash remittance notice #${res.transfer?.transferNumber || ''} sent pending treasury confirmation.`
+        ),
+      });
     } else {
-      setFeedback({ type: 'error', text: res.error || 'تعذر إرسال التحويل النقدي' });
+      setFeedback({ type: 'error', text: res.error || t('تعذر إرسال التحويل النقدي', 'Failed to send cash transfer') });
     }
   };
 
   const handleConfirmOwnerCash = async (transferId: string) => {
-    const res = await data.confirmRepTransferReceipt(transferId, 'تم الاستلام الفعلي عبر تطبيق المندوب');
+    const res = await data.confirmRepTransferReceipt(transferId, t('تم الاستلام الفعلي عبر تطبيق المندوب', 'Actual receipt confirmed via representative app'));
     if (res.success) {
-      setFeedback({ type: 'success', text: 'تم تأكيد استلام العهدة النقدية وتحديث رصيدك.' });
+      setFeedback({ type: 'success', text: t('تم تأكيد استلام العهدة النقدية وتحديث رصيدك.', 'Cash custody receipt confirmed and your balance updated.') });
     } else {
-      setFeedback({ type: 'error', text: res.error || 'تعذر تأكيد الاستلام' });
+      setFeedback({ type: 'error', text: res.error || t('تعذر تأكيد الاستلام', 'Failed to confirm receipt') });
     }
   };
 
@@ -3349,7 +3478,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       : rep;
 
     exportHtmlToPdf({
-      title: inv.type === 'quote' ? 'عرض سعر' : inv.type === 'purchase' ? 'فاتورة مشتريات' : inv.status === 'draft' ? 'مسودة فاتورة مبيعات' : 'فاتورة مبيعات',
+      title:
+        inv.type === 'quote'
+          ? t('عرض سعر', 'Price Quote')
+          : inv.type === 'purchase'
+          ? t('فاتورة مشتريات', 'Purchase Invoice')
+          : inv.status === 'draft'
+          ? t('مسودة فاتورة مبيعات', 'Draft Sales Invoice')
+          : t('فاتورة مبيعات', 'Sales Invoice'),
       companyName: data.settings.companyName,
       companySubtitle: data.settings.companySubtitle,
       address: data.settings.address,
@@ -3362,10 +3498,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       docNumber: inv.invoiceNumber,
       dateRangeText: inv.date,
       meta: [
-        { label: inv.type === 'purchase' ? 'المورد' : 'العميل', value: inv.supplierName || inv.customerName || '-' },
-        { label: 'المخزن', value: inv.warehouseName || '-' },
+        { label: inv.type === 'purchase' ? t('المورد', 'Supplier') : t('العميل', 'Customer'), value: inv.supplierName || inv.customerName || '-' },
+        { label: t('المخزن', 'Warehouse'), value: inv.warehouseName || '-' },
       ],
-      tableHeaders: ['م', 'الصنف', 'الوحدة', 'الكمية', 'السعر', 'الإجمالي'],
+      tableHeaders: [t('م', '#'), t('الصنف', 'Product'), t('الوحدة', 'Unit'), t('الكمية', 'Qty'), t('السعر', 'Price'), t('الإجمالي', 'Total')],
       tableRows: (inv.items || []).map((it, idx) => [
         idx + 1,
         it.productName,
@@ -3375,11 +3511,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         it.total.toFixed(2),
       ]),
       summaryPairs: [
-        { label: 'الصافي الإجمالي', value: `${inv.grandTotal.toFixed(2)} ${data.settings.currency}`, highlight: true },
+        { label: t('الصافي الإجمالي', 'Net Total'), value: `${inv.grandTotal.toFixed(2)} ${t(data.settings.currency)}`, highlight: true },
         ...(inv.type !== 'quote'
           ? [
-              { label: 'المدفوع', value: `${inv.paidAmount.toFixed(2)} ${data.settings.currency}` },
-              { label: 'المتبقي', value: `${inv.remainingAmount.toFixed(2)} ${data.settings.currency}` },
+              { label: t('المدفوع', 'Paid'), value: `${inv.paidAmount.toFixed(2)} ${t(data.settings.currency)}` },
+              { label: t('المتبقي', 'Remaining'), value: `${inv.remainingAmount.toFixed(2)} ${t(data.settings.currency)}` },
             ]
           : []),
       ],
@@ -3389,11 +3525,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
   if (mobileConfig.enableRepApp === false) {
     return (
-      <div className="bg-white rounded-2xl border border-amber-200 p-5 text-center space-y-2.5 shadow-xs">
+      <div dir={dir} className="bg-white rounded-2xl border border-amber-200 p-5 text-center space-y-2.5 shadow-xs">
         <ShieldAlert className="w-12 h-12 text-amber-600 mx-auto" />
-        <h3 className="text-base font-black text-slate-900">بوابة المناديب متوقفة مؤقتاً</h3>
+        <h3 className="text-base font-black text-slate-900">{t('بوابة المناديب متوقفة مؤقتاً', 'Representatives Portal Temporarily Paused')}</h3>
         <p className="text-xs text-slate-600">
-          تم تعطيل وصول تطبيق المناديب مؤقتاً من إعدادات الإدارة. يرجى مراجعة مسؤول النظام.
+          {t('تم تعطيل وصول تطبيق المناديب مؤقتاً من إعدادات الإدارة. يرجى مراجعة مسؤول النظام.', 'Representatives app access has been temporarily disabled in admin settings. Please contact your system administrator.')}
         </p>
         <button
           type="button"
@@ -3401,7 +3537,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           className="min-h-[44px] px-5 rounded-xl bg-blue-900 text-white text-xs font-bold inline-flex items-center gap-2 cursor-pointer"
         >
           <RefreshCw className="w-4 h-4" />
-          <span>إعادة المحاولة</span>
+          <span>{t('إعادة المحاولة', 'Retry')}</span>
         </button>
       </div>
     );
@@ -3419,21 +3555,21 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     // Row 1
     {
       key: 'new-purchase',
-      label: 'فاتورة شراء',
+      label: t('فاتورة شراء', 'Purchase Invoice'),
       iconNode: <PurchaseInvoiceIcon className="w-11 h-11" />,
       allowed: canCreatePurchase,
       tone: 'bg-white text-slate-800 border-slate-200 hover:border-blue-300',
     },
     {
       key: 'sales-return',
-      label: 'مرتجع بيع',
+      label: t('مرتجع بيع', 'Sales Return'),
       iconNode: <SalesReturnIcon className="w-11 h-11" />,
       allowed: canSales,
       tone: 'bg-white text-slate-800 border-slate-200 hover:border-blue-300',
     },
     {
       key: 'new-invoice',
-      label: 'فاتورة بيع',
+      label: t('فاتورة بيع', 'Sales Invoice'),
       iconNode: <SalesInvoiceIcon className="w-11 h-11" />,
       allowed: canSales,
       tone: 'bg-white text-blue-950 border-blue-200 ring-1 ring-blue-100 hover:border-blue-400',
@@ -3441,21 +3577,21 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     // Row 2
     {
       key: 'cash-deposit',
-      label: isRepRoleAccount ? 'تحصيل من عميل' : 'إيداع نقدي',
+      label: isRepRoleAccount ? t('تحصيل من عميل', 'Customer Collection') : t('إيداع نقدي', 'Cash Deposit'),
       iconNode: <ExpensesCashIcon className="w-11 h-11" />,
       allowed: isRepRoleAccount ? (canSales || canAccounts) : (canCashOps || canAccounts || canSales),
       tone: 'bg-white text-slate-800 border-slate-200 hover:border-blue-300',
     },
     {
       key: 'custody-transfer',
-      label: 'تحويل عهدة',
+      label: t('تحويل عهدة', 'Custody Transfer'),
       iconNode: <TransferArrowsIcon className="w-11 h-11" />,
       allowed: canTransfers,
       tone: 'bg-white text-slate-800 border-slate-200 hover:border-blue-300',
     },
     {
       key: 'purchase-return',
-      label: isRepRoleAccount ? 'طلب مرتجع شراء' : 'مرتجع شراء',
+      label: isRepRoleAccount ? t('طلب مرتجع شراء', 'Purchase Return Req.') : t('مرتجع شراء', 'Purchase Return'),
       iconNode: <PurchaseReturnIcon className="w-11 h-11" />,
       allowed: canCreatePurchase,
       tone: 'bg-white text-slate-800 border-slate-200 hover:border-blue-300',
@@ -3465,7 +3601,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       ? [
           {
             key: 'cash-withdrawal' as RepTabKey,
-            label: 'سحب نقدي',
+            label: t('سحب نقدي', 'Cash Withdrawal'),
             iconNode: <WalletCashIcon className="w-11 h-11" />,
             allowed: canCashOps,
             tone: 'bg-white text-slate-800 border-slate-200 hover:border-blue-300',
@@ -3474,7 +3610,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       : [
           {
             key: 'rep-reports' as RepTabKey,
-            label: 'تقارير المندوب',
+            label: t('تقارير المندوب', 'Rep Reports'),
             iconNode: <FileSpreadsheet className="w-10 h-10 text-blue-900" />,
             allowed: true,
             tone: 'bg-white text-blue-950 border-blue-200 hover:border-blue-400',
@@ -3482,14 +3618,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         ]),
     {
       key: 'new-customer',
-      label: 'عميل جديد',
+      label: t('عميل جديد', 'New Customer'),
       iconNode: <CustomerAddIcon className="w-11 h-11" />,
       allowed: canAddCustomer,
       tone: 'bg-white text-slate-800 border-slate-200 hover:border-blue-300',
     },
     {
       key: 'new-supplier',
-      label: 'مورد جديد',
+      label: t('مورد جديد', 'New Supplier'),
       iconNode: <SupplierAddIcon className="w-11 h-11" />,
       allowed: canCreatePurchase,
       tone: 'bg-white text-slate-800 border-slate-200 hover:border-blue-300',
@@ -3497,7 +3633,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     // Row 4
     {
       key: 'refresh',
-      label: 'إرسال واستلام',
+      label: t('إرسال واستلام', 'Send & Receive'),
       iconNode: <RefreshCloudIcon className="w-11 h-11" />,
       allowed: true,
       tone: 'bg-white text-slate-900 border-blue-200 hover:border-blue-400',
@@ -3507,7 +3643,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       ? [
           {
             key: 'cheques-installments' as RepTabKey,
-            label: 'شيك وقسط',
+            label: t('شيك وقسط', 'Cheques & Inst.'),
             iconNode: <ChequesIcon className="w-11 h-11" />,
             allowed: canAccounts,
             tone: 'bg-white text-slate-800 border-slate-200 hover:border-blue-300',
@@ -3516,7 +3652,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       : [
           {
             key: 'suppliers' as RepTabKey,
-            label: 'الموردون وكشوفهم',
+            label: t('الموردون وكشوفهم', 'Suppliers & Statements'),
             iconNode: <Building2 className="w-10 h-10 text-[#003589]" />,
             allowed: canCreatePurchase,
             tone: 'bg-white text-slate-800 border-slate-200 hover:border-blue-300',
@@ -3524,7 +3660,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         ]),
     {
       key: 'new-quote',
-      label: 'عرض سعر',
+      label: t('عرض سعر', 'Price Quote'),
       iconNode: <PriceQuoteIcon className="w-11 h-11" />,
       allowed: canSales,
       tone: 'bg-white text-slate-800 border-slate-200 hover:border-blue-300',
@@ -3615,7 +3751,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   }, [invPaymentType, invGrandTotal, invPaidAmount]);
 
   return (
-    <div className="space-y-2">
+    <div dir={dir} className="space-y-2">
       {/* Slim Sub-page Return Bar (Primary tabs are navigated via fixed bottom bar) */}
       {!['home', 'cash', 'more', 'customers', 'new-invoice', 'refresh'].includes(activeTab) && (
         <div className="bg-white rounded-lg border border-slate-200 px-2.5 py-1.5 flex items-center justify-between gap-2 text-xs">
@@ -3624,48 +3760,48 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             onClick={() => guardedTabChange('home')}
             className="h-8 px-2.5 rounded-md bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] border border-[#DCE6F5] font-black inline-flex items-center gap-1 cursor-pointer"
           >
-            <ArrowRight className="w-4 h-4" />
-            <span>الرئيسية</span>
+            {isRtl ? <ArrowRight className="w-4 h-4" /> : <ArrowLeft className="w-4 h-4" />}
+            <span>{t('الرئيسية', 'Home')}</span>
           </button>
           <span className="font-black text-slate-800 truncate">
             {activeTab === 'cash-deposit'
-              ? 'تحصيل من العميل'
+              ? t('تحصيل من العميل', 'Customer Collection')
               : activeTab === 'cash-withdrawal'
-              ? 'سحب / مصروف'
+              ? t('سحب / مصروف', 'Withdrawal / Expense')
               : activeTab === 'custody-transfer'
-              ? 'تحويل عهدة'
+              ? t('تحويل عهدة', 'Custody Transfer')
               : activeTab === 'new-purchase'
-              ? 'فاتورة شراء'
+              ? t('فاتورة شراء', 'Purchase Invoice')
               : activeTab === 'sales-return'
-              ? 'مرتجع مبيعات'
+              ? t('مرتجع مبيعات', 'Sales Return')
               : activeTab === 'purchase-return'
-              ? 'مرتجع مشتريات'
+              ? t('مرتجع مشتريات', 'Purchase Return')
               : activeTab === 'new-customer'
-              ? 'إضافة عميل'
+              ? t('إضافة عميل', 'Add Customer')
               : activeTab === 'new-supplier'
-              ? 'إضافة مورد'
+              ? t('إضافة مورد', 'Add Supplier')
               : activeTab === 'new-quote'
-              ? 'عرض سعر'
+              ? t('عرض سعر', 'Price Quote')
               : activeTab === 'orders'
-              ? 'الطلبات والتسليمات'
+              ? t('الطلبات والتسليمات', 'Orders & Deliveries')
               : activeTab === 'invoices'
-              ? 'فواتير المبيعات'
+              ? t('فواتير المبيعات', 'Sales Invoices')
               : activeTab === 'purchases-list'
-              ? 'فواتير الشراء'
+              ? t('فواتير الشراء', 'Purchase Invoices')
               : activeTab === 'sales-returns-list'
-              ? 'سجل مرتجع البيع'
+              ? t('سجل مرتجع البيع', 'Sales Returns Log')
               : activeTab === 'purchase-returns-list'
-              ? 'سجل مرتجع الشراء'
+              ? t('سجل مرتجع الشراء', 'Purchase Returns Log')
               : activeTab === 'custody'
-              ? 'مخزون وعهدة السيارة'
+              ? t('مخزون وعهدة السيارة', 'Van Stock & Custody')
               : activeTab === 'suppliers'
-              ? 'الموردون'
+              ? t('الموردون', 'Suppliers')
               : activeTab === 'rep-reports'
-              ? 'تقارير المندوب'
+              ? t('تقارير المندوب', 'Rep Reports')
               : activeTab === 'refresh'
-              ? 'إرسال واستلام'
+              ? t('إرسال واستلام', 'Send & Receive')
               : activeTab === 'cheques-installments'
-              ? 'الشيكات والأقساط'
+              ? t('الشيكات والأقساط', 'Cheques & Installments')
               : ''}
           </span>
         </div>
@@ -3690,7 +3826,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             <span>{feedback.text}</span>
           </div>
           <button type="button" onClick={() => setFeedback(null)} className="text-[11px] underline cursor-pointer">
-            إغلاق
+            {t('إغلاق', 'Close')}
           </button>
         </div>
       )}
@@ -3701,18 +3837,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           <div className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-1.5">
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
-                <p className="text-[10px] text-slate-500">مرحباً، مندوب المبيعات</p>
+                <p className="text-[10px] text-slate-500">{t('مرحباً، مندوب المبيعات', 'Welcome, Sales Representative')}</p>
                 <h2 className="text-sm font-black text-slate-900 truncate">
                   {rep?.name || currentUser?.fullName}
                 </h2>
                 <p className="text-[11px] text-slate-500 truncate">
-                  {vanWarehouse?.name || 'سيارة المندوب'} {rep?.vehicleNumber ? `· ${rep.vehicleNumber}` : ''}
+                  {vanWarehouse?.name || t('سيارة المندوب', 'Rep Van')} {rep?.vehicleNumber ? `· ${rep.vehicleNumber}` : ''}
                 </p>
               </div>
-              <div className="shrink-0 text-left px-2.5 py-1 rounded-lg bg-[#EEF3FA] border border-[#DCE6F5]">
-                <span className="text-[10px] text-[#003589] block font-bold">العهدة النقدية</span>
+              <div className="shrink-0 text-end px-2.5 py-1 rounded-lg bg-[#EEF3FA] border border-[#DCE6F5]">
+                <span className="text-[10px] text-[#003589] block font-bold">{t('العهدة النقدية', 'Cash Custody')}</span>
                 <strong className="text-xs sm:text-sm font-black font-mono tabular-nums text-[#011E58]">
-                  {(rep?.currentBalance || 0).toLocaleString()} {data.settings.currency}
+                  {formatLocaleNumber(rep?.currentBalance || 0)} {t(data.settings.currency)}
                 </strong>
               </div>
             </div>
@@ -3725,7 +3861,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               <div className="pt-2 border-t border-slate-100 space-y-1.5 text-xs">
                 <div className="flex items-center gap-1.5 font-black text-blue-950 text-[11px]">
                   <ClipboardCheck className="w-3.5 h-3.5 text-blue-800 shrink-0" />
-                  <span>المهام اليومية المعلقة</span>
+                  <span>{t('المهام اليومية المعلقة', 'Pending Daily Tasks')}</span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                   {pendingCustodyDispatches.length > 0 && (
@@ -3737,8 +3873,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       }}
                       className="px-2 py-1 rounded-md bg-[#EEF3FA] border border-[#DCE6F5] text-[#011E58] flex items-center justify-between gap-2 text-[11px] font-bold cursor-pointer hover:bg-[#DCE6F5]"
                     >
-                      <span>عهد بضاعة مرسلة بانتظار تأكيد الاستلام ({pendingCustodyDispatches.length})</span>
-                      <ChevronLeft className="w-3.5 h-3.5 shrink-0" />
+                      <span>{t('عهد بضاعة مرسلة بانتظار تأكيد الاستلام', 'Stock dispatches awaiting receipt')} ({formatLocaleNumber(pendingCustodyDispatches.length)})</span>
+                      {isRtl ? <ChevronLeft className="w-3.5 h-3.5 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 shrink-0" />}
                     </button>
                   )}
                   {pendingCashReceipts.length > 0 && (
@@ -3747,8 +3883,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       onClick={() => onTabChange('cash')}
                       className="px-2 py-1 rounded-md bg-[#EEF3FA] border border-[#DCE6F5] text-[#011E58] flex items-center justify-between gap-2 text-[11px] font-bold cursor-pointer hover:bg-[#DCE6F5]"
                     >
-                      <span>عهد نقدية واردة من الإدارة ({pendingCashReceipts.length})</span>
-                      <ChevronLeft className="w-3.5 h-3.5 shrink-0" />
+                      <span>{t('عهد نقدية واردة من الإدارة', 'Incoming cash custody from management')} ({formatLocaleNumber(pendingCashReceipts.length)})</span>
+                      {isRtl ? <ChevronLeft className="w-3.5 h-3.5 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 shrink-0" />}
                     </button>
                   )}
                   {activeAssignedOrders.length > 0 && (
@@ -3757,8 +3893,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       onClick={() => onTabChange('orders')}
                       className="px-2 py-1 rounded-md bg-[#EEF3FA] border border-[#DCE6F5] text-[#011E58] flex items-center justify-between gap-2 text-[11px] font-bold cursor-pointer hover:bg-[#DCE6F5]"
                     >
-                      <span>طلبات توصيل جارية معينة لك ({activeAssignedOrders.length})</span>
-                      <ChevronLeft className="w-3.5 h-3.5 shrink-0" />
+                      <span>{t('طلبات توصيل جارية معينة لك', 'Active delivery orders assigned to you')} ({formatLocaleNumber(activeAssignedOrders.length)})</span>
+                      {isRtl ? <ChevronLeft className="w-3.5 h-3.5 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 shrink-0" />}
                     </button>
                   )}
                   {draftsReadyToConfirm.length > 0 && (
@@ -3767,8 +3903,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       onClick={() => onTabChange('invoices')}
                       className="px-2 py-1 rounded-md bg-blue-50 border border-blue-200 text-blue-950 flex items-center justify-between gap-2 text-[11px] font-bold cursor-pointer hover:bg-blue-100"
                     >
-                      <span>مسودات فواتير جاهزة للاعتماد ({draftsReadyToConfirm.length})</span>
-                      <ChevronLeft className="w-3.5 h-3.5 shrink-0" />
+                      <span>{t('مسودات فواتير جاهزة للاعتماد', 'Draft invoices ready to confirm')} ({formatLocaleNumber(draftsReadyToConfirm.length)})</span>
+                      {isRtl ? <ChevronLeft className="w-3.5 h-3.5 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 shrink-0" />}
                     </button>
                   )}
                   {data.pendingSyncCount > 0 && (
@@ -3777,8 +3913,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       onClick={() => onTabChange('refresh')}
                       className="px-2 py-1 rounded-md bg-amber-50 border border-amber-200 text-amber-950 flex items-center justify-between gap-2 text-[11px] font-bold cursor-pointer hover:bg-amber-100"
                     >
-                      <span>عمليات محلية بانتظار الإرسال ({data.pendingSyncCount})</span>
-                      <ChevronLeft className="w-3.5 h-3.5 shrink-0" />
+                      <span>{t('عمليات محلية بانتظار الإرسال', 'Local operations pending sync')} ({formatLocaleNumber(data.pendingSyncCount)})</span>
+                      {isRtl ? <ChevronLeft className="w-3.5 h-3.5 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 shrink-0" />}
                     </button>
                   )}
                 </div>
@@ -3795,10 +3931,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               >
                 <span className="flex items-center gap-1.5">
                   <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${data.isMandatorySending ? 'animate-spin' : ''}`} />
-                  <span>إرسال واستلام</span>
+                  <span>{t('إرسال واستلام', 'Send & Receive')}</span>
                 </span>
                 <span className="font-mono text-[10px] bg-white/15 px-1.5 py-0.5 rounded tabular-nums">
-                  معلق: {data.pendingSyncCount} · استلام: {pendingCustodyDispatches.length + pendingCashReceipts.length}
+                  {t('معلق:', 'Pending:')} {formatLocaleNumber(data.pendingSyncCount)} · {t('استلام:', 'Incoming:')} {formatLocaleNumber(pendingCustodyDispatches.length + pendingCashReceipts.length)}
                   {data.mandatorySendEnabled
                     ? ` · ${String(Math.floor(data.mandatorySendRemainingSeconds / 60)).padStart(2, '0')}:${String(data.mandatorySendRemainingSeconds % 60).padStart(2, '0')}`
                     : ''}
@@ -3812,26 +3948,26 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             <button
               type="button"
               onClick={() => onTabChange('customers')}
-              className="bg-white rounded-lg border border-slate-200 hover:border-blue-300 px-2 py-1.5 flex items-center gap-2 text-right cursor-pointer"
+              className="bg-white rounded-lg border border-slate-200 hover:border-blue-300 px-2 py-1.5 flex items-center gap-2 text-start cursor-pointer"
             >
               <CustomersGroupIcon className="w-7 h-7 shrink-0" />
               <div className="min-w-0">
-                <span className="block text-[11px] font-black text-slate-900 truncate">العملاء والحسابات</span>
+                <span className="block text-[11px] font-black text-slate-900 truncate">{t('العملاء والحسابات', 'Customers & Accounts')}</span>
                 <span className="block text-[10px] text-slate-500 font-semibold truncate">
-                  {data.customers.length} عميل · متابعة وكشوف
+                  {formatLocaleNumber(data.customers.length)} {t('عميل · متابعة وكشوف', 'customers · statements')}
                 </span>
               </div>
             </button>
             <button
               type="button"
               onClick={() => onTabChange('rep-reports')}
-              className="bg-white rounded-lg border border-blue-200 hover:border-blue-400 px-2 py-1.5 flex items-center gap-2 text-right cursor-pointer"
+              className="bg-white rounded-lg border border-blue-200 hover:border-blue-400 px-2 py-1.5 flex items-center gap-2 text-start cursor-pointer"
             >
               <FileSpreadsheet className="w-7 h-7 text-blue-900 shrink-0" />
               <div className="min-w-0">
-                <span className="block text-[11px] font-black text-blue-950 truncate">تقارير المندوب</span>
+                <span className="block text-[11px] font-black text-blue-950 truncate">{t('تقارير المندوب', 'Rep Reports')}</span>
                 <span className="block text-[10px] text-slate-500 font-semibold truncate">
-                  المبيعات والتحصيلات
+                  {t('المبيعات والتحصيلات', 'Sales & Collections')}
                 </span>
               </div>
             </button>
@@ -3840,26 +3976,26 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 <button
                   type="button"
                   onClick={() => onTabChange('purchases-list')}
-                  className="bg-white rounded-lg border border-slate-200 hover:border-blue-300 px-2 py-1.5 flex items-center gap-2 text-right cursor-pointer"
+                  className="bg-white rounded-lg border border-slate-200 hover:border-blue-300 px-2 py-1.5 flex items-center gap-2 text-start cursor-pointer"
                 >
                   <PurchaseInvoiceIcon className="w-7 h-7 shrink-0" />
                   <div className="min-w-0">
-                    <span className="block text-[11px] font-black text-slate-900 truncate">فواتير الشراء</span>
+                    <span className="block text-[11px] font-black text-slate-900 truncate">{t('فواتير الشراء', 'Purchase Invoices')}</span>
                     <span className="block text-[10px] text-slate-500 font-semibold truncate">
-                      {myPurchases.length} فاتورة · سداد
+                      {formatLocaleNumber(myPurchases.length)} {t('فاتورة · سداد', 'invoices · pay')}
                     </span>
                   </div>
                 </button>
                 <button
                   type="button"
                   onClick={() => onTabChange('suppliers')}
-                  className="bg-white rounded-lg border border-slate-200 hover:border-[#0053BE] px-2 py-1.5 flex items-center gap-2 text-right cursor-pointer"
+                  className="bg-white rounded-lg border border-slate-200 hover:border-[#0053BE] px-2 py-1.5 flex items-center gap-2 text-start cursor-pointer"
                 >
                   <Building2 className="w-7 h-7 text-[#003589] shrink-0" />
                   <div className="min-w-0">
-                    <span className="block text-[11px] font-black text-slate-900 truncate">الموردون وكشوفهم</span>
+                    <span className="block text-[11px] font-black text-slate-900 truncate">{t('الموردون وكشوفهم', 'Suppliers & Statements')}</span>
                     <span className="block text-[10px] text-slate-500 font-semibold truncate">
-                      {data.suppliers.length} مورد · كشف الحساب
+                      {formatLocaleNumber(data.suppliers.length)} {t('مورد · كشف الحساب', 'suppliers · statements')}
                     </span>
                   </div>
                 </button>
@@ -3878,7 +4014,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     if (!tile.allowed) {
                       setFeedback({
                         type: 'error',
-                        text: `صلاحيات حسابك لا تسمح بفتح "${tile.label}". راجع المدير لتفعيل الصلاحية.`,
+                        text: t(
+                          `صلاحيات حسابك لا تسمح بفتح "${tile.label}". راجع المدير لتفعيل الصلاحية.`,
+                          `Your account permissions do not allow opening "${tile.label}". Contact admin to enable permission.`
+                        ),
                       });
                       return;
                     }
@@ -3891,11 +4030,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   }`}
                 >
                   {!tile.allowed && (
-                    <Lock className="w-3.5 h-3.5 absolute top-1.5 left-1.5 text-slate-400" />
+                    <Lock className="w-3.5 h-3.5 absolute top-1.5 end-1.5 text-slate-400" />
                   )}
                   {tile.badgeCount && tile.badgeCount > 0 ? (
-                    <span className="absolute top-1.5 left-1.5 min-w-[18px] h-[18px] px-1 rounded bg-amber-500 text-slate-950 text-[10px] font-black font-mono tabular-nums flex items-center justify-center">
-                      {tile.badgeCount}
+                    <span className="absolute top-1.5 end-1.5 min-w-[18px] h-[18px] px-1 rounded bg-amber-500 text-slate-950 text-[10px] font-black font-mono tabular-nums flex items-center justify-center">
+                      {formatLocaleNumber(tile.badgeCount)}
                     </span>
                   ) : null}
                   <div className="flex items-center justify-center">{tile.iconNode}</div>
@@ -3914,12 +4053,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5">
                 <Wallet className="w-4 h-4 text-[#003589]" />
-                <span>إدارة النقدية والعهدة المالية</span>
+                <span>{t('إدارة النقدية والعهدة المالية', 'Cash & Financial Custody Management')}</span>
               </h3>
               <div className="px-2 py-0.5 rounded-md bg-[#EEF3FA] border border-[#DCE6F5] flex items-center gap-1.5">
-                <span className="text-[10px] text-[#003589] font-bold">رصيد العهدة:</span>
+                <span className="text-[10px] text-[#003589] font-bold">{t('رصيد العهدة:', 'Custody Balance:')}</span>
                 <strong className="text-xs font-black font-mono tabular-nums text-[#011E58]">
-                  {(rep?.currentBalance || 0).toLocaleString()} {data.settings.currency}
+                  {formatLocaleNumber(rep?.currentBalance || 0)} {t(data.settings.currency)}
                 </strong>
               </div>
             </div>
@@ -3934,7 +4073,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 }}
                 className="h-8 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-black cursor-pointer disabled:opacity-45"
               >
-                {isRepRoleAccount ? 'تحصيل من عميل' : 'إيداع نقدي'}
+                {isRepRoleAccount ? t('تحصيل من عميل', 'Customer Collection') : t('إيداع نقدي', 'Cash Deposit')}
               </button>
               {!isRepRoleAccount && (
                 <button
@@ -3943,7 +4082,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   onClick={() => onTabChange('cash-withdrawal')}
                   className="h-8 rounded-md bg-amber-600 text-white font-black cursor-pointer disabled:opacity-45"
                 >
-                  سحب نقدي
+                  {t('سحب نقدي', 'Cash Withdrawal')}
                 </button>
               )}
               <button
@@ -3955,7 +4094,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 }}
                 className="h-8 rounded-md bg-[#011E58] hover:bg-[#003589] text-white font-black cursor-pointer disabled:opacity-45"
               >
-                توريد عهدة للفرع
+                {t('توريد عهدة للفرع', 'Remit Custody to Branch')}
               </button>
             </div>
           </div>
@@ -3964,25 +4103,25 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           <div className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-1.5">
             <h4 className="font-black text-slate-900 flex items-center gap-1.5">
               <Calculator className="w-4 h-4 text-blue-900" />
-              <span>تقفيل ومطابقة الدرج النقدي اليوم ({todayStr})</span>
+              <span>{t('تقفيل ومطابقة الدرج النقدي اليوم', 'Today Cash Drawer Reconciliation')} ({todayStr})</span>
             </h4>
             <div className="grid grid-cols-3 gap-px bg-slate-200 border border-slate-200 rounded-md overflow-hidden text-center tabular-nums">
               <div className="px-2 py-1.5 bg-blue-50/70">
-                <span className="text-[10px] text-blue-800 block">مبيعات اليوم المحصلة</span>
+                <span className="text-[10px] text-blue-800 block">{t('مبيعات اليوم المحصلة', 'Today Collected Sales')}</span>
                 <strong className="font-mono text-xs text-blue-950">
-                  {cashDrawerSummary.todayRepSalesCash.toLocaleString()}
+                  {formatLocaleNumber(cashDrawerSummary.todayRepSalesCash)}
                 </strong>
               </div>
               <div className="px-2 py-1.5 bg-emerald-50/70">
-                <span className="text-[10px] text-emerald-800 block">تحصيلات / إيداعات</span>
+                <span className="text-[10px] text-emerald-800 block">{t('تحصيلات / إيداعات', 'Collections / Deposits')}</span>
                 <strong className="font-mono text-xs text-emerald-900">
-                  {cashDrawerSummary.todayCashCollections.toLocaleString()}
+                  {formatLocaleNumber(cashDrawerSummary.todayCashCollections)}
                 </strong>
               </div>
               <div className="px-2 py-1.5 bg-amber-50/70">
-                <span className="text-[10px] text-amber-800 block">توريدات للفرع اليوم</span>
+                <span className="text-[10px] text-amber-800 block">{t('توريدات للفرع اليوم', 'Today Branch Remittances')}</span>
                 <strong className="font-mono text-xs text-amber-900">
-                  {cashDrawerSummary.todayRepRemittances.toLocaleString()}
+                  {formatLocaleNumber(cashDrawerSummary.todayRepRemittances)}
                 </strong>
               </div>
             </div>
@@ -3990,7 +4129,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 items-end">
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
-                  الجرد الفعلي للنقدية بالدرج ({data.settings.currency}):
+                  {t('الجرد الفعلي للنقدية بالدرج', 'Actual Counted Drawer Cash')} ({t(data.settings.currency)}):
                 </label>
                 <input
                   type="number"
@@ -3998,7 +4137,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   step="0.01"
                   value={actualDrawerCash}
                   onChange={(e) => setActualDrawerCash(e.target.value)}
-                  placeholder="أدخل النقدية المعدودة فعلياً..."
+                  placeholder={t('أدخل النقدية المعدودة فعلياً...', 'Enter actual counted cash...')}
                   className="w-full h-8 rounded-md border border-slate-300 px-2 font-mono font-bold text-center"
                 />
               </div>
@@ -4013,13 +4152,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     : 'bg-red-50 border-red-300 text-red-800'
                 }`}
               >
-                <span>الفارق عن العهدة:</span>
+                <span>{t('الفارق عن العهدة:', 'Custody Variance:')}</span>
                 <strong className="font-mono">
                   {cashDrawerSummary.variance === null
-                    ? `الدفتر: ${cashDrawerSummary.expectedBalance.toLocaleString()}`
+                    ? `${t('الدفتر:', 'Ledger:')} ${formatLocaleNumber(cashDrawerSummary.expectedBalance)}`
                     : Math.abs(cashDrawerSummary.variance) < 0.01
-                    ? 'مطابق تماماً (0)'
-                    : `${cashDrawerSummary.variance > 0 ? 'زيادة +' : 'عجز '}${cashDrawerSummary.variance.toLocaleString()} ${data.settings.currency}`}
+                    ? t('مطابق تماماً (0)', 'Exact Match (0)')
+                    : `${cashDrawerSummary.variance > 0 ? t('زيادة +', 'Surplus +') : t('عجز ', 'Shortage ')}${formatLocaleNumber(cashDrawerSummary.variance)} ${t(data.settings.currency)}`}
                 </strong>
               </div>
             </div>
@@ -4029,68 +4168,71 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             compact
             paginated={false}
             searchable={false}
-            title={`حركة التحويلات النقدية للمندوب (${myCashTransfers.length})`}
+            title={`${t('حركة التحويلات النقدية للمندوب', 'Representative Cash Transfers')} (${formatLocaleNumber(myCashTransfers.length)})`}
             data={myCashTransfers}
             rowKey={(t) => t.id}
-            emptyTitle="لا توجد تحويلات نقدية مسجلة حالياً"
-            emptySubtitle="ستظهر هنا التوريدات والعهد النقدية المرتبطة بك"
+            emptyTitle={t('لا توجد تحويلات نقدية مسجلة حالياً', 'No cash transfers recorded yet')}
+            emptySubtitle={t('ستظهر هنا التوريدات والعهد النقدية المرتبطة بك', 'Your remittances and incoming cash custody transfers will appear here')}
             columns={[
               {
                 key: 'transferNumber',
-                header: 'رقم التحويل',
-                render: (t) => <span className="font-mono font-black text-blue-950">{t.transferNumber}</span>,
+                header: t('رقم التحويل', 'Transfer #'),
+                render: (trItem) => <span className="font-mono font-black text-blue-950">{trItem.transferNumber}</span>,
               },
               {
                 key: 'direction',
-                header: 'النوع',
-                render: (t) => (t.direction === 'rep_to_owner' ? 'توريد إلى الفرع' : 'عهدة واردة من الإدارة'),
+                header: t('النوع', 'Type'),
+                render: (trItem) =>
+                  trItem.direction === 'rep_to_owner'
+                    ? t('توريد إلى الفرع', 'Remittance to Branch')
+                    : t('عهدة واردة من الإدارة', 'Incoming Custody from Admin'),
               },
               {
                 key: 'amount',
-                header: 'المبلغ',
+                header: t('المبلغ', 'Amount'),
                 align: 'center',
-                sortValue: (t) => Number(t.amount || 0),
-                render: (t) => (
+                sortValue: (trItem) => Number(trItem.amount || 0),
+                render: (trItem) => (
                   <strong className="font-mono text-slate-900 tabular-nums">
-                    {t.amount.toLocaleString()} {data.settings.currency}
+                    {formatLocaleNumber(trItem.amount)} {t(data.settings.currency)}
                   </strong>
                 ),
               },
               {
                 key: 'status',
-                header: 'الحالة',
+                header: t('الحالة', 'Status'),
                 align: 'center',
-                render: (t) => (
+                render: (trItem) => (
                   <span
                     className={`font-bold ${
-                      t.status === 'received'
+                      trItem.status === 'received'
                         ? 'text-emerald-700'
-                        : t.status === 'awaiting_receipt'
+                        : trItem.status === 'awaiting_receipt'
                         ? 'text-amber-700'
                         : 'text-red-700'
                     }`}
                   >
-                    {t.status === 'received'
-                      ? 'تم الاستلام والتسوية'
-                      : t.status === 'awaiting_receipt'
-                      ? 'بانتظار تأكيد الاستلام'
-                      : 'مرفوض'}
+                    {trItem.status === 'received'
+                      ? t('تم الاستلام والتسوية', 'Received & Settled')
+                      : trItem.status === 'awaiting_receipt'
+                      ? t('بانتظار تأكيد الاستلام', 'Awaiting Confirmation')
+                      : t('مرفوض', 'Rejected')}
                   </span>
                 ),
               },
               {
                 key: 'actions',
-                header: 'الإجراءات',
+                header: t('الإجراءات', 'Actions'),
                 align: 'center',
                 sortable: false,
-                render: (t) =>
-                  t.status === 'awaiting_receipt' && t.direction === 'owner_to_rep' ? (
+                render: (trItem) =>
+                  trItem.status === 'awaiting_receipt' && trItem.direction === 'owner_to_rep' ? (
                     <button
                       type="button"
-                      onClick={() => handleConfirmOwnerCash(t.id)}
+                      onClick={() => handleConfirmOwnerCash(trItem.id)}
                       className="px-2 py-0.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-[11px] font-black cursor-pointer whitespace-nowrap"
                     >
-                      تأكيد استلام العهدة النقدية
+                      {t('تأكيد استلام العهدة النقدية', 'Confirm Cash Custody Receipt')}
                     </button>
                   ) : (
                     <span className="text-slate-400">—</span>
@@ -4106,17 +4248,17 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         <div className="space-y-2 text-xs">
           <div className="bg-white dark:bg-[#0E1C36] rounded-lg border border-slate-200 dark:border-[#21375C] overflow-hidden divide-y divide-slate-100 dark:divide-[#1B2F52]">
             {[
-              { key: 'rep-reports' as RepTabKey, label: 'تقارير المندوب الشاملة', Icon: FileSpreadsheet, allowed: true },
-              { key: 'purchases-list' as RepTabKey, label: 'فواتير الشراء', Icon: PurchaseInvoicesListIcon, allowed: canCreatePurchase },
-              { key: 'suppliers' as RepTabKey, label: 'الموردون وكشف الحساب', Icon: Building2, allowed: canCreatePurchase },
-              { key: 'sales-returns-list' as RepTabKey, label: 'مرتجع البيع', Icon: SalesReturnIcon, allowed: canSales },
-              { key: 'invoices' as RepTabKey, label: 'فواتير البيع', Icon: SalesInvoicesListIcon, allowed: canSales },
-              { key: 'customers' as RepTabKey, label: 'الحسابات والعملاء', Icon: CustomersGroupIcon, allowed: canAccounts || canSales },
-              { key: 'custody' as RepTabKey, label: 'المخزن والعهدة', Icon: WarehouseBoxesIcon, allowed: canInventory },
-              { key: 'purchase-returns-list' as RepTabKey, label: isRepRoleAccount ? 'طلبات ومرتجعات الشراء' : 'مرتجع الشراء', Icon: PurchaseReturnIcon, allowed: canCreatePurchase },
-              { key: 'orders' as RepTabKey, label: 'الطلبات والتسليمات', Icon: OrdersClipboardIcon, allowed: canSales },
-              { key: 'new-quote' as RepTabKey, label: 'عروض الأسعار', Icon: PriceQuoteIcon, allowed: canSales },
-              { key: 'refresh' as RepTabKey, label: 'إرسال واستلام', Icon: RefreshCloudIcon, allowed: true },
+              { key: 'rep-reports' as RepTabKey, label: t('تقارير المندوب الشاملة', 'Comprehensive Rep Reports'), Icon: FileSpreadsheet, allowed: true },
+              { key: 'purchases-list' as RepTabKey, label: t('فواتير الشراء', 'Purchase Invoices'), Icon: PurchaseInvoicesListIcon, allowed: canCreatePurchase },
+              { key: 'suppliers' as RepTabKey, label: t('الموردون وكشف الحساب', 'Suppliers & Statements'), Icon: Building2, allowed: canCreatePurchase },
+              { key: 'sales-returns-list' as RepTabKey, label: t('مرتجع البيع', 'Sales Returns'), Icon: SalesReturnIcon, allowed: canSales },
+              { key: 'invoices' as RepTabKey, label: t('فواتير البيع', 'Sales Invoices'), Icon: SalesInvoicesListIcon, allowed: canSales },
+              { key: 'customers' as RepTabKey, label: t('الحسابات والعملاء', 'Customers & Accounts'), Icon: CustomersGroupIcon, allowed: canAccounts || canSales },
+              { key: 'custody' as RepTabKey, label: t('المخزن والعهدة', 'Warehouse & Custody'), Icon: WarehouseBoxesIcon, allowed: canInventory },
+              { key: 'purchase-returns-list' as RepTabKey, label: isRepRoleAccount ? t('طلبات ومرتجعات الشراء', 'Purchase Returns & Requests') : t('مرتجع الشراء', 'Purchase Returns'), Icon: PurchaseReturnIcon, allowed: canCreatePurchase },
+              { key: 'orders' as RepTabKey, label: t('الطلبات والتسليمات', 'Orders & Deliveries'), Icon: OrdersClipboardIcon, allowed: canSales },
+              { key: 'new-quote' as RepTabKey, label: t('عروض الأسعار', 'Price Quotes'), Icon: PriceQuoteIcon, allowed: canSales },
+              { key: 'refresh' as RepTabKey, label: t('إرسال واستلام', 'Send & Receive'), Icon: RefreshCloudIcon, allowed: true },
             ].map((item) => {
               const ItemIcon = item.Icon;
               return (
@@ -4125,14 +4267,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   type="button"
                   disabled={!item.allowed}
                   onClick={() => onTabChange(item.key)}
-                  className="w-full min-h-[36px] px-2.5 py-1.5 flex items-center justify-between gap-2 text-right font-bold text-slate-800 dark:text-[#EEF4FC] hover:bg-slate-50 dark:hover:bg-[#132544] disabled:opacity-45 cursor-pointer"
+                  className="w-full min-h-[36px] px-2.5 py-1.5 flex items-center justify-between gap-2 text-start font-bold text-slate-800 dark:text-[#EEF4FC] hover:bg-slate-50 dark:hover:bg-[#132544] disabled:opacity-45 cursor-pointer"
                 >
                   <div className="flex items-center gap-2">
                     <ItemIcon className="w-4 h-4 shrink-0" />
                     <span>{item.label}</span>
                   </div>
                   {item.allowed ? (
-                    <ChevronLeft className="w-4 h-4 text-slate-400 dark:text-[#8CA3C7]" />
+                    isRtl ? <ChevronLeft className="w-4 h-4 text-slate-400 dark:text-[#8CA3C7]" /> : <ChevronRight className="w-4 h-4 text-slate-400 dark:text-[#8CA3C7]" />
                   ) : (
                     <Lock className="w-4 h-4 text-slate-300 dark:text-[#5B749B]" />
                   )}
@@ -4211,7 +4353,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               <label className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C] cursor-pointer">
                 <span className="flex items-center gap-1.5 font-bold text-[11px] text-slate-700 dark:text-[#DCE6F5]">
                   <Volume2 className="w-3.5 h-3.5 text-slate-500 dark:text-[#8CA3C7]" />
-                  <span>أصوات التنبيه والباركود</span>
+                  <span>{t('أصوات التنبيه والباركود', 'Alert & Barcode Sounds')}</span>
                 </span>
                 <input
                   type="checkbox"
@@ -4221,7 +4363,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 />
               </label>
               <label className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C] cursor-pointer">
-                <span className="font-bold text-[11px] text-slate-700 dark:text-[#DCE6F5]">تنبيهات الإرسال والاستلام والترحيل</span>
+                <span className="font-bold text-[11px] text-slate-700 dark:text-[#DCE6F5]">{t('تنبيهات الإرسال والاستلام والترحيل', 'Send, Receive & Posting Alerts')}</span>
                 <input
                   type="checkbox"
                   checked={repNotifPrefs.dispatchAlerts}
@@ -4230,7 +4372,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 />
               </label>
               <label className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C] cursor-pointer">
-                <span className="font-bold text-[11px] text-slate-700 dark:text-[#DCE6F5]">تنبيهات الطلبات والموافقات الفورية</span>
+                <span className="font-bold text-[11px] text-slate-700 dark:text-[#DCE6F5]">{t('تنبيهات الطلبات والموافقات الفورية', 'Instant Order & Approval Alerts')}</span>
                 <input
                   type="checkbox"
                   checked={repNotifPrefs.orderAlerts}
@@ -4246,13 +4388,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               <button
                 type="button"
                 onClick={onOpenServerModal}
-                className="w-full min-h-[36px] px-2.5 py-1.5 flex items-center justify-between gap-2 text-right font-bold text-slate-800 dark:text-[#EEF4FC] hover:bg-slate-50 dark:hover:bg-[#132544] cursor-pointer"
+                className="w-full min-h-[36px] px-2.5 py-1.5 flex items-center justify-between gap-2 text-start font-bold text-slate-800 dark:text-[#EEF4FC] hover:bg-slate-50 dark:hover:bg-[#132544] cursor-pointer"
               >
                 <div className="flex items-center gap-2">
                   <SettingsTwinGearsIcon className="w-4 h-4 shrink-0" />
-                  <span>الإعدادات والربط المركزي</span>
+                  <span>{t('الإعدادات والربط المركزي', 'Settings & Central Server Connection')}</span>
                 </div>
-                <ChevronLeft className="w-4 h-4 text-slate-400 dark:text-[#8CA3C7]" />
+                {isRtl ? <ChevronLeft className="w-4 h-4 text-slate-400 dark:text-[#8CA3C7]" /> : <ChevronRight className="w-4 h-4 text-slate-400 dark:text-[#8CA3C7]" />}
               </button>
             )}
 
@@ -4262,13 +4404,17 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 setShowRepPwdBox((p) => !p);
                 setRepPwdMsg(null);
               }}
-              className="w-full min-h-[36px] px-2.5 py-1.5 flex items-center justify-between gap-2 text-right font-bold text-slate-800 dark:text-[#EEF4FC] hover:bg-slate-50 dark:hover:bg-[#132544] cursor-pointer"
+              className="w-full min-h-[36px] px-2.5 py-1.5 flex items-center justify-between gap-2 text-start font-bold text-slate-800 dark:text-[#EEF4FC] hover:bg-slate-50 dark:hover:bg-[#132544] cursor-pointer"
             >
               <div className="flex items-center gap-2">
                 <Lock className="w-4 h-4 text-[var(--awlad-royal-700)] dark:text-[#85B8FF] shrink-0" />
-                <span>تغيير كلمة المرور</span>
+                <span>{t('تغيير كلمة المرور', 'Change Password')}</span>
               </div>
-              <ChevronLeft className={`w-4 h-4 text-slate-400 dark:text-[#8CA3C7] transition-transform ${showRepPwdBox ? '-rotate-90' : ''}`} />
+              {isRtl ? (
+                <ChevronLeft className={`w-4 h-4 text-slate-400 dark:text-[#8CA3C7] transition-transform ${showRepPwdBox ? '-rotate-90' : ''}`} />
+              ) : (
+                <ChevronRight className={`w-4 h-4 text-slate-400 dark:text-[#8CA3C7] transition-transform ${showRepPwdBox ? 'rotate-90' : ''}`} />
+              )}
             </button>
 
             {showRepPwdBox && (
@@ -4277,11 +4423,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   e.preventDefault();
                   setRepPwdMsg(null);
                   if (repNewPwd.length < 4) {
-                    setRepPwdMsg({ type: 'error', text: 'كلمة المرور يجب أن تكون 4 أحرف على الأقل.' });
+                    setRepPwdMsg({ type: 'error', text: t('كلمة المرور يجب أن تكون 4 أحرف على الأقل.', 'Password must be at least 4 characters.') });
                     return;
                   }
                   if (repNewPwd !== repConfirmPwd) {
-                    setRepPwdMsg({ type: 'error', text: 'تأكيد كلمة المرور غير مطابق.' });
+                    setRepPwdMsg({ type: 'error', text: t('تأكيد كلمة المرور غير مطابق.', 'Password confirmation does not match.') });
                     return;
                   }
                   setRepSavingPwd(true);
@@ -4291,9 +4437,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     setRepCurrPwd('');
                     setRepNewPwd('');
                     setRepConfirmPwd('');
-                    setRepPwdMsg({ type: 'success', text: 'تم تحديث كلمة المرور بنجاح.' });
+                    setRepPwdMsg({ type: 'success', text: t('تم تحديث كلمة المرور بنجاح.', 'Password updated successfully.') });
                   } else {
-                    setRepPwdMsg({ type: 'error', text: res.error || 'تعذر تغيير كلمة المرور.' });
+                    setRepPwdMsg({ type: 'error', text: res.error || t('تعذر تغيير كلمة المرور.', 'Failed to change password.') });
                   }
                 }}
                 className="p-2.5 bg-slate-50 dark:bg-[#132544] space-y-1.5"
@@ -4305,36 +4451,39 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 )}
                 <input
                   type="password"
+                  dir="ltr"
                   required
                   value={repCurrPwd}
                   onChange={(e) => setRepCurrPwd(e.target.value)}
-                  placeholder="كلمة المرور الحالية"
-                  className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] px-2 bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-500 dark:placeholder:text-[#8CA3C7] font-mono"
+                  placeholder={t('كلمة المرور الحالية', 'Current Password')}
+                  className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] px-2 bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-500 dark:placeholder:text-[#8CA3C7] font-mono text-start"
                 />
                 <input
                   type="password"
+                  dir="ltr"
                   required
                   minLength={4}
                   value={repNewPwd}
                   onChange={(e) => setRepNewPwd(e.target.value)}
-                  placeholder="كلمة المرور الجديدة"
-                  className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] px-2 bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-500 dark:placeholder:text-[#8CA3C7] font-mono"
+                  placeholder={t('كلمة المرور الجديدة', 'New Password')}
+                  className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] px-2 bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-500 dark:placeholder:text-[#8CA3C7] font-mono text-start"
                 />
                 <input
                   type="password"
+                  dir="ltr"
                   required
                   minLength={4}
                   value={repConfirmPwd}
                   onChange={(e) => setRepConfirmPwd(e.target.value)}
-                  placeholder="تأكيد كلمة المرور الجديدة"
-                  className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] px-2 bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-500 dark:placeholder:text-[#8CA3C7] font-mono"
+                  placeholder={t('تأكيد كلمة المرور الجديدة', 'Confirm New Password')}
+                  className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] px-2 bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-500 dark:placeholder:text-[#8CA3C7] font-mono text-start"
                 />
                 <button
                   type="submit"
                   disabled={repSavingPwd}
                   className="w-full h-8 rounded-md bg-[var(--awlad-royal-700)] dark:bg-[#1659C8] hover:bg-[var(--awlad-royal-600)] dark:hover:bg-[#1F6BE6] text-white font-black cursor-pointer disabled:opacity-50"
                 >
-                  {repSavingPwd ? 'جاري التحديث...' : 'حفظ كلمة المرور'}
+                  {repSavingPwd ? t('جاري التحديث...', 'Updating...') : t('حفظ كلمة المرور', 'Save Password')}
                 </button>
               </form>
             )}
@@ -4343,13 +4492,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               <button
                 type="button"
                 onClick={onLogout}
-                className="w-full min-h-[36px] px-2.5 py-1.5 flex items-center justify-between gap-2 text-right font-black text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/35 cursor-pointer"
+                className="w-full min-h-[36px] px-2.5 py-1.5 flex items-center justify-between gap-2 text-start font-black text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/35 cursor-pointer"
               >
                 <div className="flex items-center gap-2.5">
                   <LogoutDoorIcon className="w-5 h-5 shrink-0" />
-                  <span>تسجيل الخروج</span>
+                  <span>{t('تسجيل الخروج', 'Logout')}</span>
                 </div>
-                <ChevronLeft className="w-4 h-4 text-red-400" />
+                {isRtl ? <ChevronLeft className="w-4 h-4 text-red-400" /> : <ChevronRight className="w-4 h-4 text-red-400" />}
               </button>
             )}
           </div>
@@ -4368,8 +4517,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               <div className="flex items-center gap-2">
                 <CustomersGroupIcon className="w-6 h-6 shrink-0" />
                 <div>
-                  <h3 className="text-xs sm:text-sm font-black text-slate-900">العملاء والمحلات والحسابات</h3>
-                  <p className="text-[10px] text-slate-500">عرض المحلات، المبالغ المتبقية وكشف الحساب التفصيلي</p>
+                  <h3 className="text-xs sm:text-sm font-black text-slate-900">{t('العملاء والمحلات والحسابات', 'Customers, Shops & Accounts')}</h3>
+                  <p className="text-[10px] text-slate-500">{t('عرض المحلات، المبالغ المتبقية وكشف الحساب التفصيلي', 'View shops, remaining balances & detailed account statements')}</p>
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
@@ -4379,7 +4528,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     onClick={() => setShowCustomerStats((p) => !p)}
                     className="h-8 px-2.5 rounded-md border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold inline-flex items-center gap-1 cursor-pointer"
                   >
-                    <span>المؤشرات ({repCustomersStats.total})</span>
+                    <span>{t('المؤشرات', 'Metrics')} ({formatLocaleNumber(repCustomersStats.total)})</span>
                     {showCustomerStats ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                   </button>
                 )}
@@ -4390,7 +4539,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     className="h-8 px-2.5 rounded-md bg-blue-900 hover:bg-blue-950 text-white font-black inline-flex items-center gap-1 cursor-pointer"
                   >
                     <CustomerAddIcon className="w-4 h-4 shrink-0" />
-                    <span>عميل جديد</span>
+                    <span>{t('عميل جديد', 'New Customer')}</span>
                   </button>
                 )}
                 {canDeleteCustomer && (
@@ -4403,7 +4552,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     className="h-8 px-2.5 rounded-md bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 font-bold inline-flex items-center gap-1 cursor-pointer"
                   >
                     <Trash2 className="w-3.5 h-3.5 shrink-0" />
-                    <span>حذف آمن</span>
+                    <span>{t('حذف آمن', 'Safe Delete')}</span>
                   </button>
                 )}
               </div>
@@ -4413,45 +4562,45 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               showCustomerStats && (
                 <div className="grid grid-cols-3 lg:grid-cols-6 gap-px bg-slate-200 border border-slate-200 rounded-md overflow-hidden text-xs tabular-nums">
                   <div className="px-2 py-1.5 bg-slate-50">
-                    <span className="text-[10px] text-slate-500 block">إجمالي العملاء</span>
-                    <strong className="text-sm font-black text-slate-900">{repCustomersStats.total}</strong>
-                    <span className="block text-[10px] text-slate-500">المطابق: {filteredCustomers.length}</span>
+                    <span className="text-[10px] text-slate-500 block">{t('إجمالي العملاء', 'Total Customers')}</span>
+                    <strong className="text-sm font-black text-slate-900">{formatLocaleNumber(repCustomersStats.total)}</strong>
+                    <span className="block text-[10px] text-slate-500">{t('المطابق:', 'Matched:')} {formatLocaleNumber(filteredCustomers.length)}</span>
                   </div>
                   <div className="px-2 py-1.5 bg-amber-50/70">
-                    <span className="text-[10px] text-amber-800 block">عملاء مدينون</span>
-                    <strong className="text-sm font-black text-amber-900">{repCustomersStats.debtorsCount}</strong>
-                    <span className="block text-[10px] text-amber-700">أرصدة مستحقة</span>
+                    <span className="text-[10px] text-amber-800 block">{t('عملاء مدينون', 'Debtor Customers')}</span>
+                    <strong className="text-sm font-black text-amber-900">{formatLocaleNumber(repCustomersStats.debtorsCount)}</strong>
+                    <span className="block text-[10px] text-amber-700">{t('أرصدة مستحقة', 'Due Balances')}</span>
                   </div>
                   <div className="px-2 py-1.5 bg-[#EEF3FA]">
-                    <span className="text-[10px] text-[#003589] block font-bold">أرصدة دائنة</span>
-                    <strong className="text-sm font-black text-[#011E58]">{repCustomersStats.creditsCount}</strong>
-                    <span className="block text-[10px] text-[#626D80]">دافعي مقدمات</span>
+                    <span className="text-[10px] text-[#003589] block font-bold">{t('أرصدة دائنة', 'Credit Balances')}</span>
+                    <strong className="text-sm font-black text-[#011E58]">{formatLocaleNumber(repCustomersStats.creditsCount)}</strong>
+                    <span className="block text-[10px] text-[#626D80]">{t('دافعي مقدمات', 'Advance Payers')}</span>
                   </div>
                   <div className="px-2 py-1.5 bg-rose-50/70">
-                    <span className="text-[10px] text-rose-700 block">المستحق (لنا)</span>
+                    <span className="text-[10px] text-rose-700 block">{t('المستحق (لنا)', 'Receivable (Due)')}</span>
                     <strong className="text-xs font-black font-mono text-rose-800">
-                      {repCustomersStats.totalDue.toLocaleString()} {data.settings.currency}
+                      {formatLocaleNumber(repCustomersStats.totalDue)} {t(data.settings.currency)}
                     </strong>
-                    <span className="block text-[10px] text-rose-700 font-bold">مديونيات</span>
+                    <span className="block text-[10px] text-rose-700 font-bold">{t('مديونيات', 'Receivables')}</span>
                   </div>
                   <div className="px-2 py-1.5 bg-emerald-50/70">
-                    <span className="text-[10px] text-emerald-700 block">الدائن (علينا)</span>
+                    <span className="text-[10px] text-emerald-700 block">{t('الدائن (علينا)', 'Credit (On Us)')}</span>
                     <strong className="text-xs font-black font-mono text-emerald-800">
-                      {repCustomersStats.totalCredit.toLocaleString()} {data.settings.currency}
+                      {formatLocaleNumber(repCustomersStats.totalCredit)} {t(data.settings.currency)}
                     </strong>
-                    <span className="block text-[10px] text-emerald-700 font-bold">مقدمات مالية</span>
+                    <span className="block text-[10px] text-emerald-700 font-bold">{t('مقدمات مالية', 'Cash Advances')}</span>
                   </div>
                   <div className="px-2 py-1.5 bg-blue-50/70">
-                    <span className="text-[10px] text-blue-800 block">نسبة المدينين</span>
-                    <strong className="text-sm font-black font-mono text-blue-950">{repCustomersStats.debtorPct}%</strong>
-                    <span className="block text-[10px] text-blue-700">من الإجمالي</span>
+                    <span className="text-[10px] text-blue-800 block">{t('نسبة المدينين', 'Debtor Ratio')}</span>
+                    <strong className="text-sm font-black font-mono text-blue-950">{formatLocaleNumber(repCustomersStats.debtorPct)}%</strong>
+                    <span className="block text-[10px] text-blue-700">{t('من الإجمالي', 'of Total')}</span>
                   </div>
                 </div>
               )
             ) : (
               <div className="px-2 py-1 rounded-md bg-slate-50 border border-slate-200 flex items-center justify-between gap-2 text-[11px] font-bold text-slate-700">
-                <span>عدد العملاء: <strong className="font-mono text-slate-900">{repCustomersStats.total}</strong> (المطابق: {filteredCustomers.length})</span>
-                <span className="text-slate-500">تظهر مديونية كل عميل داخل بطاقته.</span>
+                <span>{t('عدد العملاء:', 'Customers Count:')} <strong className="font-mono text-slate-900">{formatLocaleNumber(repCustomersStats.total)}</strong> ({t('المطابق:', 'Matched:')} {formatLocaleNumber(filteredCustomers.length)})</span>
+                <span className="text-slate-500">{t('تظهر مديونية كل عميل داخل بطاقته.', 'Each customer balance appears inside their card.')}</span>
               </div>
             )}
 
@@ -4462,35 +4611,35 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   type="text"
                   value={customerSearch}
                   onChange={(e) => setCustomerSearch(e.target.value)}
-                  placeholder="ابحث بالاسم أو المحل أو الكود أو الهاتف..."
-                  className="w-full h-8 rounded-md border border-slate-300 pr-7 pl-2 text-xs font-semibold outline-hidden focus:border-blue-600"
+                  placeholder={t('ابحث بالاسم أو المحل أو الكود أو الهاتف...', 'Search by name, shop, code or phone...')}
+                  className="w-full h-8 rounded-md border border-slate-300 ps-7 pe-2 text-xs font-semibold outline-hidden focus:border-blue-600"
                 />
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2 top-2" />
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute start-2 top-2" />
               </div>
               <select
                 value={customerSortMode}
                 onChange={(e) => setCustomerSortMode(e.target.value as any)}
                 className="h-8 shrink-0 rounded-md border border-slate-300 px-2 text-xs font-bold bg-white"
               >
-                <option value="debt_desc">ترتيب: الأعلى مديونية</option>
-                <option value="credit_desc">ترتيب: الأعلى رصيداً دائناً</option>
-                <option value="name">ترتيب: أبجدياً</option>
+                <option value="debt_desc">{t('ترتيب: الأعلى مديونية', 'Sort: Highest Debt')}</option>
+                <option value="credit_desc">{t('ترتيب: الأعلى رصيداً دائناً', 'Sort: Highest Credit')}</option>
+                <option value="name">{t('ترتيب: أبجدياً', 'Sort: Alphabetical')}</option>
               </select>
               <div className="flex flex-nowrap items-center gap-1 text-[11px] font-bold shrink-0">
                 {[
-                  { id: 'all', label: `الكل (${repCustomersStats.total})` },
-                  { id: 'current', label: 'الحاليين' },
+                  { id: 'all', label: `${t('الكل', 'All')} (${formatLocaleNumber(repCustomersStats.total)})` },
+                  { id: 'current', label: t('الحاليين', 'Active') },
                   {
                     id: 'debtors',
                     label: canViewCustomerAggregateTotals
-                      ? `متبقي (${repCustomersStats.debtorsCount})`
-                      : 'عليهم رصيد',
+                      ? `${t('متبقي', 'Due')} (${formatLocaleNumber(repCustomersStats.debtorsCount)})`
+                      : t('عليهم رصيد', 'With Balance'),
                   },
                   {
                     id: 'credits',
                     label: canViewCustomerAggregateTotals
-                      ? `دائنة (${repCustomersStats.creditsCount})`
-                      : 'دائنة',
+                      ? `${t('دائنة', 'Credits')} (${formatLocaleNumber(repCustomersStats.creditsCount)})`
+                      : t('دائنة', 'Credits'),
                   },
                 ].map((tab) => (
                   <button
@@ -4514,15 +4663,15 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             compact
             searchable={false}
             defaultPageSize={25}
-            title={`جدول العملاء والمحلات (${filteredCustomers.length})`}
+            title={`${t('جدول العملاء والمحلات', 'Customers & Shops Table')} (${formatLocaleNumber(filteredCustomers.length)})`}
             data={filteredCustomers}
             rowKey={(c) => c.id}
-            emptyTitle="لا يوجد عملاء مطابقون لمعايير البحث أو التصفية الحالية"
-            emptySubtitle="جرّب تغيير البحث أو نوع التصفية من الأعلى"
+            emptyTitle={t('لا يوجد عملاء مطابقون لمعايير البحث أو التصفية الحالية', 'No customers match your current search or filter criteria')}
+            emptySubtitle={t('جرّب تغيير البحث أو نوع التصفية من الأعلى', 'Try changing your search or filter type above')}
             columns={[
               {
                 key: 'shopName',
-                header: 'المحل / العميل',
+                header: t('المحل / العميل', 'Shop / Customer'),
                 sortValue: (c) => c.shopName || c.name,
                 render: (c) => (
                   <div className="flex items-center gap-2 min-w-[160px]">
@@ -4534,7 +4683,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           setPreviewShopPhoto(c.shopPhoto || c.photo || null);
                         }}
                         className="shrink-0 cursor-pointer"
-                        title="عرض صورة المحل"
+                        title={t('عرض صورة المحل', 'View Shop Photo')}
                       >
                         <img
                           src={c.shopPhoto || c.photo}
@@ -4550,7 +4699,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     <button
                       type="button"
                       onClick={() => setSelectedCustomerDetail(c)}
-                      className="text-right min-w-0 cursor-pointer"
+                      className="text-start min-w-0 cursor-pointer"
                     >
                       <span className="font-black text-slate-900 flex items-center gap-1 whitespace-normal break-words">
                         <span>{c.shopName || c.name}</span>
@@ -4565,7 +4714,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               },
               {
                 key: 'area',
-                header: 'المنطقة',
+                header: t('المنطقة', 'Area'),
                 sortValue: (c) => `${c.governorate || ''} ${c.area || ''}`,
                 render: (c) => (
                   <span className="text-[11px] text-slate-600">
@@ -4575,7 +4724,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               },
               {
                 key: 'phone',
-                header: 'الهاتف والموقع',
+                header: t('الهاتف والموقع', 'Phone & Location'),
                 render: (c) => {
                   const cleanedPhone = String(c.phone || '').replace(/[^\d+]/g, '');
                   const hasValidPhone = cleanedPhone.replace(/\D/g, '').length >= 7;
@@ -4587,6 +4736,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         <a
                           href={`tel:${cleanedPhone}`}
                           onClick={(e) => e.stopPropagation()}
+                          dir="ltr"
                           className="px-2 py-0.5 rounded-md bg-[#EEF3FA] text-[#011E58] border border-[#DCE6F5] font-mono font-bold inline-flex items-center gap-1 text-[11px]"
                         >
                           <Phone className="w-3 h-3 text-[#003589]" />
@@ -4596,12 +4746,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         <button
                           type="button"
                           onClick={() =>
-                            setFeedback({ type: 'warning', text: `رقم هاتف العميل (${c.name}) غير مكتمل أو غير صالح للاتصال.` })
+                            setFeedback({
+                              type: 'warning',
+                              text: t(
+                                `رقم هاتف العميل (${c.name}) غير مكتمل أو غير صالح للاتصال.`,
+                                `Customer (${c.name}) phone number is incomplete or invalid for calling.`
+                              ),
+                            })
                           }
                           className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 border border-slate-200 font-bold inline-flex items-center gap-1 text-[11px] cursor-pointer"
                         >
                           <Phone className="w-3 h-3" />
-                          <span>{c.phone || 'بدون هاتف'}</span>
+                          <span>{c.phone || t('بدون هاتف', 'No Phone')}</span>
                         </button>
                       )}
                       {hasValidMap && (
@@ -4623,7 +4779,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           className="px-2 py-0.5 rounded-md bg-[#EEF3FA] text-[#003589] border border-[#DCE6F5] font-bold inline-flex items-center gap-1 text-[11px] cursor-pointer"
                         >
                           <MapPin className="w-3 h-3 text-[#003589]" />
-                          <span>الموقع</span>
+                          <span>{t('الموقع', 'Location')}</span>
                         </button>
                       )}
                     </div>
@@ -4632,7 +4788,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               },
               {
                 key: 'currentBalance',
-                header: 'الرصيد الحالي',
+                header: t('الرصيد الحالي', 'Current Balance'),
                 align: 'center',
                 sortValue: (c) => Number(c.currentBalance || 0),
                 render: (c) => (
@@ -4646,17 +4802,17 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           : 'text-slate-700'
                       }`}
                     >
-                      {Math.abs(c.currentBalance).toLocaleString()} {data.settings.currency}
+                      {formatLocaleNumber(Math.abs(c.currentBalance))} {t(data.settings.currency)}
                     </strong>
                     <span className="text-[10px] text-slate-500">
-                      {c.currentBalance > 0.009 ? 'لنا' : c.currentBalance < -0.009 ? 'علينا' : 'متوازن'}
+                      {c.currentBalance > 0.009 ? t('لنا', 'Due to Us') : c.currentBalance < -0.009 ? t('علينا', 'Credit') : t('متوازن', 'Settled')}
                     </span>
                   </div>
                 ),
               },
               {
                 key: 'actions',
-                header: 'الإجراءات',
+                header: t('الإجراءات', 'Actions'),
                 align: 'center',
                 sortable: false,
                 render: (c) => (
@@ -4670,7 +4826,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       className="px-2 py-0.5 rounded-md bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] border border-[#DCE6F5] font-bold inline-flex items-center gap-1 text-[11px] cursor-pointer"
                     >
                       <FileText className="w-3 h-3" />
-                      <span>كشف</span>
+                      <span>{t('كشف', 'Stmt')}</span>
                     </button>
                     <button
                       type="button"
@@ -4684,7 +4840,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       className="px-2 py-0.5 rounded-md bg-[#0049B0] hover:bg-[#003589] text-white font-bold inline-flex items-center gap-1 text-[11px] cursor-pointer"
                     >
                       <Wallet className="w-3 h-3" />
-                      <span>تحصيل</span>
+                      <span>{t('تحصيل', 'Collect')}</span>
                     </button>
                     <button
                       type="button"
@@ -4694,14 +4850,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       }}
                       className="px-2 py-0.5 rounded-md bg-[#011E58] hover:bg-[#003589] text-white font-bold text-[11px] cursor-pointer"
                     >
-                      فاتورة
+                      {t('فاتورة', 'Invoice')}
                     </button>
                     {canEditCustomer && (
                       <button
                         type="button"
                         onClick={() => openEditCustomerSheet(c)}
                         className="px-1.5 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 font-bold cursor-pointer"
-                        title="تعديل بيانات العميل"
+                        title={t('تعديل بيانات العميل', 'Edit Customer Details')}
                       >
                         <Edit className="w-3 h-3" />
                       </button>
@@ -4711,7 +4867,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         type="button"
                         onClick={() => setDeleteCustomerTarget(c)}
                         className="px-1.5 py-0.5 rounded-md bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold cursor-pointer"
-                        title="حذف العميل"
+                        title={t('حذف العميل', 'Delete Customer')}
                       >
                         <Trash2 className="w-3 h-3" />
                       </button>
@@ -4728,31 +4884,31 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       {activeTab === 'new-invoice' && (
         <div className="space-y-2">
           <div className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-2 text-xs">
-            <h3 className="text-xs sm:text-sm font-black text-slate-900">إنشاء فاتورة مبيعات (مقيد بمخزون عهدة السيارة)</h3>
+            <h3 className="text-xs sm:text-sm font-black text-slate-900">{t('إنشاء فاتورة مبيعات (مقيد بمخزون عهدة السيارة)', 'Create Sales Invoice (Van Custody Stock Restricted)')}</h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
               <div>
                 <SearchableFilterSelect
                   id="rep-sale-customer"
-                  label="العميل"
+                  label={t('العميل', 'Customer')}
                   value={invCustomerId}
                   onChange={setInvCustomerId}
                   options={data.customers.map((c) => ({
                     value: c.id,
                     label: c.shopName ? `${c.shopName} (${c.name})` : c.name,
                     subtitle: c.phone || c.address,
-                    badge: `رصيد: ${c.currentBalance}`,
+                    badge: `${t('رصيد:', 'Bal:')} ${formatLocaleNumber(c.currentBalance)}`,
                     searchText: `${c.name} ${c.shopName || ''} ${c.phone || ''} ${c.code || ''}`,
                   }))}
-                  allOptionLabel="-- اختر العميل --"
+                  allOptionLabel={t('-- اختر العميل --', '-- Select Customer --')}
                   allOptionValue=""
-                  searchPlaceholder="ابحث باسم العميل أو المحل أو الهاتف..."
+                  searchPlaceholder={t('ابحث باسم العميل أو المحل أو الهاتف...', 'Search by customer, shop or phone...')}
                   allowClear
                   buttonClassName="h-8 rounded-md"
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">مستودع الصرف (السيارة):</label>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('مستودع الصرف (السيارة):', 'Issue Warehouse (Van):')}</label>
                 <select
                   value={effectiveVanId}
                   onChange={(e) => setInvWarehouseId(e.target.value)}
@@ -4769,7 +4925,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
             <div className="p-2 rounded-md bg-blue-50/60 border border-blue-200 space-y-1.5">
               <div className="flex flex-wrap items-center justify-between gap-1.5">
-                <label className="font-bold text-slate-800">بحث / باركود وإضافة صنف ({filteredInvoiceProducts.length}):</label>
+                <label className="font-bold text-slate-800">{t('بحث / باركود وإضافة صنف', 'Search / Barcode & Add Item')} ({formatLocaleNumber(filteredInvoiceProducts.length)}):</label>
                 <button
                   type="button"
                   onClick={() => setInvOnlyVanStock((prev) => !prev)}
@@ -4779,7 +4935,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       : 'bg-white text-slate-700 border-slate-300'
                   }`}
                 >
-                  {invOnlyVanStock ? 'المتاح بالسيارة فقط ✓' : 'تصفية: المتاح بالسيارة'}
+                  {invOnlyVanStock ? t('المتاح بالسيارة فقط ✓', 'Van Available Only ✓') : t('تصفية: المتاح بالسيارة', 'Filter: Available in Van')}
                 </button>
               </div>
 
@@ -4790,7 +4946,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 warehouses={data.warehouses}
                 priceMode="selling"
                 currency={data.settings.currency}
-                placeholder="ابحث بالاسم أو الكود أو امسح الباركود..."
+                placeholder={t('ابحث بالاسم أو الكود أو امسح الباركود...', 'Search by name, code or scan barcode...')}
                 onSelect={(prod) => handleSelectProduct(prod.id)}
               />
 
@@ -4799,7 +4955,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   <div className="flex items-center gap-1.5 font-bold text-blue-950 text-[11px]">
                     <History className="w-3.5 h-3.5 shrink-0" />
                     <span>
-                      آخر 3 أسعار بيع فعلية لهذا العميل ({selectedInvoiceCustomer?.shopName || selectedInvoiceCustomer?.name || ''}) للصنف ({selectedProduct.name}) — من الأقدم للأحدث:
+                      {t('آخر 3 أسعار بيع فعلية لهذا العميل', 'Last 3 actual selling prices for this customer')} ({selectedInvoiceCustomer?.shopName || selectedInvoiceCustomer?.name || ''}) {t('للصنف', 'for item')} ({selectedProduct.name}) — {t('من الأقدم للأحدث:', 'oldest to newest:')}
                     </span>
                   </div>
                   {selectedProdLastPrices.length > 0 ? (
@@ -4810,7 +4966,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         const entryUnit = entry.unit || '';
                         const entryQty = entry.quantity;
                         const entryFactor = Number(entry.unitFactor || 1);
-                        const orderTag = idx === 0 ? 'الأقدم' : idx === selectedProdLastPrices.length - 1 ? 'الأحدث' : 'الوسيط';
+                        const orderTag = idx === 0 ? t('الأقدم', 'Oldest') : idx === selectedProdLastPrices.length - 1 ? t('الأحدث', 'Latest') : t('الوسيط', 'Middle');
                         const activeUnitFactor =
                           invUnitName === selectedProduct.baseUnit
                             ? 1
@@ -4824,25 +4980,25 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                             key={idx}
                             type="button"
                             onClick={() => setInvPrice(normalizedPerSelectedUnit ?? priceVal)}
-                            title="انقر لتطبيق هذا السعر يدوياً"
-                            className="px-2 py-1 rounded-md bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-950 text-right cursor-pointer"
+                            title={t('انقر لتطبيق هذا السعر يدوياً', 'Click to apply this price')}
+                            className="px-2 py-1 rounded-md bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-950 text-start cursor-pointer"
                           >
                             <span className="font-mono font-bold text-[11px] block">
-                              {priceVal} {data.settings.currency}
+                              {formatLocaleNumber(priceVal)} {t(data.settings.currency)}
                               {entryUnit ? ` / ${entryUnit}` : ''}
                             </span>
                             <span className="text-[10px] text-slate-600 block">
                               {orderTag}
                               {priceDate ? ` · ${priceDate}` : ''}
-                              {typeof entryQty === 'number' && entryQty > 0 ? ` · كمية: ${entryQty}` : ''}
-                              {normalizedPerSelectedUnit !== null ? ` · يعادل ${normalizedPerSelectedUnit} للـ${invUnitName}` : ''}
+                              {typeof entryQty === 'number' && entryQty > 0 ? ` · ${t('كمية:', 'Qty:')} ${formatLocaleNumber(entryQty)}` : ''}
+                              {normalizedPerSelectedUnit !== null ? ` · ${t('يعادل', 'Equiv.')} ${formatLocaleNumber(normalizedPerSelectedUnit)} / ${invUnitName}` : ''}
                             </span>
                           </button>
                         );
                       })}
                     </div>
                   ) : (
-                    <p className="text-[11px] text-slate-500 italic">لا توجد أسعار بيع سابقة لهذا الصنف مع هذا العميل</p>
+                    <p className="text-[11px] text-slate-500 italic">{t('لا توجد أسعار بيع سابقة لهذا الصنف مع هذا العميل', 'No previous selling prices for this item with this customer')}</p>
                   )}
                 </div>
               )}
@@ -4850,7 +5006,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               {selectedProduct && (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">الوحدة</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الوحدة', 'Unit')}</label>
                     <select
                       value={invUnitName}
                       onChange={(e) => handleUnitChange(e.target.value)}
@@ -4865,18 +5021,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">الكمية</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الكمية', 'Quantity')}</label>
                     <QuantityInput
                       allowDecimals
                       min={0.001}
                       value={invQty}
                       onChange={setInvQty}
-                      ariaLabel="كمية الصنف"
+                      ariaLabel={t('كمية الصنف', 'Item Quantity')}
                       inputClassName="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">السعر</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('السعر', 'Price')}</label>
                     <input
                       type="number"
                       step="0.5"
@@ -4888,7 +5044,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">خصم البند</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('خصم البند', 'Line Discount')}</label>
                     <input
                       type="number"
                       step="0.5"
@@ -4909,7 +5065,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   className="w-full h-8 rounded-md bg-blue-900 text-white font-black flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>إضافة الصنف للفاتورة</span>
+                  <span>{t('إضافة الصنف للفاتورة', 'Add Item to Invoice')}</span>
                 </button>
               )}
             </div>
@@ -4919,26 +5075,26 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 compact
                 paginated={false}
                 searchable={false}
-                title={`أصناف الفاتورة (${invItems.length})`}
+                title={`${t('أصناف الفاتورة', 'Invoice Items')} (${formatLocaleNumber(invItems.length)})`}
                 data={invItems}
                 rowKey={(it, idx) => `${it.productId}-${it.unit}-${idx}`}
                 columns={[
                   {
                     key: 'productName',
-                    header: 'الصنف',
+                    header: t('الصنف', 'Product'),
                     render: (it) => (
                       <div>
                         <span className="font-bold text-slate-900 block">{it.productName}</span>
                         <span className="text-[10px] text-slate-500">
-                          {it.unit} · سعر {it.unitPrice.toLocaleString()}
-                          {it.discount > 0 ? ` · خصم ${it.discount.toLocaleString()}` : ''}
+                          {it.unit} · {t('سعر', 'Price')} {formatLocaleNumber(it.unitPrice)}
+                          {it.discount > 0 ? ` · ${t('خصم', 'Disc.')} ${formatLocaleNumber(it.discount)}` : ''}
                         </span>
                       </div>
                     ),
                   },
                   {
                     key: 'quantity',
-                    header: 'الكمية',
+                    header: t('الكمية', 'Qty'),
                     align: 'center',
                     render: (it, idx) => (
                       <div className="inline-flex justify-center">
@@ -4949,24 +5105,24 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           value={it.quantity}
                           onChange={(q) => handleUpdateInvItemQty(idx, q)}
                           onRemoveWhenZero={() => setInvItems((prev) => prev.filter((_, i) => i !== idx))}
-                          ariaLabel={`كمية ${it.productName}`}
+                          ariaLabel={`${t('كمية', 'Quantity')} ${it.productName}`}
                         />
                       </div>
                     ),
                   },
                   {
                     key: 'total',
-                    header: 'الإجمالي',
+                    header: t('الإجمالي', 'Total'),
                     align: 'center',
                     render: (it) => (
                       <strong className="font-mono text-blue-950 tabular-nums">
-                        {it.total.toLocaleString()} {data.settings.currency}
+                        {formatLocaleNumber(it.total)} {t(data.settings.currency)}
                       </strong>
                     ),
                   },
                   {
                     key: 'actions',
-                    header: 'حذف',
+                    header: t('حذف', 'Delete'),
                     align: 'center',
                     sortable: false,
                     render: (_it, idx) => (
@@ -4974,7 +5130,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         type="button"
                         onClick={() => setInvItems((prev) => prev.filter((_, i) => i !== idx))}
                         className="h-7 w-7 rounded-md hover:bg-red-50 inline-flex items-center justify-center text-red-600 cursor-pointer"
-                        aria-label="حذف الصنف"
+                        aria-label={t('حذف الصنف', 'Remove Item')}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -4988,14 +5144,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               <div className="p-2 rounded-md bg-amber-50 border border-amber-300 space-y-1 text-xs text-amber-950">
                 <div className="flex items-center gap-1.5 font-black">
                   <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
-                  <span>عجز في مخزون سيارتك لعدد ({shortageItems.length}) أصناف — لا يمكن الاعتماد المباشر</span>
+                  <span>{t('عجز في مخزون سيارتك لعدد', 'Shortage in van stock for')} ({formatLocaleNumber(shortageItems.length)}) {t('أصناف — لا يمكن الاعتماد المباشر', 'items — cannot confirm directly')}</span>
                 </div>
                 <div className="space-y-0.5 text-[11px]">
                   {shortageItems.map((sh) => (
                     <div key={sh.productId} className="flex items-center justify-between font-mono">
                       <span className="font-sans font-bold">{sh.productName}</span>
                       <span className="text-red-700">
-                        المتاح بالسيارة: {sh.availableInVanQty} · العجز: {sh.shortageQty} {sh.unit}
+                        {t('المتاح بالسيارة:', 'In Van:')} {formatLocaleNumber(sh.availableInVanQty)} · {t('العجز:', 'Shortage:')} {formatLocaleNumber(sh.shortageQty)} {sh.unit}
                       </span>
                     </div>
                   ))}
@@ -5007,9 +5163,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               <div className="space-y-2 pt-2 border-t border-slate-100">
                 <div className="grid grid-cols-3 gap-1.5">
                   {[
-                    { key: 'cash' as const, label: 'نقدي' },
-                    { key: 'credit' as const, label: 'آجل' },
-                    { key: 'partial' as const, label: 'جزئي' },
+                    { key: 'cash' as const, label: t('نقدي', 'Cash') },
+                    { key: 'credit' as const, label: t('آجل', 'Credit') },
+                    { key: 'partial' as const, label: t('جزئي', 'Partial') },
                   ].map((pt) => (
                     <button
                       key={pt.key}
@@ -5028,7 +5184,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
                 {invPaymentType === 'partial' && (
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">المدفوع نقداً الآن</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('المدفوع نقداً الآن', 'Cash Paid Now')}</label>
                     <input
                       type="number"
                       min={0}
@@ -5043,7 +5199,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
                 {!isRepRoleAccount && canCashOps && invPaymentType !== 'credit' && (
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">الخزينة</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الخزينة', 'Cashbox')}</label>
                     <select
                       value={invCashboxId}
                       onChange={(e) => setInvCashboxId(e.target.value)}
@@ -5062,45 +5218,45 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   type="text"
                   value={invNotes}
                   onChange={(e) => setInvNotes(e.target.value)}
-                  placeholder="ملاحظات الفاتورة (اختياري)..."
+                  placeholder={t('ملاحظات الفاتورة (اختياري)...', 'Invoice notes (optional)...')}
                   className="w-full h-8 rounded-md border border-slate-300 px-2"
                 />
 
                 <div className="p-2 rounded-md bg-slate-50 border border-slate-200 space-y-1 tabular-nums">
                   <div className="flex items-center justify-between font-black text-xs sm:text-sm text-blue-950">
-                    <span>إجمالي الفاتورة:</span>
+                    <span>{t('إجمالي الفاتورة:', 'Invoice Total:')}</span>
                     <span className="font-mono">
-                      {invGrandTotal.toLocaleString()} {data.settings.currency}
+                      {formatLocaleNumber(invGrandTotal)} {t(data.settings.currency)}
                     </span>
                   </div>
                   {selectedInvoiceCustomer && (
                     <div className="pt-1 border-t border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-1 text-[11px] text-slate-700">
                       <div>
-                        قبل الفاتورة:{' '}
+                        {t('قبل الفاتورة:', 'Before Invoice:')}{' '}
                         <strong className="font-mono">
-                          {selectedInvoiceCustomer.currentBalance.toLocaleString()}
+                          {formatLocaleNumber(selectedInvoiceCustomer.currentBalance)}
                         </strong>
                       </div>
                       <div>
-                        المدفوع:{' '}
+                        {t('المدفوع:', 'Paid:')}{' '}
                         <strong className="font-mono text-emerald-700">
-                          {effectiveInvPaid.toLocaleString()}
+                          {formatLocaleNumber(effectiveInvPaid)}
                         </strong>
                       </div>
                       <div>
-                        المتبقي:{' '}
+                        {t('المتبقي:', 'Remaining:')}{' '}
                         <strong className="font-mono text-amber-800">
-                          {Math.max(0, invGrandTotal - effectiveInvPaid).toLocaleString()}
+                          {formatLocaleNumber(Math.max(0, invGrandTotal - effectiveInvPaid))}
                         </strong>
                       </div>
                       <div>
-                        بعد الفاتورة:{' '}
+                        {t('بعد الفاتورة:', 'After Invoice:')}{' '}
                         <strong className="font-mono text-blue-950">
-                          {(
+                          {formatLocaleNumber(
                             Number(selectedInvoiceCustomer.currentBalance || 0) +
                             Math.max(0, invGrandTotal - effectiveInvPaid)
-                          ).toLocaleString()}{' '}
-                          {data.settings.currency}
+                          )}{' '}
+                          {t(data.settings.currency)}
                         </strong>
                       </div>
                     </div>
@@ -5115,7 +5271,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       onClick={() => handleCreateInvoice('draft_with_transfer')}
                       className="w-full h-9 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-black cursor-pointer disabled:opacity-50"
                     >
-                      {isSubmittingInvoice ? 'جاري الحفظ...' : 'حفظ كمسودة وإرسال طلب تحويل للعجز'}
+                      {isSubmittingInvoice ? t('جاري الحفظ...', 'Saving...') : t('حفظ كمسودة وإرسال طلب تحويل للعجز', 'Save Draft & Send Shortage Transfer Request')}
                     </button>
                     <button
                       type="button"
@@ -5123,7 +5279,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       onClick={() => handleCreateInvoice('draft')}
                       className="w-full h-8 rounded-md bg-slate-200 text-slate-800 font-bold cursor-pointer"
                     >
-                      حفظ كمسودة فقط
+                      {t('حفظ كمسودة فقط', 'Save as Draft Only')}
                     </button>
                   </div>
                 ) : (
@@ -5134,7 +5290,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       onClick={() => handleCreateInvoice('draft')}
                       className="h-9 rounded-lg bg-slate-200 text-slate-800 font-bold cursor-pointer"
                     >
-                      حفظ كمسودة
+                      {t('حفظ كمسودة', 'Save as Draft')}
                     </button>
                     <button
                       type="button"
@@ -5142,7 +5298,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       onClick={() => handleCreateInvoice('confirmed')}
                       className="h-9 rounded-lg bg-[#003589] hover:bg-[#0049B0] text-white font-black cursor-pointer disabled:opacity-50"
                     >
-                      {isSubmittingInvoice ? 'جاري الإصدار...' : 'اعتماد وإصدار'}
+                      {isSubmittingInvoice ? t('جاري الإصدار...', 'Issuing...') : t('اعتماد وإصدار', 'Confirm & Issue')}
                     </button>
                   </div>
                 )}
@@ -5158,10 +5314,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div>
               <h3 className="text-xs sm:text-sm font-black text-slate-900">
-                {purEditingInvoiceId ? 'تعديل فاتورة مشتريات قبل الإرسال' : 'إنشاء فاتورة مشتريات جديدة'}
+                {purEditingInvoiceId ? t('تعديل فاتورة مشتريات قبل الإرسال', 'Edit Purchase Invoice Before Sending') : t('إنشاء فاتورة مشتريات جديدة', 'Create New Purchase Invoice')}
               </h3>
               <p className="text-[10px] text-slate-500">
-                لا يتم تعديل المخزن أو حسابات المورد حتى استلام الإدارة واعتمادها للفاتورة
+                {t('لا يتم تعديل المخزن أو حسابات المورد حتى استلام الإدارة واعتمادها للفاتورة', 'Inventory and supplier accounts are not updated until received and approved by management')}
               </p>
             </div>
             <div className="flex items-center gap-1.5">
@@ -5177,7 +5333,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   }}
                   className="h-8 px-2.5 rounded-md bg-slate-100 text-slate-700 font-bold cursor-pointer"
                 >
-                  إلغاء التعديل
+                  {t('إلغاء التعديل', 'Cancel Edit')}
                 </button>
               )}
               <button
@@ -5185,14 +5341,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 onClick={() => onTabChange('new-supplier')}
                 className="h-8 px-2.5 rounded-md bg-[#EEF3FA] text-[#011E58] border border-[#DCE6F5] font-bold cursor-pointer"
               >
-                + مورد جديد
+                {t('+ مورد جديد', '+ New Supplier')}
               </button>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">المورد:</label>
+              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('المورد:', 'Supplier:')}</label>
               <SearchableFilterSelect
                 id="rep-purchase-supplier"
                 value={purSupplierId}
@@ -5203,15 +5359,15 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   subtitle: s.phone || s.companyName,
                   searchText: `${s.name} ${s.phone || ''} ${s.companyName || ''}`,
                 }))}
-                allOptionLabel="-- اختر المورد --"
+                allOptionLabel={t('-- اختر المورد --', '-- Select Supplier --')}
                 allOptionValue=""
-                searchPlaceholder="ابحث باسم المورد أو الهاتف..."
+                searchPlaceholder={t('ابحث باسم المورد أو الهاتف...', 'Search by supplier name or phone...')}
                 allowClear
                 buttonClassName="h-8 rounded-md"
               />
             </div>
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">مخزن الاستلام:</label>
+              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('مخزن الاستلام:', 'Receiving Warehouse:')}</label>
               <select
                 value={purWarehouseId}
                 onChange={(e) => setPurWarehouseId(e.target.value)}
@@ -5228,7 +5384,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
           <div className="p-2 rounded-md bg-[#EEF3FA] border border-[#DCE6F5] space-y-1.5">
             <div className="flex flex-wrap items-center justify-between gap-1.5">
-              <span className="font-black text-[#011E58]">إضافة أصناف لفاتورة الشراء:</span>
+              <span className="font-black text-[#011E58]">{t('إضافة أصناف لفاتورة الشراء:', 'Add Items to Purchase Invoice:')}</span>
               <button
                 type="button"
                 onClick={() => {
@@ -5242,7 +5398,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 }`}
               >
                 <PackagePlus className="w-3.5 h-3.5 shrink-0" />
-                <span>{showPurInlineNewProduct ? 'إغلاق إنشاء الصنف الجديد' : 'إنشاء صنف جديد داخل الفاتورة'}</span>
+                <span>{showPurInlineNewProduct ? t('إغلاق إنشاء الصنف الجديد', 'Close New Product Form') : t('إنشاء صنف جديد داخل الفاتورة', 'Create New Product Inside Invoice')}</span>
               </button>
             </div>
 
@@ -5255,7 +5411,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   warehouses={data.warehouses}
                   priceMode="purchase"
                   currency={data.settings.currency}
-                  placeholder="ابحث باسم الصنف أو الكود أو الباركود..."
+                  placeholder={t('ابحث باسم الصنف أو الكود أو الباركود...', 'Search by product name, code or barcode...')}
                   onSelect={(prod) => handleSelectPurProduct(prod.id)}
                 />
                 {purProductId && (
@@ -5264,7 +5420,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       value={purUnitName}
                       onChange={(e) => handleSelectPurUnit(e.target.value)}
                       className="h-8 rounded-md border border-slate-300 px-2 text-center font-bold bg-white"
-                      aria-label="وحدة الشراء"
+                      aria-label={t('وحدة الشراء', 'Purchase Unit')}
                     >
                       {purUnitOptions.map((u) => (
                         <option key={u.name} value={u.name}>
@@ -5277,15 +5433,15 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       min={0.001}
                       value={purQty}
                       onChange={setPurQty}
-                      placeholder="الكمية"
-                      ariaLabel="كمية الشراء"
+                      placeholder={t('الكمية', 'Qty')}
+                      ariaLabel={t('كمية الشراء', 'Purchase Quantity')}
                       inputClassName="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
                     />
                     <input
                       type="number"
                       step="0.5"
                       min={0}
-                      placeholder="سعر الشراء"
+                      placeholder={t('سعر الشراء', 'Buy Price')}
                       value={purPrice}
                       onChange={(e) => setPurPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
                       className="h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
@@ -5298,7 +5454,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     onClick={handleAddPurItem}
                     className="w-full h-8 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-black cursor-pointer"
                   >
-                    إضافة الصنف لفاتورة الشراء
+                    {t('إضافة الصنف لفاتورة الشراء', 'Add Item to Purchase Invoice')}
                   </button>
                 )}
               </>
@@ -5306,91 +5462,93 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               <div className="bg-white p-2 rounded-md border border-[#DCE6F5] space-y-1.5">
                 <div className="flex items-center gap-1.5 text-[#011E58] font-black">
                   <ProductAddIcon className="w-4 h-4 shrink-0" />
-                  <span>بيانات الصنف الجديد (لا يضاف للمخزن إلا بعد اعتماد الإدارة)</span>
+                  <span>{t('بيانات الصنف الجديد (لا يضاف للمخزن إلا بعد اعتماد الإدارة)', 'New Product Details (added to stock only after management approval)')}</span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">اسم الصنف الجديد: *</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('اسم الصنف الجديد: *', 'New Product Name: *')}</label>
                     <input
                       type="text"
                       value={newPurProdName}
                       onChange={(e) => setNewPurProdName(e.target.value)}
-                      placeholder="مثال: شاي العروسة 250 جم"
+                      placeholder={t('مثال: شاي العروسة 250 جم', 'e.g., El-Arosa Tea 250g')}
                       className="w-full h-8 border border-slate-300 rounded-md px-2 font-bold bg-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">الباركود (اختياري):</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الباركود (اختياري):', 'Barcode (optional):')}</label>
                     <input
                       type="text"
+                      dir="ltr"
                       value={newPurProdBarcode}
                       onChange={(e) => setNewPurProdBarcode(e.target.value)}
                       placeholder="622..."
-                      className="w-full h-8 border border-slate-300 rounded-md px-2 font-mono bg-white"
+                      className="w-full h-8 border border-slate-300 rounded-md px-2 font-mono bg-white text-start"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">الكود (اختياري):</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الكود (اختياري):', 'Code (optional):')}</label>
                     <input
                       type="text"
+                      dir="ltr"
                       value={newPurProdCode}
                       onChange={(e) => setNewPurProdCode(e.target.value)}
                       placeholder="PRD-..."
-                      className="w-full h-8 border border-slate-300 rounded-md px-2 font-mono bg-white"
+                      className="w-full h-8 border border-slate-300 rounded-md px-2 font-mono bg-white text-start"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">التصنيف:</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('التصنيف:', 'Category:')}</label>
                     <input
                       type="text"
                       value={newPurProdCategory}
                       onChange={(e) => setNewPurProdCategory(e.target.value)}
-                      placeholder="التصنيف (اختياري)"
+                      placeholder={t('التصنيف (اختياري)', 'Category (optional)')}
                       className="w-full h-8 border border-slate-300 rounded-md px-2 font-semibold bg-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">الوحدة الأساسية:</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الوحدة الأساسية:', 'Base Unit:')}</label>
                     <input
                       type="text"
                       value={newPurProdBaseUnit}
                       onChange={(e) => setNewPurProdBaseUnit(e.target.value)}
-                      placeholder="قطعة / كرتونة / كجم"
+                      placeholder={t('قطعة / كرتونة / كجم', 'Piece / Carton / Kg')}
                       className="w-full h-8 border border-slate-300 rounded-md px-2 font-semibold bg-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">الكمية المشتراة: *</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الكمية المشتراة: *', 'Purchased Qty: *')}</label>
                     <QuantityInput
                       allowDecimals
                       min={0.001}
                       value={newPurProdQty}
                       onChange={setNewPurProdQty}
-                      placeholder="الكمية"
-                      ariaLabel="كمية الصنف الجديد"
+                      placeholder={t('الكمية', 'Qty')}
+                      ariaLabel={t('كمية الصنف الجديد', 'New Product Quantity')}
                       inputClassName="w-full h-8 bg-white border border-slate-300 rounded-md text-center font-mono font-bold"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">سعر الشراء: *</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('سعر الشراء: *', 'Purchase Price: *')}</label>
                     <input
                       type="number"
                       step="0.5"
                       min={0}
-                      placeholder="سعر الشراء"
+                      placeholder={t('سعر الشراء', 'Buy Price')}
                       value={newPurProdBuyPrice}
                       onChange={(e) => setNewPurProdBuyPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
                       className="w-full h-8 border border-slate-300 rounded-md text-center font-mono font-bold bg-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">سعر البيع المقترح:</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('سعر البيع المقترح:', 'Suggested Sell Price:')}</label>
                     <input
                       type="number"
                       step="0.5"
                       min={0}
-                      placeholder="سعر البيع"
+                      placeholder={t('سعر البيع', 'Sell Price')}
                       value={newPurProdSellPrice}
                       onChange={(e) => setNewPurProdSellPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
                       className="w-full h-8 border border-slate-300 rounded-md text-center font-mono font-bold bg-white"
@@ -5403,7 +5561,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     <div className="flex items-center gap-1.5 font-bold">
                       <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
                       <span>
-                        هذا الصنف مسجل مسبقاً ({purDuplicateCheckState.exactMatch.name} — {purDuplicateCheckState.exactMatch.code})! لن يُنشأ صنف مكرر.
+                        {t('هذا الصنف مسجل مسبقاً', 'This product already exists')} ({purDuplicateCheckState.exactMatch.name} — {purDuplicateCheckState.exactMatch.code})! {t('لن يُنشأ صنف مكرر.', 'No duplicate product will be created.')}
                       </span>
                     </div>
                     <button
@@ -5411,7 +5569,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       onClick={() => handleUseExistingPurDuplicateProduct(purDuplicateCheckState.exactMatch!)}
                       className="h-7 px-2 rounded-md bg-amber-700 hover:bg-amber-800 text-white text-[11px] font-bold cursor-pointer"
                     >
-                      استخدام الصنف الموجود
+                      {t('استخدام الصنف الموجود', 'Use Existing Product')}
                     </button>
                   </div>
                 )}
@@ -5420,7 +5578,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   <div className="p-2 rounded-md border border-blue-200 bg-blue-50/70 text-blue-950 space-y-1">
                     <div className="font-bold flex items-center gap-1.5">
                       <AlertTriangle className="w-3.5 h-3.5 text-blue-700 shrink-0" />
-                      <span>توجد أصناف متشابهة بالاسم (اضغط للاختيار إن كان نفس الصنف):</span>
+                      <span>{t('توجد أصناف متشابهة بالاسم (اضغط للاختيار إن كان نفس الصنف):', 'Similar product names found (tap to select if same product):')}</span>
                     </div>
                     <div className="flex flex-wrap gap-1">
                       {purDuplicateCheckState.similarMatches.map((sim) => (
@@ -5431,7 +5589,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           className="h-7 px-2 rounded-md bg-white border border-blue-300 hover:bg-blue-100 text-blue-900 font-bold text-[11px] cursor-pointer"
                         >
                           {sim.name} ({sim.baseUnit})
-                          {Number(sim.purchasePrice || 0) > 0 ? ` — ${sim.purchasePrice} ${data.settings.currency}` : ''}
+                          {Number(sim.purchasePrice || 0) > 0 ? ` — ${formatLocaleNumber(sim.purchasePrice)} ${t(data.settings.currency)}` : ''}
                         </button>
                       ))}
                     </div>
@@ -5444,14 +5602,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     onClick={() => setShowPurInlineNewProduct(false)}
                     className="h-8 px-2.5 rounded-md border border-slate-300 font-bold text-slate-600 cursor-pointer"
                   >
-                    إلغاء
+                    {t('إلغاء', 'Cancel')}
                   </button>
                   <button
                     type="button"
                     onClick={handleAddPurInlineNewProduct}
                     className="h-8 px-3 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
                   >
-                    {purDuplicateCheckState.exactMatch ? 'ربط بالصنف الموجود وإضافته' : '+ إضافة الصنف للفاتورة'}
+                    {purDuplicateCheckState.exactMatch ? t('ربط بالصنف الموجود وإضافته', 'Link to Existing & Add') : t('+ إضافة الصنف للفاتورة', '+ Add Item to Invoice')}
                   </button>
                 </div>
               </div>
@@ -5463,19 +5621,19 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               compact
               paginated={false}
               searchable={false}
-              title={`أصناف فاتورة الشراء (${purItems.length})`}
+              title={`${t('أصناف فاتورة الشراء', 'Purchase Invoice Items')} (${formatLocaleNumber(purItems.length)})`}
               data={purItems}
               rowKey={(it, idx) => `${it.productId}-${it.unit}-${idx}`}
               columns={[
                 {
                   key: 'productName',
-                  header: 'الصنف',
+                  header: t('الصنف', 'Product'),
                   render: (it) => (
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="font-bold text-slate-900">{it.productName}</span>
                       {it.newProduct && (
                         <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold">
-                          صنف جديد
+                          {t('صنف جديد', 'New Product')}
                         </span>
                       )}
                     </div>
@@ -5483,29 +5641,29 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 },
                 {
                   key: 'quantity',
-                  header: 'الكمية',
+                  header: t('الكمية', 'Qty'),
                   align: 'center',
                   render: (it) => (
                     <span className="font-mono font-bold">
-                      {it.quantity} {it.unit}
+                      {formatLocaleNumber(it.quantity)} {it.unit}
                     </span>
                   ),
                 },
                 {
                   key: 'unitPrice',
-                  header: 'السعر',
+                  header: t('السعر', 'Price'),
                   align: 'center',
-                  render: (it) => <span className="font-mono">{it.unitPrice.toLocaleString()}</span>,
+                  render: (it) => <span className="font-mono">{formatLocaleNumber(it.unitPrice)}</span>,
                 },
                 {
                   key: 'total',
-                  header: 'الإجمالي',
+                  header: t('الإجمالي', 'Total'),
                   align: 'center',
-                  render: (it) => <strong className="font-mono text-[#011E58]">{it.total.toLocaleString()}</strong>,
+                  render: (it) => <strong className="font-mono text-[#011E58]">{formatLocaleNumber(it.total)}</strong>,
                 },
                 {
                   key: 'actions',
-                  header: 'حذف',
+                  header: t('حذف', 'Delete'),
                   align: 'center',
                   sortable: false,
                   render: (_it, idx) => (
@@ -5524,9 +5682,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
           <div className="grid grid-cols-3 gap-1.5">
             {[
-              { key: 'cash' as const, label: 'نقدي' },
-              { key: 'credit' as const, label: 'آجل' },
-              { key: 'partial' as const, label: 'جزئي' },
+              { key: 'cash' as const, label: t('نقدي', 'Cash') },
+              { key: 'credit' as const, label: t('آجل', 'Credit') },
+              { key: 'partial' as const, label: t('جزئي', 'Partial') },
             ].map((pt) => (
               <button
                 key={pt.key}
@@ -5550,7 +5708,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               max={purTotal}
               value={purPaidAmount}
               onChange={(e) => setPurPaidAmount(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
-              placeholder="المدفوع للمورد الآن"
+              placeholder={t('المدفوع للمورد الآن', 'Paid to Supplier Now')}
               className="w-full h-8 rounded-md border border-slate-300 px-2 font-mono font-bold"
             />
           )}
@@ -5577,22 +5735,22 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               step="0.5"
               value={purDiscount || ''}
               onChange={(e) => setPurDiscount(Math.max(0, Number(e.target.value)))}
-              placeholder={`الخصم (${data.settings.currency}) - اختياري`}
+              placeholder={`${t('الخصم', 'Discount')} (${t(data.settings.currency)}) - ${t('اختياري', 'Optional')}`}
               className="w-full h-8 rounded-md border border-slate-300 px-2 font-mono font-bold"
             />
             <input
               type="text"
               value={purNotes}
               onChange={(e) => setPurNotes(e.target.value)}
-              placeholder="ملاحظات فاتورة الشراء..."
+              placeholder={t('ملاحظات فاتورة الشراء...', 'Purchase invoice notes...')}
               className="w-full h-8 rounded-md border border-slate-300 px-2"
             />
           </div>
 
           <div className="px-2.5 py-1.5 rounded-md bg-[#EEF3FA] border border-[#DCE6F5] flex items-center justify-between font-black">
-            <span>صافي إجمالي فاتورة الشراء:</span>
+            <span>{t('صافي إجمالي فاتورة الشراء:', 'Purchase Invoice Net Total:')}</span>
             <strong className="font-mono text-[#011E58]">
-              {purTotal.toLocaleString()} {data.settings.currency}
+              {formatLocaleNumber(purTotal)} {t(data.settings.currency)}
             </strong>
           </div>
 
@@ -5602,7 +5760,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             className="w-full h-9 rounded-lg bg-[#011E58] hover:bg-[#003589] text-white font-black disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1.5"
           >
             <Eye className="w-4 h-4" />
-            <span>{isSubmittingPurchase ? 'جاري المعالجة...' : 'مراجعة وإرسال الفاتورة'}</span>
+            <span>{isSubmittingPurchase ? t('جاري المعالجة...', 'Processing...') : t('مراجعة وإرسال الفاتورة', 'Review & Send Invoice')}</span>
           </button>
         </form>
       )}
@@ -5610,14 +5768,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       {/* ==================== SALES RETURN ==================== */}
       {activeTab === 'sales-return' && (
         <form onSubmit={handleSubmitSalesReturn} className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-2 text-xs">
-          <h3 className="text-xs sm:text-sm font-black text-rose-900">تسجيل مرتجع مبيعات</h3>
+          <h3 className="text-xs sm:text-sm font-black text-rose-900">{t('تسجيل مرتجع مبيعات', 'Record Sales Return')}</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
             <select
               value={sRetCustomerId}
               onChange={(e) => setSRetCustomerId(e.target.value)}
               className="h-8 rounded-md border border-slate-300 px-2 font-bold bg-white"
             >
-              <option value="">-- اختر العميل --</option>
+              <option value="">{t('-- اختر العميل --', '-- Select Customer --')}</option>
               {data.customers.map((c) => (
                 <option key={c.id} value={c.id}>{c.shopName || c.name}</option>
               ))}
@@ -5636,13 +5794,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             >
               <option value="">
                 {isRepRoleAccount || !canCashOps
-                  ? '-- اختر فاتورة البيع المعتمدة (إلزامي) --'
-                  : '-- ربط بفاتورة بيع معتمدة (اختياري) --'}
+                  ? t('-- اختر فاتورة البيع المعتمدة (إلزامي) --', '-- Select Confirmed Sales Invoice (Required) --')
+                  : t('-- ربط بفاتورة بيع معتمدة (اختياري) --', '-- Link to Confirmed Sales Invoice (Optional) --')}
               </option>
               {myInvoices
                 .filter((i) => i.status === 'confirmed' && (!sRetCustomerId || i.customerId === sRetCustomerId))
                 .map((i) => (
-                  <option key={i.id} value={i.id}>{i.invoiceNumber} ({i.grandTotal})</option>
+                  <option key={i.id} value={i.id}>{i.invoiceNumber} ({formatLocaleNumber(i.grandTotal)})</option>
                 ))}
             </select>
           </div>
@@ -5657,9 +5815,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               }}
               className="w-full h-8 rounded-md border border-rose-300 px-2 font-bold bg-white"
             >
-              <option value="">-- اختر الصنف المرتجع --</option>
+              <option value="">{t('-- اختر الصنف المرتجع --', '-- Select Return Item --')}</option>
               {activeProducts.map((p) => (
-                <option key={p.id} value={p.id}>{p.name} ({p.baseUnit})</option>
+                <option key={p.id} value={p.id}>{p.name} ({t(p.baseUnit)})</option>
               ))}
             </select>
             {sRetProductId && (
@@ -5669,7 +5827,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   min={0.001}
                   value={sRetQty}
                   onChange={setSRetQty}
-                  ariaLabel="كمية المرتجع"
+                  ariaLabel={t('كمية المرتجع', 'Return quantity')}
                   inputClassName="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
                 />
                 <input
@@ -5678,7 +5836,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   step="0.5"
                   value={sRetPrice}
                   onChange={(e) => setSRetPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
-                  placeholder="السعر"
+                  placeholder={t('السعر', 'Price')}
                   className="h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
                 />
               </div>
@@ -5709,7 +5867,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 }}
                 className="w-full h-8 rounded-md bg-rose-700 text-white font-black cursor-pointer"
               >
-                إضافة لمرتجع البيع
+                {t('إضافة لمرتجع البيع', 'Add to Sales Return')}
               </button>
             )}
           </div>
@@ -5719,32 +5877,32 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               compact
               paginated={false}
               searchable={false}
-              title={`أصناف مرتجع المبيعات (${sRetItems.length})`}
+              title={`${t('أصناف مرتجع المبيعات', 'Sales Return Items')} (${formatLocaleNumber(sRetItems.length)})`}
               data={sRetItems}
               rowKey={(it, idx) => `${it.productId}-${idx}`}
               columns={[
-                { key: 'productName', header: 'الصنف', render: (it) => <span className="font-bold">{it.productName}</span> },
+                { key: 'productName', header: t('الصنف', 'Item'), render: (it) => <span className="font-bold">{it.productName}</span> },
                 {
                   key: 'quantity',
-                  header: 'الكمية',
+                  header: t('الكمية', 'Qty'),
                   align: 'center',
-                  render: (it) => <span className="font-mono">{it.quantity} {it.unit}</span>,
+                  render: (it) => <span className="font-mono">{formatLocaleNumber(it.quantity)} {t(it.unit)}</span>,
                 },
                 {
                   key: 'unitPrice',
-                  header: 'السعر',
+                  header: t('السعر', 'Price'),
                   align: 'center',
-                  render: (it) => <span className="font-mono">{it.unitPrice.toLocaleString()}</span>,
+                  render: (it) => <span className="font-mono">{formatLocaleNumber(it.unitPrice)}</span>,
                 },
                 {
                   key: 'total',
-                  header: 'الإجمالي',
+                  header: t('الإجمالي', 'Total'),
                   align: 'center',
-                  render: (it) => <strong className="font-mono text-rose-800">{it.total.toLocaleString()}</strong>,
+                  render: (it) => <strong className="font-mono text-rose-800">{formatLocaleNumber(it.total)}</strong>,
                 },
                 {
                   key: 'actions',
-                  header: 'حذف',
+                  header: t('حذف', 'Remove'),
                   align: 'center',
                   sortable: false,
                   render: (_it, idx) => (
@@ -5767,11 +5925,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               onChange={(e) => setSRetSettlement(e.target.value as 'account' | 'cash')}
               className="h-8 rounded-md border border-slate-300 px-2 font-bold bg-white"
             >
-              <option value="account">خصم من رصيد العميل</option>
+              <option value="account">{t('خصم من رصيد العميل', 'Deduct from Customer Balance')}</option>
               <option value="cash">
                 {isRepRoleAccount || !canCashOps
-                  ? 'طلب رد نقدي (باعتماد الخزينة/الإدارة)'
-                  : 'صرف نقدي من الخزينة'}
+                  ? t('طلب رد نقدي (باعتماد الخزينة/الإدارة)', 'Cash Refund Request (Treasury/Admin Approval)')
+                  : t('صرف نقدي من الخزينة', 'Cash Disbursement from Cashbox')}
               </option>
             </select>
             <select
@@ -5780,7 +5938,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               className="h-8 rounded-md border border-slate-300 px-2 font-bold bg-white"
             >
               {data.warehouses.map((w) => (
-                <option key={w.id} value={w.id}>{w.name}</option>
+                <option key={w.id} value={w.id}>{t(w.name)}</option>
               ))}
             </select>
           </div>
@@ -5792,12 +5950,15 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold bg-white"
             >
               {data.cashboxes.map((cb) => (
-                <option key={cb.id} value={cb.id}>{cb.name}</option>
+                <option key={cb.id} value={cb.id}>{t(cb.name)}</option>
               ))}
             </select>
           ) : (
             <div className="p-2 rounded-md bg-amber-50 border border-amber-200 text-amber-900 font-bold text-[11px]">
-              يُرسل هذا المرتجع النقدي كطلب مراجعة للخزينة والإدارة دون اختيار خزينة، ولا يتأثر رصيد أي خزينة حتى الاعتماد الرسمي.
+              {t(
+                'يُرسل هذا المرتجع النقدي كطلب مراجعة للخزينة والإدارة دون اختيار خزينة، ولا يتأثر رصيد أي خزينة حتى الاعتماد الرسمي.',
+                'This cash return is sent as a review request to Treasury & Admin without selecting a cashbox; no cashbox balance changes until formally approved.'
+              )}
             </div>
           ))}
 
@@ -5808,8 +5969,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             required={sRetSettlement === 'cash' && (isRepRoleAccount || !canCashOps)}
             placeholder={
               sRetSettlement === 'cash' && (isRepRoleAccount || !canCashOps)
-                ? 'سبب طلب مرتجع المبيعات النقدي (إلزامي)...'
-                : 'سبب المرتجع...'
+                ? t('سبب طلب مرتجع المبيعات النقدي (إلزامي)...', 'Reason for cash sales return request (required)...')
+                : t('سبب المرتجع...', 'Return reason...')
             }
             className="w-full h-8 rounded-md border border-slate-300 px-2"
           />
@@ -5820,10 +5981,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             className="w-full h-9 rounded-lg bg-rose-700 hover:bg-rose-800 text-white font-black disabled:opacity-50 cursor-pointer"
           >
             {isSubmittingSRet
-              ? 'جاري التسجيل...'
+              ? t('جاري التسجيل...', 'Submitting...')
               : sRetSettlement === 'cash' && (isRepRoleAccount || !canCashOps)
-              ? `إرسال طلب مرتجع بيع نقدي للمراجعة (${sRetTotal.toLocaleString()} ${data.settings.currency})`
-              : `اعتماد مرتجع البيع (${sRetTotal.toLocaleString()} ${data.settings.currency})`}
+              ? t(
+                  `إرسال طلب مرتجع بيع نقدي للمراجعة (${formatLocaleNumber(sRetTotal)} ${t(data.settings.currency)})`,
+                  `Submit Cash Sales Return Request (${formatLocaleNumber(sRetTotal)} ${t(data.settings.currency)})`
+                )
+              : t(
+                  `اعتماد مرتجع البيع (${formatLocaleNumber(sRetTotal)} ${t(data.settings.currency)})`,
+                  `Confirm Sales Return (${formatLocaleNumber(sRetTotal)} ${t(data.settings.currency)})`
+                )}
           </button>
         </form>
       )}
@@ -5833,20 +6000,23 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         <form onSubmit={handleSubmitPurchaseReturn} className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-2 text-xs">
           <div className="flex items-center justify-between gap-2">
             <h3 className="text-xs sm:text-sm font-black text-[#011E58]">
-              {isRepRoleAccount || !canPurchases ? 'طلب مرتجع مشتريات (يعتمد من الإدارة)' : 'تسجيل مرتجع مشتريات'}
+              {isRepRoleAccount || !canPurchases ? t('طلب مرتجع مشتريات (يعتمد من الإدارة)', 'Purchase Return Request (Admin Approval)') : t('تسجيل مرتجع مشتريات', 'Record Purchase Return')}
             </h3>
             <button
               type="button"
               onClick={() => onTabChange('purchase-returns-list')}
               className="text-[11px] font-bold text-[#003589] underline cursor-pointer"
             >
-              عرض الطلبات والمرتجعات
+              {t('عرض الطلبات والمرتجعات', 'View Requests & Returns')}
             </button>
           </div>
 
           {(isRepRoleAccount || !canPurchases) && (
             <div className="p-2 rounded-md bg-amber-50 border border-amber-200 text-amber-950 font-bold text-[11px]">
-              المندوب يرفع طلب مرتجع مرتبط بفاتورة شراء معتمدة خاصة به؛ ولا يتم تعديل المخزون أو رصيد المورد أو الخزينة إلا بعد مراجعة واعتماد الإدارة.
+              {t(
+                'المندوب يرفع طلب مرتجع مرتبط بفاتورة شراء معتمدة خاصة به؛ ولا يتم تعديل المخزون أو رصيد المورد أو الخزينة إلا بعد مراجعة واعتماد الإدارة.',
+                'The rep submits a return request linked to their own confirmed purchase invoice; inventory, supplier balance, and cashbox remain unchanged until Admin approval.'
+              )}
             </div>
           )}
 
@@ -5866,7 +6036,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               }}
               className="h-8 rounded-md border border-slate-300 px-2 font-bold bg-white"
             >
-              <option value="">-- اختر المورد --</option>
+              <option value="">{t('-- اختر المورد --', '-- Select Supplier --')}</option>
               {data.suppliers.map((s) => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
@@ -5887,13 +6057,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               className="h-8 rounded-md border border-slate-300 px-2 font-bold bg-white"
             >
               <option value="">
-                {isRepRoleAccount || !canPurchases ? '-- اختر فاتورة الشراء المعتمدة (إلزامي) --' : '-- ربط بفاتورة شراء (اختياري) --'}
+                {isRepRoleAccount || !canPurchases ? t('-- اختر فاتورة الشراء المعتمدة (إلزامي) --', '-- Select Confirmed Purchase Invoice (Required) --') : t('-- ربط بفاتورة شراء (اختياري) --', '-- Link to Purchase Invoice (Optional) --')}
               </option>
               {confirmedOwnPurchases
                 .filter((i) => !pRetSupplierId || i.supplierId === pRetSupplierId)
                 .map((i) => (
                   <option key={i.id} value={i.id}>
-                    {i.invoiceNumber} · {i.supplierName} ({i.grandTotal.toLocaleString()})
+                    {i.invoiceNumber} · {i.supplierName} ({formatLocaleNumber(i.grandTotal)})
                   </option>
                 ))}
             </select>
@@ -5903,7 +6073,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             {isRepRoleAccount || !canPurchases ? (
               !selectedPRetOrigInvoice ? (
                 <p className="text-[11px] font-bold text-[#011E58] py-1.5 text-center">
-                  اختر أولاً فاتورة شراء معتمدة خاصة بك لعرض الأصناف القابلة للإرجاع منها.
+                  {t('اختر أولاً فاتورة شراء معتمدة خاصة بك لعرض الأصناف القابلة للإرجاع منها.', 'Select one of your confirmed purchase invoices first to view returnable items.')}
                 </p>
               ) : (
                 <>
@@ -5920,14 +6090,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     }}
                     className="w-full h-8 rounded-md border border-[#DCE6F5] px-2 font-bold bg-white"
                   >
-                    <option value="">-- اختر الصنف من بنود الفاتورة --</option>
+                    <option value="">{t('-- اختر الصنف من بنود الفاتورة --', '-- Select Item from Invoice Lines --')}</option>
                     {pRetReturnableOptions.map((line) => (
                       <option
                         key={`${line.productId}::${line.unit}`}
                         value={`${line.productId}::${line.unit}`}
                         disabled={line.maxReturnableQty <= 0}
                       >
-                        {line.productName} ({line.unit}) — متاح للإرجاع: {line.maxReturnableQty} من {line.quantity}
+                        {line.productName} ({t(line.unit)}) — {t('متاح للإرجاع:', 'Returnable:')} {formatLocaleNumber(line.maxReturnableQty)} {t('من', 'of')} {formatLocaleNumber(line.quantity)}
                       </option>
                     ))}
                   </select>
@@ -5939,7 +6109,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         <div className="grid grid-cols-2 gap-1.5">
                           <div>
                             <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
-                              الكمية (الحد الأقصى: {selectedLine.maxReturnableQty})
+                              {t('الكمية (الحد الأقصى:', 'Quantity (Max:')} {formatLocaleNumber(selectedLine.maxReturnableQty)})
                             </label>
                             <QuantityInput
                               allowDecimals
@@ -5947,19 +6117,19 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                               max={selectedLine.maxReturnableQty}
                               value={pRetQty}
                               onChange={setPRetQty}
-                              ariaLabel="كمية طلب مرتجع الشراء"
+                              ariaLabel={t('كمية طلب مرتجع الشراء', 'Purchase return request quantity')}
                               inputClassName="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
                             />
                           </div>
                           <div>
-                            <label className="block text-[10px] font-bold text-slate-600 mb-0.5">سعر الوحدة</label>
+                            <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('سعر الوحدة', 'Unit Price')}</label>
                             <input
                               type="number"
                               min={0}
                               step="0.5"
                               value={pRetPrice}
                               onChange={(e) => setPRetPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
-                              placeholder="السعر"
+                              placeholder={t('السعر', 'Price')}
                               className="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
                             />
                           </div>
@@ -5973,7 +6143,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                             if (rq > selectedLine.maxReturnableQty + 0.0001) {
                               setFeedback({
                                 type: 'error',
-                                text: `الكمية المطلوبة (${rq}) تتجاوز المتاح للإرجاع (${selectedLine.maxReturnableQty}).`,
+                                text: t(
+                                  `الكمية المطلوبة (${rq}) تتجاوز المتاح للإرجاع (${selectedLine.maxReturnableQty}).`,
+                                  `Requested quantity (${rq}) exceeds returnable limit (${selectedLine.maxReturnableQty}).`
+                                ),
                               });
                               return;
                             }
@@ -5995,7 +6168,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           }}
                           className="w-full h-8 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-black cursor-pointer"
                         >
-                          إضافة لطلب مرتجع الشراء
+                          {t('إضافة لطلب مرتجع الشراء', 'Add to Purchase Return Request')}
                         </button>
                       </>
                     );
@@ -6013,9 +6186,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   }}
                   className="w-full h-8 rounded-md border border-[#DCE6F5] px-2 font-bold bg-white"
                 >
-                  <option value="">-- اختر الصنف المرتجع للمورد --</option>
+                  <option value="">{t('-- اختر الصنف المرتجع للمورد --', '-- Select Supplier Return Item --')}</option>
                   {activeProducts.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name} ({p.baseUnit})</option>
+                    <option key={p.id} value={p.id}>{p.name} ({t(p.baseUnit)})</option>
                   ))}
                 </select>
                 {pRetProductId && (
@@ -6025,7 +6198,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       min={0.001}
                       value={pRetQty}
                       onChange={setPRetQty}
-                      ariaLabel="كمية مرتجع الشراء"
+                      ariaLabel={t('كمية مرتجع الشراء', 'Purchase return quantity')}
                       inputClassName="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
                     />
                     <input
@@ -6034,7 +6207,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       step="0.5"
                       value={pRetPrice}
                       onChange={(e) => setPRetPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
-                      placeholder="السعر"
+                      placeholder={t('السعر', 'Price')}
                       className="h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
                     />
                   </div>
@@ -6065,7 +6238,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     }}
                     className="w-full h-8 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-black cursor-pointer"
                   >
-                    إضافة لمرتجع الشراء
+                    {t('إضافة لمرتجع الشراء', 'Add to Purchase Return')}
                   </button>
                 )}
               </>
@@ -6077,32 +6250,32 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               compact
               paginated={false}
               searchable={false}
-              title={`أصناف مرتجع المشتريات (${pRetItems.length})`}
+              title={`${t('أصناف مرتجع المشتريات', 'Purchase Return Items')} (${formatLocaleNumber(pRetItems.length)})`}
               data={pRetItems}
               rowKey={(it, idx) => `${it.productId}-${idx}`}
               columns={[
-                { key: 'productName', header: 'الصنف', render: (it) => <span className="font-bold">{it.productName}</span> },
+                { key: 'productName', header: t('الصنف', 'Item'), render: (it) => <span className="font-bold">{it.productName}</span> },
                 {
                   key: 'quantity',
-                  header: 'الكمية',
+                  header: t('الكمية', 'Qty'),
                   align: 'center',
-                  render: (it) => <span className="font-mono">{it.quantity} {it.unit}</span>,
+                  render: (it) => <span className="font-mono">{formatLocaleNumber(it.quantity)} {t(it.unit)}</span>,
                 },
                 {
                   key: 'unitPrice',
-                  header: 'السعر',
+                  header: t('السعر', 'Price'),
                   align: 'center',
-                  render: (it) => <span className="font-mono">{it.unitPrice.toLocaleString()}</span>,
+                  render: (it) => <span className="font-mono">{formatLocaleNumber(it.unitPrice)}</span>,
                 },
                 {
                   key: 'total',
-                  header: 'الإجمالي',
+                  header: t('الإجمالي', 'Total'),
                   align: 'center',
-                  render: (it) => <strong className="font-mono text-[#011E58]">{it.total.toLocaleString()}</strong>,
+                  render: (it) => <strong className="font-mono text-[#011E58]">{formatLocaleNumber(it.total)}</strong>,
                 },
                 {
                   key: 'actions',
-                  header: 'حذف',
+                  header: t('حذف', 'Remove'),
                   align: 'center',
                   sortable: false,
                   render: (_it, idx) => (
@@ -6125,8 +6298,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               onChange={(e) => setPRetSettlement(e.target.value as 'account' | 'cash')}
               className="h-8 rounded-md border border-slate-300 px-2 font-bold bg-white"
             >
-              <option value="account">خصم من رصيد المورد</option>
-              <option value="cash">استرداد نقدي</option>
+              <option value="account">{t('خصم من رصيد المورد', 'Deduct from Supplier Balance')}</option>
+              <option value="cash">{t('استرداد نقدي', 'Cash Refund')}</option>
             </select>
             {!(isRepRoleAccount || !canPurchases) ? (
               <select
@@ -6135,7 +6308,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 className="h-8 rounded-md border border-slate-300 px-2 font-bold bg-white"
               >
                 {data.warehouses.map((w) => (
-                  <option key={w.id} value={w.id}>{w.name}</option>
+                  <option key={w.id} value={w.id}>{t(w.name)}</option>
                 ))}
               </select>
             ) : !isRepRoleAccount && canCashOps && pRetSettlement === 'cash' ? (
@@ -6145,14 +6318,20 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 className="h-8 rounded-md border border-slate-300 px-2 font-bold bg-white"
               >
                 {data.cashboxes.map((cb) => (
-                  <option key={cb.id} value={cb.id}>{cb.name}</option>
+                  <option key={cb.id} value={cb.id}>{t(cb.name)}</option>
                 ))}
               </select>
             ) : (
               <div className="h-8 rounded-md border border-slate-200 px-2 flex items-center text-[11px] font-bold text-slate-600 bg-slate-50">
                 {pRetSettlement === 'cash'
-                  ? `تُحدد الخزينة من الإدارة عند الاعتماد · المخزن: ${selectedPRetOrigInvoice?.warehouseName || 'حسب الفاتورة'}`
-                  : `المخزن: ${selectedPRetOrigInvoice?.warehouseName || 'حسب الفاتورة الأصلية'}`}
+                  ? t(
+                      `تُحدد الخزينة من الإدارة عند الاعتماد · المخزن: ${selectedPRetOrigInvoice?.warehouseName || 'حسب الفاتورة'}`,
+                      `Cashbox is assigned by Admin on approval · Warehouse: ${t(selectedPRetOrigInvoice?.warehouseName || 'Per Invoice')}`
+                    )
+                  : t(
+                      `المخزن: ${selectedPRetOrigInvoice?.warehouseName || 'حسب الفاتورة الأصلية'}`,
+                      `Warehouse: ${t(selectedPRetOrigInvoice?.warehouseName || 'Per Original Invoice')}`
+                    )}
               </div>
             )}
           </div>
@@ -6164,8 +6343,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             required={isRepRoleAccount || !canPurchases}
             placeholder={
               isRepRoleAccount || !canPurchases
-                ? 'سبب طلب مرتجع الشراء (إلزامي)...'
-                : 'سبب مرتجع الشراء...'
+                ? t('سبب طلب مرتجع الشراء (إلزامي)...', 'Purchase return request reason (required)...')
+                : t('سبب مرتجع الشراء...', 'Purchase return reason...')
             }
             className="w-full h-8 rounded-md border border-slate-300 px-2"
           />
@@ -6180,10 +6359,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             className="w-full h-9 rounded-lg bg-[#011E58] hover:bg-[#003589] text-white font-black disabled:opacity-50 cursor-pointer"
           >
             {isSubmittingPRet
-              ? 'جاري الإرسال...'
+              ? t('جاري الإرسال...', 'Submitting...')
               : isRepRoleAccount || !canPurchases
-              ? `إرسال طلب مرتجع الشراء للإدارة (${pRetTotal.toLocaleString()} ${data.settings.currency})`
-              : `اعتماد مرتجع الشراء (${pRetTotal.toLocaleString()} ${data.settings.currency})`}
+              ? t(
+                  `إرسال طلب مرتجع الشراء للإدارة (${formatLocaleNumber(pRetTotal)} ${t(data.settings.currency)})`,
+                  `Send Purchase Return Request to Admin (${formatLocaleNumber(pRetTotal)} ${t(data.settings.currency)})`
+                )
+              : t(
+                  `اعتماد مرتجع الشراء (${formatLocaleNumber(pRetTotal)} ${t(data.settings.currency)})`,
+                  `Confirm Purchase Return (${formatLocaleNumber(pRetTotal)} ${t(data.settings.currency)})`
+                )}
           </button>
         </form>
       )}
@@ -6206,7 +6391,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           : currentDueTotal;
         const payNow = Math.max(0, Number(depAmount || 0));
         const remainingAfterPay = Math.max(0, currentDueTotal - payNow);
-        const currency = data.settings.currency || 'ج.م';
+        const currency = t(data.settings.currency || 'ج.م');
 
         return (
           <form onSubmit={handleSubmitCashDeposit} className="bg-white rounded-lg border border-slate-200 overflow-hidden text-xs">
@@ -6214,7 +6399,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             <div className="awlad-brand-gradient text-white px-2.5 py-1.5 flex items-center justify-between gap-2">
               <div className="min-w-0 flex items-center gap-2">
                 <h3 className="text-xs sm:text-sm font-black shrink-0">
-                  {depMode === 'cashbox_deposit' && !isRepRoleAccount ? 'إيداع مباشر بالخزينة' : 'تحصيل من العميل'}
+                  {depMode === 'cashbox_deposit' && !isRepRoleAccount ? t('إيداع مباشر بالخزينة', 'Direct Cashbox Deposit') : t('تحصيل من العميل', 'Customer Collection')}
                 </h3>
                 {depCustomer && depMode === 'customer_collection' && (
                   <span className="text-[11px] text-[#DCE6F5] truncate">
@@ -6227,7 +6412,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 onClick={() => onTabChange('customers')}
                 className="h-7 px-2 rounded-md bg-white/15 hover:bg-white/25 text-white text-[11px] font-bold cursor-pointer shrink-0"
               >
-                إلغاء
+                {t('إلغاء', 'Cancel')}
               </button>
             </div>
 
@@ -6243,7 +6428,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         : 'bg-slate-50 text-slate-700 border-slate-300'
                     }`}
                   >
-                    تحصيل من عميل
+                    {t('تحصيل من عميل', 'Collect from Customer')}
                   </button>
                   <button
                     type="button"
@@ -6255,7 +6440,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         : 'bg-slate-50 text-slate-700 border-slate-300'
                     }`}
                   >
-                    {canCashOps ? 'إيداع مباشر بالخزينة' : 'إيداع بالخزينة (مقيد)'}
+                    {canCashOps ? t('إيداع مباشر بالخزينة', 'Direct Cashbox Deposit') : t('إيداع بالخزينة (مقيد)', 'Cashbox Deposit (Restricted)')}
                   </button>
                 </div>
               )}
@@ -6263,7 +6448,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               {(depMode === 'customer_collection' || isRepRoleAccount) && (
                 <>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">العميل</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('العميل', 'Customer')}</label>
                     <select
                       value={depCustomerId}
                       onChange={(e) => {
@@ -6272,10 +6457,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       }}
                       className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold bg-white"
                     >
-                      <option value="">-- اختر العميل --</option>
+                      <option value="">{t('-- اختر العميل --', '-- Select Customer --')}</option>
                       {data.customers.map((c) => (
                         <option key={c.id} value={c.id}>
-                          {c.shopName || c.name} — رصيد: {Number(c.currentBalance || 0).toLocaleString()} {currency}
+                          {c.shopName || c.name} — {t('رصيد:', 'Balance:')} {formatLocaleNumber(Number(c.currentBalance || 0))} {currency}
                         </option>
                       ))}
                     </select>
@@ -6285,21 +6470,21 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   {depCustomer && (
                     <div className="grid grid-cols-3 gap-px bg-slate-200 border border-slate-200 rounded-md overflow-hidden tabular-nums">
                       <div className="bg-slate-50 px-2 py-1.5 text-center">
-                        <span className="block text-[10px] font-bold text-slate-500">عليه حالياً</span>
+                        <span className="block text-[10px] font-bold text-slate-500">{t('عليه حالياً', 'Current Due')}</span>
                         <strong className="font-mono text-xs font-black text-slate-900">
-                          {currentDueTotal.toLocaleString()} {currency}
+                          {formatLocaleNumber(currentDueTotal)} {currency}
                         </strong>
                       </div>
                       <div className="bg-white px-2 py-1.5 text-center">
-                        <span className="block text-[10px] font-bold text-slate-500">هيدفع دلوقتي</span>
+                        <span className="block text-[10px] font-bold text-slate-500">{t('هيدفع دلوقتي', 'Paying Now')}</span>
                         <strong className="font-mono text-xs font-black text-emerald-700">
-                          {payNow.toLocaleString()} {currency}
+                          {formatLocaleNumber(payNow)} {currency}
                         </strong>
                       </div>
                       <div className="bg-slate-50 px-2 py-1.5 text-center">
-                        <span className="block text-[10px] font-bold text-slate-500">هيتبقى عليه</span>
+                        <span className="block text-[10px] font-bold text-slate-500">{t('هيتبقى عليه', 'Remaining')}</span>
                         <strong className={`font-mono text-xs font-black ${remainingAfterPay > 0 ? 'text-red-700' : 'text-emerald-700'}`}>
-                          {remainingAfterPay.toLocaleString()} {currency}
+                          {formatLocaleNumber(remainingAfterPay)} {currency}
                         </strong>
                       </div>
                     </div>
@@ -6307,16 +6492,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
                   {depCustomer && openCustomerInvoices.length > 0 && (
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-0.5">سداد فاتورة محددة (اختياري)</label>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('سداد فاتورة محددة (اختياري)', 'Pay Specific Invoice (Optional)')}</label>
                       <select
                         value={depInvoiceId}
                         onChange={(e) => setDepInvoiceId(e.target.value)}
                         className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold bg-white"
                       >
-                        <option value="">توزيع تلقائي (الأقدم أولاً FIFO)</option>
+                        <option value="">{t('توزيع تلقائي (الأقدم أولاً FIFO)', 'Auto-Allocate (Oldest First FIFO)')}</option>
                         {openCustomerInvoices.map((inv) => (
                           <option key={inv.id} value={inv.id}>
-                            {inv.invoiceNumber} · {inv.date} — متبقي: {Number(inv.remainingAmount || 0).toLocaleString()} {currency}
+                            {inv.invoiceNumber} · {formatLocaleDate(inv.date)} — {t('متبقي:', 'Due:')} {formatLocaleNumber(Number(inv.remainingAmount || 0))} {currency}
                           </option>
                         ))}
                       </select>
@@ -6325,17 +6510,17 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 </>
               )}
 
-              {/* Amount Input + Quick Fill "ادفع المبلغ كله" */}
+              {/* Amount Input + Quick Fill */}
               <div className="space-y-1">
                 <div className="flex items-center justify-between gap-2">
-                  <label className="text-[11px] font-bold text-slate-700">المبلغ المدفوع ({currency})</label>
+                  <label className="text-[11px] font-bold text-slate-700">{t('المبلغ المدفوع', 'Amount Paid')} ({currency})</label>
                   {(depMode === 'customer_collection' || isRepRoleAccount) && targetDueForQuickFill > 0 && (
                     <button
                       type="button"
                       onClick={() => setDepAmount(targetDueForQuickFill)}
                       className="h-7 px-2 rounded-md bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] border border-[#DCE6F5] text-[11px] font-black cursor-pointer"
                     >
-                      ادفع المبلغ كله ({targetDueForQuickFill.toLocaleString()})
+                      {t('ادفع المبلغ كله', 'Pay Full Amount')} ({formatLocaleNumber(targetDueForQuickFill)})
                     </button>
                   )}
                 </div>
@@ -6352,43 +6537,44 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       setDepAmount(Math.max(0, Number(raw)));
                     }
                   }}
-                  placeholder={`أدخل المبلغ (${currency})`}
+                  placeholder={t(`أدخل المبلغ (${currency})`, `Enter amount (${currency})`)}
                   className="w-full h-9 rounded-md border border-slate-300 px-2.5 font-mono text-sm font-black text-center text-[#011E58] bg-white tabular-nums"
                 />
               </div>
 
               <div className={`grid gap-1.5 ${!isRepRoleAccount ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-2'}`}>
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">التاريخ</label>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('التاريخ', 'Date')}</label>
                   <input
                     type="date"
+                    dir="ltr"
                     value={depDate}
                     onChange={(e) => setDepDate(e.target.value)}
                     className="w-full h-8 rounded-md border border-slate-300 px-2 font-mono font-bold bg-white"
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">طريقة السداد</label>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('طريقة السداد', 'Payment Method')}</label>
                   <select
                     value={depMethod}
                     onChange={(e) => setDepMethod(e.target.value as any)}
                     className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold bg-white"
                   >
-                    <option value="cash">نقدي</option>
-                    <option value="bank">تحويل بنكي</option>
-                    <option value="cheque">شيك</option>
+                    <option value="cash">{t('نقدي', 'Cash')}</option>
+                    <option value="bank">{t('تحويل بنكي', 'Bank Transfer')}</option>
+                    <option value="cheque">{t('شيك', 'Cheque')}</option>
                   </select>
                 </div>
                 {!isRepRoleAccount && (
                   <div className="col-span-2 sm:col-span-1">
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">الخزينة</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الخزينة', 'Cashbox')}</label>
                     <select
                       value={depCashboxId}
                       onChange={(e) => setDepCashboxId(e.target.value)}
                       className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold bg-white"
                     >
                       {data.cashboxes.map((cb) => (
-                        <option key={cb.id} value={cb.id}>{cb.name}</option>
+                        <option key={cb.id} value={cb.id}>{t(cb.name)}</option>
                       ))}
                     </select>
                   </div>
@@ -6396,12 +6582,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">ملاحظات (اختياري)</label>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('ملاحظات (اختياري)', 'Notes (Optional)')}</label>
                 <input
                   type="text"
                   value={depNotes}
                   onChange={(e) => setDepNotes(e.target.value)}
-                  placeholder="ملاحظات (اختياري) - تظهر في إيصال الدفع"
+                  placeholder={t('ملاحظات (اختياري) - تظهر في إيصال الدفع', 'Notes (optional) - shown on payment receipt')}
                   className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white"
                 />
               </div>
@@ -6412,14 +6598,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   onClick={() => onTabChange('customers')}
                   className="h-9 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-black cursor-pointer"
                 >
-                  إلغاء
+                  {t('إلغاء', 'Cancel')}
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmittingDeposit || Number(depAmount || 0) <= 0}
                   className="col-span-2 h-9 rounded-lg bg-[#003589] hover:bg-[#0049B0] text-white font-black cursor-pointer disabled:opacity-50"
                 >
-                  {isSubmittingDeposit ? 'جاري التسجيل...' : 'دفع وتأكيد التحصيل'}
+                  {isSubmittingDeposit ? t('جاري التسجيل...', 'Submitting...') : t('دفع وتأكيد التحصيل', 'Confirm & Collect Payment')}
                 </button>
               </div>
             </div>
@@ -6432,18 +6618,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         isRepRoleAccount || !canCashOps ? (
           <div className="bg-white rounded-lg border border-red-200 p-2.5 text-center space-y-1.5 text-xs">
             <ShieldAlert className="w-6 h-6 text-red-600 mx-auto" />
-            <p className="font-black text-red-800">غير مصرح لحساب المندوب بتنفيذ سحب أو مصروف مباشر من الخزائن.</p>
+            <p className="font-black text-red-800">{t('غير مصرح لحساب المندوب بتنفيذ سحب أو مصروف مباشر من الخزائن.', 'Rep account is not authorized to perform direct cashbox withdrawals or expenses.')}</p>
             <button
               type="button"
               onClick={() => onTabChange('home')}
               className="h-8 px-3 rounded-md bg-slate-100 font-bold text-slate-800 cursor-pointer"
             >
-              العودة للرئيسية
+              {t('العودة للرئيسية', 'Back to Home')}
             </button>
           </div>
         ) : (
           <form onSubmit={handleSubmitCashWithdrawal} className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-1.5 text-xs">
-            <h3 className="text-xs sm:text-sm font-black text-amber-900">سحب نقدي / تسجيل مصروف</h3>
+            <h3 className="text-xs sm:text-sm font-black text-amber-900">{t('سحب نقدي / تسجيل مصروف', 'Cash Withdrawal / Expense')}</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
               <select
                 value={wdCashboxId}
@@ -6452,9 +6638,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               >
                 {data.cashboxes.map((cb) => (
                   <option key={cb.id} value={cb.id}>
-                    {cb.name}
+                    {t(cb.name)}
                     {typeof cb.currentBalance === 'number' && !cb.balanceHidden
-                      ? ` (رصيد: ${cb.currentBalance.toLocaleString()})`
+                      ? ` (${t('رصيد:', 'Balance:')} ${formatLocaleNumber(cb.currentBalance)})`
                       : ''}
                   </option>
                 ))}
@@ -6463,14 +6649,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 type="text"
                 value={wdCategory}
                 onChange={(e) => setWdCategory(e.target.value)}
-                placeholder="البند / التصنيف (مثال: بنزين / مصروف تشغيل)"
+                placeholder={t('البند / التصنيف (مثال: بنزين / مصروف تشغيل)', 'Category (e.g., Fuel / Operating Expense)')}
                 className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold"
               />
               <input
                 type="text"
                 value={wdBeneficiary}
                 onChange={(e) => setWdBeneficiary(e.target.value)}
-                placeholder="المستفيد (اختياري)"
+                placeholder={t('المستفيد (اختياري)', 'Beneficiary (optional)')}
                 className="w-full h-8 rounded-md border border-slate-300 px-2"
               />
               <input
@@ -6479,7 +6665,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 step="0.01"
                 value={wdAmount || ''}
                 onChange={(e) => setWdAmount(Math.max(0, Number(e.target.value)))}
-                placeholder={`مبلغ السحب (${data.settings.currency})`}
+                placeholder={t(`مبلغ السحب (${t(data.settings.currency)})`, `Withdrawal amount (${t(data.settings.currency)})`)}
                 className="w-full h-8 rounded-md border border-slate-300 px-2 font-mono font-black text-center text-red-700"
               />
             </div>
@@ -6487,7 +6673,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               type="text"
               value={wdNotes}
               onChange={(e) => setWdNotes(e.target.value)}
-              placeholder="بيان السحب / المصروف..."
+              placeholder={t('بيان السحب / المصروف...', 'Withdrawal / expense description...')}
               className="w-full h-8 rounded-md border border-slate-300 px-2"
             />
             <button
@@ -6495,7 +6681,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               disabled={isSubmittingWithdrawal}
               className="w-full h-9 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-black cursor-pointer disabled:opacity-50"
             >
-              {isSubmittingWithdrawal ? 'جاري التسجيل...' : 'تأكيد السحب النقدي'}
+              {isSubmittingWithdrawal ? t('جاري التسجيل...', 'Submitting...') : t('تأكيد السحب النقدي', 'Confirm Cash Withdrawal')}
             </button>
           </form>
         )
@@ -6512,28 +6698,28 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         );
         return (
           <form onSubmit={handleSaveNewCustomer} className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-2 text-xs">
-            <h3 className="text-xs sm:text-sm font-black text-slate-900">إضافة عميل / محل جديد</h3>
+            <h3 className="text-xs sm:text-sm font-black text-slate-900">{t('إضافة عميل / محل جديد', 'Add New Customer / Shop')}</h3>
 
             {/* 1. Shop Name & 2. Customer Name */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">اسم المحل</label>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('اسم المحل', 'Shop Name')}</label>
                 <input
                   type="text"
                   value={newCustShop}
                   onChange={(e) => setNewCustShop(e.target.value)}
-                  placeholder="مثال: سوبرماركت النور"
+                  placeholder={t('مثال: سوبرماركت النور', 'e.g., Al-Nour Supermarket')}
                   className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold"
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">اسم العميل / صاحب المحل *</label>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('اسم العميل / صاحب المحل *', 'Customer / Owner Name *')}</label>
                 <input
                   type="text"
                   required
                   value={newCustName}
                   onChange={(e) => setNewCustName(e.target.value)}
-                  placeholder="الاسم الكامل للعميل أو صاحب المحل"
+                  placeholder={t('الاسم الكامل للعميل أو صاحب المحل', 'Full name of customer or owner')}
                   className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold"
                 />
               </div>
@@ -6547,20 +6733,20 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     type="button"
                     onClick={() => setPreviewShopPhoto(newCustShopPhoto)}
                     className="w-full h-full cursor-pointer"
-                    title="عرض الصورة"
+                    title={t('عرض الصورة', 'View photo')}
                   >
-                    <img src={newCustShopPhoto} alt="صورة المحل" className="w-full h-full object-cover" />
+                    <img src={newCustShopPhoto} alt={t('صورة المحل', 'Shop photo')} className="w-full h-full object-cover" />
                   </button>
                 ) : (
                   <Store className="w-4 h-4 text-slate-300" />
                 )}
               </div>
               <div className="flex-1 min-w-0 space-y-1">
-                <span className="block text-[11px] font-black text-slate-800">صورة المحل / الواجهة</span>
+                <span className="block text-[11px] font-black text-slate-800">{t('صورة المحل / الواجهة', 'Shop / Storefront Photo')}</span>
                 <div className="flex flex-wrap gap-1.5">
                   <label className="h-7 px-2 rounded-md bg-blue-900 text-white text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer">
                     <Camera className="w-3.5 h-3.5" />
-                    <span>{newCustShopPhoto ? 'تغيير بالكاميرا' : 'التقاط بالكاميرا'}</span>
+                    <span>{newCustShopPhoto ? t('تغيير بالكاميرا', 'Retake Photo') : t('التقاط بالكاميرا', 'Take Photo')}</span>
                     <input
                       ref={custCameraInputRef}
                       type="file"
@@ -6572,7 +6758,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   </label>
                   <label className="h-7 px-2 rounded-md bg-white text-slate-800 border border-slate-300 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer">
                     <Upload className="w-3.5 h-3.5" />
-                    <span>من المعرض</span>
+                    <span>{t('من المعرض', 'From Gallery')}</span>
                     <input
                       ref={custGalleryInputRef}
                       type="file"
@@ -6591,17 +6777,17 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       }}
                       className="h-7 px-2 rounded-md bg-red-50 text-red-700 border border-red-200 text-[11px] font-bold cursor-pointer"
                     >
-                      حذف
+                      {t('حذف', 'Delete')}
                     </button>
                   )}
                 </div>
-                {isUploadingCustPhoto && <p className="text-[10px] font-bold text-blue-900">جاري ضغط وتجهيز الصورة...</p>}
+                {isUploadingCustPhoto && <p className="text-[10px] font-bold text-blue-900">{t('جاري ضغط وتجهيز الصورة...', 'Compressing and preparing photo...')}</p>}
               </div>
             </div>
 
             {/* 4. Address + adjacent GPS Icon Button + Maps Preview */}
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">عنوان المحل الرئيسي</label>
+              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('عنوان المحل الرئيسي', 'Main Shop Address')}</label>
               <div className="flex items-center gap-1.5">
                 <input
                   type="text"
@@ -6610,27 +6796,27 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     setNewCustAddress(e.target.value);
                     if (custMapNotice) setCustMapNotice(null);
                   }}
-                  placeholder="الشارع، المنطقة، علامة مميزة..."
+                  placeholder={t('الشارع، المنطقة، علامة مميزة...', 'Street, area, landmark...')}
                   className="flex-1 h-8 rounded-md border border-slate-300 px-2 font-bold"
                 />
                 <button
                   type="button"
                   onClick={() => setLocationPickerTarget('new')}
                   className="h-8 px-2 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer"
-                  title="تحديد موقع العميل على خريطة جوجل"
+                  title={t('تحديد موقع العميل على خريطة جوجل', 'Pick customer location on Google Maps')}
                 >
                   <MapPin className="w-3.5 h-3.5" />
-                  <span>خريطة</span>
+                  <span>{t('خريطة', 'Map')}</span>
                 </button>
                 <button
                   type="button"
                   disabled={isLocatingCust}
                   onClick={handleCaptureCustLocation}
                   className="h-8 px-2 rounded-md bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] border border-[#DCE6F5] text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer disabled:opacity-50"
-                  title="تحديد الموقع الحالي GPS وجلب العنوان تلقائياً"
+                  title={t('تحديد الموقع الحالي GPS وجلب العنوان تلقائياً', 'Capture current GPS location and fetch address')}
                 >
                   <MapPin className="w-3.5 h-3.5 text-[#003589]" />
-                  <span>{isLocatingCust ? 'تحديد...' : 'GPS'}</span>
+                  <span>{isLocatingCust ? t('تحديد...', 'Locating...') : 'GPS'}</span>
                 </button>
               </div>
               {newCustGeo && (
@@ -6644,22 +6830,22 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             {/* 5. Governorate & Area */}
             <div className="grid grid-cols-2 gap-1.5">
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">المحافظة</label>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('المحافظة', 'Governorate')}</label>
                 <input
                   type="text"
                   value={newCustGovernorate}
                   onChange={(e) => setNewCustGovernorate(e.target.value)}
-                  placeholder="مثال: القاهرة / الجيزة"
+                  placeholder={t('مثال: القاهرة / الجيزة', 'e.g., Cairo / Giza')}
                   className="w-full h-8 rounded-md border border-slate-300 px-2 font-semibold"
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">المنطقة / خط السير</label>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('المنطقة / خط السير', 'Area / Route')}</label>
                 <input
                   type="text"
                   value={newCustArea}
                   onChange={(e) => setNewCustArea(e.target.value)}
-                  placeholder="المنطقة / الحي / خط السير"
+                  placeholder={t('المنطقة / الحي / خط السير', 'Area / District / Route')}
                   className="w-full h-8 rounded-md border border-slate-300 px-2 font-semibold"
                 />
               </div>
@@ -6668,10 +6854,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             {/* 6. Primary Phone + 7. Unlimited Additional Phones */}
             <div className="p-2 rounded-md bg-slate-50 border border-slate-200 space-y-1.5">
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">رقم التليفون الرئيسي *</label>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('رقم التليفون الرئيسي *', 'Primary Phone Number *')}</label>
                 <div className="flex items-center gap-1.5">
                   <input
                     type="tel"
+                    dir="ltr"
                     required
                     value={newCustPhone}
                     onChange={(e) => {
@@ -6679,30 +6866,30 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       if (custPhoneNotice) setCustPhoneNotice(null);
                     }}
                     placeholder="01012345678"
-                    className="flex-1 h-8 rounded-md border border-slate-300 px-2 font-mono font-bold bg-white"
+                    className="flex-1 h-8 rounded-md border border-slate-300 px-2 font-mono font-bold bg-white text-start"
                   />
                   {helper.isPhoneValid ? (
                     <a
                       href={`tel:${helper.cleanedPhone}`}
                       onClick={() =>
-                        setCustPhoneNotice({ type: 'info', text: `جاري الاتصال بالرقم (${helper.cleanedPhone}).` })
+                        setCustPhoneNotice({ type: 'info', text: t(`جاري الاتصال بالرقم (${helper.cleanedPhone}).`, `Calling (${helper.cleanedPhone}).`) })
                       }
                       className="h-8 px-2 rounded-md bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] border border-[#DCE6F5] text-[11px] font-bold inline-flex items-center gap-1 shrink-0"
-                      title="اتصال هاتفي مباشر"
+                      title={t('اتصال هاتفي مباشر', 'Direct phone call')}
                     >
                       <Phone className="w-3.5 h-3.5 text-[#003589]" />
-                      <span>اتصال</span>
+                      <span>{t('اتصال', 'Call')}</span>
                     </a>
                   ) : (
                     <button
                       type="button"
                       onClick={() =>
-                        setCustPhoneNotice({ type: 'error', text: 'يرجى إدخال رقم هاتف صحيح (7 أرقام على الأقل) أولاً.' })
+                        setCustPhoneNotice({ type: 'error', text: t('يرجى إدخال رقم هاتف صحيح (7 أرقام على الأقل) أولاً.', 'Please enter a valid phone number (at least 7 digits) first.') })
                       }
                       className="h-8 px-2 rounded-md bg-slate-100 text-slate-600 border border-slate-300 text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer"
                     >
                       <Phone className="w-3.5 h-3.5" />
-                      <span>اتصال</span>
+                      <span>{t('اتصال', 'Call')}</span>
                     </button>
                   )}
                 </div>
@@ -6715,7 +6902,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
               {newCustExtraPhones.length > 0 && (
                 <div className="space-y-1">
-                  <label className="block font-bold text-slate-600 text-[10px]">أرقام تليفون إضافية:</label>
+                  <label className="block font-bold text-slate-600 text-[10px]">{t('أرقام تليفون إضافية:', 'Additional Phone Numbers:')}</label>
                   {newCustExtraPhones.map((extra, idx) => {
                     const cleanEx = extra.phone.replace(/[^\d+]/g, '');
                     const validEx = cleanEx.replace(/\D/g, '').length >= 7;
@@ -6723,13 +6910,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       <div key={extra.id || idx} className="flex flex-wrap sm:flex-nowrap items-center gap-1">
                         <input
                           type="tel"
+                          dir="ltr"
                           value={extra.phone}
                           onChange={(e) => {
                             const v = e.target.value;
                             setNewCustExtraPhones((prev) => prev.map((row, i) => (i === idx ? { ...row, phone: v } : row)));
                           }}
-                          placeholder="رقم إضافي..."
-                          className="flex-1 min-w-[110px] h-8 rounded-md border border-slate-300 px-2 font-mono font-bold bg-white"
+                          placeholder={t('رقم إضافي...', 'Additional number...')}
+                          className="flex-1 min-w-[110px] h-8 rounded-md border border-slate-300 px-2 font-mono font-bold bg-white text-start"
                         />
                         <select
                           value={extra.label}
@@ -6739,16 +6927,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           }}
                           className="h-8 rounded-md border border-slate-300 px-1.5 font-bold bg-white"
                         >
-                          <option value="موبايل">موبايل</option>
-                          <option value="محل">تليفون المحل</option>
-                          <option value="واتساب">واتساب</option>
-                          <option value="إضافي">إضافي</option>
+                          <option value="موبايل">{t('موبايل', 'Mobile')}</option>
+                          <option value="محل">{t('تليفون المحل', 'Shop Phone')}</option>
+                          <option value="واتساب">{t('واتساب', 'WhatsApp')}</option>
+                          <option value="إضافي">{t('إضافي', 'Other')}</option>
                         </select>
                         {validEx && (
                           <a
                             href={`tel:${cleanEx}`}
                             className="h-8 px-2 rounded-md bg-[#EEF3FA] text-[#003589] border border-[#DCE6F5] inline-flex items-center"
-                            title="اتصال"
+                            title={t('اتصال', 'Call')}
                           >
                             <Phone className="w-3.5 h-3.5" />
                           </a>
@@ -6768,7 +6956,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           }}
                           className="h-8 px-2 rounded-md bg-blue-50 text-blue-900 border border-blue-200 text-[10px] font-bold cursor-pointer shrink-0"
                         >
-                          رئيسي
+                          {t('رئيسي', 'Primary')}
                         </button>
                         <button
                           type="button"
@@ -6794,7 +6982,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 className="h-7 px-2 rounded-md bg-white hover:bg-blue-50 text-blue-900 border border-blue-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>إضافة رقم تليفون آخر</span>
+                <span>{t('إضافة رقم تليفون آخر', 'Add Another Phone')}</span>
               </button>
             </div>
 
@@ -6804,14 +6992,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 type="text"
                 value={newCustNotes}
                 onChange={(e) => setNewCustNotes(e.target.value)}
-                placeholder="ملاحظات عن المحل أو المواعيد (اختياري)"
+                placeholder={t('ملاحظات عن المحل أو المواعيد (اختياري)', 'Notes about shop or schedule (optional)')}
                 className="h-8 rounded-md border border-slate-300 px-2"
               />
               <input
                 type="number"
                 value={newCustOpening || ''}
                 onChange={(e) => setNewCustOpening(Number(e.target.value))}
-                placeholder={`رصيد افتتاحي (${data.settings.currency}) - اختياري`}
+                placeholder={t(`رصيد افتتاحي (${t(data.settings.currency)}) - اختياري`, `Opening balance (${t(data.settings.currency)}) - optional`)}
                 className="h-8 rounded-md border border-slate-300 px-2 font-mono font-bold"
               />
             </div>
@@ -6822,7 +7010,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               disabled={isSavingCustomer || isUploadingCustPhoto}
               className="w-full h-9 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50"
             >
-              {isSavingCustomer ? 'جاري الحفظ...' : 'حفظ العميل الجديد'}
+              {isSavingCustomer ? t('جاري الحفظ...', 'Saving...') : t('حفظ العميل الجديد', 'Save New Customer')}
             </button>
           </form>
         );
@@ -6834,21 +7022,21 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         const supPhoneValid = cleanedSupPhone.replace(/\D/g, '').length >= 7;
         return (
           <form onSubmit={handleSaveNewSupplier} className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-2 text-xs">
-            <h3 className="text-xs sm:text-sm font-black text-[#011E58]">إضافة مورد جديد</h3>
+            <h3 className="text-xs sm:text-sm font-black text-[#011E58]">{t('إضافة مورد جديد', 'Add New Supplier')}</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
               <input
                 type="text"
                 required
                 value={newSupName}
                 onChange={(e) => setNewSupName(e.target.value)}
-                placeholder="اسم المورد *"
+                placeholder={t('اسم المورد *', 'Supplier Name *')}
                 className="h-8 rounded-md border border-slate-300 px-2 font-bold"
               />
               <input
                 type="text"
                 value={newSupCompany}
                 onChange={(e) => setNewSupCompany(e.target.value)}
-                placeholder="اسم الشركة / المصنع"
+                placeholder={t('اسم الشركة / المصنع', 'Company / Factory Name')}
                 className="h-8 rounded-md border border-slate-300 px-2 font-bold"
               />
             </div>
@@ -6857,14 +7045,15 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               <div className="flex items-center gap-1.5">
                 <input
                   type="tel"
+                  dir="ltr"
                   required
                   value={newSupPhone}
                   onChange={(e) => {
                     setNewSupPhone(e.target.value);
                     if (supPhoneNotice) setSupPhoneNotice(null);
                   }}
-                  placeholder="رقم الهاتف *"
-                  className="flex-1 h-8 rounded-md border border-slate-300 px-2 font-mono font-bold"
+                  placeholder={t('رقم الهاتف *', 'Phone Number *')}
+                  className="flex-1 h-8 rounded-md border border-slate-300 px-2 font-mono font-bold text-start"
                 />
                 {supPhoneValid ? (
                   <a
@@ -6872,18 +7061,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     className="h-8 px-2 rounded-md bg-[#EEF3FA] text-[#011E58] border border-[#DCE6F5] text-[11px] font-bold inline-flex items-center gap-1"
                   >
                     <Phone className="w-3.5 h-3.5 text-[#003589]" />
-                    <span>اتصال</span>
+                    <span>{t('اتصال', 'Call')}</span>
                   </a>
                 ) : (
                   <button
                     type="button"
                     onClick={() =>
-                      setSupPhoneNotice({ type: 'error', text: 'يرجى إدخال رقم هاتف المورد (7 أرقام على الأقل).' })
+                      setSupPhoneNotice({ type: 'error', text: t('يرجى إدخال رقم هاتف المورد (7 أرقام على الأقل).', 'Please enter supplier phone number (at least 7 digits).') })
                     }
                     className="h-8 px-2 rounded-md bg-slate-100 text-slate-600 border border-slate-300 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
                   >
                     <Phone className="w-3.5 h-3.5" />
-                    <span>اتصال</span>
+                    <span>{t('اتصال', 'Call')}</span>
                   </button>
                 )}
               </div>
@@ -6897,14 +7086,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 type="text"
                 value={newSupAddress}
                 onChange={(e) => setNewSupAddress(e.target.value)}
-                placeholder="عنوان المورد"
+                placeholder={t('عنوان المورد', 'Supplier Address')}
                 className="h-8 rounded-md border border-slate-300 px-2"
               />
               <input
                 type="number"
                 value={newSupOpening || ''}
                 onChange={(e) => setNewSupOpening(Number(e.target.value))}
-                placeholder={`رصيد افتتاحي (${data.settings.currency})`}
+                placeholder={t(`رصيد افتتاحي (${t(data.settings.currency)})`, `Opening Balance (${t(data.settings.currency)})`)}
                 className="h-8 rounded-md border border-slate-300 px-2 font-mono font-bold"
               />
             </div>
@@ -6914,7 +7103,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               disabled={isSavingSupplier}
               className="w-full h-9 rounded-lg bg-[#003589] hover:bg-[#0049B0] text-white font-black cursor-pointer disabled:opacity-50"
             >
-              {isSavingSupplier ? 'جاري الحفظ...' : 'حفظ المورد الجديد'}
+              {isSavingSupplier ? t('جاري الحفظ...', 'Saving...') : t('حفظ المورد الجديد', 'Save New Supplier')}
             </button>
           </form>
         );
@@ -6931,7 +7120,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 chqTab === 'cheques' ? 'bg-[#003589] text-white' : 'text-slate-700'
               }`}
             >
-              الشيكات ({data.cheques.length})
+              {t('الشيكات', 'Cheques')} ({formatLocaleNumber(data.cheques.length)})
             </button>
             <button
               type="button"
@@ -6940,42 +7129,43 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 chqTab === 'installments' ? 'bg-[#003589] text-white' : 'text-slate-700'
               }`}
             >
-              الأقساط ({data.installments.length})
+              {t('الأقساط', 'Installments')} ({formatLocaleNumber(data.installments.length)})
             </button>
           </div>
 
           {chqTab === 'cheques' && (
             <div className="space-y-2">
               <form onSubmit={handleAddCheque} className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-1.5">
-                <h4 className="text-xs sm:text-sm font-black text-slate-900">تسجيل شيك جديد</h4>
+                <h4 className="text-xs sm:text-sm font-black text-slate-900">{t('تسجيل شيك جديد', 'Record New Cheque')}</h4>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                   <select
                     value={chqType}
                     onChange={(e) => setChqType(e.target.value as 'incoming' | 'outgoing')}
                     className="h-8 rounded-md border border-slate-300 px-2 font-bold bg-white"
                   >
-                    <option value="incoming">شيك وارد (تحصيل)</option>
-                    <option value="outgoing">شيك صادر (سداد)</option>
+                    <option value="incoming">{t('شيك وارد (تحصيل)', 'Incoming Cheque (Collection)')}</option>
+                    <option value="outgoing">{t('شيك صادر (سداد)', 'Outgoing Cheque (Payment)')}</option>
                   </select>
                   <input
                     type="text"
+                    dir="ltr"
                     value={chqNumber}
                     onChange={(e) => setChqNumber(e.target.value)}
-                    placeholder="رقم الشيك"
-                    className="h-8 rounded-md border border-slate-300 px-2 font-mono font-bold"
+                    placeholder={t('رقم الشيك', 'Cheque No.')}
+                    className="h-8 rounded-md border border-slate-300 px-2 font-mono font-bold text-start"
                   />
                   <input
                     type="text"
                     value={chqPartyName}
                     onChange={(e) => setChqPartyName(e.target.value)}
-                    placeholder="اسم العميل / المورد"
+                    placeholder={t('اسم العميل / المورد', 'Customer / Supplier Name')}
                     className="h-8 rounded-md border border-slate-300 px-2 font-bold col-span-2 sm:col-span-1"
                   />
                   <input
                     type="text"
                     value={chqBank}
                     onChange={(e) => setChqBank(e.target.value)}
-                    placeholder="اسم البنك"
+                    placeholder={t('اسم البنك', 'Bank Name')}
                     className="h-8 rounded-md border border-slate-300 px-2"
                   />
                   <input
@@ -6983,11 +7173,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     min={1}
                     value={chqAmount || ''}
                     onChange={(e) => setChqAmount(Number(e.target.value))}
-                    placeholder="المبلغ"
+                    placeholder={t('المبلغ', 'Amount')}
                     className="h-8 rounded-md border border-slate-300 px-2 font-mono font-bold"
                   />
                   <input
                     type="date"
+                    dir="ltr"
                     value={chqDueDate}
                     onChange={(e) => setChqDueDate(e.target.value)}
                     className="h-8 rounded-md border border-slate-300 px-2 font-mono"
@@ -6998,37 +7189,37 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   disabled={isSavingCheque}
                   className="w-full h-8 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-black cursor-pointer"
                 >
-                  {isSavingCheque ? 'جاري التسجيل...' : 'حفظ الشيك'}
+                  {isSavingCheque ? t('جاري التسجيل...', 'Submitting...') : t('حفظ الشيك', 'Save Cheque')}
                 </button>
               </form>
 
               <UnifiedDataTable
                 compact
-                title={`الشيكات المسجلة (${data.cheques.length})`}
+                title={`${t('الشيكات المسجلة', 'Recorded Cheques')} (${formatLocaleNumber(data.cheques.length)})`}
                 data={data.cheques}
                 rowKey={(chq) => chq.id}
-                emptyTitle="لا توجد شيكات مسجلة"
+                emptyTitle={t('لا توجد شيكات مسجلة', 'No cheques recorded')}
                 columns={[
-                  { key: 'chequeNumber', header: 'رقم الشيك', render: (chq) => <span className="font-mono font-black text-blue-950">{chq.chequeNumber}</span> },
-                  { key: 'partyName', header: 'الطرف / البنك', render: (chq) => `${chq.partyName} · ${chq.bankName}` },
-                  { key: 'dueDate', header: 'الاستحقاق', align: 'center', render: (chq) => <span className="font-mono">{chq.dueDate}</span> },
+                  { key: 'chequeNumber', header: t('رقم الشيك', 'Cheque No.'), render: (chq) => <span className="font-mono font-black text-blue-950">{chq.chequeNumber}</span> },
+                  { key: 'partyName', header: t('الطرف / البنك', 'Party / Bank'), render: (chq) => `${chq.partyName} · ${chq.bankName}` },
+                  { key: 'dueDate', header: t('الاستحقاق', 'Due Date'), align: 'center', render: (chq) => <span className="font-mono">{formatLocaleDate(chq.dueDate)}</span> },
                   {
                     key: 'amount',
-                    header: 'المبلغ',
+                    header: t('المبلغ', 'Amount'),
                     align: 'center',
                     render: (chq) => (
                       <strong className="font-mono font-black text-slate-900">
-                        {chq.amount.toLocaleString()} {data.settings.currency}
+                        {formatLocaleNumber(chq.amount)} {t(data.settings.currency)}
                       </strong>
                     ),
                   },
                   {
                     key: 'status',
-                    header: 'الحالة',
+                    header: t('الحالة', 'Status'),
                     align: 'center',
                     render: (chq) => (
                       <span className="font-bold text-slate-700">
-                        {chq.status === 'collected' ? 'محصل' : chq.status === 'rejected' || chq.status === 'returned' ? 'مرتد / مرفوض' : 'قيد الانتظار'}
+                        {chq.status === 'collected' ? t('محصل', 'Collected') : chq.status === 'rejected' || chq.status === 'returned' ? t('مرتد / مرفوض', 'Returned / Rejected') : t('قيد الانتظار', 'Pending')}
                       </span>
                     ),
                   },
@@ -7041,29 +7232,29 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             <div className="space-y-2">
               <UnifiedDataTable
                 compact
-                title={`جداول الأقساط (${data.installments.length})`}
+                title={`${t('جداول الأقساط', 'Installment Schedules')} (${formatLocaleNumber(data.installments.length)})`}
                 data={data.installments}
                 rowKey={(sched) => sched.id}
-                emptyTitle="لا توجد جداول أقساط نشطة حالياً"
+                emptyTitle={t('لا توجد جداول أقساط نشطة حالياً', 'No active installment schedules')}
                 columns={[
-                  { key: 'scheduleNumber', header: 'رقم الجدول', render: (sched) => <span className="font-mono font-black text-blue-950">{sched.scheduleNumber}</span> },
-                  { key: 'customerName', header: 'العميل', render: (sched) => <span className="font-bold">{sched.customerName}</span> },
+                  { key: 'scheduleNumber', header: t('رقم الجدول', 'Schedule No.'), render: (sched) => <span className="font-mono font-black text-blue-950">{sched.scheduleNumber}</span> },
+                  { key: 'customerName', header: t('العميل', 'Customer'), render: (sched) => <span className="font-bold">{sched.customerName}</span> },
                   {
                     key: 'remainingAmount',
-                    header: 'المتبقي',
+                    header: t('المتبقي', 'Remaining'),
                     align: 'center',
                     render: (sched) => (
                       <strong className="font-mono text-red-700">
-                        {sched.remainingAmount.toLocaleString()} {data.settings.currency}
+                        {formatLocaleNumber(sched.remainingAmount)} {t(data.settings.currency)}
                       </strong>
                     ),
                   },
                   {
                     key: 'actions',
-                    header: 'تحصيل القسط المستحق',
+                    header: t('تحصيل القسط المستحق', 'Collect Due Installment'),
                     render: (sched) => {
                       const nextDue = (sched.items || []).filter((it) => it.status !== 'paid').slice(0, 2);
-                      if (nextDue.length === 0) return <span className="text-emerald-700 font-bold">مسدد بالكامل</span>;
+                      if (nextDue.length === 0) return <span className="text-emerald-700 font-bold">{t('مسدد بالكامل', 'Fully Paid')}</span>;
                       return (
                         <div className="flex flex-wrap gap-1">
                           {nextDue.map((it) => {
@@ -7077,13 +7268,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                                   setPayingInstKey(key);
                                   await data.payInstallment(sched.id, it.id, it.amount - it.paidAmount, data.cashboxes[0]?.id || 'CASH-01', 'تحصيل قسط عبر تطبيق المندوب');
                                   setPayingInstKey(null);
-                                  setFeedback({ type: 'success', text: 'تم تحصيل القسط وتحديث الجدول.' });
+                                  setFeedback({ type: 'success', text: t('تم تحصيل القسط وتحديث الجدول.', 'Installment collected and schedule updated.') });
                                 }}
                                 className="px-2 py-0.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-[11px] font-bold cursor-pointer whitespace-nowrap"
                               >
                                 {payingInstKey === key
-                                  ? 'جاري التحصيل...'
-                                  : `تحصيل (${(it.amount - it.paidAmount).toLocaleString()} · ${it.dueDate})`}
+                                  ? t('جاري التحصيل...', 'Collecting...')
+                                  : `${t('تحصيل', 'Collect')} (${formatLocaleNumber(it.amount - it.paidAmount)} · ${formatLocaleDate(it.dueDate)})`}
                               </button>
                             );
                           })}
@@ -7103,15 +7294,15 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         <div className="space-y-2 text-xs">
           <form onSubmit={handleCreateQuote} className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-1.5">
             <div>
-              <h3 className="text-xs sm:text-sm font-black text-blue-950">إنشاء عرض سعر (بدون خصم مخزني أو قيد مالي)</h3>
-              <p className="text-[10px] text-slate-500">يمكن تحويل عرض السعر لاحقاً لفاتورة مبيعات معتمدة بضغطة واحدة.</p>
+              <h3 className="text-xs sm:text-sm font-black text-blue-950">{t('إنشاء عرض سعر (بدون خصم مخزني أو قيد مالي)', 'Create Price Quote (Zero Stock / Ledger Impact)')}</h3>
+              <p className="text-[10px] text-slate-500">{t('يمكن تحويل عرض السعر لاحقاً لفاتورة مبيعات معتمدة بضغطة واحدة.', 'Price quotes can later be converted into a confirmed sales invoice in one click.')}</p>
             </div>
             <select
               value={quoteCustomerId}
               onChange={(e) => setQuoteCustomerId(e.target.value)}
               className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold bg-white"
             >
-              <option value="">-- اختر العميل (أو عميل عام) --</option>
+              <option value="">{t('-- اختر العميل (أو عميل عام) --', '-- Select Customer (or Walk-in) --')}</option>
               {data.customers.map((c) => (
                 <option key={c.id} value={c.id}>{c.shopName || c.name}</option>
               ))}
@@ -7123,9 +7314,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 onChange={(e) => handleSelectQuoteProduct(e.target.value)}
                 className="w-full h-8 rounded-md border border-blue-300 px-2 font-bold bg-white"
               >
-                <option value="">-- اختر الصنف لعرض السعر --</option>
+                <option value="">{t('-- اختر الصنف لعرض السعر --', '-- Select Item for Quote --')}</option>
                 {activeProducts.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name} ({p.sellingPrice} {data.settings.currency})</option>
+                  <option key={p.id} value={p.id}>{p.name} ({formatLocaleNumber(p.sellingPrice)} {t(data.settings.currency)})</option>
                 ))}
               </select>
               {quoteProductId && (
@@ -7135,7 +7326,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     min={0.001}
                     value={quoteQty}
                     onChange={setQuoteQty}
-                    ariaLabel="كمية عرض السعر"
+                    ariaLabel={t('كمية عرض السعر', 'Quote quantity')}
                     inputClassName="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
                   />
                   <input
@@ -7144,7 +7335,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     step="0.5"
                     value={quotePrice}
                     onChange={(e) => setQuotePrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
-                    placeholder="السعر"
+                    placeholder={t('السعر', 'Price')}
                     className="h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
                   />
                   <button
@@ -7152,7 +7343,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     onClick={handleAddQuoteItem}
                     className="h-8 rounded-md bg-blue-900 text-white font-black cursor-pointer"
                   >
-                    إضافة
+                    {t('إضافة', 'Add')}
                   </button>
                 </div>
               )}
@@ -7163,14 +7354,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 compact
                 paginated={false}
                 searchable={false}
-                title={`أصناف عرض السعر (${quoteItems.length})`}
+                title={`${t('أصناف عرض السعر', 'Quote Items')} (${formatLocaleNumber(quoteItems.length)})`}
                 data={quoteItems}
                 rowKey={(it, idx) => `${it.productId}-${idx}`}
                 columns={[
-                  { key: 'productName', header: 'الصنف', render: (it) => <span className="font-bold">{it.productName}</span> },
-                  { key: 'quantity', header: 'الكمية', align: 'center', render: (it) => <span className="font-mono">{it.quantity}</span> },
-                  { key: 'unitPrice', header: 'السعر', align: 'center', render: (it) => <span className="font-mono">{it.unitPrice.toLocaleString()}</span> },
-                  { key: 'total', header: 'الإجمالي', align: 'center', render: (it) => <strong className="font-mono text-blue-950">{it.total.toLocaleString()}</strong> },
+                  { key: 'productName', header: t('الصنف', 'Item'), render: (it) => <span className="font-bold">{it.productName}</span> },
+                  { key: 'quantity', header: t('الكمية', 'Qty'), align: 'center', render: (it) => <span className="font-mono">{formatLocaleNumber(it.quantity)}</span> },
+                  { key: 'unitPrice', header: t('السعر', 'Price'), align: 'center', render: (it) => <span className="font-mono">{formatLocaleNumber(it.unitPrice)}</span> },
+                  { key: 'total', header: t('الإجمالي', 'Total'), align: 'center', render: (it) => <strong className="font-mono text-blue-950">{formatLocaleNumber(it.total)}</strong> },
                 ]}
               />
             )}
@@ -7179,7 +7370,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               type="text"
               value={quoteNotes}
               onChange={(e) => setQuoteNotes(e.target.value)}
-              placeholder="صلاحية العرض وملاحظات..."
+              placeholder={t('صلاحية العرض وملاحظات...', 'Quote validity & notes...')}
               className="w-full h-8 rounded-md border border-slate-300 px-2"
             />
 
@@ -7188,33 +7379,33 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               disabled={isSubmittingQuote || quoteItems.length === 0}
               className="w-full h-9 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-black disabled:opacity-50 cursor-pointer"
             >
-              {isSubmittingQuote ? 'جاري الحفظ...' : `حفظ عرض السعر (${quoteTotal.toLocaleString()} ${data.settings.currency})`}
+              {isSubmittingQuote ? t('جاري الحفظ...', 'Saving...') : `${t('حفظ عرض السعر', 'Save Price Quote')} (${formatLocaleNumber(quoteTotal)} ${t(data.settings.currency)})`}
             </button>
           </form>
 
           {myQuotes.length > 0 && (
             <UnifiedDataTable
               compact
-              title={`عروض الأسعار المسجلة (${myQuotes.length})`}
+              title={`${t('عروض الأسعار المسجلة', 'Saved Price Quotes')} (${formatLocaleNumber(myQuotes.length)})`}
               data={myQuotes}
               rowKey={(q) => q.id}
               columns={[
-                { key: 'invoiceNumber', header: 'رقم العرض', render: (q) => <span className="font-mono font-black text-blue-950">{q.invoiceNumber}</span> },
-                { key: 'customerName', header: 'العميل', render: (q) => q.customerName || 'عميل عام' },
-                { key: 'date', header: 'التاريخ', align: 'center', render: (q) => <span className="font-mono">{q.date}</span> },
+                { key: 'invoiceNumber', header: t('رقم العرض', 'Quote No.'), render: (q) => <span className="font-mono font-black text-blue-950">{q.invoiceNumber}</span> },
+                { key: 'customerName', header: t('العميل', 'Customer'), render: (q) => q.customerName || t('عميل عام', 'Walk-in Customer') },
+                { key: 'date', header: t('التاريخ', 'Date'), align: 'center', render: (q) => <span className="font-mono">{formatLocaleDate(q.date)}</span> },
                 {
                   key: 'grandTotal',
-                  header: 'الإجمالي',
+                  header: t('الإجمالي', 'Total'),
                   align: 'center',
                   render: (q) => (
                     <strong className="font-mono font-black text-slate-900">
-                      {q.grandTotal.toLocaleString()} {data.settings.currency}
+                      {formatLocaleNumber(q.grandTotal)} {t(data.settings.currency)}
                     </strong>
                   ),
                 },
                 {
                   key: 'actions',
-                  header: 'الإجراءات',
+                  header: t('الإجراءات', 'Actions'),
                   align: 'center',
                   sortable: false,
                   render: (q) => {
@@ -7227,7 +7418,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           onClick={() => handleConvertQuote(q.id)}
                           className="px-2 py-0.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-[11px] font-black disabled:opacity-50 cursor-pointer"
                         >
-                          {isConverted ? 'تم التحويل' : convertingQuoteId === q.id ? 'جاري التحويل...' : 'تحويل لفاتورة'}
+                          {isConverted ? t('تم التحويل', 'Converted') : convertingQuoteId === q.id ? t('جاري التحويل...', 'Converting...') : t('تحويل لفاتورة', 'Convert to Invoice')}
                         </button>
                         <button
                           type="button"
@@ -7251,42 +7442,42 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       {activeTab === 'invoices' && (
         <UnifiedDataTable
           compact
-          title={`فواتير المبيعات (${myInvoices.length})`}
+          title={`${t('فواتير المبيعات', 'Sales Invoices')} (${formatLocaleNumber(myInvoices.length)})`}
           data={myInvoices}
           rowKey={(inv) => inv.id}
-          emptyTitle="لا توجد فواتير مبيعات مسجلة حتى الآن"
+          emptyTitle={t('لا توجد فواتير مبيعات مسجلة حتى الآن', 'No sales invoices recorded yet')}
           columns={[
             {
               key: 'invoiceNumber',
-              header: 'رقم الفاتورة',
+              header: t('رقم الفاتورة', 'Invoice No.'),
               render: (inv) => (
                 <div>
                   <span className="font-mono font-black text-blue-950 block">{inv.invoiceNumber}</span>
                   {inv.syncStatus && inv.syncStatus !== 'synced' && (
                     <span className="inline-flex items-center gap-0.5 text-amber-800 font-bold text-[10px]">
                       <CloudOff className="w-3 h-3" />
-                      <span>محلي</span>
+                      <span>{t('محلي', 'Local')}</span>
                     </span>
                   )}
                 </div>
               ),
             },
-            { key: 'customerName', header: 'العميل', render: (inv) => <span className="font-bold">{inv.customerName || 'عميل'}</span> },
-            { key: 'date', header: 'التاريخ', align: 'center', render: (inv) => <span className="font-mono">{inv.date}</span> },
+            { key: 'customerName', header: t('العميل', 'Customer'), render: (inv) => <span className="font-bold">{inv.customerName || t('عميل', 'Customer')}</span> },
+            { key: 'date', header: t('التاريخ', 'Date'), align: 'center', render: (inv) => <span className="font-mono">{formatLocaleDate(inv.date)}</span> },
             {
               key: 'grandTotal',
-              header: 'الإجمالي',
+              header: t('الإجمالي', 'Total'),
               align: 'center',
               sortValue: (inv) => Number(inv.grandTotal || 0),
               render: (inv) => (
                 <strong className="font-mono text-slate-900 tabular-nums">
-                  {inv.grandTotal.toLocaleString()} {data.settings.currency}
+                  {formatLocaleNumber(inv.grandTotal)} {t(data.settings.currency)}
                 </strong>
               ),
             },
             {
               key: 'status',
-              header: 'الحالة',
+              header: t('الحالة', 'Status'),
               align: 'center',
               render: (inv) => {
                 const confirmCheck = inv.status === 'draft' ? canConfirmDraft(inv) : { ready: false };
@@ -7301,18 +7492,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           : 'text-red-700'
                       }`}
                     >
-                      {inv.status === 'confirmed' ? 'معتمدة' : inv.status === 'draft' ? 'مسودة' : 'ملغاة'}
+                      {inv.status === 'confirmed' ? t('معتمدة', 'Confirmed') : inv.status === 'draft' ? t('مسودة', 'Draft') : t('ملغاة', 'Cancelled')}
                     </span>
                     {inv.reviewStatus === 'needs_review' && (
-                      <span className="text-amber-700 font-bold text-[10px] block">بانتظار مراجعة الإدارة</span>
+                      <span className="text-amber-700 font-bold text-[10px] block">{t('بانتظار مراجعة الإدارة', 'Pending Admin Review')}</span>
                     )}
                     {inv.reviewStatus === 'reviewed' && (
-                      <span className="text-blue-800 font-bold text-[10px] block">تمت المراجعة</span>
+                      <span className="text-blue-800 font-bold text-[10px] block">{t('تمت المراجعة', 'Reviewed')}</span>
                     )}
                     {inv.status === 'draft' && inv.linkedRepTransferNumber && (
                       <span className="text-[10px] text-blue-900 font-bold block">
-                        تحويل: {inv.linkedRepTransferNumber}
-                        {!confirmCheck.ready && confirmCheck.reason ? ` (${confirmCheck.reason})` : ''}
+                        {t('تحويل:', 'Transfer:')} {inv.linkedRepTransferNumber}
+                        {!confirmCheck.ready && confirmCheck.reason ? ` (${t(confirmCheck.reason)})` : ''}
                       </span>
                     )}
                   </div>
@@ -7321,7 +7512,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             },
             {
               key: 'actions',
-              header: 'الإجراءات',
+              header: t('الإجراءات', 'Actions'),
               align: 'center',
               sortable: false,
               render: (inv) => {
@@ -7335,7 +7526,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         onClick={() => handleConfirmDraft(inv)}
                         className="px-2 py-0.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-[11px] font-black disabled:opacity-45 cursor-pointer"
                       >
-                        اعتماد نهائي
+                        {t('اعتماد نهائي', 'Confirm Final')}
                       </button>
                     )}
                     <button
@@ -7343,7 +7534,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       onClick={() => setSelectedInvoice(inv)}
                       className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 text-[11px] font-bold cursor-pointer"
                     >
-                      التفاصيل
+                      {t('التفاصيل', 'Details')}
                     </button>
                     <button
                       type="button"
@@ -7351,7 +7542,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       className="px-2 py-0.5 rounded-md bg-blue-900 text-white text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
                     >
                       {isNative ? <Share2 className="w-3 h-3" /> : <FileDown className="w-3 h-3" />}
-                      <span>{isNative ? 'مشاركة' : 'PDF'}</span>
+                      <span>{isNative ? t('مشاركة', 'Share') : 'PDF'}</span>
                     </button>
                   </div>
                 );
@@ -7370,7 +7561,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         return (
         <div className="space-y-2 text-xs">
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <h3 className="text-xs sm:text-sm font-black text-slate-900">فواتير الشراء ({filteredPurchases.length})</h3>
+            <h3 className="text-xs sm:text-sm font-black text-slate-900">
+              {t(`فواتير الشراء (${filteredPurchases.length})`, `Purchase Invoices (${filteredPurchases.length})`)}
+            </h3>
             <button
               type="button"
               onClick={() => {
@@ -7379,18 +7572,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               }}
               className="h-8 px-2.5 rounded-md bg-[#011E58] hover:bg-[#003589] text-white font-bold cursor-pointer"
             >
-              + فاتورة شراء
+              {t('+ فاتورة شراء', '+ Purchase Invoice')}
             </button>
           </div>
 
           <div className="awlad-filter-row" data-testid="rep-purchases-filter-row">
             {[
-              { id: 'all' as const, label: 'الكل' },
-              { id: 'draft' as const, label: 'مسودة' },
-              { id: 'sent' as const, label: 'مرسلة' },
-              { id: 'received' as const, label: 'تم الاستلام' },
-              { id: 'rejected' as const, label: 'مرفوضة' },
-              { id: 'confirmed' as const, label: 'معتمدة' },
+              { id: 'all' as const, label: t('الكل', 'All') },
+              { id: 'draft' as const, label: t('مسودة', 'Draft') },
+              { id: 'sent' as const, label: t('مرسلة', 'Sent') },
+              { id: 'received' as const, label: t('تم الاستلام', 'Received') },
+              { id: 'rejected' as const, label: t('مرفوضة', 'Rejected') },
+              { id: 'confirmed' as const, label: t('معتمدة', 'Confirmed') },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -7409,19 +7602,19 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
           <UnifiedDataTable
             compact
-            title={`جدول فواتير الشراء (${filteredPurchases.length})`}
+            title={t(`جدول فواتير الشراء (${filteredPurchases.length})`, `Purchase Invoices Table (${filteredPurchases.length})`)}
             data={filteredPurchases}
             rowKey={(inv) => inv.id}
-            emptyTitle="لا توجد فواتير مشتريات في هذا التصنيف"
+            emptyTitle={t('لا توجد فواتير مشتريات في هذا التصنيف', 'No purchase invoices in this category')}
             columns={[
               {
                 key: 'invoiceNumber',
-                header: 'رقم الفاتورة',
+                header: t('رقم الفاتورة', 'Invoice #'),
                 render: (inv) => <span className="font-mono font-black text-[#011E58]">{inv.invoiceNumber}</span>,
               },
               {
                 key: 'supplierName',
-                header: 'المورد / المخزن',
+                header: t('المورد / المخزن', 'Supplier / Warehouse'),
                 render: (inv) => (
                   <div>
                     <span className="font-bold text-slate-900 block">{inv.supplierName}</span>
@@ -7431,7 +7624,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               },
               {
                 key: 'grandTotal',
-                header: 'الإجمالي',
+                header: t('الإجمالي', 'Total'),
                 align: 'center',
                 sortValue: (inv) => Number(inv.grandTotal || 0),
                 render: (inv) => {
@@ -7439,11 +7632,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   return (
                     <div className="whitespace-nowrap">
                       <strong className="font-mono text-slate-900 block">
-                        {inv.grandTotal.toLocaleString()} {data.settings.currency}
+                        {formatLocaleNumber(inv.grandTotal)} {t(data.settings.currency)}
                       </strong>
                       {inv.status === 'confirmed' && (
                         <span className={`text-[10px] font-bold block ${remainingVal > 0.009 ? 'text-amber-700' : 'text-emerald-700'}`}>
-                          {remainingVal > 0.009 ? `متبقي: ${remainingVal.toLocaleString()}` : 'مسددة بالكامل'}
+                          {remainingVal > 0.009
+                            ? `${t('متبقي:', 'Remaining:')} ${formatLocaleNumber(remainingVal)}`
+                            : t('مسددة بالكامل', 'Fully Paid')}
                         </span>
                       )}
                     </div>
@@ -7452,24 +7647,24 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               },
               {
                 key: 'dispatchStatus',
-                header: 'الحالة والاستلام',
+                header: t('الحالة والاستلام', 'Status & Receipt'),
                 render: (inv) => {
                   const meta = getPurchaseDispatchMeta(inv);
                   return (
                     <div className="space-y-0.5 text-[11px]">
                       <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-bold ${meta.badgeClass}`}>
-                        {meta.label}
+                        {t(meta.label)}
                       </span>
                       {inv.recipientName && (
-                        <span className="block text-slate-600">موجهة إلى: {inv.recipientName}</span>
+                        <span className="block text-slate-600">{t('موجهة إلى:', 'Directed to:')} {inv.recipientName}</span>
                       )}
                       {inv.receivedBy && (
                         <span className="block text-[#003589] font-bold">
-                          المستلم: {inv.receivedBy}
+                          {t('المستلم:', 'Received by:')} {inv.receivedBy}
                         </span>
                       )}
                       {inv.dispatchStatus === 'rejected' && inv.rejectionReason && (
-                        <span className="block text-rose-800 font-bold">سبب الرفض: {inv.rejectionReason}</span>
+                        <span className="block text-rose-800 font-bold">{t('سبب الرفض:', 'Rejection Reason:')} {inv.rejectionReason}</span>
                       )}
                     </div>
                   );
@@ -7477,7 +7672,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               },
               {
                 key: 'actions',
-                header: 'الإجراءات',
+                header: t('الإجراءات', 'Actions'),
                 align: 'center',
                 sortable: false,
                 render: (inv) => {
@@ -7505,7 +7700,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-900 border border-blue-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
                       >
                         <Eye className="w-3 h-3" />
-                        <span>التفاصيل</span>
+                        <span>{t('التفاصيل', 'Details')}</span>
                       </button>
                       {canRecordPurchasePayment && (
                         <button
@@ -7514,7 +7709,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           className="px-2 py-0.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
                         >
                           <CreditCard className="w-3 h-3" />
-                          <span>سداد</span>
+                          <span>{t('سداد', 'Pay')}</span>
                         </button>
                       )}
                       {canSendOrEdit && (
@@ -7528,7 +7723,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                             className="px-2 py-0.5 rounded-md bg-[#011E58] hover:bg-[#003589] text-white text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
                           >
                             <Send className="w-3 h-3" />
-                            <span>إرسال</span>
+                            <span>{t('إرسال', 'Send')}</span>
                           </button>
                           <button
                             type="button"
@@ -7536,7 +7731,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                             className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
                           >
                             <Edit className="w-3 h-3" />
-                            <span>تعديل</span>
+                            <span>{t('تعديل', 'Edit')}</span>
                           </button>
                         </>
                       )}
@@ -7546,7 +7741,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
                       >
                         <History className="w-3 h-3" />
-                        <span>السجل</span>
+                        <span>{t('السجل', 'History')}</span>
                       </button>
                       <button
                         type="button"
@@ -7570,10 +7765,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
               <h3 className="text-xs sm:text-sm font-black text-rose-950">
-                طلبات ومرتجعات البيع ({mySalesReturnRequests.length} طلب · {mySalesReturns.length} معتمد)
+                {t(
+                  `طلبات ومرتجعات البيع (${mySalesReturnRequests.length} طلب · ${mySalesReturns.length} معتمد)`,
+                  `Sales Return Requests & Approved (${mySalesReturnRequests.length} req · ${mySalesReturns.length} approved)`
+                )}
               </h3>
               <p className="text-[10px] text-slate-500">
-                طلبات المرتجع النقدي تخضع لمراجعة الإدارة والخزينة قبل صرف أي مبالغ أو تعديل الأرصدة.
+                {t(
+                  'طلبات المرتجع النقدي تخضع لمراجعة الإدارة والخزينة قبل صرف أي مبالغ أو تعديل الأرصدة.',
+                  'Cash return requests undergo admin and treasury review before payout or balance adjustment.'
+                )}
               </p>
             </div>
             <button
@@ -7581,52 +7782,52 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               onClick={() => onTabChange('sales-return')}
               className="h-8 px-2.5 rounded-md bg-rose-700 text-white font-bold cursor-pointer shrink-0"
             >
-              + مرتجع بيع
+              {t('+ مرتجع بيع', '+ Sales Return')}
             </button>
           </div>
 
           {mySalesReturnRequests.length > 0 && (
             <UnifiedDataTable<SalesReturnRequest>
               compact
-              title={`طلبات مرتجع المبيعات النقدي (${mySalesReturnRequests.length})`}
+              title={t(`طلبات مرتجع المبيعات النقدي (${mySalesReturnRequests.length})`, `Cash Sales Return Requests (${mySalesReturnRequests.length})`)}
               data={mySalesReturnRequests}
               rowKey={(req) => req.id}
               columns={[
                 {
                   key: 'requestNumber',
-                  header: 'رقم الطلب',
+                  header: t('رقم الطلب', 'Request #'),
                   render: (req) => (
                     <div>
                       <span className="font-mono font-black text-rose-900 block">{req.requestNumber}</span>
                       {req.syncStatus === 'pending' && (
-                        <span className="text-[10px] font-bold text-slate-600">بانتظار المزامنة</span>
+                        <span className="text-[10px] font-bold text-slate-600">{t('بانتظار المزامنة', 'Pending Sync')}</span>
                       )}
                     </div>
                   ),
                 },
                 {
                   key: 'customerName',
-                  header: 'العميل / الفاتورة',
+                  header: t('العميل / الفاتورة', 'Customer / Invoice'),
                   render: (req) => (
                     <div>
                       <span className="font-bold text-slate-900 block">{req.customerName}</span>
-                      <span className="text-[10px] text-slate-500">فاتورة {req.originalInvoiceNumber} · {req.date}</span>
+                      <span className="text-[10px] text-slate-500">{t('فاتورة', 'Invoice')} {req.originalInvoiceNumber} · {req.date}</span>
                     </div>
                   ),
                 },
                 {
                   key: 'grandTotal',
-                  header: 'الإجمالي',
+                  header: t('الإجمالي', 'Total'),
                   align: 'center',
                   render: (req) => (
                     <strong className="font-mono text-rose-800">
-                      {Number(req.grandTotal || 0).toLocaleString()} {data.settings.currency}
+                      {formatLocaleNumber(Number(req.grandTotal || 0))} {t(data.settings.currency)}
                     </strong>
                   ),
                 },
                 {
                   key: 'status',
-                  header: 'الحالة',
+                  header: t('الحالة', 'Status'),
                   render: (req) => (
                     <div className="space-y-0.5 text-[11px]">
                       <span
@@ -7638,14 +7839,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                             : 'bg-amber-50 text-amber-800 border border-amber-200'
                         }`}
                       >
-                        {req.status === 'approved' ? 'تم الاعتماد والتنفيذ' : req.status === 'rejected' ? 'مرفوض' : 'قيد مراجعة الخزينة/الإدارة'}
+                        {req.status === 'approved'
+                          ? t('تم الاعتماد والتنفيذ', 'Approved & Executed')
+                          : req.status === 'rejected'
+                          ? t('مرفوض', 'Rejected')
+                          : t('قيد مراجعة الخزينة/الإدارة', 'Pending Treasury/Admin Review')}
                       </span>
                       {req.reason && <span className="block text-slate-500">{req.reason}</span>}
                       {req.status === 'approved' && req.approvedReturnNumber && (
-                        <span className="block font-bold text-emerald-800">مرتجع رقم: {req.approvedReturnNumber}</span>
+                        <span className="block font-bold text-emerald-800">{t('مرتجع رقم:', 'Return #:')} {req.approvedReturnNumber}</span>
                       )}
                       {req.status === 'rejected' && req.rejectionReason && (
-                        <span className="block font-bold text-rose-800">الرفض: {req.rejectionReason}</span>
+                        <span className="block font-bold text-rose-800">{t('الرفض:', 'Rejection:')} {req.rejectionReason}</span>
                       )}
                     </div>
                   ),
@@ -7656,21 +7861,21 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
           <UnifiedDataTable<InvoiceReturn>
             compact
-            title={`مرتجعات المبيعات المعتمدة (${mySalesReturns.length})`}
+            title={t(`مرتجعات المبيعات المعتمدة (${mySalesReturns.length})`, `Approved Sales Returns (${mySalesReturns.length})`)}
             data={mySalesReturns}
             rowKey={(r) => r.id}
-            emptyTitle="لا توجد مرتجعات مبيعات معتمدة"
+            emptyTitle={t('لا توجد مرتجعات مبيعات معتمدة', 'No approved sales returns')}
             columns={[
-              { key: 'returnNumber', header: 'رقم المرتجع', render: (r) => <span className="font-mono font-black text-rose-900">{r.returnNumber}</span> },
-              { key: 'partyName', header: 'العميل', render: (r) => r.partyName },
-              { key: 'date', header: 'التاريخ', align: 'center', render: (r) => <span className="font-mono">{r.date}</span> },
+              { key: 'returnNumber', header: t('رقم المرتجع', 'Return #'), render: (r) => <span className="font-mono font-black text-rose-900">{r.returnNumber}</span> },
+              { key: 'partyName', header: t('العميل', 'Customer'), render: (r) => r.partyName },
+              { key: 'date', header: t('التاريخ', 'Date'), align: 'center', render: (r) => <span className="font-mono">{r.date}</span> },
               {
                 key: 'grandTotal',
-                header: 'الإجمالي',
+                header: t('الإجمالي', 'Total'),
                 align: 'center',
                 render: (r) => (
                   <strong className="font-mono text-rose-800">
-                    {r.grandTotal.toLocaleString()} {data.settings.currency}
+                    {formatLocaleNumber(r.grandTotal)} {t(data.settings.currency)}
                   </strong>
                 ),
               },
@@ -7684,10 +7889,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
               <h3 className="text-xs sm:text-sm font-black text-[#011E58]">
-                طلبات ومرتجعات الشراء ({myPurchaseReturnRequests.length} طلب · {myPurchaseReturns.length} معتمد)
+                {t(
+                  `طلبات ومرتجعات الشراء (${myPurchaseReturnRequests.length} طلب · ${myPurchaseReturns.length} معتمد)`,
+                  `Purchase Return Requests & Approved (${myPurchaseReturnRequests.length} req · ${myPurchaseReturns.length} approved)`
+                )}
               </h3>
               <p className="text-[10px] text-slate-500">
-                طلبات مرتجع الشراء تخضع لمراجعة واعتماد الإدارة قبل تعديل المخزون أو حساب المورد.
+                {t(
+                  'طلبات مرتجع الشراء تخضع لمراجعة واعتماد الإدارة قبل تعديل المخزون أو حساب المورد.',
+                  'Purchase return requests require management approval before updating stock or supplier balance.'
+                )}
               </p>
             </div>
             {canCreatePurchase && (
@@ -7696,53 +7907,53 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 onClick={() => onTabChange('purchase-return')}
                 className="h-8 px-2.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer shrink-0"
               >
-                {isRepRoleAccount ? '+ طلب مرتجع شراء' : '+ مرتجع شراء'}
+                {isRepRoleAccount ? t('+ طلب مرتجع شراء', '+ Purchase Return Request') : t('+ مرتجع شراء', '+ Purchase Return')}
               </button>
             )}
           </div>
 
           <UnifiedDataTable<PurchaseReturnRequest>
             compact
-            title={`طلبات مرتجع المشتريات (${myPurchaseReturnRequests.length})`}
+            title={t(`طلبات مرتجع المشتريات (${myPurchaseReturnRequests.length})`, `Purchase Return Requests (${myPurchaseReturnRequests.length})`)}
             data={myPurchaseReturnRequests}
             rowKey={(req) => req.id}
-            emptyTitle="لا توجد طلبات مرتجع مشتريات مرسلة حالياً"
+            emptyTitle={t('لا توجد طلبات مرتجع مشتريات مرسلة حالياً', 'No purchase return requests submitted yet')}
             columns={[
               {
                 key: 'requestNumber',
-                header: 'رقم الطلب',
+                header: t('رقم الطلب', 'Request #'),
                 render: (req) => (
                   <div>
                     <span className="font-mono font-black text-[#011E58] block">{req.requestNumber}</span>
                     {req.syncStatus === 'pending' && (
-                      <span className="text-[10px] font-bold text-slate-600">بانتظار المزامنة</span>
+                      <span className="text-[10px] font-bold text-slate-600">{t('بانتظار المزامنة', 'Pending Sync')}</span>
                     )}
                   </div>
                 ),
               },
               {
                 key: 'supplierName',
-                header: 'المورد / الفاتورة',
+                header: t('المورد / الفاتورة', 'Supplier / Invoice'),
                 render: (req) => (
                   <div>
                     <span className="font-bold text-slate-900 block">{req.supplierName}</span>
-                    <span className="text-[10px] text-slate-500">فاتورة {req.originalInvoiceNumber} · {req.date}</span>
+                    <span className="text-[10px] text-slate-500">{t('فاتورة', 'Invoice')} {req.originalInvoiceNumber} · {req.date}</span>
                   </div>
                 ),
               },
               {
                 key: 'grandTotal',
-                header: 'الإجمالي',
+                header: t('الإجمالي', 'Total'),
                 align: 'center',
                 render: (req) => (
                   <strong className="font-mono text-[#011E58]">
-                    {Number(req.grandTotal || 0).toLocaleString()} {data.settings.currency}
+                    {formatLocaleNumber(Number(req.grandTotal || 0))} {t(data.settings.currency)}
                   </strong>
                 ),
               },
               {
                 key: 'status',
-                header: 'الحالة',
+                header: t('الحالة', 'Status'),
                 render: (req) => (
                   <div className="space-y-0.5 text-[11px]">
                     <span
@@ -7754,14 +7965,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           : 'bg-amber-50 text-amber-800 border border-amber-200'
                       }`}
                     >
-                      {req.status === 'approved' ? 'تم الاعتماد والتنفيذ' : req.status === 'rejected' ? 'مرفوض' : 'قيد مراجعة الإدارة'}
+                      {req.status === 'approved'
+                        ? t('تم الاعتماد والتنفيذ', 'Approved & Executed')
+                        : req.status === 'rejected'
+                        ? t('مرفوض', 'Rejected')
+                        : t('قيد مراجعة الإدارة', 'Pending Admin Review')}
                     </span>
                     {req.reason && <span className="block text-slate-500">{req.reason}</span>}
                     {req.status === 'approved' && req.approvedReturnNumber && (
-                      <span className="block font-bold text-emerald-800">مرتجع رقم: {req.approvedReturnNumber}</span>
+                      <span className="block font-bold text-emerald-800">{t('مرتجع رقم:', 'Return #:')} {req.approvedReturnNumber}</span>
                     )}
                     {req.status === 'rejected' && req.rejectionReason && (
-                      <span className="block font-bold text-rose-800">الرفض: {req.rejectionReason}</span>
+                      <span className="block font-bold text-rose-800">{t('الرفض:', 'Rejection:')} {req.rejectionReason}</span>
                     )}
                   </div>
                 ),
@@ -7771,30 +7986,30 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
           <UnifiedDataTable<InvoiceReturn>
             compact
-            title={`مرتجعات المشتريات المعتمدة (${myPurchaseReturns.length})`}
+            title={t(`مرتجعات المشتريات المعتمدة (${myPurchaseReturns.length})`, `Approved Purchase Returns (${myPurchaseReturns.length})`)}
             data={myPurchaseReturns}
             rowKey={(r) => r.id}
-            emptyTitle="لا توجد مرتجعات مشتريات معتمدة"
+            emptyTitle={t('لا توجد مرتجعات مشتريات معتمدة', 'No approved purchase returns')}
             columns={[
-              { key: 'returnNumber', header: 'رقم المرتجع', render: (r) => <span className="font-mono font-black text-[#011E58]">{r.returnNumber}</span> },
+              { key: 'returnNumber', header: t('رقم المرتجع', 'Return #'), render: (r) => <span className="font-mono font-black text-[#011E58]">{r.returnNumber}</span> },
               {
                 key: 'partyName',
-                header: 'المورد',
+                header: t('المورد', 'Supplier'),
                 render: (r) => (
                   <span>
                     {r.partyName}
-                    {r.originalInvoiceNumber ? ` · فاتورة ${r.originalInvoiceNumber}` : ''}
+                    {r.originalInvoiceNumber ? ` · ${t('فاتورة', 'Invoice')} ${r.originalInvoiceNumber}` : ''}
                   </span>
                 ),
               },
-              { key: 'date', header: 'التاريخ', align: 'center', render: (r) => <span className="font-mono">{r.date}</span> },
+              { key: 'date', header: t('التاريخ', 'Date'), align: 'center', render: (r) => <span className="font-mono">{r.date}</span> },
               {
                 key: 'grandTotal',
-                header: 'الإجمالي',
+                header: t('الإجمالي', 'Total'),
                 align: 'center',
                 render: (r) => (
                   <strong className="font-mono text-[#011E58]">
-                    {r.grandTotal.toLocaleString()} {data.settings.currency}
+                    {formatLocaleNumber(r.grandTotal)} {t(data.settings.currency)}
                   </strong>
                 ),
               },
@@ -7808,11 +8023,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         <div className="space-y-2">
           <div className="grid grid-cols-5 gap-1 bg-white p-1 rounded-lg border border-slate-200 text-[11px]">
             {[
-              { key: 'van' as const, label: 'السيارة' },
-              { key: 'items' as const, label: `تحويل (${myItemTransfers.length})` },
-              { key: 'deliver' as const, label: 'تسليم' },
-              { key: 'return' as const, label: 'إرجاع مخزن' },
-              { key: 'cash' as const, label: `نقدي (${myCashTransfers.length})` },
+              { key: 'van' as const, label: t('السيارة', 'Van') },
+              { key: 'items' as const, label: t(`تحويل (${myItemTransfers.length})`, `Transfer (${myItemTransfers.length})`) },
+              { key: 'deliver' as const, label: t('تسليم', 'Deliver') },
+              { key: 'return' as const, label: t('إرجاع مخزن', 'WH Return') },
+              { key: 'cash' as const, label: t(`نقدي (${myCashTransfers.length})`, `Cash (${myCashTransfers.length})`) },
             ].map((st) => (
               <button
                 key={st.key}
@@ -7832,7 +8047,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               {custodyStatement && (
                 <div className="bg-[#011E58] dark:bg-[#0E1C36] border border-transparent dark:border-[#21375C] text-white rounded-lg p-2.5 space-y-1.5 tabular-nums">
                   <div className="flex items-center justify-between">
-                    <h4 className="font-black text-xs">كشف عهدة السيارة التراكمي</h4>
+                    <h4 className="font-black text-xs">{t('كشف عهدة السيارة التراكمي', 'Cumulative Van Custody Statement')}</h4>
                     <button
                       type="button"
                       onClick={loadCustodyStatement}
@@ -7840,30 +8055,30 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       className="h-7 px-2 rounded-md bg-white/15 hover:bg-white/25 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
                     >
                       <RefreshCw className={`w-3 h-3 ${isLoadingCustodyStmt ? 'animate-spin' : ''}`} />
-                      <span>تحديث</span>
+                      <span>{t('تحديث', 'Refresh')}</span>
                     </button>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-[#002D73] dark:bg-[#21375C] border border-[#003589] dark:border-[#2A436E] rounded-md overflow-hidden text-center">
                     <div className="px-2 py-1.5 bg-[#002463] dark:bg-[#132544]">
-                      <span className="text-[10px] text-blue-100 dark:text-[#97AECE] block">إجمالي المستلم</span>
-                      <strong className="font-mono text-xs">{custodyStatement.totals.totalReceivedQty}</strong>
+                      <span className="text-[10px] text-blue-100 dark:text-[#97AECE] block">{t('إجمالي المستلم', 'Total Received')}</span>
+                      <strong className="font-mono text-xs">{formatLocaleNumber(custodyStatement.totals.totalReceivedQty)}</strong>
                     </div>
                     <div className="px-2 py-1.5 bg-[#002463] dark:bg-[#132544]">
-                      <span className="text-[10px] text-blue-100 dark:text-[#97AECE] block">المسلم للعملاء</span>
-                      <strong className="font-mono text-xs text-blue-200">{custodyStatement.totals.totalDeliveredQty}</strong>
+                      <span className="text-[10px] text-blue-100 dark:text-[#97AECE] block">{t('المسلم للعملاء', 'Delivered to Customers')}</span>
+                      <strong className="font-mono text-xs text-blue-200">{formatLocaleNumber(custodyStatement.totals.totalDeliveredQty)}</strong>
                     </div>
                     <div className="px-2 py-1.5 bg-[#002463] dark:bg-[#132544]">
-                      <span className="text-[10px] text-blue-100 dark:text-[#97AECE] block">المرتجع للمخزن</span>
-                      <strong className="font-mono text-xs text-amber-300">{custodyStatement.totals.totalReturnedQty}</strong>
+                      <span className="text-[10px] text-blue-100 dark:text-[#97AECE] block">{t('المرتجع للمخزن', 'Returned to WH')}</span>
+                      <strong className="font-mono text-xs text-amber-300">{formatLocaleNumber(custodyStatement.totals.totalReturnedQty)}</strong>
                     </div>
                     <div className="px-2 py-1.5 bg-[#003589] dark:bg-[#1659C8]">
-                      <span className="text-[10px] text-[#DCE6F5] block">المتبقي الفعلي</span>
-                      <strong className="font-mono text-xs">{custodyStatement.totals.totalRemainingCustodyQty}</strong>
+                      <span className="text-[10px] text-[#DCE6F5] block">{t('المتبقي الفعلي', 'Actual Remaining')}</span>
+                      <strong className="font-mono text-xs">{formatLocaleNumber(custodyStatement.totals.totalRemainingCustodyQty)}</strong>
                     </div>
                     <div className="px-2 py-1.5 bg-[#002B73] dark:bg-[#172E56] col-span-2 sm:col-span-1">
-                      <span className="text-[10px] text-blue-200 dark:text-[#A9BCD9] block">القيمة بالتكلفة</span>
+                      <span className="text-[10px] text-blue-200 dark:text-[#A9BCD9] block">{t('القيمة بالتكلفة', 'Value at Cost')}</span>
                       <strong className="font-mono text-xs">
-                        {custodyStatement.totals.totalCustodyCostValue.toLocaleString()} {data.settings.currency}
+                        {formatLocaleNumber(custodyStatement.totals.totalCustodyCostValue)} {t(data.settings.currency)}
                       </strong>
                     </div>
                   </div>
@@ -7872,15 +8087,15 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       compact
                       paginated={false}
                       searchable={false}
-                      title="تفاصيل حركة العهدة لكل صنف"
+                      title={t('تفاصيل حركة العهدة لكل صنف', 'Custody Movement Per Item')}
                       data={custodyStatement.itemsSummary}
                       rowKey={(item) => item.productId}
                       columns={[
-                        { key: 'productName', header: 'الصنف', render: (item) => <span className="font-bold">{item.productName}</span> },
-                        { key: 'receivedQty', header: 'مستلم', align: 'center', render: (item) => <span className="font-mono">{item.receivedQty}</span> },
-                        { key: 'deliveredToCustomersQty', header: 'مباع', align: 'center', render: (item) => <span className="font-mono text-[#003589]">{item.deliveredToCustomersQty}</span> },
-                        { key: 'returnedToWarehouseQty', header: 'مرتجع', align: 'center', render: (item) => <span className="font-mono text-amber-700">{item.returnedToWarehouseQty}</span> },
-                        { key: 'remainingCustodyQty', header: 'متبقي', align: 'center', render: (item) => <strong className="font-mono text-emerald-700">{item.remainingCustodyQty}</strong> },
+                        { key: 'productName', header: t('الصنف', 'Item'), render: (item) => <span className="font-bold">{item.productName}</span> },
+                        { key: 'receivedQty', header: t('مستلم', 'Received'), align: 'center', render: (item) => <span className="font-mono">{formatLocaleNumber(item.receivedQty)}</span> },
+                        { key: 'deliveredToCustomersQty', header: t('مباع', 'Sold'), align: 'center', render: (item) => <span className="font-mono text-[#003589]">{formatLocaleNumber(item.deliveredToCustomersQty)}</span> },
+                        { key: 'returnedToWarehouseQty', header: t('مرتجع', 'Returned'), align: 'center', render: (item) => <span className="font-mono text-amber-700">{formatLocaleNumber(item.returnedToWarehouseQty)}</span> },
+                        { key: 'remainingCustodyQty', header: t('متبقي', 'Remaining'), align: 'center', render: (item) => <strong className="font-mono text-emerald-700">{formatLocaleNumber(item.remainingCustodyQty)}</strong> },
                       ]}
                     />
                   )}
@@ -7889,7 +8104,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
               <UnifiedDataTable
                 compact
-                title={`أرصدة البضاعة الحالية في: ${vanWarehouse?.name || 'سيارة المندوب'}`}
+                title={`${t('أرصدة البضاعة الحالية في:', 'Current Stock Balances in:')} ${vanWarehouse?.name || t('سيارة المندوب', 'Rep Van')}`}
                 headerActions={
                   !custodyStatement ? (
                     <button
@@ -7899,24 +8114,24 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       className="h-7 px-2.5 rounded-md bg-blue-50 text-blue-900 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
                     >
                       <RefreshCw className={`w-3.5 h-3.5 ${isLoadingCustodyStmt ? 'animate-spin' : ''}`} />
-                      <span>كشف العهدة</span>
+                      <span>{t('كشف العهدة', 'Custody Statement')}</span>
                     </button>
                   ) : undefined
                 }
                 data={activeProducts.filter((p) => (p.stockPerWarehouse?.[effectiveVanId] || 0) > 0)}
                 rowKey={(p) => p.id}
-                emptyTitle="لا توجد بضاعة متوفرة حالياً داخل مستودع السيارة"
+                emptyTitle={t('لا توجد بضاعة متوفرة حالياً داخل مستودع السيارة', 'No stock currently available in van warehouse')}
                 columns={[
-                  { key: 'name', header: 'الصنف', render: (p) => <span className="font-bold text-slate-900">{p.name}</span> },
-                  { key: 'category', header: 'التصنيف', render: (p) => <span className="text-slate-500">{p.category}</span> },
+                  { key: 'name', header: t('الصنف', 'Item'), render: (p) => <span className="font-bold text-slate-900">{p.name}</span> },
+                  { key: 'category', header: t('التصنيف', 'Category'), render: (p) => <span className="text-slate-500">{t(p.category)}</span> },
                   {
                     key: 'stock',
-                    header: 'الكمية المتاحة',
+                    header: t('الكمية المتاحة', 'Available Qty'),
                     align: 'center',
                     sortValue: (p) => Number(p.stockPerWarehouse?.[effectiveVanId] || 0),
                     render: (p) => (
                       <strong className="font-mono text-blue-950 tabular-nums">
-                        {p.stockPerWarehouse?.[effectiveVanId] || 0} {p.baseUnit}
+                        {formatLocaleNumber(p.stockPerWarehouse?.[effectiveVanId] || 0)} {t(p.baseUnit)}
                       </strong>
                     ),
                   },
@@ -7930,14 +8145,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               onSubmit={handleRecordPartialCustodyDelivery}
               className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-1.5 text-xs"
             >
-              <h4 className="text-xs sm:text-sm font-black text-slate-900">تسليم جزئي من عهدة السيارة إلى عميل</h4>
+              <h4 className="text-xs sm:text-sm font-black text-slate-900">{t('تسليم جزئي من عهدة السيارة إلى عميل', 'Partial Delivery from Van Custody to Customer')}</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                 <select
                   value={delivCustomerId}
                   onChange={(e) => setDelivCustomerId(e.target.value)}
                   className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-bold"
                 >
-                  <option value="">-- اختر العميل المستلم (اختياري) --</option>
+                  <option value="">{t('-- اختر العميل المستلم (اختياري) --', '-- Select Receiving Customer (Optional) --')}</option>
                   {data.customers.map((c) => (
                     <option key={c.id} value={c.id}>{c.shopName || c.name}</option>
                   ))}
@@ -7947,10 +8162,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   onChange={(e) => setDelivProdId(e.target.value)}
                   className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-bold"
                 >
-                  <option value="">-- اختر الصنف من العهدة --</option>
+                  <option value="">{t('-- اختر الصنف من العهدة --', '-- Select Item from Custody --')}</option>
                   {activeProducts.filter((p) => (p.stockPerWarehouse?.[effectiveVanId] || 0) > 0).map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} (متاح: {p.stockPerWarehouse?.[effectiveVanId] || 0} {p.baseUnit})
+                      {p.name} ({t('متاح:', 'Avail:')} {formatLocaleNumber(p.stockPerWarehouse?.[effectiveVanId] || 0)} {t(p.baseUnit)})
                     </option>
                   ))}
                 </select>
@@ -7959,14 +8174,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   min={0.001}
                   value={delivQty}
                   onChange={setDelivQty}
-                  ariaLabel="الكمية المسلمة"
+                  ariaLabel={t('الكمية المسلمة', 'Delivered Quantity')}
                   inputClassName="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
                 />
                 <input
                   type="text"
                   value={delivNotes}
                   onChange={(e) => setDelivNotes(e.target.value)}
-                  placeholder="ملاحظات التسليم..."
+                  placeholder={t('ملاحظات التسليم...', 'Delivery notes...')}
                   className="w-full h-8 rounded-md border border-slate-300 px-2"
                 />
               </div>
@@ -7975,7 +8190,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 disabled={isSendingTransfer}
                 className="w-full h-9 rounded-lg bg-[#003589] hover:bg-[#0049B0] text-white font-black cursor-pointer disabled:opacity-50"
               >
-                {isSendingTransfer ? 'جاري التسجيل...' : 'تأكيد تسليم العهدة'}
+                {isSendingTransfer ? t('جاري التسجيل...', 'Recording...') : t('تأكيد تسليم العهدة', 'Confirm Custody Delivery')}
               </button>
             </form>
           )}
@@ -7985,7 +8200,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               onSubmit={handleRecordCustodyReturn}
               className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-1.5 text-xs"
             >
-              <h4 className="text-xs sm:text-sm font-black text-slate-900">إرجاع بضاعة من عهدة السيارة إلى المخزن</h4>
+              <h4 className="text-xs sm:text-sm font-black text-slate-900">{t('إرجاع بضاعة من عهدة السيارة إلى المخزن', 'Return Stock from Van Custody to Warehouse')}</h4>
               <select
                 value={retCustodyProdId}
                 onChange={(e) => {
@@ -7996,12 +8211,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 }}
                 className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-bold"
               >
-                <option value="">-- اختر الصنف المرتجع من السيارة --</option>
+                <option value="">{t('-- اختر الصنف المرتجع من السيارة --', '-- Select Item to Return from Van --')}</option>
                 {activeProducts
                   .filter((p) => (p.stockPerWarehouse?.[effectiveVanId] || 0) > 0)
                   .map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} (متاح بالسيارة: {p.stockPerWarehouse?.[effectiveVanId] || 0} {p.baseUnit})
+                      {p.name} ({t('متاح بالسيارة:', 'In Van:')} {formatLocaleNumber(p.stockPerWarehouse?.[effectiveVanId] || 0)} {t(p.baseUnit)})
                     </option>
                   ))}
               </select>
@@ -8018,15 +8233,15 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     >
                       {retProd ? (
                         <>
-                          <option value={retProd.baseUnit}>{retProd.baseUnit}</option>
+                          <option value={retProd.baseUnit}>{t(retProd.baseUnit)}</option>
                           {retProd.units.map((u) => (
                             <option key={u.id} value={u.name}>
-                              {u.name} ({u.conversionFactor})
+                              {t(u.name)} ({u.conversionFactor})
                             </option>
                           ))}
                         </>
                       ) : (
-                        <option value="">الوحدة</option>
+                        <option value="">{t('الوحدة', 'Unit')}</option>
                       )}
                     </select>
                     <QuantityInput
@@ -8034,7 +8249,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       min={0.001}
                       value={retCustodyQty}
                       onChange={setRetCustodyQty}
-                      ariaLabel="الكمية المرتجعة للمخزن"
+                      ariaLabel={t('الكمية المرتجعة للمخزن', 'Quantity Returned to Warehouse')}
                       inputClassName="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
                     />
                   </div>
@@ -8051,7 +8266,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     .filter((w) => w.id !== effectiveVanId)
                     .map((w) => (
                       <option key={w.id} value={w.id}>
-                        إرجاع إلى: {w.name}
+                        {t('إرجاع إلى:', 'Return to:')} {w.name}
                       </option>
                     ))}
                 </select>
@@ -8060,7 +8275,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   type="text"
                   value={retCustodyNotes}
                   onChange={(e) => setRetCustodyNotes(e.target.value)}
-                  placeholder="سبب الإرجاع أو ملاحظات..."
+                  placeholder={t('سبب الإرجاع أو ملاحظات...', 'Return reason or notes...')}
                   className="w-full h-8 rounded-md border border-slate-300 px-2"
                 />
               </div>
@@ -8070,7 +8285,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 disabled={isSendingTransfer || !retCustodyProdId}
                 className="w-full h-9 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-black cursor-pointer disabled:opacity-50"
               >
-                {isSendingTransfer ? 'جاري تسجيل الإرجاع...' : 'تأكيد إرجاع البضاعة للمخزن'}
+                {isSendingTransfer ? t('جاري تسجيل الإرجاع...', 'Recording Return...') : t('تأكيد إرجاع البضاعة للمخزن', 'Confirm Return to Warehouse')}
               </button>
             </form>
           )}
@@ -8081,17 +8296,17 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 onSubmit={handleSendDirectItemTransfer}
                 className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-1.5"
               >
-                <h4 className="text-xs sm:text-sm font-black text-slate-900">طلب تحويل أصناف من المخزن الرئيسي إلى السيارة</h4>
+                <h4 className="text-xs sm:text-sm font-black text-slate-900">{t('طلب تحويل أصناف من المخزن الرئيسي إلى السيارة', 'Request Stock Transfer from Main Warehouse to Van')}</h4>
                 <div className="flex gap-1.5">
                   <select
                     value={reqProdId}
                     onChange={(e) => setReqProdId(e.target.value)}
                     className="flex-1 h-8 rounded-md border border-slate-300 px-2 bg-white font-bold"
                   >
-                    <option value="">-- اختر الصنف --</option>
+                    <option value="">{t('-- اختر الصنف --', '-- Select Item --')}</option>
                     {activeProducts.map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.name} (الرئيسي: {mainWarehouse ? p.stockPerWarehouse?.[mainWarehouse.id] || 0 : 0})
+                        {p.name} ({t('الرئيسي:', 'Main:')} {formatLocaleNumber(mainWarehouse ? p.stockPerWarehouse?.[mainWarehouse.id] || 0 : 0)})
                       </option>
                     ))}
                   </select>
@@ -8100,7 +8315,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     min={0.001}
                     value={reqQty}
                     onChange={setReqQty}
-                    ariaLabel="كمية التحويل المطلوبة"
+                    ariaLabel={t('كمية التحويل المطلوبة', 'Requested Transfer Quantity')}
                     inputClassName="w-16 h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
                   />
                   <button
@@ -8126,7 +8341,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     }}
                     className="h-8 px-2.5 rounded-md bg-blue-900 text-white font-bold cursor-pointer"
                   >
-                    إضافة
+                    {t('إضافة', 'Add')}
                   </button>
                 </div>
 
@@ -8135,20 +8350,20 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     compact
                     paginated={false}
                     searchable={false}
-                    title={`الأصناف المطلوبة للتحويل (${reqItems.length})`}
+                    title={t(`الأصناف المطلوبة للتحويل (${reqItems.length})`, `Requested Transfer Items (${reqItems.length})`)}
                     data={reqItems}
                     rowKey={(it, idx) => `${it.productId}-${idx}`}
                     columns={[
-                      { key: 'productName', header: 'الصنف', render: (it) => <span className="font-bold">{it.productName}</span> },
+                      { key: 'productName', header: t('الصنف', 'Item'), render: (it) => <span className="font-bold">{it.productName}</span> },
                       {
                         key: 'requestedQty',
-                        header: 'الكمية',
+                        header: t('الكمية', 'Qty'),
                         align: 'center',
-                        render: (it) => <span className="font-mono">{it.requestedQty} {it.unit}</span>,
+                        render: (it) => <span className="font-mono">{formatLocaleNumber(it.requestedQty)} {t(it.unit)}</span>,
                       },
                       {
                         key: 'actions',
-                        header: 'حذف',
+                        header: t('حذف', 'Delete'),
                         align: 'center',
                         sortable: false,
                         render: (_it, idx) => (
@@ -8157,7 +8372,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                             onClick={() => setReqItems((prev) => prev.filter((_, i) => i !== idx))}
                             className="text-red-600 font-bold px-2 cursor-pointer"
                           >
-                            حذف
+                            {t('حذف', 'Delete')}
                           </button>
                         ),
                       },
@@ -8170,26 +8385,26 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   disabled={isSendingTransfer || reqItems.length === 0}
                   className="w-full h-8 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-black disabled:opacity-50 cursor-pointer"
                 >
-                  {isSendingTransfer ? 'جاري الإرسال...' : 'إرسال طلب التحويل للإدارة'}
+                  {isSendingTransfer ? t('جاري الإرسال...', 'Sending...') : t('إرسال طلب التحويل للإدارة', 'Send Transfer Request to Admin')}
                 </button>
               </form>
 
               <UnifiedDataTable
                 compact
-                title={`طلبات تحويل البضاعة (${myItemTransfers.length})`}
+                title={t(`طلبات تحويل البضاعة (${myItemTransfers.length})`, `Stock Transfer Requests (${myItemTransfers.length})`)}
                 data={myItemTransfers}
                 rowKey={(tr) => tr.id}
-                emptyTitle="لا توجد طلبات تحويل بضاعة مسجلة"
+                emptyTitle={t('لا توجد طلبات تحويل بضاعة مسجلة', 'No stock transfer requests recorded')}
                 columns={[
-                  { key: 'requestNumber', header: 'رقم الطلب', render: (tr) => <span className="font-mono font-black text-blue-950">{tr.requestNumber}</span> },
+                  { key: 'requestNumber', header: t('رقم الطلب', 'Request #'), render: (tr) => <span className="font-mono font-black text-blue-950">{tr.requestNumber}</span> },
                   {
                     key: 'items',
-                    header: 'الأصناف',
+                    header: t('الأصناف', 'Items'),
                     render: (tr) => (
                       <div className="space-y-0.5 text-[11px] text-slate-700">
                         {tr.items.map((it, i) => (
                           <div key={i}>
-                            {it.productName}: <span className="font-mono font-bold">{it.approvedQty ?? it.requestedQty} {it.unit}</span>
+                            {it.productName}: <span className="font-mono font-bold">{formatLocaleNumber(it.approvedQty ?? it.requestedQty)} {t(it.unit)}</span>
                           </div>
                         ))}
                       </div>
@@ -8197,25 +8412,25 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   },
                   {
                     key: 'status',
-                    header: 'الحالة',
+                    header: t('الحالة', 'Status'),
                     align: 'center',
                     render: (tr) => (
                       <span className="font-bold text-slate-700">
                         {tr.status === 'pending'
-                          ? 'قيد مراجعة الإدارة'
+                          ? t('قيد مراجعة الإدارة', 'Pending Admin Review')
                           : tr.status === 'approved'
-                          ? 'معتمد — بانتظار الصرف'
+                          ? t('معتمد — بانتظار الصرف', 'Approved — Awaiting Dispatch')
                           : tr.status === 'executed'
-                          ? 'تم الصرف — بانتظار تأكيد استلامك'
+                          ? t('تم الصرف — بانتظار تأكيد استلامك', 'Dispatched — Confirm Receipt')
                           : tr.status === 'received'
-                          ? 'تم الاستلام الفعلي'
-                          : 'مرفوض'}
+                          ? t('تم الاستلام الفعلي', 'Physically Received')
+                          : t('مرفوض', 'Rejected')}
                       </span>
                     ),
                   },
                   {
                     key: 'actions',
-                    header: 'الإجراءات',
+                    header: t('الإجراءات', 'Actions'),
                     align: 'center',
                     sortable: false,
                     render: (tr) =>
@@ -8225,7 +8440,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           onClick={() => handleConfirmItemReceived(tr.id, tr.requestNumber)}
                           className="px-2 py-0.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-[11px] font-black cursor-pointer whitespace-nowrap"
                         >
-                          تأكيد استلام الأصناف فعلياً
+                          {t('تأكيد استلام الأصناف فعلياً', 'Confirm Physical Receipt')}
                         </button>
                       ) : (
                         <span className="text-slate-400">—</span>
@@ -8242,14 +8457,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 onSubmit={handleSendCashToOwner}
                 className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-1.5"
               >
-                <h4 className="text-xs sm:text-sm font-black text-slate-900">توريد نقدية من المندوب إلى خزينة الفرع</h4>
+                <h4 className="text-xs sm:text-sm font-black text-slate-900">{t('توريد نقدية من المندوب إلى خزينة الفرع', 'Cash Remittance from Rep to Branch Cashbox')}</h4>
                 <div className="flex gap-1.5">
                   <input
                     type="number"
                     min={1}
                     value={cashAmount || ''}
                     onChange={(e) => setCashAmount(Number(e.target.value))}
-                    placeholder={`المبلغ (${data.settings.currency})`}
+                    placeholder={`${t('المبلغ', 'Amount')} (${t(data.settings.currency)})`}
                     className="flex-1 h-8 rounded-md border border-slate-300 px-2 font-mono font-bold"
                   />
                   <button
@@ -8257,68 +8472,68 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     disabled={isSendingTransfer || cashAmount <= 0}
                     className="h-8 px-2.5 rounded-md bg-blue-900 text-white font-black disabled:opacity-50 cursor-pointer"
                   >
-                    إرسال التوريد
+                    {t('إرسال التوريد', 'Send Remittance')}
                   </button>
                 </div>
                 <input
                   type="text"
                   value={cashNotes}
                   onChange={(e) => setCashNotes(e.target.value)}
-                  placeholder="ملاحظات التوريد (اختياري)..."
+                  placeholder={t('ملاحظات التوريد (اختياري)...', 'Remittance notes (optional)...')}
                   className="w-full h-8 rounded-md border border-slate-300 px-2"
                 />
               </form>
 
               <UnifiedDataTable
                 compact
-                title={`التحويلات النقدية (${myCashTransfers.length})`}
+                title={t(`التحويلات النقدية (${myCashTransfers.length})`, `Cash Transfers (${myCashTransfers.length})`)}
                 data={myCashTransfers}
-                rowKey={(t) => t.id}
-                emptyTitle="لا توجد تحويلات نقدية مسجلة"
+                rowKey={(tr) => tr.id}
+                emptyTitle={t('لا توجد تحويلات نقدية مسجلة', 'No cash transfers recorded')}
                 columns={[
-                  { key: 'transferNumber', header: 'رقم التحويل', render: (t) => <span className="font-mono font-black text-blue-950">{t.transferNumber}</span> },
+                  { key: 'transferNumber', header: t('رقم التحويل', 'Transfer #'), render: (tr) => <span className="font-mono font-black text-blue-950">{tr.transferNumber}</span> },
                   {
                     key: 'direction',
-                    header: 'النوع',
-                    render: (t) => (t.direction === 'rep_to_owner' ? 'توريد إلى الفرع' : 'عهدة واردة لك من الإدارة'),
+                    header: t('النوع', 'Type'),
+                    render: (tr) => (tr.direction === 'rep_to_owner' ? t('توريد إلى الفرع', 'Remittance to Branch') : t('عهدة واردة لك من الإدارة', 'Cash Custody from Admin')),
                   },
                   {
                     key: 'amount',
-                    header: 'المبلغ',
+                    header: t('المبلغ', 'Amount'),
                     align: 'center',
-                    render: (t) => (
+                    render: (tr) => (
                       <strong className="font-mono text-slate-900">
-                        {t.amount.toLocaleString()} {data.settings.currency}
+                        {formatLocaleNumber(tr.amount)} {t(data.settings.currency)}
                       </strong>
                     ),
                   },
                   {
                     key: 'status',
-                    header: 'الحالة',
+                    header: t('الحالة', 'Status'),
                     align: 'center',
-                    render: (t) => (
+                    render: (tr) => (
                       <span className="font-bold text-slate-700">
-                        {t.status === 'received'
-                          ? 'تم الاستلام والتسوية'
-                          : t.status === 'awaiting_receipt'
-                          ? 'بانتظار تأكيد الاستلام'
-                          : 'مرفوض'}
+                        {tr.status === 'received'
+                          ? t('تم الاستلام والتسوية', 'Received & Settled')
+                          : tr.status === 'awaiting_receipt'
+                          ? t('بانتظار تأكيد الاستلام', 'Awaiting Receipt Confirmation')
+                          : t('مرفوض', 'Rejected')}
                       </span>
                     ),
                   },
                   {
                     key: 'actions',
-                    header: 'الإجراءات',
+                    header: t('الإجراءات', 'Actions'),
                     align: 'center',
                     sortable: false,
-                    render: (t) =>
-                      t.status === 'awaiting_receipt' && t.direction === 'owner_to_rep' ? (
+                    render: (tr) =>
+                      tr.status === 'awaiting_receipt' && tr.direction === 'owner_to_rep' ? (
                         <button
                           type="button"
-                          onClick={() => handleConfirmOwnerCash(t.id)}
+                          onClick={() => handleConfirmOwnerCash(tr.id)}
                           className="px-2 py-0.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-[11px] font-black cursor-pointer whitespace-nowrap"
                         >
-                          تأكيد استلام العهدة النقدية
+                          {t('تأكيد استلام العهدة النقدية', 'Confirm Cash Custody Receipt')}
                         </button>
                       ) : (
                         <span className="text-slate-400">—</span>
@@ -8338,7 +8553,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             <div className="flex items-center justify-between">
               <h3 className="text-xs sm:text-sm font-black text-[#011E58] flex items-center gap-1.5">
                 <Truck className="w-4 h-4 text-[#003589]" />
-                <span>طلبات التسليم المعينة لك ({assignedDeliveryOrders.length})</span>
+                <span>{t(`طلبات التسليم المعينة لك (${assignedDeliveryOrders.length})`, `Assigned Delivery Orders (${assignedDeliveryOrders.length})`)}</span>
               </h3>
             </div>
 
@@ -8346,16 +8561,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               compact
               data={assignedDeliveryOrders}
               rowKey={(ord) => ord.id}
-              emptyTitle="لا توجد طلبات توصيل معينة لك حالياً"
+              emptyTitle={t('لا توجد طلبات توصيل معينة لك حالياً', 'No delivery orders currently assigned to you')}
               columns={[
                 {
                   key: 'requestNumber',
-                  header: 'رقم الطلب',
+                  header: t('رقم الطلب', 'Order #'),
                   render: (ord) => <span className="font-mono font-black text-blue-950">{ord.requestNumber}</span>,
                 },
                 {
                   key: 'customerName',
-                  header: 'العميل والعنوان',
+                  header: t('العميل والعنوان', 'Customer & Address'),
                   render: (ord) => (
                     <div>
                       <span className="font-bold text-slate-900 block">
@@ -8372,30 +8587,30 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 },
                 {
                   key: 'total',
-                  header: 'المبالغ',
+                  header: t('المبالغ', 'Amounts'),
                   render: (ord) => {
                     const total = Number(ord.invoiceTotal ?? ord.totalAmount ?? 0);
                     const adv = Number(ord.invoicePaidAmount ?? ord.advancePaidAmount ?? 0);
                     const remainingDue = Math.max(0, Number(ord.invoiceRemainingAmount ?? (total - adv)));
                     return (
                       <div className="font-mono text-[11px] whitespace-nowrap">
-                        <div>الإجمالي: <strong>{total.toLocaleString()} {data.settings.currency}</strong></div>
-                        <div className="text-emerald-700">مدفوع: {adv.toLocaleString()} · <span className="text-blue-950 font-black">متبقي: {remainingDue.toLocaleString()}</span></div>
+                        <div>{t('الإجمالي:', 'Total:')} <strong>{formatLocaleNumber(total)} {t(data.settings.currency)}</strong></div>
+                        <div className="text-emerald-700">{t('مدفوع:', 'Paid:')} {formatLocaleNumber(adv)} · <span className="text-blue-950 font-black">{t('متبقي:', 'Rem:')} {formatLocaleNumber(remainingDue)}</span></div>
                       </div>
                     );
                   },
                 },
                 {
                   key: 'status',
-                  header: 'الحالة',
+                  header: t('الحالة', 'Status'),
                   align: 'center',
                   render: (ord) => (
-                    <span className="font-black text-[#011E58]">{REP_ORDER_STATUS_LABELS[ord.status] || ord.status}</span>
+                    <span className="font-black text-[#011E58]">{t(REP_ORDER_STATUS_LABELS[ord.status] || ord.status)}</span>
                   ),
                 },
                 {
                   key: 'actions',
-                  header: 'الإجراءات',
+                  header: t('الإجراءات', 'Actions'),
                   align: 'center',
                   sortable: false,
                   render: (ord) => (
@@ -8406,7 +8621,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           className="px-2 py-0.5 rounded-md bg-[#EEF3FA] text-[#011E58] border border-[#DCE6F5] text-[11px] font-bold inline-flex items-center gap-1"
                         >
                           <Phone className="w-3 h-3 text-[#003589]" />
-                          <span>اتصال</span>
+                          <span>{t('اتصال', 'Call')}</span>
                         </a>
                       )}
                       {(ord.deliveryAddress || ord.geoCoordinates) && (
@@ -8423,7 +8638,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           className="px-2 py-0.5 rounded-md bg-[#EEF3FA] text-[#003589] border border-[#DCE6F5] text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
                         >
                           <MapPin className="w-3 h-3 text-[#003589]" />
-                          <span>الموقع</span>
+                          <span>{t('الموقع', 'Location')}</span>
                         </button>
                       )}
                       {(ord.status === 'rep_assigned' || ord.status === 'preparing' || ord.status === 'invoiced') && (
@@ -8433,7 +8648,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           onClick={() => handleStartDelivery(ord)}
                           className="px-2 py-0.5 rounded-md bg-[#011E58] hover:bg-[#003589] text-white text-[11px] font-black cursor-pointer disabled:opacity-50"
                         >
-                          بدء التوصيل
+                          {t('بدء التوصيل', 'Start Delivery')}
                         </button>
                       )}
                       {(ord.status === 'rep_assigned' || ord.status === 'out_for_delivery' || ord.status === 'preparing') && (
@@ -8443,7 +8658,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           onClick={() => handleOpenDeliverModal(ord)}
                           className="px-2 py-0.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-[11px] font-black cursor-pointer disabled:opacity-50"
                         >
-                          تم التسليم
+                          {t('تم التسليم', 'Delivered')}
                         </button>
                       )}
                     </div>
@@ -8457,13 +8672,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             onSubmit={handleSubmitRepOrder}
             className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-1.5"
           >
-            <h3 className="text-xs sm:text-sm font-black text-slate-900">إرسال طلب شراء للإدارة</h3>
+            <h3 className="text-xs sm:text-sm font-black text-slate-900">{t('إرسال طلب شراء للإدارة', 'Submit Purchase Order to Management')}</h3>
             <select
               value={ordCustomerId}
               onChange={(e) => setOrdCustomerId(e.target.value)}
               className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold bg-white"
             >
-              <option value="">-- اختر العميل --</option>
+              <option value="">{t('-- اختر العميل --', '-- Select Customer --')}</option>
               {data.customers.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.shopName ? `${c.shopName} (${c.name})` : c.name}
@@ -8477,9 +8692,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 onChange={(e) => handleSelectOrderProduct(e.target.value)}
                 className="w-full h-8 rounded-md border border-blue-300 px-2 font-bold bg-white"
               >
-                <option value="">-- اختر الصنف للطلب --</option>
+                <option value="">{t('-- اختر الصنف للطلب --', '-- Select Item for Order --')}</option>
                 {activeProducts.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name} ({p.baseUnit})</option>
+                  <option key={p.id} value={p.id}>{p.name} ({t(p.baseUnit)})</option>
                 ))}
               </select>
 
@@ -8491,16 +8706,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     className="w-full h-8 rounded-md border border-slate-300 px-1.5 bg-white font-bold"
                   >
                     {selectedOrderProduct.units.map((u) => (
-                      <option key={u.id} value={u.name}>{u.name}</option>
+                      <option key={u.id} value={u.name}>{t(u.name)}</option>
                     ))}
-                    <option value={selectedOrderProduct.baseUnit}>{selectedOrderProduct.baseUnit}</option>
+                    <option value={selectedOrderProduct.baseUnit}>{t(selectedOrderProduct.baseUnit)}</option>
                   </select>
                   <QuantityInput
                     allowDecimals
                     min={0.001}
                     value={ordQty}
                     onChange={setOrdQty}
-                    ariaLabel="كمية الصنف في الطلب"
+                    ariaLabel={t('كمية الصنف في الطلب', 'Item Quantity in Order')}
                     inputClassName="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
                   />
                   <input
@@ -8509,7 +8724,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     min={0}
                     value={ordPrice || ''}
                     onChange={(e) => setOrdPrice(Math.max(0, Number(e.target.value)))}
-                    placeholder="السعر"
+                    placeholder={t('السعر', 'Price')}
                     className="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
                   />
                   <button
@@ -8518,7 +8733,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     className="h-8 rounded-md bg-blue-900 text-white font-black flex items-center justify-center gap-1 cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>إضافة</span>
+                    <span>{t('إضافة', 'Add')}</span>
                   </button>
                 </div>
               )}
@@ -8529,15 +8744,15 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 compact
                 paginated={false}
                 searchable={false}
-                title={`أصناف الطلب (${ordItems.length})`}
+                title={t(`أصناف الطلب (${ordItems.length})`, `Order Items (${ordItems.length})`)}
                 data={ordItems}
                 rowKey={(it, idx) => `${it.productId}-${it.unit}-${idx}`}
                 columns={[
-                  { key: 'productName', header: 'الصنف', render: (it) => <span className="font-bold text-slate-900">{it.productName}</span> },
-                  { key: 'quantity', header: 'الكمية', align: 'center', render: (it) => <span className="font-mono">{it.quantity} {it.unit}</span> },
+                  { key: 'productName', header: t('الصنف', 'Item'), render: (it) => <span className="font-bold text-slate-900">{it.productName}</span> },
+                  { key: 'quantity', header: t('الكمية', 'Qty'), align: 'center', render: (it) => <span className="font-mono">{formatLocaleNumber(it.quantity)} {t(it.unit)}</span> },
                   {
                     key: 'actions',
-                    header: 'حذف',
+                    header: t('حذف', 'Delete'),
                     align: 'center',
                     sortable: false,
                     render: (_it, idx) => (
@@ -8558,7 +8773,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               type="text"
               value={ordNotes}
               onChange={(e) => setOrdNotes(e.target.value)}
-              placeholder="ملاحظات الطلب..."
+              placeholder={t('ملاحظات الطلب...', 'Order notes...')}
               className="w-full h-8 rounded-md border border-slate-300 px-2"
             />
 
@@ -8567,25 +8782,25 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               disabled={isSubmittingOrder || !ordItems.length}
               className="w-full h-9 rounded-lg bg-[#003589] hover:bg-[#0049B0] text-white font-black disabled:opacity-50 cursor-pointer"
             >
-              {isSubmittingOrder ? 'جاري الإرسال...' : 'إرسال الطلب للإدارة'}
+              {isSubmittingOrder ? t('جاري الإرسال...', 'Submitting...') : t('إرسال الطلب للإدارة', 'Submit Order to Admin')}
             </button>
           </form>
 
           {mySubmittedOrders.length > 0 && (
             <UnifiedDataTable
               compact
-              title={`طلباتي المرسلة (${mySubmittedOrders.length})`}
+              title={t(`طلباتي المرسلة (${mySubmittedOrders.length})`, `My Submitted Orders (${mySubmittedOrders.length})`)}
               data={mySubmittedOrders}
               rowKey={(ord) => ord.id}
               columns={[
-                { key: 'requestNumber', header: 'رقم الطلب', render: (ord) => <span className="font-mono font-black text-blue-950">{ord.requestNumber}</span> },
-                { key: 'customerName', header: 'العميل', render: (ord) => ord.customerName },
-                { key: 'itemsCount', header: 'الأصناف', align: 'center', render: (ord) => <span className="font-mono">{ord.items?.length || 0} أصناف</span> },
+                { key: 'requestNumber', header: t('رقم الطلب', 'Order #'), render: (ord) => <span className="font-mono font-black text-blue-950">{ord.requestNumber}</span> },
+                { key: 'customerName', header: t('العميل', 'Customer'), render: (ord) => ord.customerName },
+                { key: 'itemsCount', header: t('الأصناف', 'Items'), align: 'center', render: (ord) => <span className="font-mono">{ord.items?.length || 0} {t('أصناف', 'items')}</span> },
                 {
                   key: 'status',
-                  header: 'الحالة',
+                  header: t('الحالة', 'Status'),
                   align: 'center',
-                  render: (ord) => <span className="font-bold text-[#003589]">{REP_ORDER_STATUS_LABELS[ord.status] || ord.status}</span>,
+                  render: (ord) => <span className="font-bold text-[#003589]">{t(REP_ORDER_STATUS_LABELS[ord.status] || ord.status)}</span>,
                 },
               ]}
             />
@@ -8598,13 +8813,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         !canCreatePurchase ? (
           <div className="bg-white rounded-lg border border-red-200 p-2.5 text-center space-y-1.5 text-xs">
             <ShieldAlert className="w-6 h-6 text-red-600 mx-auto" />
-            <p className="font-black text-red-800">صلاحيات حسابك لا تسمح بعرض الموردين أو كشوف حساباتهم.</p>
+            <p className="font-black text-red-800">{t('صلاحيات حسابك لا تسمح بعرض الموردين أو كشوف حساباتهم.', 'Your account permissions do not allow viewing suppliers or their statements.')}</p>
             <button
               type="button"
               onClick={() => onTabChange('home')}
               className="h-8 px-3 rounded-md bg-slate-100 font-bold text-slate-800 cursor-pointer"
             >
-              العودة للرئيسية
+              {t('العودة للرئيسية', 'Back to Home')}
             </button>
           </div>
         ) : (
@@ -8614,9 +8829,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 <div className="flex items-center gap-2 min-w-0">
                   <Building2 className="w-5 h-5 text-[#003589] shrink-0" />
                   <div className="min-w-0">
-                    <h3 className="text-xs sm:text-sm font-black text-slate-900">الموردون وكشوف الحسابات ({data.suppliers.length})</h3>
+                    <h3 className="text-xs sm:text-sm font-black text-slate-900">
+                      {t(`الموردون وكشوف الحسابات (${data.suppliers.length})`, `Suppliers & Statements (${data.suppliers.length})`)}
+                    </h3>
                     <p className="text-[10px] text-slate-500 truncate">
-                      الرصيد المالي عام للشركة، وكشف الحساب يعرض فواتيرك ومرتجعاتك فقط.
+                      {t('الرصيد المالي عام للشركة، وكشف الحساب يعرض فواتيرك ومرتجعاتك فقط.', 'Financial balance is company-wide; statements show your invoices and returns only.')}
                     </p>
                   </div>
                 </div>
@@ -8625,18 +8842,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   onClick={() => onTabChange('new-supplier')}
                   className="h-8 px-2.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
                 >
-                  + مورد جديد
+                  {t('+ مورد جديد', '+ New Supplier')}
                 </button>
               </div>
 
               <div className="relative">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2 top-2" />
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute start-2 top-2" />
                 <input
                   type="text"
                   value={supSearch}
                   onChange={(e) => setSupSearch(e.target.value)}
-                  placeholder="ابحث باسم المورد أو الشركة أو الكود أو التليفون..."
-                  className="w-full h-8 rounded-md border border-slate-300 pr-7 pl-2 font-semibold"
+                  placeholder={t('ابحث باسم المورد أو الشركة أو الكود أو التليفون...', 'Search by supplier name, company, code, or phone...')}
+                  className="w-full h-8 rounded-md border border-slate-300 ps-7 pe-2 font-semibold"
                 />
               </div>
             </div>
@@ -8656,14 +8873,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 <UnifiedDataTable<Supplier>
                   compact
                   searchable={false}
-                  title={`جدول الموردين (${filteredSuppliers.length})`}
+                  title={t(`جدول الموردين (${filteredSuppliers.length})`, `Suppliers Table (${filteredSuppliers.length})`)}
                   data={filteredSuppliers}
                   rowKey={(sup) => sup.id}
-                  emptyTitle="لا توجد بيانات موردين مطابقة للبحث"
+                  emptyTitle={t('لا توجد بيانات موردين مطابقة للبحث', 'No suppliers match your search')}
                   columns={[
                     {
                       key: 'name',
-                      header: 'المورد / الشركة',
+                      header: t('المورد / الشركة', 'Supplier / Company'),
                       render: (sup) => (
                         <div>
                           <span className="font-black text-slate-900 block">{sup.name}</span>
@@ -8677,7 +8894,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     },
                     {
                       key: 'currentBalance',
-                      header: 'الرصيد العام',
+                      header: t('الرصيد العام', 'Overall Balance'),
                       align: 'center',
                       sortValue: (sup) => Number(sup.currentBalance || 0),
                       render: (sup) => {
@@ -8685,10 +8902,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         return (
                           <div className="whitespace-nowrap">
                             <strong className={`font-mono tabular-nums block ${bal > 0.009 ? 'text-rose-800' : bal < -0.009 ? 'text-emerald-800' : 'text-slate-700'}`}>
-                              {Math.abs(bal).toLocaleString()} {data.settings.currency}
+                              {formatLocaleNumber(Math.abs(bal))} {t(data.settings.currency)}
                             </strong>
                             <span className="text-[10px] text-slate-500">
-                              {bal > 0.009 ? 'علينا' : bal < -0.009 ? 'لنا' : 'متوازن'}
+                              {bal > 0.009 ? t('علينا', 'Payable') : bal < -0.009 ? t('لنا', 'Receivable') : t('متوازن', 'Balanced')}
                             </span>
                           </div>
                         );
@@ -8696,7 +8913,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     },
                     {
                       key: 'actions',
-                      header: 'الإجراءات',
+                      header: t('الإجراءات', 'Actions'),
                       align: 'center',
                       sortable: false,
                       render: (sup) => (
@@ -8706,7 +8923,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                             onClick={() => setSelectedSupplierDetail(sup)}
                             className="px-2 py-0.5 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 text-[11px] font-black cursor-pointer"
                           >
-                            كشف حساب
+                            {t('كشف حساب', 'Statement')}
                           </button>
                           <button
                             type="button"
@@ -8717,7 +8934,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                             }}
                             className="px-2 py-0.5 rounded-md bg-[#011E58] hover:bg-[#003589] text-white text-[11px] font-black cursor-pointer"
                           >
-                            + فاتورة شراء
+                            {t('+ فاتورة شراء', '+ Purchase Invoice')}
                           </button>
                         </div>
                       ),
@@ -8738,10 +8955,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               <div className="flex items-center gap-2 min-w-0">
                 <FileSpreadsheet className="w-5 h-5 text-blue-900 shrink-0" />
                 <div className="min-w-0">
-                  <h3 className="text-xs sm:text-sm font-black text-slate-900">تقارير المندوب التفصيلية</h3>
+                  <h3 className="text-xs sm:text-sm font-black text-slate-900">{t('تقارير المندوب التفصيلية', 'Detailed Representative Reports')}</h3>
                   <p className="text-[10px] text-slate-500 truncate">
-                    {repReportData?.scope?.accountBalanceNote ||
-                      'الأرصدة عامة للشركة، وإحصائيات الفواتير والتحصيلات تخص هذا المندوب فقط.'}
+                    {repReportData?.scope?.accountBalanceNote
+                      ? t(repReportData.scope.accountBalanceNote)
+                      : t('الأرصدة عامة للشركة، وإحصائيات الفواتير والتحصيلات تخص هذا المندوب فقط.', 'Balances are company-wide; invoice and collection metrics belong to this representative only.')}
                   </p>
                 </div>
               </div>
@@ -8753,19 +8971,19 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   className="h-8 px-2.5 rounded-md bg-blue-900 text-white font-bold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isLoadingRepReport ? 'animate-spin' : ''}`} />
-                  <span>تحديث</span>
+                  <span>{t('تحديث', 'Refresh')}</span>
                 </button>
               </div>
             </div>
 
             {repReportIsOfflineFallback && (
               <div className="p-2 rounded-md bg-amber-50 border border-amber-200 text-amber-900 font-bold text-[11px]">
-                يتم العرض حالياً من البيانات المحفوظة محلياً (وضع عدم الاتصال أو تعذر الوصول للخادم).
+                {t('يتم العرض حالياً من البيانات المحفوظة محلياً (وضع عدم الاتصال أو تعذر الوصول للخادم).', 'Currently displaying locally cached data (offline mode or server unreachable).')}
               </div>
             )}
             {repReportError && (
               <div className="p-2 rounded-md bg-red-50 border border-red-200 text-red-700 font-bold text-[11px]">
-                {repReportError}
+                {t(repReportError)}
               </div>
             )}
 
@@ -8773,10 +8991,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             <div className="pt-1.5 border-t border-slate-200">
               <div className="awlad-filter-row" data-testid="rep-reports-filter-row">
                 <label className="inline-flex items-center gap-1 h-8 px-2 rounded-md border border-slate-300 bg-white shrink-0">
-                  <span className="text-[10.5px] font-bold text-slate-500">من:</span>
+                  <span className="text-[10.5px] font-bold text-slate-500">{t('من:', 'From:')}</span>
                   <input
                     type="date"
-                    aria-label="من تاريخ"
+                    dir="ltr"
+                    aria-label={t('من تاريخ', 'From Date')}
                     value={rptDateFrom}
                     onChange={(e) => {
                       setRptDateFrom(e.target.value);
@@ -8786,10 +9005,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   />
                 </label>
                 <label className="inline-flex items-center gap-1 h-8 px-2 rounded-md border border-slate-300 bg-white shrink-0">
-                  <span className="text-[10.5px] font-bold text-slate-500">إلى:</span>
+                  <span className="text-[10.5px] font-bold text-slate-500">{t('إلى:', 'To:')}</span>
                   <input
                     type="date"
-                    aria-label="إلى تاريخ"
+                    dir="ltr"
+                    aria-label={t('إلى تاريخ', 'To Date')}
                     value={rptDateTo}
                     onChange={(e) => {
                       setRptDateTo(e.target.value);
@@ -8800,36 +9020,37 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 </label>
                 <input
                   type="text"
-                  aria-label="رقم المستند"
+                  dir="ltr"
+                  aria-label={t('رقم المستند', 'Document Number')}
                   value={rptInvoiceNumber}
                   onChange={(e) => {
                     setRptInvoiceNumber(e.target.value);
                     setRptPage(1);
                   }}
-                  placeholder="رقم الفاتورة..."
-                  className="w-[125px] shrink-0 h-8 rounded-md border border-slate-300 px-2 font-mono text-xs bg-white outline-hidden focus:border-blue-600"
+                  placeholder={t('رقم الفاتورة...', 'Invoice #...')}
+                  className="w-[125px] shrink-0 h-8 rounded-md border border-slate-300 px-2 font-mono text-xs bg-white outline-hidden focus:border-blue-600 text-start"
                 />
                 <div className="w-[140px] shrink-0">
                   <SearchableFilterSelect
                     id="rep-rpt-optype"
-                    inlinePrefix="العملية"
+                    inlinePrefix={t('العملية', 'Operation')}
                     value={rptOpType}
                     onChange={(val) => {
                       setRptOpType((val as any) || 'all');
                       setRptPage(1);
                     }}
                     options={[
-                      { value: 'sales', label: 'فواتير البيع' },
-                      ...(canCreatePurchase ? [{ value: 'purchase', label: 'فواتير الشراء' }] : []),
-                      { value: 'sales_return', label: 'مرتجعات البيع' },
+                      { value: 'sales', label: t('فواتير البيع', 'Sales Invoices') },
+                      ...(canCreatePurchase ? [{ value: 'purchase', label: t('فواتير الشراء', 'Purchase Invoices') }] : []),
+                      { value: 'sales_return', label: t('مرتجعات البيع', 'Sales Returns') },
                       ...(canCreatePurchase
                         ? [
-                            { value: 'purchase_return', label: 'مرتجعات الشراء' },
-                            { value: 'purchase_return_request', label: 'طلبات مرتجع الشراء' },
+                            { value: 'purchase_return', label: t('مرتجعات الشراء', 'Purchase Returns') },
+                            { value: 'purchase_return_request', label: t('طلبات مرتجع الشراء', 'Purchase Return Requests') },
                           ]
                         : []),
                     ]}
-                    allOptionLabel="الكل"
+                    allOptionLabel={t('الكل', 'All')}
                     allOptionValue="all"
                     buttonClassName="h-8 min-h-[32px] rounded-md"
                   />
@@ -8837,7 +9058,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 <div className="w-[165px] shrink-0">
                   <SearchableFilterSelect
                     id="rep-rpt-party"
-                    inlinePrefix={canCreatePurchase ? 'العميل/المورد' : 'العميل'}
+                    inlinePrefix={canCreatePurchase ? t('العميل/المورد', 'Customer/Supplier') : t('العميل', 'Customer')}
                     value={rptPartyKey}
                     onChange={(val) => {
                       setRptPartyKey(val);
@@ -8848,8 +9069,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         value: `customer:${c.id}`,
                         label: c.shopName || c.name,
                         subtitle: c.phone || c.name,
-                        badge: 'عميل',
-                        groupLabel: 'العملاء',
+                        badge: t('عميل', 'Customer'),
+                        groupLabel: t('العملاء', 'Customers'),
                         searchText: `${c.name} ${c.shopName || ''} ${c.phone || ''}`,
                       })),
                       ...(canCreatePurchase
@@ -8857,15 +9078,15 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                             value: `supplier:${s.id}`,
                             label: s.name,
                             subtitle: s.phone || s.companyName,
-                            badge: 'مورد',
-                            groupLabel: 'الموردون',
+                            badge: t('مورد', 'Supplier'),
+                            groupLabel: t('الموردون', 'Suppliers'),
                             searchText: `${s.name} ${s.companyName || ''} ${s.phone || ''}`,
                           }))
                         : []),
                     ]}
-                    allOptionLabel="الكل"
+                    allOptionLabel={t('الكل', 'All')}
                     allOptionValue="all"
-                    searchPlaceholder="ابحث باسم العميل أو المحل أو المورد..."
+                    searchPlaceholder={t('ابحث باسم العميل أو المحل أو المورد...', 'Search customer, shop, or supplier...')}
                     allowClear
                     buttonClassName="h-8 min-h-[32px] rounded-md"
                   />
@@ -8873,7 +9094,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 <div className="w-[155px] shrink-0">
                   <SearchableFilterSelect
                     id="rep-rpt-product"
-                    inlinePrefix="الصنف"
+                    inlinePrefix={t('الصنف', 'Item')}
                     value={rptProductId || 'all'}
                     onChange={(val) => {
                       setRptProductId(val === 'all' ? '' : val);
@@ -8886,9 +9107,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       badge: p.code || undefined,
                       searchText: `${p.code || ''} ${p.barcode || ''} ${p.category || ''}`,
                     }))}
-                    allOptionLabel="الكل"
+                    allOptionLabel={t('الكل', 'All')}
                     allOptionValue="all"
-                    searchPlaceholder="ابحث باسم الصنف أو الكود أو الباركود..."
+                    searchPlaceholder={t('ابحث باسم الصنف أو الكود أو الباركود...', 'Search item name, code, or barcode...')}
                     allowClear
                     buttonClassName="h-8 min-h-[32px] rounded-md"
                   />
@@ -8896,18 +9117,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 <div className="w-[130px] shrink-0">
                   <SearchableFilterSelect
                     id="rep-rpt-payment-status"
-                    inlinePrefix="السداد"
+                    inlinePrefix={t('السداد', 'Payment')}
                     value={rptPaymentStatus}
                     onChange={(val) => {
                       setRptPaymentStatus((val as any) || 'all');
                       setRptPage(1);
                     }}
                     options={[
-                      { value: 'paid', label: 'مسددة بالكامل' },
-                      { value: 'partial', label: 'مسددة جزئياً' },
-                      { value: 'credit', label: 'آجل بالكامل' },
+                      { value: 'paid', label: t('مسددة بالكامل', 'Fully Paid') },
+                      { value: 'partial', label: t('مسددة جزئياً', 'Partially Paid') },
+                      { value: 'credit', label: t('آجل بالكامل', 'Full Credit') },
                     ]}
-                    allOptionLabel="الكل"
+                    allOptionLabel={t('الكل', 'All')}
                     allOptionValue="all"
                     buttonClassName="h-8 min-h-[32px] rounded-md"
                   />
@@ -8915,18 +9136,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 <div className="w-[135px] shrink-0">
                   <SearchableFilterSelect
                     id="rep-rpt-invoice-status"
-                    inlinePrefix="الحالة"
+                    inlinePrefix={t('الحالة', 'Status')}
                     value={rptInvoiceStatus}
                     onChange={(val) => {
                       setRptInvoiceStatus((val as any) || 'all');
                       setRptPage(1);
                     }}
                     options={[
-                      { value: 'confirmed', label: 'معتمدة' },
-                      { value: 'draft', label: 'مسودة / بانتظار المراجعة' },
-                      { value: 'cancelled', label: 'ملغاة' },
+                      { value: 'confirmed', label: t('معتمدة', 'Confirmed') },
+                      { value: 'draft', label: t('مسودة / بانتظار المراجعة', 'Draft / Pending Review') },
+                      { value: 'cancelled', label: t('ملغاة', 'Cancelled') },
                     ]}
-                    allOptionLabel="الكل"
+                    allOptionLabel={t('الكل', 'All')}
                     allOptionValue="all"
                     buttonClassName="h-8 min-h-[32px] rounded-md"
                   />
@@ -8947,7 +9168,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   className="h-8 px-2.5 rounded-md border border-slate-300 bg-white hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 text-slate-700 font-bold text-xs inline-flex items-center justify-center gap-1 transition-colors cursor-pointer shrink-0"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  <span>إعادة ضبط</span>
+                  <span>{t('إعادة ضبط', 'Reset')}</span>
                 </button>
               </div>
             </div>
@@ -8958,67 +9179,67 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               {/* Hairline-Divided KPI Ledger Strip (Zero Profit / Zero Cost / Zero Cashbox Balances) */}
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-px bg-slate-200 border border-slate-200 rounded-md overflow-hidden tabular-nums">
                 <div className="bg-white px-2 py-1.5">
-                  <span className="text-[10px] text-slate-500 block">مبيعات المندوب ({repReportData.summary.salesCount})</span>
+                  <span className="text-[10px] text-slate-500 block">{t('مبيعات المندوب', 'Rep Sales')} ({repReportData.summary.salesCount})</span>
                   <strong className="font-mono text-xs text-blue-950">
-                    {repReportData.summary.salesTotal.toLocaleString()} {data.settings.currency}
+                    {formatLocaleNumber(repReportData.summary.salesTotal)} {t(data.settings.currency)}
                   </strong>
                 </div>
                 <div className="bg-white px-2 py-1.5">
-                  <span className="text-[10px] text-slate-500 block">مرتجعات البيع ({repReportData.summary.salesReturnsCount})</span>
+                  <span className="text-[10px] text-slate-500 block">{t('مرتجعات البيع', 'Sales Returns')} ({repReportData.summary.salesReturnsCount})</span>
                   <strong className="font-mono text-xs text-rose-800">
-                    {repReportData.summary.salesReturnsTotal.toLocaleString()} {data.settings.currency}
+                    {formatLocaleNumber(repReportData.summary.salesReturnsTotal)} {t(data.settings.currency)}
                   </strong>
                 </div>
                 <div className="bg-white px-2 py-1.5">
-                  <span className="text-[10px] text-slate-500 block">صافي البيع</span>
+                  <span className="text-[10px] text-slate-500 block">{t('صافي البيع', 'Net Sales')}</span>
                   <strong className="font-mono text-xs text-emerald-800">
-                    {repReportData.summary.netSalesTotal.toLocaleString()} {data.settings.currency}
+                    {formatLocaleNumber(repReportData.summary.netSalesTotal)} {t(data.settings.currency)}
                   </strong>
                 </div>
                 <div className="bg-white px-2 py-1.5">
-                  <span className="text-[10px] text-slate-500 block">المحصل ({repReportData.summary.collectionsCount})</span>
+                  <span className="text-[10px] text-slate-500 block">{t('المحصل', 'Collected')} ({repReportData.summary.collectionsCount})</span>
                   <strong className="font-mono text-xs text-emerald-900">
-                    {repReportData.summary.collectionsTotal.toLocaleString()} {data.settings.currency}
+                    {formatLocaleNumber(repReportData.summary.collectionsTotal)} {t(data.settings.currency)}
                   </strong>
                 </div>
                 <div className="bg-white px-2 py-1.5">
-                  <span className="text-[10px] text-slate-500 block">الآجل المتبقي</span>
+                  <span className="text-[10px] text-slate-500 block">{t('الآجل المتبقي', 'Remaining Credit')}</span>
                   <strong className="font-mono text-xs text-amber-800">
-                    {repReportData.summary.salesRemaining.toLocaleString()} {data.settings.currency}
+                    {formatLocaleNumber(repReportData.summary.salesRemaining)} {t(data.settings.currency)}
                   </strong>
                 </div>
                 {!isRepRoleAccount && typeof repReportData.summary.totalCustomerReceivables === 'number' && (
                   <div className="bg-white px-2 py-1.5">
-                    <span className="text-[10px] text-slate-500 block">أرصدة العملاء (عام)</span>
+                    <span className="text-[10px] text-slate-500 block">{t('أرصدة العملاء (عام)', 'Customer Balances (All)')}</span>
                     <strong className="font-mono text-xs text-slate-900">
-                      {repReportData.summary.totalCustomerReceivables.toLocaleString()} {data.settings.currency}
+                      {formatLocaleNumber(repReportData.summary.totalCustomerReceivables)} {t(data.settings.currency)}
                     </strong>
                   </div>
                 )}
                 {canCreatePurchase && (
                   <>
                     <div className="bg-white px-2 py-1.5">
-                      <span className="text-[10px] text-slate-500 block">مشتريات المندوب ({repReportData.summary.purchasesCount})</span>
+                      <span className="text-[10px] text-slate-500 block">{t('مشتريات المندوب', 'Rep Purchases')} ({repReportData.summary.purchasesCount})</span>
                       <strong className="font-mono text-xs text-[#011E58]">
-                        {repReportData.summary.purchasesTotal.toLocaleString()} {data.settings.currency}
+                        {formatLocaleNumber(repReportData.summary.purchasesTotal)} {t(data.settings.currency)}
                       </strong>
                     </div>
                     <div className="bg-white px-2 py-1.5">
-                      <span className="text-[10px] text-slate-500 block">المدفوع للمشتريات</span>
+                      <span className="text-[10px] text-slate-500 block">{t('المدفوع للمشتريات', 'Paid for Purchases')}</span>
                       <strong className="font-mono text-xs text-emerald-800">
-                        {repReportData.summary.purchasesPaid.toLocaleString()} {data.settings.currency}
+                        {formatLocaleNumber(repReportData.summary.purchasesPaid)} {t(data.settings.currency)}
                       </strong>
                     </div>
                     <div className="bg-white px-2 py-1.5">
-                      <span className="text-[10px] text-slate-500 block">متبقي المشتريات</span>
+                      <span className="text-[10px] text-slate-500 block">{t('متبقي المشتريات', 'Purchases Remaining')}</span>
                       <strong className="font-mono text-xs text-amber-800">
-                        {repReportData.summary.purchasesRemaining.toLocaleString()} {data.settings.currency}
+                        {formatLocaleNumber(repReportData.summary.purchasesRemaining)} {t(data.settings.currency)}
                       </strong>
                     </div>
                     <div className="bg-white px-2 py-1.5">
-                      <span className="text-[10px] text-slate-500 block">طلبات مرتجع شراء</span>
+                      <span className="text-[10px] text-slate-500 block">{t('طلبات مرتجع شراء', 'Purchase Return Req.')}</span>
                       <strong className="font-mono text-xs text-amber-900">
-                        {repReportData.summary.purchaseReturnRequestsCount ?? 0} ({repReportData.summary.pendingPurchaseReturnRequestsCount ?? 0} قيد المراجعة)
+                        {repReportData.summary.purchaseReturnRequestsCount ?? 0} ({repReportData.summary.pendingPurchaseReturnRequestsCount ?? 0} {t('قيد المراجعة', 'pending')})
                       </strong>
                     </div>
                   </>
@@ -9028,10 +9249,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               {/* Sub-view Switcher */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 bg-white p-1 rounded-lg border border-slate-200">
                 {[
-                  { id: 'summary' as const, label: 'أرصدة العملاء والموردين' },
-                  { id: 'invoices' as const, label: `الفواتير (${repReportData.invoices.length})` },
-                  { id: 'items' as const, label: `الأصناف (${repReportData.itemRows.length})` },
-                  { id: 'collections' as const, label: `التحصيلات (${repReportData.collections.length})` },
+                  { id: 'summary' as const, label: t('أرصدة العملاء والموردين', 'Customer & Supplier Balances') },
+                  { id: 'invoices' as const, label: t(`الفواتير (${repReportData.invoices.length})`, `Invoices (${repReportData.invoices.length})`) },
+                  { id: 'items' as const, label: t(`الأصناف (${repReportData.itemRows.length})`, `Items (${repReportData.itemRows.length})`) },
+                  { id: 'collections' as const, label: t(`التحصيلات (${repReportData.collections.length})`, `Collections (${repReportData.collections.length})`) },
                 ].map((tab) => (
                   <button
                     key={tab.id}
@@ -9053,45 +9274,45 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     compact
                     paginated={false}
                     searchable={false}
-                    title={`ملخص العملاء (${repReportData.customersSummary.length})`}
+                    title={t(`ملخص العملاء (${repReportData.customersSummary.length})`, `Customers Summary (${repReportData.customersSummary.length})`)}
                     data={repReportData.customersSummary}
                     rowKey={(cs) => cs.id}
-                    emptyTitle="لا توجد بيانات عملاء مطابقة"
+                    emptyTitle={t('لا توجد بيانات عملاء مطابقة', 'No matching customer data')}
                     columns={[
                       {
                         key: 'name',
-                        header: 'العميل / المحل',
+                        header: t('العميل / المحل', 'Customer / Shop'),
                         render: (cs) => <span className="font-black text-slate-900">{cs.shopName || cs.name}</span>,
                       },
                       {
                         key: 'repSalesTotal',
-                        header: 'مبيعاتك',
+                        header: t('مبيعاتك', 'Your Sales'),
                         align: 'center',
                         render: (cs) => (
                           <span className="font-mono">
-                            {cs.repSalesTotal.toLocaleString()} ({cs.repSalesCount})
+                            {formatLocaleNumber(cs.repSalesTotal)} ({cs.repSalesCount})
                           </span>
                         ),
                       },
                       {
                         key: 'repCollectionsTotal',
-                        header: 'تحصيلاتك',
+                        header: t('تحصيلاتك', 'Your Collections'),
                         align: 'center',
-                        render: (cs) => <span className="font-mono text-emerald-700">{cs.repCollectionsTotal.toLocaleString()}</span>,
+                        render: (cs) => <span className="font-mono text-emerald-700">{formatLocaleNumber(cs.repCollectionsTotal)}</span>,
                       },
                       {
                         key: 'companyBalance',
-                        header: 'الرصيد العام',
+                        header: t('الرصيد العام', 'General Balance'),
                         align: 'center',
                         render: (cs) => (
                           <span className={`font-mono font-black ${cs.companyBalance > 0.009 ? 'text-red-700' : cs.companyBalance < -0.009 ? 'text-emerald-700' : 'text-slate-600'}`}>
-                            {Math.abs(cs.companyBalance).toLocaleString()} ({cs.companyBalance > 0.009 ? 'لنا' : cs.companyBalance < -0.009 ? 'علينا' : 'متوازن'})
+                            {formatLocaleNumber(Math.abs(cs.companyBalance))} ({cs.companyBalance > 0.009 ? t('لنا', 'Receivable') : cs.companyBalance < -0.009 ? t('علينا', 'Payable') : t('متوازن', 'Balanced')})
                           </span>
                         ),
                       },
                       {
                         key: 'actions',
-                        header: 'كشف الحساب',
+                        header: t('كشف الحساب', 'Statement'),
                         align: 'center',
                         sortable: false,
                         render: (cs) => (
@@ -9106,7 +9327,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                             }}
                             className="px-2 py-0.5 rounded-md text-[11px] bg-blue-50 text-blue-900 border border-blue-200 font-bold cursor-pointer whitespace-nowrap"
                           >
-                            كشف الحساب
+                            {t('كشف الحساب', 'Statement')}
                           </button>
                         ),
                       },
@@ -9118,41 +9339,41 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       compact
                       paginated={false}
                       searchable={false}
-                      title={`ملخص الموردين (${repReportData.suppliersSummary.length})`}
+                      title={t(`ملخص الموردين (${repReportData.suppliersSummary.length})`, `Suppliers Summary (${repReportData.suppliersSummary.length})`)}
                       data={repReportData.suppliersSummary}
                       rowKey={(ss) => ss.id}
-                      emptyTitle="لا توجد بيانات موردين مطابقة"
+                      emptyTitle={t('لا توجد بيانات موردين مطابقة', 'No matching supplier data')}
                       columns={[
-                        { key: 'name', header: 'المورد', render: (ss) => <span className="font-black text-slate-900">{ss.name}</span> },
+                        { key: 'name', header: t('المورد', 'Supplier'), render: (ss) => <span className="font-black text-slate-900">{ss.name}</span> },
                         {
                           key: 'repPurchasesTotal',
-                          header: 'مشترياتك',
+                          header: t('مشترياتك', 'Your Purchases'),
                           align: 'center',
                           render: (ss) => (
                             <span className="font-mono">
-                              {ss.repPurchasesTotal.toLocaleString()} ({ss.repPurchasesCount})
+                              {formatLocaleNumber(ss.repPurchasesTotal)} ({ss.repPurchasesCount})
                             </span>
                           ),
                         },
                         {
                           key: 'repPaidTotal',
-                          header: 'المدفوع',
+                          header: t('المدفوع', 'Paid'),
                           align: 'center',
-                          render: (ss) => <span className="font-mono text-emerald-700">{ss.repPaidTotal.toLocaleString()}</span>,
+                          render: (ss) => <span className="font-mono text-emerald-700">{formatLocaleNumber(ss.repPaidTotal)}</span>,
                         },
                         {
                           key: 'companyBalance',
-                          header: 'الرصيد العام',
+                          header: t('الرصيد العام', 'General Balance'),
                           align: 'center',
                           render: (ss) => (
                             <span className={`font-mono font-black ${ss.companyBalance > 0.009 ? 'text-rose-700' : ss.companyBalance < -0.009 ? 'text-emerald-700' : 'text-slate-600'}`}>
-                              {Math.abs(ss.companyBalance).toLocaleString()} ({ss.companyBalance > 0.009 ? 'علينا' : ss.companyBalance < -0.009 ? 'لنا' : 'متوازن'})
+                              {formatLocaleNumber(Math.abs(ss.companyBalance))} ({ss.companyBalance > 0.009 ? t('علينا', 'Payable') : ss.companyBalance < -0.009 ? t('لنا', 'Receivable') : t('متوازن', 'Balanced')})
                             </span>
                           ),
                         },
                         {
                           key: 'actions',
-                          header: 'كشف الحساب',
+                          header: t('كشف الحساب', 'Statement'),
                           align: 'center',
                           sortable: false,
                           render: (ss) => (
@@ -9164,7 +9385,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                               }}
                               className="px-2 py-0.5 rounded-md text-[11px] bg-[#EEF3FA] text-[#011E58] border border-[#DCE6F5] font-bold cursor-pointer whitespace-nowrap"
                             >
-                              كشف الحساب
+                              {t('كشف الحساب', 'Statement')}
                             </button>
                           ),
                         },
@@ -9180,58 +9401,58 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   compact
                   paginated={false}
                   searchable={false}
-                  title={`الفواتير (${repReportData.invoices.length})`}
+                  title={t(`الفواتير (${repReportData.invoices.length})`, `Invoices (${repReportData.invoices.length})`)}
                   data={repReportData.invoices}
                   rowKey={(row) => row.id}
-                  emptyTitle="لا توجد فواتير مطابقة للفلاتر المحددة"
+                  emptyTitle={t('لا توجد فواتير مطابقة للفلاتر المحددة', 'No invoices match the selected filters')}
                   columns={[
-                    { key: 'invoiceNumber', header: 'رقم الفاتورة', render: (row) => <span className="font-mono font-black text-blue-950">{row.invoiceNumber}</span> },
+                    { key: 'invoiceNumber', header: t('رقم الفاتورة', 'Invoice #'), render: (row) => <span className="font-mono font-black text-blue-950">{row.invoiceNumber}</span> },
                     {
                       key: 'type',
-                      header: 'النوع',
+                      header: t('النوع', 'Type'),
                       align: 'center',
                       render: (row) => (
                         <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${row.type === 'purchase' ? 'bg-[#EEF3FA] text-[#011E58]' : row.type === 'quote' ? 'bg-slate-100 text-slate-700' : 'bg-blue-50 text-blue-900'}`}>
-                          {row.type === 'purchase' ? 'فاتورة شراء' : row.type === 'quote' ? 'عرض سعر' : 'فاتورة بيع'}
+                          {row.type === 'purchase' ? t('فاتورة شراء', 'Purchase Invoice') : row.type === 'quote' ? t('عرض سعر', 'Price Quote') : t('فاتورة بيع', 'Sales Invoice')}
                         </span>
                       ),
                     },
                     {
                       key: 'partyName',
-                      header: 'الطرف',
+                      header: t('الطرف', 'Party'),
                       render: (row) => (
                         <div>
                           <span className="font-bold text-slate-900 block">{row.partyName}</span>
-                          <span className="text-[10px] text-slate-500">{row.date} · {row.itemsCount} أصناف</span>
+                          <span className="text-[10px] text-slate-500">{row.date} · {row.itemsCount} {t('أصناف', 'items')}</span>
                         </div>
                       ),
                     },
                     {
                       key: 'grandTotal',
-                      header: 'الإجمالي',
+                      header: t('الإجمالي', 'Total'),
                       align: 'center',
                       render: (row) => (
                         <div className="whitespace-nowrap">
-                          <strong className="font-mono text-slate-900 block">{row.grandTotal.toLocaleString()} {data.settings.currency}</strong>
+                          <strong className="font-mono text-slate-900 block">{formatLocaleNumber(row.grandTotal)} {t(data.settings.currency)}</strong>
                           {row.remainingAmount > 0.009 && (
-                            <span className="text-[10px] text-amber-800 font-bold">متبقي: {row.remainingAmount.toLocaleString()}</span>
+                            <span className="text-[10px] text-amber-800 font-bold">{t('متبقي:', 'Remaining:')} {formatLocaleNumber(row.remainingAmount)}</span>
                           )}
                         </div>
                       ),
                     },
                     {
                       key: 'paymentStatus',
-                      header: 'السداد',
+                      header: t('السداد', 'Payment'),
                       align: 'center',
                       render: (row) => (
                         <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${row.paymentStatus === 'paid' ? 'bg-emerald-50 text-emerald-800' : row.paymentStatus === 'partial' ? 'bg-amber-50 text-amber-800' : 'bg-red-50 text-red-700'}`}>
-                          {row.paymentStatus === 'paid' ? 'مدفوعة' : row.paymentStatus === 'partial' ? 'جزئي' : 'آجل'}
+                          {row.paymentStatus === 'paid' ? t('مدفوعة', 'Paid') : row.paymentStatus === 'partial' ? t('جزئي', 'Partial') : t('آجل', 'Credit')}
                         </span>
                       ),
                     },
                     {
                       key: 'actions',
-                      header: 'الإجراءات',
+                      header: t('الإجراءات', 'Actions'),
                       align: 'center',
                       sortable: false,
                       render: (row) => {
@@ -9287,7 +9508,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                               className="px-2 py-0.5 rounded-md text-[11px] bg-slate-100 text-slate-800 font-bold inline-flex items-center gap-1 cursor-pointer"
                             >
                               <Eye className="w-3 h-3" />
-                              <span>تفاصيل</span>
+                              <span>{t('تفاصيل', 'Details')}</span>
                             </button>
                             {canCreatePurchase && row.type === 'purchase' && row.status === 'confirmed' && row.remainingAmount > 0.009 && (
                               <button
@@ -9296,7 +9517,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                                 className="px-2 py-0.5 rounded-md text-[11px] bg-emerald-700 text-white font-bold inline-flex items-center gap-1 cursor-pointer"
                               >
                                 <CreditCard className="w-3 h-3" />
-                                <span>سداد</span>
+                                <span>{t('سداد', 'Pay')}</span>
                               </button>
                             )}
                           </div>
@@ -9313,26 +9534,26 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   compact
                   paginated={false}
                   searchable={false}
-                  title={`حركة الأصناف (${repReportData.itemRows.length})`}
+                  title={t(`حركة الأصناف (${repReportData.itemRows.length})`, `Item Movements (${repReportData.itemRows.length})`)}
                   data={repReportData.itemRows}
                   rowKey={(it) => it.rowId}
-                  emptyTitle="لا توجد حركات أصناف مطابقة"
+                  emptyTitle={t('لا توجد حركات أصناف مطابقة', 'No matching item movements')}
                   columns={[
                     {
                       key: 'productName',
-                      header: 'الصنف',
+                      header: t('الصنف', 'Item'),
                       render: (it) => (
                         <div>
                           <span className="font-black text-slate-900 block">
                             {it.productName}
                             {(it.categoryName || it.class1) && (
-                              <span className="text-[10px] font-normal text-slate-500 mr-1">
+                              <span className="text-[10px] font-normal text-slate-500 me-1">
                                 ({[it.categoryName, it.class1].filter(Boolean).join(' · ')})
                               </span>
                             )}
                           </span>
                           <span className="text-[10px] text-slate-500">
-                            {it.opType === 'sales' ? 'بيع' : it.opType === 'purchase' ? 'شراء' : it.opType === 'sales_return' ? 'مرتجع بيع' : 'مرتجع شراء'}{' '}
+                            {it.opType === 'sales' ? t('بيع', 'Sale') : it.opType === 'purchase' ? t('شراء', 'Purchase') : it.opType === 'sales_return' ? t('مرتجع بيع', 'Sales Return') : t('مرتجع شراء', 'Purchase Return')}{' '}
                             · <span className="font-mono">{it.invoiceNumber}</span> · {it.date} · {it.partyName}
                           </span>
                         </div>
@@ -9340,28 +9561,28 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     },
                     {
                       key: 'quantity',
-                      header: 'الكمية',
+                      header: t('الكمية', 'Qty'),
                       align: 'center',
-                      render: (it) => <span className="font-mono">{it.quantity} {it.unit}</span>,
+                      render: (it) => <span className="font-mono">{formatLocaleNumber(it.quantity)} {t(it.unit)}</span>,
                     },
                     {
                       key: 'unitPrice',
-                      header: 'السعر',
+                      header: t('السعر', 'Price'),
                       align: 'center',
-                      render: (it) => <span className="font-mono">{it.unitPrice.toLocaleString()}</span>,
+                      render: (it) => <span className="font-mono">{formatLocaleNumber(it.unitPrice)}</span>,
                     },
                     {
                       key: 'total',
-                      header: 'الإجمالي',
+                      header: t('الإجمالي', 'Total'),
                       align: 'center',
                       render: (it) => (
                         <div>
                           <strong className="font-mono text-slate-900 block">
-                            {it.total.toLocaleString()} {data.settings.currency}
+                            {formatLocaleNumber(it.total)} {t(data.settings.currency)}
                           </strong>
                           {(typeof it.returnedQty === 'number' && it.returnedQty > 0 && (it.opType === 'sales' || it.opType === 'purchase')) && (
                             <span className="text-[10px] font-bold text-rose-700">
-                              مرتجع: {it.returnedQty} · الصافي: {(it.netValue ?? it.total).toLocaleString()}
+                              {t('مرتجع:', 'Returned:')} {formatLocaleNumber(it.returnedQty)} · {t('الصافي:', 'Net:')} {formatLocaleNumber(it.netValue ?? it.total)}
                             </span>
                           )}
                         </div>
@@ -9377,42 +9598,42 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   compact
                   paginated={false}
                   searchable={false}
-                  title={`التحصيلات النقدية (${repReportData.collections.length})`}
+                  title={t(`التحصيلات النقدية (${repReportData.collections.length})`, `Cash Collections (${repReportData.collections.length})`)}
                   data={repReportData.collections}
                   rowKey={(col) => col.id}
-                  emptyTitle="لا توجد تحصيلات نقدية في هذه الفترة"
+                  emptyTitle={t('لا توجد تحصيلات نقدية في هذه الفترة', 'No cash collections in this period')}
                   columns={[
                     {
                       key: 'partyName',
-                      header: 'العميل',
+                      header: t('العميل', 'Customer'),
                       render: (col) => (
                         <div>
                           <span className="font-black text-slate-900 block">{col.partyName}</span>
                           <span className="text-[10px] text-slate-500">
                             {col.transactionNumber ? `${col.transactionNumber} · ` : ''}{col.date}
-                            {col.relatedDocNumber ? ` · فاتورة ${col.relatedDocNumber}` : ''}
+                            {col.relatedDocNumber ? ` · ${t('فاتورة', 'Invoice')} ${col.relatedDocNumber}` : ''}
                           </span>
                         </div>
                       ),
                     },
                     {
                       key: 'paymentMethod',
-                      header: 'الطريقة',
+                      header: t('الطريقة', 'Method'),
                       align: 'center',
-                      render: (col) => (col.paymentMethod === 'bank' ? 'تحويل بنكي' : col.paymentMethod === 'cheque' ? 'شيك' : 'نقدي'),
+                      render: (col) => (col.paymentMethod === 'bank' ? t('تحويل بنكي', 'Bank Transfer') : col.paymentMethod === 'cheque' ? t('شيك', 'Cheque') : t('نقدي', 'Cash')),
                     },
                     {
                       key: 'amount',
-                      header: 'المبلغ المحصل',
+                      header: t('المبلغ المحصل', 'Collected Amount'),
                       align: 'center',
                       render: (col) => (
                         <div>
                           <strong className="font-mono text-emerald-700 block">
-                            {col.amount.toLocaleString()} {data.settings.currency}
+                            {formatLocaleNumber(col.amount)} {t(data.settings.currency)}
                           </strong>
                           {typeof col.remainingAfter === 'number' && col.relatedDocNumber && (
                             <span className="text-[10px] font-bold text-amber-800">
-                              متبقي: {col.remainingAfter.toLocaleString()}
+                              {t('متبقي:', 'Remaining:')} {formatLocaleNumber(col.remainingAfter)}
                             </span>
                           )}
                         </div>
@@ -9427,15 +9648,15 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   compact
                   paginated={false}
                   searchable={false}
-                  title={`طلبات مرتجع المبيعات (${repReportData.salesReturnRequests?.length ?? 0})`}
+                  title={t(`طلبات مرتجع المبيعات (${repReportData.salesReturnRequests?.length ?? 0})`, `Sales Return Requests (${repReportData.salesReturnRequests?.length ?? 0})`)}
                   data={repReportData.salesReturnRequests || []}
                   rowKey={(req) => req.id}
                   columns={[
-                    { key: 'requestNumber', header: 'رقم الطلب', render: (req) => <span className="font-mono font-black text-rose-900">{req.requestNumber}</span> },
-                    { key: 'customerName', header: 'العميل / الفاتورة', render: (req) => `${req.customerName} · فاتورة ${req.originalInvoiceNumber}` },
-                    { key: 'date', header: 'التاريخ', align: 'center', render: (req) => <span className="font-mono">{req.date}</span> },
-                    { key: 'status', header: 'الحالة', align: 'center', render: (req) => (req.status === 'approved' ? 'معتمد' : req.status === 'rejected' ? 'مرفوض' : 'قيد الانتظار') },
-                    { key: 'grandTotal', header: 'الإجمالي', align: 'center', render: (req) => <strong className="font-mono text-rose-800">{Number(req.grandTotal || 0).toLocaleString()} {data.settings.currency}</strong> },
+                    { key: 'requestNumber', header: t('رقم الطلب', 'Request #'), render: (req) => <span className="font-mono font-black text-rose-900">{req.requestNumber}</span> },
+                    { key: 'customerName', header: t('العميل / الفاتورة', 'Customer / Invoice'), render: (req) => `${req.customerName} · ${t('فاتورة', 'Invoice')} ${req.originalInvoiceNumber}` },
+                    { key: 'date', header: t('التاريخ', 'Date'), align: 'center', render: (req) => <span className="font-mono">{req.date}</span> },
+                    { key: 'status', header: t('الحالة', 'Status'), align: 'center', render: (req) => (req.status === 'approved' ? t('معتمد', 'Approved') : req.status === 'rejected' ? t('مرفوض', 'Rejected') : t('قيد الانتظار', 'Pending')) },
+                    { key: 'grandTotal', header: t('الإجمالي', 'Total'), align: 'center', render: (req) => <strong className="font-mono text-rose-800">{formatLocaleNumber(Number(req.grandTotal || 0))} {t(data.settings.currency)}</strong> },
                   ]}
                 />
               )}
@@ -9445,15 +9666,15 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   compact
                   paginated={false}
                   searchable={false}
-                  title={`طلبات مرتجع المشتريات (${repReportData.purchaseReturnRequests?.length ?? 0})`}
+                  title={t(`طلبات مرتجع المشتريات (${repReportData.purchaseReturnRequests?.length ?? 0})`, `Purchase Return Requests (${repReportData.purchaseReturnRequests?.length ?? 0})`)}
                   data={repReportData.purchaseReturnRequests || []}
                   rowKey={(req) => req.id}
                   columns={[
-                    { key: 'requestNumber', header: 'رقم الطلب', render: (req) => <span className="font-mono font-black text-[#011E58]">{req.requestNumber}</span> },
-                    { key: 'supplierName', header: 'المورد / الفاتورة', render: (req) => `${req.supplierName} · فاتورة ${req.originalInvoiceNumber}` },
-                    { key: 'date', header: 'التاريخ', align: 'center', render: (req) => <span className="font-mono">{req.date}</span> },
-                    { key: 'status', header: 'الحالة', align: 'center', render: (req) => (req.status === 'approved' ? 'معتمد' : req.status === 'rejected' ? 'مرفوض' : 'قيد الانتظار') },
-                    { key: 'grandTotal', header: 'الإجمالي', align: 'center', render: (req) => <strong className="font-mono text-[#011E58]">{Number(req.grandTotal || 0).toLocaleString()} {data.settings.currency}</strong> },
+                    { key: 'requestNumber', header: t('رقم الطلب', 'Request #'), render: (req) => <span className="font-mono font-black text-[#011E58]">{req.requestNumber}</span> },
+                    { key: 'supplierName', header: t('المورد / الفاتورة', 'Supplier / Invoice'), render: (req) => `${req.supplierName} · ${t('فاتورة', 'Invoice')} ${req.originalInvoiceNumber}` },
+                    { key: 'date', header: t('التاريخ', 'Date'), align: 'center', render: (req) => <span className="font-mono">{req.date}</span> },
+                    { key: 'status', header: t('الحالة', 'Status'), align: 'center', render: (req) => (req.status === 'approved' ? t('معتمد', 'Approved') : req.status === 'rejected' ? t('مرفوض', 'Rejected') : t('قيد الانتظار', 'Pending')) },
+                    { key: 'grandTotal', header: t('الإجمالي', 'Total'), align: 'center', render: (req) => <strong className="font-mono text-[#011E58]">{formatLocaleNumber(Number(req.grandTotal || 0))} {t(data.settings.currency)}</strong> },
                   ]}
                 />
               )}
@@ -9462,11 +9683,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               {repReportData.pagination && (repReportData.pagination.totalPages > 1 || repReportData.pagination.totalRows > 25) && (
                 <div className="bg-white rounded-lg border border-slate-200 px-2 py-1.5 flex flex-wrap items-center justify-between gap-1.5">
                   <div className="flex items-center gap-1 text-[11px] font-bold text-slate-700">
-                    <span>صفحة</span>
+                    <span>{t('صفحة', 'Page')}</span>
                     <span className="font-mono text-blue-950">{repReportData.pagination.page}</span>
-                    <span>من</span>
+                    <span>{t('من', 'of')}</span>
                     <span className="font-mono text-blue-950">{repReportData.pagination.totalPages}</span>
-                    <span className="text-slate-400">({repReportData.pagination.totalRows} سجل)</span>
+                    <span className="text-slate-400">({repReportData.pagination.totalRows} {t('سجل', 'records')})</span>
                   </div>
                   <div className="flex items-center gap-1">
                     <select
@@ -9477,9 +9698,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       }}
                       className="h-7 rounded-md border border-slate-300 px-2 text-[11px] font-bold bg-white"
                     >
-                      <option value={25}>25 / صفحة</option>
-                      <option value={50}>50 / صفحة</option>
-                      <option value={100}>100 / صفحة</option>
+                      <option value={25}>25 / {t('صفحة', 'page')}</option>
+                      <option value={50}>50 / {t('صفحة', 'page')}</option>
+                      <option value={100}>100 / {t('صفحة', 'page')}</option>
                     </select>
                     <button
                       type="button"
@@ -9487,7 +9708,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       onClick={() => setRptPage((p) => Math.max(1, p - 1))}
                       className="h-7 px-2 rounded-md text-[11px] bg-slate-100 text-slate-800 font-bold disabled:opacity-45 cursor-pointer"
                     >
-                      السابق
+                      {t('السابق', 'Prev')}
                     </button>
                     <button
                       type="button"
@@ -9495,7 +9716,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       onClick={() => setRptPage((p) => p + 1)}
                       className="h-7 px-2 rounded-md text-[11px] bg-[#003589] text-white font-bold disabled:opacity-45 cursor-pointer"
                     >
-                      التالي
+                      {t('التالي', 'Next')}
                     </button>
                   </div>
                 </div>
@@ -9515,7 +9736,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             <div className="flex items-center justify-between border-b border-slate-200 pb-1.5">
               <div>
                 <h4 className="font-black text-xs text-slate-900">
-                  تأكيد تسليم الطلب {deliveringOrder.requestNumber}
+                  {t(`تأكيد تسليم الطلب ${deliveringOrder.requestNumber}`, `Confirm Order Delivery ${deliveringOrder.requestNumber}`)}
                 </h4>
                 <p className="text-[11px] text-slate-500">{deliveringOrder.customerName}</p>
               </div>
@@ -9524,13 +9745,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 onClick={() => setDeliveringOrder(null)}
                 className="h-7 px-2 rounded-md text-[11px] bg-slate-100 font-bold text-slate-700 cursor-pointer"
               >
-                إغلاق
+                {t('إغلاق', 'Close')}
               </button>
             </div>
 
             <div>
               <label className="block text-[10px] font-bold text-slate-700 mb-0.5">
-                المبلغ المحصل عند التسليم ({data.settings.currency}):
+                {t('المبلغ المحصل عند التسليم', 'Collected Amount on Delivery')} ({t(data.settings.currency)}):
               </label>
               <input
                 type="number"
@@ -9538,7 +9759,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 step="0.01"
                 value={deliveryCollectedAmount || ''}
                 onChange={(e) => setDeliveryCollectedAmount(Math.max(0, Number(e.target.value)))}
-                placeholder="المبلغ المحصل"
+                placeholder={t('المبلغ المحصل', 'Collected amount')}
                 className="w-full h-8 rounded-md border border-slate-300 px-2 font-mono font-black text-center text-[#011E58]"
               />
             </div>
@@ -9561,9 +9782,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   onChange={(e) => setDeliveryMethod(e.target.value as any)}
                   className="h-8 rounded-md border border-slate-300 px-2 bg-white font-bold"
                 >
-                  <option value="cash">نقدي</option>
-                  <option value="bank">تحويل بنكي</option>
-                  <option value="cheque">شيك</option>
+                  <option value="cash">{t('نقدي', 'Cash')}</option>
+                  <option value="bank">{t('تحويل بنكي', 'Bank Transfer')}</option>
+                  <option value="cheque">{t('شيك', 'Cheque')}</option>
                 </select>
               </div>
             )}
@@ -9572,13 +9793,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               type="text"
               value={deliveryNotes}
               onChange={(e) => setDeliveryNotes(e.target.value)}
-              placeholder="ملاحظات التسليم..."
+              placeholder={t('ملاحظات التسليم...', 'Delivery notes...')}
               className="w-full h-8 rounded-md border border-slate-300 px-2"
             />
 
             <label className="h-7 px-2 rounded-md border border-blue-200 bg-blue-50 text-blue-900 font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer">
               <Camera className="w-3.5 h-3.5" />
-              <span>{deliveryProof ? 'تم التقاط الصورة (اضغط للتغيير)' : 'التقاط إثبات تسليم (اختياري)'}</span>
+              <span>{deliveryProof ? t('تم التقاط الصورة (اضغط للتغيير)', 'Photo captured (tap to change)') : t('التقاط إثبات تسليم (اختياري)', 'Capture delivery proof (optional)')}</span>
               <input
                 type="file"
                 accept="image/*"
@@ -9602,7 +9823,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               disabled={isUpdatingDelivery}
               className="w-full h-9 rounded-lg bg-[#003589] hover:bg-[#0049B0] text-white font-black disabled:opacity-50 cursor-pointer"
             >
-              {isUpdatingDelivery ? 'جاري التسجيل...' : 'اعتماد تسليم الطلب'}
+              {isUpdatingDelivery ? t('جاري التسجيل...', 'Submitting...') : t('اعتماد تسليم الطلب', 'Confirm Order Delivery')}
             </button>
           </form>
         </div>
@@ -9659,9 +9880,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         const handlePrintCustomerStatementPdf = () => {
           const activeBranches = data.settings.extraSettings?.branches || [];
           const defaultBranch = activeBranches.find((b) => b.isDefault) || activeBranches[0];
-          const currency = data.settings.currency || 'ج.م';
+          const currency = t(data.settings.currency || 'ج.م');
           exportHtmlToPdf({
-            title: 'كشف حساب تفصيلي للعميل',
+            title: t('كشف حساب تفصيلي للعميل', 'Detailed Customer Account Statement'),
             subtitle: data.settings.companySubtitle,
             companyName: data.settings.companyName,
             address: data.settings.address,
@@ -9672,31 +9893,31 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             representativeName: rep?.name,
             representativePhone: rep?.phone,
             docNumber: c.code || c.id,
-            dateRangeText: stmtDateFrom || stmtDateTo ? `${stmtDateFrom || '...'} إلى ${stmtDateTo || '...'}` : undefined,
+            dateRangeText: stmtDateFrom || stmtDateTo ? `${stmtDateFrom || '...'} ${t('إلى', 'to')} ${stmtDateTo || '...'}` : undefined,
             meta: [
-              { label: 'العميل', value: c.shopName || c.name },
-              ...(c.phone ? [{ label: 'هاتف العميل', value: c.phone }] : []),
-              ...(c.address && c.address !== '-' ? [{ label: 'عنوان العميل', value: c.address }] : []),
+              { label: t('العميل', 'Customer'), value: c.shopName || c.name },
+              ...(c.phone ? [{ label: t('هاتف العميل', 'Customer Phone'), value: c.phone }] : []),
+              ...(c.address && c.address !== '-' ? [{ label: t('عنوان العميل', 'Customer Address'), value: c.address }] : []),
             ],
-            tableHeaders: ['العملية', 'دفع', 'تاريخ', 'الفاتورة', 'باقي'],
+            tableHeaders: [t('العملية', 'Operation'), t('دفع', 'Paid'), t('تاريخ', 'Date'), t('الفاتورة', 'Invoice'), t('باقي', 'Balance')],
             tableRows: filteredStmtEntries.map((entry) => [
-              entry.label || '',
-              Number(entry.credit || 0).toLocaleString(),
+              t(entry.label || ''),
+              formatLocaleNumber(Number(entry.credit || 0)),
               entry.date || '',
-              Number(entry.debit || 0).toLocaleString(),
-              Number(entry.runningBalance ?? 0).toLocaleString(),
+              formatLocaleNumber(Number(entry.debit || 0)),
+              formatLocaleNumber(Number(entry.runningBalance ?? 0)),
             ]),
             summaryPairs: [
-              { label: 'الإجمالي المتبقي', value: `${totalRemainingVal.toLocaleString()} ${currency}`, highlight: true },
+              { label: t('الإجمالي المتبقي', 'Total Remaining'), value: `${formatLocaleNumber(totalRemainingVal)} ${currency}`, highlight: true },
             ],
           });
         };
 
         const handleShareCsvStatement = () => {
           const lines = [
-            'العملية,دفع,تاريخ,الفاتورة,باقي,الرقم المرجعي',
+            t('العملية,دفع,تاريخ,الفاتورة,باقي,الرقم المرجعي', 'Operation,Paid,Date,Invoice,Balance,Ref No.'),
             ...filteredStmtEntries.map((entry) =>
-              `"${(entry.label || '').replace(/"/g, '""')}",${Number(entry.credit || 0)},${entry.date || ''},${Number(entry.debit || 0)},${Number(entry.runningBalance ?? 0)},"${(entry.docNumber || '').replace(/"/g, '""')}"`
+              `"${t(entry.label || '').replace(/"/g, '""')}",${Number(entry.credit || 0)},${entry.date || ''},${Number(entry.debit || 0)},${Number(entry.runningBalance ?? 0)},"${(entry.docNumber || '').replace(/"/g, '""')}"`
             ),
           ];
           const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
@@ -9718,13 +9939,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     type="button"
                     onClick={() => setSelectedCustomerDetail(null)}
                     className="h-7 w-7 rounded-md bg-white/15 hover:bg-white/25 flex items-center justify-center text-white cursor-pointer shrink-0"
-                    aria-label="رجوع"
+                    aria-label={t('رجوع', 'Back')}
                   >
-                    <ArrowRight className="w-3.5 h-3.5" />
+                    {isRtl ? <ArrowRight className="w-3.5 h-3.5" /> : <ArrowLeft className="w-3.5 h-3.5" />}
                   </button>
                   <div className="min-w-0">
                     <h4 className="font-black text-xs truncate">
-                      {customerDetailSubTab === 'statement' ? 'عرض تفصيلي لحساب الآجل' : (c.shopName || c.name)}
+                      {customerDetailSubTab === 'statement' ? t('عرض تفصيلي لحساب الآجل', 'Detailed Credit Account View') : (c.shopName || c.name)}
                     </h4>
                     <p className="text-[10px] text-[#DCE6F5] truncate">
                       {c.shopName || c.name} · {c.code}
@@ -9736,7 +9957,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     type="button"
                     onClick={() => setCustomerDetailSubTab(customerDetailSubTab === 'statement' ? 'overview' : 'statement')}
                     className="h-7 w-7 rounded-md bg-white/15 hover:bg-white/25 flex items-center justify-center text-white cursor-pointer"
-                    title={customerDetailSubTab === 'statement' ? 'معلومات العميل' : 'كشف الحساب'}
+                    title={customerDetailSubTab === 'statement' ? t('معلومات العميل', 'Customer Info') : t('كشف الحساب', 'Account Statement')}
                   >
                     <Info className="w-3.5 h-3.5" />
                   </button>
@@ -9746,7 +9967,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     className="h-7 px-2 rounded-md text-[11px] bg-white text-[#011E58] font-black inline-flex items-center gap-1 cursor-pointer"
                   >
                     <Printer className="w-3 h-3" />
-                    <span>طباعة</span>
+                    <span>{t('طباعة', 'Print')}</span>
                   </button>
                 </div>
               </div>
@@ -9761,7 +9982,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       customerDetailSubTab === 'overview' ? 'bg-[#003589] text-white' : 'text-slate-700'
                     }`}
                   >
-                    ملف العميل والملخص
+                    {t('ملف العميل والملخص', 'Customer Profile & Summary')}
                   </button>
                   <button
                     type="button"
@@ -9770,7 +9991,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       customerDetailSubTab === 'statement' ? 'bg-[#003589] text-white' : 'text-slate-700'
                     }`}
                   >
-                    كشف الحساب التفصيلي
+                    {t('كشف الحساب التفصيلي', 'Detailed Statement')}
                   </button>
                 </div>
               </div>
@@ -9784,7 +10005,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           type="button"
                           onClick={() => setPreviewShopPhoto(c.shopPhoto || c.photo || null)}
                           className="shrink-0 cursor-pointer"
-                          title="عرض صورة المحل بالحجم الكامل"
+                          title={t('عرض صورة المحل بالحجم الكامل', 'View full-size shop photo')}
                         >
                           <img
                             src={c.shopPhoto || c.photo}
@@ -9817,49 +10038,49 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       <div className="px-2 py-1.5 bg-white">
                         <span className="text-[10px] text-slate-500 block">
                           {c.currentBalance < -0.009
-                            ? 'رصيد دائن للعميل (علينا)'
+                            ? t('رصيد دائن للعميل (علينا)', 'Customer Credit Balance (We Owe)')
                             : c.currentBalance > 0.009
-                            ? 'المبلغ المتبقي (لنا)'
-                            : 'الحساب متوازن'}
+                            ? t('المبلغ المتبقي (لنا)', 'Remaining Balance (Due)')
+                            : t('الحساب متوازن', 'Balanced')}
                         </span>
                         <strong
                           className={`font-mono text-xs ${
                             c.currentBalance > 0.009 ? 'text-red-700' : 'text-emerald-700'
                           }`}
                         >
-                          {Math.abs(c.currentBalance).toLocaleString()} {data.settings.currency}
+                          {formatLocaleNumber(Math.abs(c.currentBalance))} {t(data.settings.currency)}
                         </strong>
                       </div>
                       <div className="px-2 py-1.5 bg-white">
-                        <span className="text-[10px] text-blue-800 block">إجمالي الفواتير</span>
+                        <span className="text-[10px] text-blue-800 block">{t('إجمالي الفواتير', 'Total Invoices')}</span>
                         <strong className="font-mono text-xs text-blue-950">
-                          {(stmtSummary?.totalSales ?? custInvoices.reduce((s, i) => s + Number(i.grandTotal || 0), 0)).toLocaleString()} {data.settings.currency}
+                          {formatLocaleNumber(stmtSummary?.totalSales ?? custInvoices.reduce((s, i) => s + Number(i.grandTotal || 0), 0))} {t(data.settings.currency)}
                         </strong>
                       </div>
                       <div className="px-2 py-1.5 bg-white">
-                        <span className="text-[10px] text-emerald-800 block">إجمالي المحصل</span>
+                        <span className="text-[10px] text-emerald-800 block">{t('إجمالي المحصل', 'Total Collected')}</span>
                         <strong className="font-mono text-xs text-emerald-950">
-                          {(stmtSummary?.totalPaid ?? stmtSummary?.totalCredit ?? 0).toLocaleString()} {data.settings.currency}
+                          {formatLocaleNumber(stmtSummary?.totalPaid ?? stmtSummary?.totalCredit ?? 0)} {t(data.settings.currency)}
                         </strong>
                       </div>
                       <div className="px-2 py-1.5 bg-white">
-                        <span className="text-[10px] text-slate-500 block">آخر فاتورة</span>
+                        <span className="text-[10px] text-slate-500 block">{t('آخر فاتورة', 'Last Invoice')}</span>
                         <strong className="font-mono text-[11px] text-blue-950">
                           {stmtSummary?.lastInvoiceDate
                             ? `${stmtSummary.lastInvoiceDate} (${stmtSummary.lastInvoiceNumber || ''})`
                             : latestInvoice
                             ? `${latestInvoice.date} (${latestInvoice.invoiceNumber})`
-                            : 'لا يوجد'}
+                            : t('لا يوجد', 'None')}
                         </strong>
                       </div>
                       <div className="px-2 py-1.5 bg-white col-span-1 sm:col-span-2">
-                        <span className="text-[10px] text-slate-500 block">آخر تحصيل / سداد</span>
+                        <span className="text-[10px] text-slate-500 block">{t('آخر تحصيل / سداد', 'Last Collection / Payment')}</span>
                         <strong className="font-mono text-[11px] text-emerald-900">
                           {stmtSummary?.lastPaymentDate
                             ? stmtSummary.lastPaymentDate
                             : latestPaymentTx
-                            ? `${latestPaymentTx.amount.toLocaleString()} (${latestPaymentTx.date})`
-                            : 'لا يوجد'}
+                            ? `${formatLocaleNumber(latestPaymentTx.amount)} (${latestPaymentTx.date})`
+                            : t('لا يوجد', 'None')}
                         </strong>
                       </div>
                     </div>
@@ -9880,8 +10101,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                             }`}
                           >
                             <Phone className="w-3 h-3 text-[#003589]" />
-                            <span>{rawPhone}</span>
-                            {ph.label && <span className="font-sans text-[10px]">({ph.label})</span>}
+                            <span dir="ltr">{rawPhone}</span>
+                            {ph.label && <span className="font-sans text-[10px]">({t(ph.label)})</span>}
                           </a>
                         );
                       })}
@@ -9904,7 +10125,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           className="h-7 px-2 rounded-md text-[11px] bg-[#EEF3FA] text-[#003589] border border-[#DCE6F5] font-bold inline-flex items-center gap-1 cursor-pointer"
                         >
                           <MapPin className="w-3 h-3 text-[#003589]" />
-                          <span>عرض الموقع على الخريطة</span>
+                          <span>{t('عرض الموقع على الخريطة', 'View Location on Map')}</span>
                         </button>
                       )}
                     </div>
@@ -9913,10 +10134,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       compact
                       paginated={false}
                       searchable={false}
-                      title={`آخر فواتير العميل (${custInvoices.length})`}
+                      title={`${t('آخر فواتير العميل', 'Recent Customer Invoices')} (${custInvoices.length})`}
                       data={custInvoices}
                       rowKey={(inv) => inv.id}
-                      emptyTitle="لا توجد فواتير مسجلة لهذا العميل"
+                      emptyTitle={t('لا توجد فواتير مسجلة لهذا العميل', 'No invoices recorded for this customer')}
                       onRowClick={(inv) =>
                         setStatementPreviewDoc({
                           type: 'invoice',
@@ -9925,27 +10146,27 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         })
                       }
                       columns={[
-                        { key: 'invoiceNumber', header: 'رقم الفاتورة', render: (inv) => <span className="font-mono font-bold text-blue-950">{inv.invoiceNumber}</span> },
-                        { key: 'date', header: 'التاريخ', align: 'center', render: (inv) => <span className="font-mono text-slate-600">{inv.date}</span> },
+                        { key: 'invoiceNumber', header: t('رقم الفاتورة', 'Invoice #'), render: (inv) => <span className="font-mono font-bold text-blue-950">{inv.invoiceNumber}</span> },
+                        { key: 'date', header: t('التاريخ', 'Date'), align: 'center', render: (inv) => <span className="font-mono text-slate-600">{inv.date}</span> },
                         {
                           key: 'grandTotal',
-                          header: 'الإجمالي',
+                          header: t('الإجمالي', 'Total'),
                           align: 'center',
                           render: (inv) => (
                             <strong className="font-mono text-slate-900 tabular-nums">
-                              {inv.grandTotal.toLocaleString()} {data.settings.currency}
+                              {formatLocaleNumber(inv.grandTotal)} {t(data.settings.currency)}
                             </strong>
                           ),
                         },
                         {
                           key: 'remainingAmount',
-                          header: 'المتبقي',
+                          header: t('المتبقي', 'Remaining'),
                           align: 'center',
                           render: (inv) =>
                             inv.remainingAmount > 0 ? (
-                              <span className="font-mono font-bold text-red-700">{inv.remainingAmount.toLocaleString()}</span>
+                              <span className="font-mono font-bold text-red-700">{formatLocaleNumber(inv.remainingAmount)}</span>
                             ) : (
-                              <span className="text-emerald-700 font-bold">مسددة</span>
+                              <span className="text-emerald-700 font-bold">{t('مسددة', 'Paid')}</span>
                             ),
                         },
                       ]}
@@ -9967,12 +10188,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                               setCustomerDetailSubTab('statement');
                             }
                           }}
-                          aria-label="تبديل العميل"
+                          aria-label={t('تبديل العميل', 'Switch Customer')}
                           className="w-[175px] h-8 rounded-md border border-slate-300 px-2 text-xs font-bold bg-slate-50 shrink-0"
                         >
                           {data.customers.map((x) => (
                             <option key={x.id} value={x.id}>
-                              {x.shopName || x.name} ({Number(x.currentBalance || 0).toLocaleString()} {data.settings.currency})
+                              {x.shopName || x.name} ({formatLocaleNumber(Number(x.currentBalance || 0))} {t(data.settings.currency)})
                             </option>
                           ))}
                         </select>
@@ -9985,29 +10206,29 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                             }).finally(() => setIsLoadingCustomerStatement(false));
                           }}
                           className="h-8 w-8 rounded-md bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-700 cursor-pointer shrink-0"
-                          title="تحديث كشف الحساب"
+                          title={t('تحديث كشف الحساب', 'Refresh Statement')}
                         >
                           <RefreshCw className={`w-3.5 h-3.5 ${isLoadingCustomerStatement ? 'animate-spin' : ''}`} />
                         </button>
                         <label className="inline-flex items-center gap-1 h-8 px-2 rounded-md border border-slate-300 bg-slate-50 shrink-0">
-                          <span className="text-[10.5px] font-bold text-slate-500">من:</span>
+                          <span className="text-[10.5px] font-bold text-slate-500">{t('من:', 'From:')}</span>
                           <input
                             type="date"
-                            aria-label="من تاريخ"
+                            aria-label={t('من تاريخ', 'From Date')}
                             value={stmtDateFrom}
                             onChange={(e) => setStmtDateFrom(e.target.value)}
-                            title="من تاريخ"
+                            title={t('من تاريخ', 'From Date')}
                             className="bg-transparent font-mono text-xs outline-hidden"
                           />
                         </label>
                         <label className="inline-flex items-center gap-1 h-8 px-2 rounded-md border border-slate-300 bg-slate-50 shrink-0">
-                          <span className="text-[10.5px] font-bold text-slate-500">إلى:</span>
+                          <span className="text-[10.5px] font-bold text-slate-500">{t('إلى:', 'To:')}</span>
                           <input
                             type="date"
-                            aria-label="إلى تاريخ"
+                            aria-label={t('إلى تاريخ', 'To Date')}
                             value={stmtDateTo}
                             onChange={(e) => setStmtDateTo(e.target.value)}
-                            title="إلى تاريخ"
+                            title={t('إلى تاريخ', 'To Date')}
                             className="bg-transparent font-mono text-xs outline-hidden"
                           />
                         </label>
@@ -10015,7 +10236,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           type="text"
                           value={stmtSearch}
                           onChange={(e) => setStmtSearch(e.target.value)}
-                          placeholder="بحث برقم المستند أو العملية..."
+                          placeholder={t('بحث برقم المستند أو العملية...', 'Search by doc # or operation...')}
                           className="flex-1 min-w-[140px] h-8 rounded-md border border-slate-300 px-2 text-xs bg-slate-50 shrink-0"
                         />
                       </div>
@@ -10035,12 +10256,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         }}
                         className="h-8 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-black cursor-pointer"
                       >
-                        دفع
+                        {t('دفع', 'Pay')}
                       </button>
                       <div className="h-8 rounded-md bg-white border border-slate-200 px-2 flex flex-col items-center justify-center text-center tabular-nums leading-tight">
-                        <span className="text-[9px] text-slate-500 font-bold">اجمالي المتبقي</span>
+                        <span className="text-[9px] text-slate-500 font-bold">{t('إجمالي المتبقي', 'Total Remaining')}</span>
                         <strong className={`font-mono text-[11px] font-black ${totalRemainingVal > 0 ? 'text-red-700' : 'text-emerald-700'}`}>
-                          {totalRemainingVal.toLocaleString()} {data.settings.currency}
+                          {formatLocaleNumber(totalRemainingVal)} {t(data.settings.currency)}
                         </strong>
                       </div>
                       <button
@@ -10054,19 +10275,19 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         }}
                         className="h-8 rounded-md bg-slate-200 hover:bg-slate-300 text-slate-800 font-black cursor-pointer"
                       >
-                        تصحيح
+                        {t('تصحيح', 'Edit')}
                       </button>
                     </div>
 
                     {customerDetailStatement?.scope?.isRepScoped && (
                       <div className="px-2 py-1 rounded-md bg-blue-50 border border-blue-200 text-blue-950 font-bold text-[10px]">
-                        رصيد حساب العميل عام للشركة، والفواتير والمرتجعات والدفعات أدناه تخص عملياتك معه فقط.
+                        {t('رصيد حساب العميل عام للشركة، والفواتير والمرتجعات والدفعات أدناه تخص عملياتك معه فقط.', 'Customer account balance is company-wide; invoices, returns, and payments below reflect your own transactions with this customer.')}
                       </div>
                     )}
 
                     {/* WA0004 5-Column Tabular Ledger Table */}
                     {isLoadingCustomerStatement ? (
-                      <p className="text-center py-6 text-slate-500 font-bold">جاري تحميل كشف الحساب التفصيلي...</p>
+                      <p className="text-center py-6 text-slate-500 font-bold">{t('جاري تحميل كشف الحساب التفصيلي...', 'Loading detailed statement...')}</p>
                     ) : (
                       <UnifiedDataTable
                         compact
@@ -10075,7 +10296,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         maxHeightClassName="max-h-[42vh]"
                         data={filteredStmtEntries}
                         rowKey={(entry) => entry.id}
-                        emptyTitle="لا توجد حركات مسجلة مطابقة للبحث"
+                        emptyTitle={t('لا توجد حركات مسجلة مطابقة للبحث', 'No matching transactions found')}
                         onRowClick={(entry) => {
                           if (entry.docId && (entry.docType === 'sales' || entry.docType === 'customer_payment')) {
                             setStatementPreviewDoc({
@@ -10088,10 +10309,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         columns={[
                           {
                             key: 'label',
-                            header: 'العملية',
+                            header: t('العملية', 'Operation'),
                             render: (entry) => (
                               <div>
-                                <span className="font-bold text-slate-900 block whitespace-normal break-words">{entry.label}</span>
+                                <span className="font-bold text-slate-900 block whitespace-normal break-words">{t(entry.label)}</span>
                                 {entry.docNumber && (
                                   <span className="font-mono text-[10px] text-slate-400 block">{entry.docNumber}</span>
                                 )}
@@ -10100,39 +10321,39 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           },
                           {
                             key: 'credit',
-                            header: 'دفع',
+                            header: t('دفع', 'Paid'),
                             align: 'center',
                             render: (entry) => (
                               <span className="font-mono font-bold text-emerald-700">
-                                {entry.credit ? Number(entry.credit).toLocaleString() : '-'}
+                                {entry.credit ? formatLocaleNumber(Number(entry.credit)) : '-'}
                               </span>
                             ),
                           },
                           {
                             key: 'date',
-                            header: 'تاريخ',
+                            header: t('تاريخ', 'Date'),
                             align: 'center',
                             render: (entry) => <span className="font-mono text-slate-600">{entry.date}</span>,
                           },
                           {
                             key: 'debit',
-                            header: 'الفاتورة',
+                            header: t('الفاتورة', 'Invoice'),
                             align: 'center',
                             render: (entry) => (
                               <span className="font-mono font-bold text-slate-800">
-                                {entry.debit ? Number(entry.debit).toLocaleString() : '-'}
+                                {entry.debit ? formatLocaleNumber(Number(entry.debit)) : '-'}
                               </span>
                             ),
                           },
                           {
                             key: 'runningBalance',
-                            header: 'باقي',
+                            header: t('باقي', 'Balance'),
                             align: 'center',
                             render: (entry) => {
                               const rb = Number(entry.runningBalance ?? 0);
                               return (
                                 <strong className={`font-mono font-black ${rb > 0.009 ? 'text-red-700' : 'text-emerald-700'}`}>
-                                  {rb.toLocaleString()}
+                                  {formatLocaleNumber(rb)}
                                 </strong>
                               );
                             },
@@ -10148,7 +10369,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         className="h-8 rounded-md bg-[#0049B0] hover:bg-[#003589] text-white font-black flex items-center justify-center gap-1 cursor-pointer"
                       >
                         <Share2 className="w-3.5 h-3.5" />
-                        <span>مشاركة / CSV</span>
+                        <span>{t('مشاركة / CSV', 'Share / CSV')}</span>
                       </button>
                       <button
                         type="button"
@@ -10156,7 +10377,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         className="h-8 rounded-md bg-[#011E58] hover:bg-[#003589] text-white font-black flex items-center justify-center gap-1 cursor-pointer"
                       >
                         <Printer className="w-3.5 h-3.5" />
-                        <span>طباعة</span>
+                        <span>{t('طباعة', 'Print')}</span>
                       </button>
                     </div>
                   </div>
@@ -10166,27 +10387,27 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   <div className="p-2 rounded-md bg-blue-50 border border-blue-200 space-y-1.5">
                     <div className="flex items-center justify-between">
                       <strong className="text-blue-950 font-black">
-                        تفاصيل المستند: {statementPreviewDoc.title}
+                        {t('تفاصيل المستند:', 'Document Details:')} {statementPreviewDoc.title}
                       </strong>
                       <button
                         type="button"
                         onClick={() => setStatementPreviewDoc(null)}
                         className="px-2 py-0.5 rounded-md text-[11px] bg-white text-slate-700 font-bold cursor-pointer"
                       >
-                        إغلاق
+                        {t('إغلاق', 'Close')}
                       </button>
                     </div>
                     {previewInvoiceObj ? (
                       <div className="space-y-1 text-[11px]">
                         <div className="flex justify-between font-bold text-slate-700">
-                          <span>التاريخ: {previewInvoiceObj.date}</span>
-                          <span>الإجمالي: {previewInvoiceObj.grandTotal.toLocaleString()} {data.settings.currency}</span>
+                          <span>{t('التاريخ:', 'Date:')} {previewInvoiceObj.date}</span>
+                          <span>{t('الإجمالي:', 'Total:')} {formatLocaleNumber(previewInvoiceObj.grandTotal)} {t(data.settings.currency)}</span>
                         </div>
                         <div className="divide-y divide-blue-200/70 bg-white rounded-md p-2">
                           {(previewInvoiceObj.items || []).map((it, idx) => (
                             <div key={idx} className="py-1 flex justify-between">
-                              <span>{it.productName} ({it.quantity} {it.unit})</span>
-                              <strong className="font-mono">{it.total.toLocaleString()}</strong>
+                              <span>{it.productName} ({it.quantity} {t(it.unit)})</span>
+                              <strong className="font-mono">{formatLocaleNumber(it.total)}</strong>
                             </div>
                           ))}
                         </div>
@@ -10194,22 +10415,22 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     ) : previewPaymentObj ? (
                       <div className="bg-white rounded-md p-2 space-y-1 text-[11px]">
                         <div className="flex justify-between">
-                          <span>التاريخ:</span>
+                          <span>{t('التاريخ:', 'Date:')}</span>
                           <strong className="font-mono">{previewPaymentObj.date}</strong>
                         </div>
                         <div className="flex justify-between">
-                          <span>المبلغ المحصل:</span>
+                          <span>{t('المبلغ المحصل:', 'Collected Amount:')}</span>
                           <strong className="font-mono text-emerald-700">
-                            {previewPaymentObj.amount.toLocaleString()} {data.settings.currency}
+                            {formatLocaleNumber(previewPaymentObj.amount)} {t(data.settings.currency)}
                           </strong>
                         </div>
                         <div className="flex justify-between">
-                          <span>البيان:</span>
+                          <span>{t('البيان:', 'Description:')}</span>
                           <span>{previewPaymentObj.notes || '-'}</span>
                         </div>
                       </div>
                     ) : (
-                      <p className="text-[11px] text-slate-600">لا تتوفر تفاصيل إضافية لهذا المستند محلياً.</p>
+                      <p className="text-[11px] text-slate-600">{t('لا تتوفر تفاصيل إضافية لهذا المستند محلياً.', 'No additional local details available for this document.')}</p>
                     )}
                   </div>
                 )}
@@ -10224,7 +10445,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     }}
                     className="h-8 rounded-md bg-[#011E58] hover:bg-[#003589] text-white font-black cursor-pointer"
                   >
-                    + فاتورة جديدة
+                    {t('+ فاتورة جديدة', '+ New Invoice')}
                   </button>
                   <button
                     type="button"
@@ -10238,7 +10459,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     }}
                     className="h-8 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-black cursor-pointer"
                   >
-                    + تحصيل دفعة
+                    {t('+ تحصيل دفعة', '+ Collect Payment')}
                   </button>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -10249,7 +10470,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       className="h-8 flex-1 rounded-md bg-white hover:bg-slate-100 text-slate-900 border border-slate-300 font-bold inline-flex items-center justify-center gap-1 cursor-pointer"
                     >
                       <Edit className="w-3.5 h-3.5" />
-                      <span>تعديل بيانات العميل</span>
+                      <span>{t('تعديل بيانات العميل', 'Edit Customer Info')}</span>
                     </button>
                   )}
                   {canDeleteCustomer && (
@@ -10259,7 +10480,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       className="h-8 px-2.5 rounded-md bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold inline-flex items-center justify-center gap-1 cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                      <span>حذف</span>
+                      <span>{t('حذف', 'Delete')}</span>
                     </button>
                   )}
                 </div>
@@ -10275,10 +10496,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           <div role="dialog" aria-modal="true" className="w-full max-w-sm bg-white rounded-lg p-2.5 border border-slate-200 space-y-2 text-xs">
             <div className="flex items-center gap-1.5 font-black text-xs text-amber-800">
               <AlertTriangle className="w-4 h-4 shrink-0" />
-              <span>توجد أصناف غير محفوظة في الفاتورة</span>
+              <span>{t('توجد أصناف غير محفوظة في الفاتورة', 'Unsaved Items in Invoice')}</span>
             </div>
             <p className="text-slate-600 leading-relaxed text-[11px]">
-              لديك ({invItems.length}) أصناف في الفاتورة الحالية ولم يتم حفظها أو اعتمادها بعد. هل تريد المغادرة مع الاحتفاظ بها أم البقاء لإكمال الفاتورة؟
+              {t(
+                `لديك (${invItems.length}) أصناف في الفاتورة الحالية ولم يتم حفظها أو اعتمادها بعد. هل تريد المغادرة مع الاحتفاظ بها أم البقاء لإكمال الفاتورة؟`,
+                `You have (${invItems.length}) unsaved items in the current invoice. Leave while keeping the draft or stay to finish?`
+              )}
             </p>
             <div className="grid grid-cols-2 gap-1.5 pt-0.5">
               <button
@@ -10286,7 +10510,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 onClick={() => setPendingLeaveTab(null)}
                 className="h-8 rounded-md bg-blue-900 text-white font-black cursor-pointer"
               >
-                البقاء في الفاتورة
+                {t('البقاء في الفاتورة', 'Stay on Invoice')}
               </button>
               <button
                 type="button"
@@ -10297,7 +10521,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 }}
                 className="h-8 rounded-md bg-slate-100 text-slate-800 font-bold cursor-pointer"
               >
-                الانتقال (مع حفظ المسودة)
+                {t('الانتقال (مع حفظ المسودة)', 'Leave (Keep Draft)')}
               </button>
             </div>
           </div>
@@ -10320,7 +10544,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 onClick={() => setSelectedInvoice(null)}
                 className="h-7 px-2 rounded-md text-[11px] bg-slate-100 font-bold text-slate-700 cursor-pointer"
               >
-                إغلاق
+                {t('إغلاق', 'Close')}
               </button>
             </div>
             <UnifiedDataTable
@@ -10331,10 +10555,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               data={selectedInvoice.items || []}
               rowKey={(it, idx) => `${it.productId}-${idx}`}
               columns={[
-                { key: 'productName', header: 'الصنف', render: (it) => <span className="font-bold text-slate-900">{it.productName}</span> },
-                { key: 'quantity', header: 'الكمية', align: 'center', render: (it) => <span className="font-mono">{it.quantity} {it.unit}</span> },
-                { key: 'unitPrice', header: 'السعر', align: 'center', render: (it) => <span className="font-mono">{it.unitPrice.toLocaleString()}</span> },
-                { key: 'total', header: 'الإجمالي', align: 'center', render: (it) => <strong className="font-mono text-blue-950">{it.total.toLocaleString()} {data.settings.currency}</strong> },
+                { key: 'productName', header: t('الصنف', 'Item'), render: (it) => <span className="font-bold text-slate-900">{it.productName}</span> },
+                { key: 'quantity', header: t('الكمية', 'Qty'), align: 'center', render: (it) => <span className="font-mono">{it.quantity} {t(it.unit)}</span> },
+                { key: 'unitPrice', header: t('السعر', 'Price'), align: 'center', render: (it) => <span className="font-mono">{formatLocaleNumber(it.unitPrice)}</span> },
+                { key: 'total', header: t('الإجمالي', 'Total'), align: 'center', render: (it) => <strong className="font-mono text-blue-950">{formatLocaleNumber(it.total)} {t(data.settings.currency)}</strong> },
               ]}
             />
             <button
@@ -10343,7 +10567,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               className="h-8 rounded-md bg-blue-900 text-white font-black flex items-center justify-center gap-1 cursor-pointer"
             >
               {isNative ? <Share2 className="w-3.5 h-3.5" /> : <FileDown className="w-3.5 h-3.5" />}
-              <span>{isNative ? 'مشاركة / حفظ الفاتورة' : 'طباعة / PDF'}</span>
+              <span>{isNative ? t('مشاركة / حفظ الفاتورة', 'Share / Save Invoice') : t('طباعة / PDF', 'Print / PDF')}</span>
             </button>
           </div>
         </div>
@@ -10354,19 +10578,19 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs">
           <div role="dialog" aria-modal="true" className="w-full max-w-lg bg-white rounded-t-lg sm:rounded-lg p-2.5 border border-slate-200 max-h-[88vh] overflow-y-auto space-y-2 text-xs pb-safe">
             <div className="flex items-center justify-between border-b border-slate-200 pb-1.5">
-              <h4 className="font-black text-xs text-slate-900">معاينة ومراجعة فاتورة الشراء قبل الإرسال</h4>
+              <h4 className="font-black text-xs text-slate-900">{t('معاينة ومراجعة فاتورة الشراء قبل الإرسال', 'Preview & Review Purchase Invoice Before Sending')}</h4>
               <button
                 type="button"
                 onClick={() => setPurReviewOpen(false)}
                 className="h-7 px-2 rounded-md text-[11px] bg-slate-100 font-bold text-slate-700 cursor-pointer"
               >
-                تعديل
+                {t('تعديل', 'Edit')}
               </button>
             </div>
 
             <div className="p-2 rounded-md bg-slate-50 border border-slate-200 space-y-0.5 text-[11px]">
-              <p>المورد: <strong>{data.suppliers.find((s) => s.id === purSupplierId)?.name || 'مورد'}</strong> · المستودع: <strong>{data.warehouses.find((w) => w.id === (purWarehouseId || mainWarehouse?.id))?.name || 'المخزن الرئيسي'}</strong></p>
-              <p>عدد الأصناف: <strong>{purItems.length}</strong> · طريقة السداد: <strong>{purPaymentType === 'cash' ? 'نقدي' : purPaymentType === 'credit' ? 'آجل' : 'جزئي'}</strong></p>
+              <p>{t('المورد:', 'Supplier:')} <strong>{data.suppliers.find((s) => s.id === purSupplierId)?.name || t('مورد', 'Supplier')}</strong> · {t('المستودع:', 'Warehouse:')} <strong>{t(data.warehouses.find((w) => w.id === (purWarehouseId || mainWarehouse?.id))?.name || 'المخزن الرئيسي')}</strong></p>
+              <p>{t('عدد الأصناف:', 'Items Count:')} <strong>{purItems.length}</strong> · {t('طريقة السداد:', 'Payment Method:')} <strong>{purPaymentType === 'cash' ? t('نقدي', 'Cash') : purPaymentType === 'credit' ? t('آجل', 'Credit') : t('جزئي', 'Partial')}</strong></p>
             </div>
 
             <UnifiedDataTable
@@ -10379,55 +10603,55 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               columns={[
                 {
                   key: 'productName',
-                  header: 'الصنف',
+                  header: t('الصنف', 'Item'),
                   render: (it) => (
                     <div className="flex items-center gap-1 flex-wrap">
                       <span className="font-bold text-slate-800">{it.productName}</span>
                       {it.newProduct && (
-                        <span className="text-emerald-800 text-[10px] font-bold">· جديد</span>
+                        <span className="text-emerald-800 text-[10px] font-bold">· {t('جديد', 'New')}</span>
                       )}
                     </div>
                   ),
                 },
-                { key: 'quantity', header: 'الكمية', align: 'center', render: (it) => <span className="font-mono">{it.quantity} {it.unit}</span> },
-                { key: 'unitPrice', header: 'السعر', align: 'center', render: (it) => <span className="font-mono">{it.unitPrice.toLocaleString()}</span> },
-                { key: 'total', header: 'الإجمالي', align: 'center', render: (it) => <strong className="font-mono text-[#011E58]">{it.total.toLocaleString()}</strong> },
+                { key: 'quantity', header: t('الكمية', 'Qty'), align: 'center', render: (it) => <span className="font-mono">{it.quantity} {t(it.unit)}</span> },
+                { key: 'unitPrice', header: t('السعر', 'Price'), align: 'center', render: (it) => <span className="font-mono">{formatLocaleNumber(it.unitPrice)}</span> },
+                { key: 'total', header: t('الإجمالي', 'Total'), align: 'center', render: (it) => <strong className="font-mono text-[#011E58]">{formatLocaleNumber(it.total)}</strong> },
               ]}
             />
 
             <div className="p-2 rounded-md bg-[#EEF3FA] border border-[#DCE6F5] space-y-0.5">
               <div className="flex justify-between">
-                <span>الإجمالي الفرعي:</span>
-                <strong className="font-mono">{purSubtotal.toLocaleString()} {data.settings.currency}</strong>
+                <span>{t('الإجمالي الفرعي:', 'Subtotal:')}</span>
+                <strong className="font-mono">{formatLocaleNumber(purSubtotal)} {t(data.settings.currency)}</strong>
               </div>
               {Number(purDiscount) > 0 && (
                 <div className="flex justify-between text-rose-700">
-                  <span>الخصم:</span>
-                  <strong className="font-mono">-{Number(purDiscount).toLocaleString()} {data.settings.currency}</strong>
+                  <span>{t('الخصم:', 'Discount:')}</span>
+                  <strong className="font-mono">-{formatLocaleNumber(Number(purDiscount))} {t(data.settings.currency)}</strong>
                 </div>
               )}
               <div className="flex justify-between font-black text-[#011E58] text-xs pt-1 border-t border-[#DCE6F5]">
-                <span>صافي الإجمالي:</span>
-                <strong className="font-mono">{purTotal.toLocaleString()} {data.settings.currency}</strong>
+                <span>{t('صافي الإجمالي:', 'Net Total:')}</span>
+                <strong className="font-mono">{formatLocaleNumber(purTotal)} {t(data.settings.currency)}</strong>
               </div>
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold text-slate-700 mb-0.5">المستلم الموجه إليه (اختياري):</label>
+              <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('المستلم الموجه إليه (اختياري):', 'Directed Recipient (Optional):')}</label>
               <select
                 value={purRecipientUserId}
                 onChange={(e) => setPurRecipientUserId(e.target.value)}
                 className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-bold"
               >
-                <option value="">الإدارة العامة (جميع المسؤولين المختصين)</option>
+                <option value="">{t('الإدارة العامة (جميع المسؤولين المختصين)', 'General Management (All Authorized Staff)')}</option>
                 {(data.purchaseReceivers || []).map((r) => (
-                  <option key={r.id} value={r.id}>{r.fullName} ({r.role})</option>
+                  <option key={r.id} value={r.id}>{r.fullName} ({t(r.role)})</option>
                 ))}
               </select>
             </div>
 
             <div className="px-2 py-1 rounded-md bg-amber-50 border border-amber-200 text-amber-900 font-bold text-[10px]">
-              لن يتغير رصيد المخزن أو المورد أو الخزينة إلا بعد استلام الفاتورة واعتمادها من الإدارة.
+              {t('لن يتغير رصيد المخزن أو المورد أو الخزينة إلا بعد استلام الفاتورة واعتمادها من الإدارة.', 'Inventory, supplier, and cashbox balances will not update until management receives and confirms this invoice.')}
             </div>
 
             <div className="grid grid-cols-2 gap-1.5 pt-0.5">
@@ -10437,7 +10661,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 onClick={() => handleSubmitPurchaseInvoice(false)}
                 className="h-9 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-900 font-black cursor-pointer disabled:opacity-50"
               >
-                {isSubmittingPurchase ? 'جاري الحفظ...' : 'حفظ كمسودة'}
+                {isSubmittingPurchase ? t('جاري الحفظ...', 'Saving...') : t('حفظ كمسودة', 'Save as Draft')}
               </button>
               <button
                 type="button"
@@ -10446,7 +10670,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 className="h-9 rounded-lg bg-[#003589] hover:bg-[#0049B0] text-white font-black inline-flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
               >
                 <Send className="w-3.5 h-3.5" />
-                <span>{isSubmittingPurchase ? 'جاري الإرسال...' : 'حفظ وإرسال للإدارة'}</span>
+                <span>{isSubmittingPurchase ? t('جاري الإرسال...', 'Sending...') : t('حفظ وإرسال للإدارة', 'Save & Send to Management')}</span>
               </button>
             </div>
           </div>
@@ -10458,18 +10682,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 bg-slate-950/60 backdrop-blur-xs">
           <div role="dialog" aria-modal="true" className="w-full max-w-sm bg-white rounded-lg p-2.5 border border-slate-200 space-y-2 text-xs">
             <h4 className="font-black text-xs text-slate-900">
-              إرسال فاتورة الشراء ({sendingPurchaseTarget.invoiceNumber}) للإدارة
+              {t(`إرسال فاتورة الشراء (${sendingPurchaseTarget.invoiceNumber}) للإدارة`, `Send Purchase Invoice (${sendingPurchaseTarget.invoiceNumber}) to Management`)}
             </h4>
             <div>
-              <label className="block text-[10px] font-bold text-slate-700 mb-0.5">توجيه إلى:</label>
+              <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('توجيه إلى:', 'Direct To:')}</label>
               <select
                 value={sendingRecipientUserId}
                 onChange={(e) => setSendingRecipientUserId(e.target.value)}
                 className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-bold"
               >
-                <option value="">الإدارة العامة (جميع المسؤولين المختصين)</option>
+                <option value="">{t('الإدارة العامة (جميع المسؤولين المختصين)', 'General Management (All Authorized Staff)')}</option>
                 {(data.purchaseReceivers || []).map((r) => (
-                  <option key={r.id} value={r.id}>{r.fullName} ({r.role})</option>
+                  <option key={r.id} value={r.id}>{r.fullName} ({t(r.role)})</option>
                 ))}
               </select>
             </div>
@@ -10479,7 +10703,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 onClick={() => setSendingPurchaseTarget(null)}
                 className="h-8 rounded-md bg-slate-100 text-slate-700 font-bold cursor-pointer"
               >
-                إلغاء
+                {t('إلغاء', 'Cancel')}
               </button>
               <button
                 type="button"
@@ -10497,16 +10721,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     setFeedback({
                       type: res.queuedOffline ? 'warning' : 'success',
                       text: res.queuedOffline
-                        ? `تم وضع طلب إرسال الفاتورة (${sendingPurchaseTarget.invoiceNumber}) في طابور المزامنة.`
-                        : `تم إرسال الفاتورة (${sendingPurchaseTarget.invoiceNumber}) للإدارة بانتظار الاستلام.`,
+                        ? t(`تم وضع طلب إرسال الفاتورة (${sendingPurchaseTarget.invoiceNumber}) في طابور المزامنة.`, `Invoice (${sendingPurchaseTarget.invoiceNumber}) dispatch queued for sync.`)
+                        : t(`تم إرسال الفاتورة (${sendingPurchaseTarget.invoiceNumber}) للإدارة بانتظار الاستلام.`, `Invoice (${sendingPurchaseTarget.invoiceNumber}) sent to management awaiting receipt.`),
                     });
                   } else {
-                    setFeedback({ type: 'error', text: res.error || 'تعذر إرسال الفاتورة' });
+                    setFeedback({ type: 'error', text: res.error ? t(res.error) : t('تعذر إرسال الفاتورة', 'Could not send invoice') });
                   }
                 }}
                 className="h-8 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-black cursor-pointer disabled:opacity-50"
               >
-                {isSendingPurchase ? 'جاري الإرسال...' : 'تأكيد الإرسال'}
+                {isSendingPurchase ? t('جاري الإرسال...', 'Sending...') : t('تأكيد الإرسال', 'Confirm Send')}
               </button>
             </div>
           </div>
@@ -10519,37 +10743,37 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           <div role="dialog" aria-modal="true" className="w-full max-w-md bg-white rounded-lg p-2.5 border border-slate-200 space-y-2 text-xs max-h-[82vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-200 pb-1.5">
               <h4 className="font-black text-xs text-slate-900">
-                سجل الإرسال والاستلام — {historyPurchaseTarget.invoiceNumber}
+                {t('سجل الإرسال والاستلام', 'Dispatch & Receipt History')} — {historyPurchaseTarget.invoiceNumber}
               </h4>
               <button
                 type="button"
                 onClick={() => setHistoryPurchaseTarget(null)}
                 className="h-7 px-2 rounded-md text-[11px] bg-slate-100 font-bold text-slate-700 cursor-pointer"
               >
-                إغلاق
+                {t('إغلاق', 'Close')}
               </button>
             </div>
             {(!historyPurchaseTarget.dispatchHistory || historyPurchaseTarget.dispatchHistory.length === 0) ? (
-              <p className="text-slate-400 text-center py-4">لا توجد حركات إرسال مسجلة بعد.</p>
+              <p className="text-slate-400 text-center py-4">{t('لا توجد حركات إرسال مسجلة بعد.', 'No dispatch actions recorded yet.')}</p>
             ) : (
               <div className="divide-y divide-slate-200 border border-slate-200 rounded-md overflow-hidden">
                 {historyPurchaseTarget.dispatchHistory.map((h, idx) => (
                   <div key={`${h.at}-${idx}`} className="p-2 bg-white flex items-start justify-between gap-2">
                     <div>
                       <strong className="text-slate-900">
-                        {h.action === 'created' ? 'إنشاء المسودة' :
-                         h.action === 'sent' ? 'إرسال للإدارة' :
-                         h.action === 'resent' ? 'إعادة إرسال للإدارة' :
-                         h.action === 'received' ? 'استلام الفاتورة' :
-                         h.action === 'rejected' ? 'رفض الفاتورة' :
-                         h.action === 'confirmed' ? 'اعتماد وترحيل' : h.action}
+                        {h.action === 'created' ? t('إنشاء المسودة', 'Draft Created') :
+                         h.action === 'sent' ? t('إرسال للإدارة', 'Sent to Management') :
+                         h.action === 'resent' ? t('إعادة إرسال للإدارة', 'Resent to Management') :
+                         h.action === 'received' ? t('استلام الفاتورة', 'Invoice Received') :
+                         h.action === 'rejected' ? t('رفض الفاتورة', 'Invoice Rejected') :
+                         h.action === 'confirmed' ? t('اعتماد وترحيل', 'Confirmed & Posted') : t(h.action)}
                       </strong>
-                      {h.by && <span className="text-slate-600 mr-1.5">· {h.by}</span>}
-                      {h.recipientName && <span className="text-[#003589] mr-1.5">→ {h.recipientName}</span>}
+                      {h.by && <span className="text-slate-600 me-1.5">· {h.by}</span>}
+                      {h.recipientName && <span className="text-[#003589] me-1.5">→ {t(h.recipientName)}</span>}
                       {(h.notes || h.reason) && <p className="text-slate-600 mt-0.5">{h.notes || h.reason}</p>}
                     </div>
                     <span className="font-mono text-[10px] text-slate-400 shrink-0" dir="ltr">
-                      {h.at ? new Date(h.at).toLocaleString('ar-EG') : ''}
+                      {h.at ? formatLocaleDateTime(h.at) : ''}
                     </span>
                   </div>
                 ))}
@@ -10567,17 +10791,17 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         >
           <div role="dialog" aria-modal="true" className="w-full max-w-lg bg-white rounded-lg overflow-hidden border border-slate-200" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-2.5 py-1.5 border-b bg-slate-50 text-xs">
-              <strong className="text-slate-900">معاينة صورة المحل</strong>
+              <strong className="text-slate-900">{t('معاينة صورة المحل', 'Shop Photo Preview')}</strong>
               <button
                 type="button"
                 onClick={() => setPreviewShopPhoto(null)}
                 className="h-7 px-2 rounded-md text-[11px] bg-slate-200 font-bold text-slate-800 cursor-pointer"
               >
-                إغلاق
+                {t('إغلاق', 'Close')}
               </button>
             </div>
             <div className="p-2 bg-slate-900 flex items-center justify-center">
-              <img src={previewShopPhoto} alt="صورة المحل" className="max-h-[75vh] w-auto object-contain rounded-md" />
+              <img src={previewShopPhoto} alt={t('صورة المحل', 'Shop photo')} className="max-h-[75vh] w-auto object-contain rounded-md" />
             </div>
           </div>
         </div>
@@ -10598,7 +10822,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     <span className="text-[11px] font-bold text-slate-600">· {meta.label}</span>
                   </div>
                   <p className="text-[11px] text-slate-600 mt-0.5">
-                    {pur.supplierName || 'مورد'} · {pur.date} · {pur.warehouseName || 'المخزن الرئيسي'}
+                    {pur.supplierName || t('مورد', 'Supplier')} · {pur.date} · {t(pur.warehouseName || 'المخزن الرئيسي')}
                   </p>
                 </div>
                 <button
@@ -10606,33 +10830,33 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   onClick={() => setSelectedPurchaseDetail(null)}
                   className="h-7 px-2 rounded-md text-[11px] bg-slate-100 font-bold text-slate-700 cursor-pointer shrink-0"
                 >
-                  إغلاق
+                  {t('إغلاق', 'Close')}
                 </button>
               </div>
 
               <div className="p-2 rounded-md bg-slate-50 border border-slate-200 space-y-0.5 text-[11px]">
                 <p>
-                  السداد: <strong>{pur.paymentType === 'cash' ? 'نقدي' : pur.paymentType === 'credit' ? 'آجل' : 'جزئي'}</strong>
-                  {pur.paidAmount > 0 ? ` · مدفوع: ${pur.paidAmount.toLocaleString()} ${data.settings.currency}` : ''}
+                  {t('السداد:', 'Payment:')} <strong>{pur.paymentType === 'cash' ? t('نقدي', 'Cash') : pur.paymentType === 'credit' ? t('آجل', 'Credit') : t('جزئي', 'Partial')}</strong>
+                  {pur.paidAmount > 0 ? ` · ${t('مدفوع:', 'Paid:')} ${formatLocaleNumber(pur.paidAmount)} ${t(data.settings.currency)}` : ''}
                 </p>
                 {pur.sentAt && (
                   <p>
-                    وقت الإرسال: <strong dir="ltr" className="font-mono">{new Date(pur.sentAt).toLocaleString('ar-EG')}</strong>
-                    {pur.recipientName ? ` · موجهة إلى: ${pur.recipientName}` : ''}
+                    {t('وقت الإرسال:', 'Sent At:')} <strong dir="ltr" className="font-mono">{formatLocaleDateTime(pur.sentAt)}</strong>
+                    {pur.recipientName ? ` · ${t('موجهة إلى:', 'Directed To:')} ${t(pur.recipientName)}` : ''}
                   </p>
                 )}
                 {pur.receivedBy && (
                   <p className="text-[#003589] font-bold">
-                    المستلم الفعلي: {pur.receivedBy}
-                    {pur.receivedAt ? ` (${new Date(pur.receivedAt).toLocaleString('ar-EG')})` : ''}
+                    {t('المستلم الفعلي:', 'Received By:')} {pur.receivedBy}
+                    {pur.receivedAt ? ` (${formatLocaleDateTime(pur.receivedAt)})` : ''}
                   </p>
                 )}
                 {pur.dispatchStatus === 'rejected' && pur.rejectionReason && (
                   <p className="text-rose-800 font-bold">
-                    سبب الرفض ({pur.rejectedBy || 'الإدارة'}): {pur.rejectionReason}
+                    {t('سبب الرفض', 'Rejection Reason')} ({pur.rejectedBy || t('الإدارة', 'Management')}): {pur.rejectionReason}
                   </p>
                 )}
-                {pur.notes && <p className="text-slate-600">ملاحظات: {pur.notes}</p>}
+                {pur.notes && <p className="text-slate-600">{t('ملاحظات:', 'Notes:')} {pur.notes}</p>}
               </div>
 
               <UnifiedDataTable
@@ -10643,26 +10867,26 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 data={pur.items || []}
                 rowKey={(it, idx) => `${it.productId}-${idx}`}
                 columns={[
-                  { key: 'productName', header: 'الصنف', render: (it) => <span className="font-bold text-slate-900">{it.productName}</span> },
-                  { key: 'quantity', header: 'الكمية', align: 'center', render: (it) => <span className="font-mono">{it.quantity} {it.unit}</span> },
+                  { key: 'productName', header: t('الصنف', 'Item'), render: (it) => <span className="font-bold text-slate-900">{it.productName}</span> },
+                  { key: 'quantity', header: t('الكمية', 'Qty'), align: 'center', render: (it) => <span className="font-mono">{it.quantity} {t(it.unit)}</span> },
                   {
                     key: 'unitPrice',
-                    header: 'السعر',
+                    header: t('السعر', 'Price'),
                     align: 'center',
                     render: (it) => (
                       <span className="font-mono">
-                        {it.unitPrice.toLocaleString()}
-                        {Number(it.discount || 0) > 0 ? ` (خصم ${it.discount})` : ''}
+                        {formatLocaleNumber(it.unitPrice)}
+                        {Number(it.discount || 0) > 0 ? ` (${t('خصم', 'Disc')} ${formatLocaleNumber(it.discount)})` : ''}
                       </span>
                     ),
                   },
                   {
                     key: 'total',
-                    header: 'الإجمالي',
+                    header: t('الإجمالي', 'Total'),
                     align: 'center',
                     render: (it) => (
                       <strong className="font-mono text-[#011E58] tabular-nums">
-                        {it.total.toLocaleString()} {data.settings.currency}
+                        {formatLocaleNumber(it.total)} {t(data.settings.currency)}
                       </strong>
                     ),
                   },
@@ -10671,16 +10895,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
               <div className="p-2 rounded-md bg-[#EEF3FA] border border-[#DCE6F5] space-y-0.5 text-[#011E58] tabular-nums">
                 <div className="flex items-center justify-between font-black text-xs">
-                  <span>صافي الإجمالي:</span>
+                  <span>{t('صافي الإجمالي:', 'Net Total:')}</span>
                   <strong className="font-mono">
-                    {pur.grandTotal.toLocaleString()} {data.settings.currency}
+                    {formatLocaleNumber(pur.grandTotal)} {t(data.settings.currency)}
                   </strong>
                 </div>
                 {pur.status === 'confirmed' && (
                   <div className="flex items-center justify-between text-[11px] font-bold">
-                    <span>المدفوع: {Number(pur.paidAmount || 0).toLocaleString()} {data.settings.currency}</span>
+                    <span>{t('المدفوع:', 'Paid:')} {formatLocaleNumber(Number(pur.paidAmount || 0))} {t(data.settings.currency)}</span>
                     <span className={Number(pur.remainingAmount || 0) > 0.009 ? 'text-amber-800' : 'text-emerald-800'}>
-                      المتبقي: {Math.max(0, Number(pur.remainingAmount || 0)).toLocaleString()} {data.settings.currency}
+                      {t('المتبقي:', 'Remaining:')} {formatLocaleNumber(Math.max(0, Number(pur.remainingAmount || 0)))} {t(data.settings.currency)}
                     </span>
                   </div>
                 )}
@@ -10708,7 +10932,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       className="h-8 px-2.5 rounded-md text-[11px] bg-[#003589] hover:bg-[#0049B0] text-white font-black inline-flex items-center gap-1 cursor-pointer"
                     >
                       <CreditCard className="w-3.5 h-3.5" />
-                      <span>تسجيل دفعة سداد</span>
+                      <span>{t('تسجيل دفعة سداد', 'Record Payment')}</span>
                     </button>
                   )}
                 {canSendOrEdit && (
@@ -10723,7 +10947,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       className="h-8 px-2.5 rounded-md text-[11px] bg-[#011E58] hover:bg-[#003589] text-white font-black inline-flex items-center gap-1 cursor-pointer"
                     >
                       <Send className="w-3.5 h-3.5" />
-                      <span>إرسال للإدارة</span>
+                      <span>{t('إرسال للإدارة', 'Send to Management')}</span>
                     </button>
                     <button
                       type="button"
@@ -10734,7 +10958,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       className="h-8 px-2.5 rounded-md text-[11px] bg-amber-50 text-amber-900 border border-amber-200 font-bold inline-flex items-center gap-1 cursor-pointer"
                     >
                       <Edit className="w-3.5 h-3.5" />
-                      <span>تعديل</span>
+                      <span>{t('تعديل', 'Edit')}</span>
                     </button>
                   </>
                 )}
@@ -10747,14 +10971,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   className="h-8 px-2.5 rounded-md text-[11px] bg-slate-100 text-slate-800 font-bold inline-flex items-center gap-1 cursor-pointer"
                 >
                   <History className="w-3.5 h-3.5" />
-                  <span>سجل الحالات</span>
+                  <span>{t('سجل الحالات', 'Status History')}</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => exportInvoiceDocument(pur)}
                   className="h-8 px-2.5 rounded-md text-[11px] bg-slate-100 text-slate-800 font-bold cursor-pointer"
                 >
-                  طباعة / PDF
+                  {t('طباعة / PDF', 'Print / PDF')}
                 </button>
               </div>
             </div>
@@ -10779,36 +11003,36 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             >
               <div className="flex items-center justify-between border-b border-slate-200 pb-1.5">
                 <h4 className="font-black text-xs text-slate-900">
-                  تعديل بيانات العميل — {editingCustomerTarget.shopName || editingCustomerTarget.name}
+                  {t('تعديل بيانات العميل', 'Edit Customer Info')} — {editingCustomerTarget.shopName || editingCustomerTarget.name}
                 </h4>
                 <button
                   type="button"
                   onClick={() => setEditingCustomerTarget(null)}
                   className="h-7 px-2 rounded-md text-[11px] bg-slate-100 font-bold text-slate-700 cursor-pointer"
                 >
-                  إغلاق
+                  {t('إغلاق', 'Close')}
                 </button>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-700 mb-0.5">اسم المحل</label>
+                  <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('اسم المحل', 'Shop Name')}</label>
                   <input
                     type="text"
                     value={editCustShop}
                     onChange={(e) => setEditCustShop(e.target.value)}
-                    placeholder="اسم المحل أو النشاط"
+                    placeholder={t('اسم المحل أو النشاط', 'Shop or business name')}
                     className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-700 mb-0.5">اسم العميل / صاحب المحل *</label>
+                  <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('اسم العميل / صاحب المحل *', 'Customer / Owner Name *')}</label>
                   <input
                     type="text"
                     required
                     value={editCustName}
                     onChange={(e) => setEditCustName(e.target.value)}
-                    placeholder="الاسم الكامل"
+                    placeholder={t('الاسم الكامل', 'Full name')}
                     className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold"
                   />
                 </div>
@@ -10822,18 +11046,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       onClick={() => setPreviewShopPhoto(editCustShopPhoto)}
                       className="w-full h-full cursor-pointer"
                     >
-                      <img src={editCustShopPhoto} alt="صورة المحل" className="w-full h-full object-cover" />
+                      <img src={editCustShopPhoto} alt={t('صورة المحل', 'Shop photo')} className="w-full h-full object-cover" />
                     </button>
                   ) : (
                     <Store className="w-4 h-4 text-slate-300" />
                   )}
                 </div>
                 <div className="flex-1 min-w-0 space-y-1">
-                  <span className="block text-[11px] font-black text-slate-800">صورة المحل</span>
+                  <span className="block text-[11px] font-black text-slate-800">{t('صورة المحل', 'Shop Photo')}</span>
                   <div className="flex flex-wrap gap-1">
                     <label className="h-7 px-2 rounded-md bg-blue-900 text-white text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer">
                       <Camera className="w-3 h-3" />
-                      <span>{editCustShopPhoto ? 'تغيير بالكاميرا' : 'التقاط بالكاميرا'}</span>
+                      <span>{editCustShopPhoto ? t('تغيير بالكاميرا', 'Retake Photo') : t('التقاط بالكاميرا', 'Take Photo')}</span>
                       <input
                         ref={editCustCameraInputRef}
                         type="file"
@@ -10845,7 +11069,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     </label>
                     <label className="h-7 px-2 rounded-md bg-white text-slate-800 border border-slate-300 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer">
                       <Upload className="w-3 h-3" />
-                      <span>من المعرض</span>
+                      <span>{t('من المعرض', 'From Gallery')}</span>
                       <input
                         ref={editCustGalleryInputRef}
                         type="file"
@@ -10866,16 +11090,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         }}
                         className="h-7 px-2 rounded-md bg-red-50 text-red-700 border border-red-200 text-[11px] font-bold cursor-pointer"
                       >
-                        حذف
+                        {t('حذف', 'Delete')}
                       </button>
                     )}
                   </div>
-                  {isUploadingEditCustPhoto && <p className="text-[10px] font-bold text-blue-900">جاري ضغط وتجهيز الصورة...</p>}
+                  {isUploadingEditCustPhoto && <p className="text-[10px] font-bold text-blue-900">{t('جاري ضغط وتجهيز الصورة...', 'Compressing and preparing image...')}</p>}
                 </div>
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-700 mb-0.5">عنوان المحل الرئيسي</label>
+                <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('عنوان المحل الرئيسي', 'Main Shop Address')}</label>
                 <div className="flex items-center gap-1">
                   <input
                     type="text"
@@ -10884,27 +11108,27 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       setEditCustAddress(e.target.value);
                       if (editCustMapNotice) setEditCustMapNotice(null);
                     }}
-                    placeholder="الشارع، المنطقة، علامة مميزة..."
+                    placeholder={t('الشارع، المنطقة، علامة مميزة...', 'Street, area, landmark...')}
                     className="flex-1 h-8 rounded-md border border-slate-300 px-2 font-bold"
                   />
                   <button
                     type="button"
                     onClick={() => setLocationPickerTarget('edit')}
                     className="h-8 px-2 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer"
-                    title="تحديد موقع العميل على خريطة جوجل"
+                    title={t('تحديد موقع العميل على خريطة جوجل', 'Pick customer location on Google Maps')}
                   >
                     <MapPin className="w-3.5 h-3.5" />
-                    <span>خريطة</span>
+                    <span>{t('خريطة', 'Map')}</span>
                   </button>
                   <button
                     type="button"
                     disabled={isLocatingEditCust}
                     onClick={handleCaptureEditCustLocation}
                     className="h-8 px-2 rounded-md bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] border border-[#DCE6F5] text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer disabled:opacity-50"
-                    title="تحديد الموقع الحالي GPS وجلب العنوان تلقائياً"
+                    title={t('تحديد الموقع الحالي GPS وجلب العنوان تلقائياً', 'Capture current GPS location and fetch address automatically')}
                   >
                     <MapPin className="w-3.5 h-3.5 text-[#003589]" />
-                    <span>{isLocatingEditCust ? 'تحديد...' : 'GPS'}</span>
+                    <span>{isLocatingEditCust ? t('تحديد...', 'Locating...') : 'GPS'}</span>
                   </button>
                 </div>
                 {editCustGeo && (
@@ -10912,27 +11136,27 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     GPS: {editCustGeo}
                   </p>
                 )}
-                {editCustMapNotice && <p className="text-[11px] font-bold text-red-600 mt-0.5">{editCustMapNotice}</p>}
+                {editCustMapNotice && <p className="text-[11px] font-bold text-red-600 mt-0.5">{t(editCustMapNotice)}</p>}
               </div>
 
               <div className="grid grid-cols-2 gap-1.5">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-700 mb-0.5">المحافظة</label>
+                  <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('المحافظة', 'Governorate')}</label>
                   <input
                     type="text"
                     value={editCustGovernorate}
                     onChange={(e) => setEditCustGovernorate(e.target.value)}
-                    placeholder="المحافظة"
+                    placeholder={t('المحافظة', 'Governorate')}
                     className="w-full h-8 rounded-md border border-slate-300 px-2 font-semibold"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-700 mb-0.5">المنطقة / خط السير</label>
+                  <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('المنطقة / خط السير', 'Area / Route')}</label>
                   <input
                     type="text"
                     value={editCustArea}
                     onChange={(e) => setEditCustArea(e.target.value)}
-                    placeholder="المنطقة / خط السير"
+                    placeholder={t('المنطقة / خط السير', 'Area / Route')}
                     className="w-full h-8 rounded-md border border-slate-300 px-2 font-semibold"
                   />
                 </div>
@@ -10940,10 +11164,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
               <div className="p-2 rounded-md bg-slate-50 border border-slate-200 space-y-1.5">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-700 mb-0.5">رقم التليفون الرئيسي *</label>
+                  <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('رقم التليفون الرئيسي *', 'Primary Phone Number *')}</label>
                   <div className="flex items-center gap-1">
                     <input
                       type="tel"
+                      dir="ltr"
                       required
                       value={editCustPhone}
                       onChange={(e) => {
@@ -10959,18 +11184,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         className="h-8 px-2 rounded-md bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] border border-[#DCE6F5] text-[11px] font-bold inline-flex items-center gap-1 shrink-0"
                       >
                         <Phone className="w-3.5 h-3.5 text-[#003589]" />
-                        <span>اتصال</span>
+                        <span>{t('اتصال', 'Call')}</span>
                       </a>
                     ) : (
                       <button
                         type="button"
                         onClick={() =>
-                          setEditCustPhoneNotice({ type: 'error', text: 'يرجى إدخال رقم هاتف صحيح (7 أرقام على الأقل) أولاً.' })
+                          setEditCustPhoneNotice({ type: 'error', text: t('يرجى إدخال رقم هاتف صحيح (7 أرقام على الأقل) أولاً.', 'Please enter a valid phone number (at least 7 digits) first.') })
                         }
                         className="h-8 px-2 rounded-md bg-slate-100 text-slate-600 border border-slate-300 text-[11px] font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer"
                       >
                         <Phone className="w-3.5 h-3.5" />
-                        <span>اتصال</span>
+                        <span>{t('اتصال', 'Call')}</span>
                       </button>
                     )}
                   </div>
@@ -10981,7 +11206,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
                 {editCustExtraPhones.length > 0 && (
                   <div className="space-y-1">
-                    <label className="block font-bold text-slate-600 text-[10px]">أرقام تليفون إضافية:</label>
+                    <label className="block font-bold text-slate-600 text-[10px]">{t('أرقام تليفون إضافية:', 'Additional Phone Numbers:')}</label>
                     {editCustExtraPhones.map((extra, idx) => {
                       const cleanEx = extra.phone.replace(/[^\d+]/g, '');
                       const validEx = cleanEx.replace(/\D/g, '').length >= 7;
@@ -10989,12 +11214,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         <div key={extra.id || idx} className="flex flex-wrap sm:flex-nowrap items-center gap-1">
                           <input
                             type="tel"
+                            dir="ltr"
                             value={extra.phone}
                             onChange={(e) => {
                               const v = e.target.value;
                               setEditCustExtraPhones((prev) => prev.map((row, i) => (i === idx ? { ...row, phone: v } : row)));
                             }}
-                            placeholder="رقم إضافي..."
+                            placeholder={t('رقم إضافي...', 'Additional number...')}
                             className="flex-1 min-w-[110px] h-8 rounded-md border border-slate-300 px-2 font-mono font-bold bg-white"
                           />
                           <select
@@ -11005,10 +11231,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                             }}
                             className="h-8 rounded-md border border-slate-300 px-1.5 font-bold bg-white"
                           >
-                            <option value="موبايل">موبايل</option>
-                            <option value="محل">تليفون المحل</option>
-                            <option value="واتساب">واتساب</option>
-                            <option value="إضافي">إضافي</option>
+                            <option value="موبايل">{t('موبايل', 'Mobile')}</option>
+                            <option value="محل">{t('تليفون المحل', 'Shop Phone')}</option>
+                            <option value="واتساب">{t('واتساب', 'WhatsApp')}</option>
+                            <option value="إضافي">{t('إضافي', 'Extra')}</option>
                           </select>
                           {validEx && (
                             <a
@@ -11033,7 +11259,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                             }}
                             className="h-8 px-2 rounded-md bg-blue-50 text-blue-900 border border-blue-200 text-[10px] font-bold cursor-pointer shrink-0"
                           >
-                            رئيسي
+                            {t('رئيسي', 'Primary')}
                           </button>
                           <button
                             type="button"
@@ -11059,17 +11285,17 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   className="h-7 px-2 rounded-md bg-white hover:bg-blue-50 text-blue-900 border border-blue-200 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
                 >
                   <Plus className="w-3 h-3" />
-                  <span>إضافة رقم تليفون آخر</span>
+                  <span>{t('إضافة رقم تليفون آخر', 'Add Another Phone Number')}</span>
                 </button>
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-700 mb-0.5">ملاحظات</label>
+                <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('ملاحظات', 'Notes')}</label>
                 <input
                   type="text"
                   value={editCustNotes}
                   onChange={(e) => setEditCustNotes(e.target.value)}
-                  placeholder="ملاحظات عن المحل أو المواعيد (اختياري)"
+                  placeholder={t('ملاحظات عن المحل أو المواعيد (اختياري)', 'Notes about shop or schedule (optional)')}
                   className="w-full h-8 rounded-md border border-slate-300 px-2"
                 />
               </div>
@@ -11079,7 +11305,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 disabled={isSavingEditCustomer || isUploadingEditCustPhoto}
                 className="w-full h-9 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50"
               >
-                {isSavingEditCustomer ? 'جاري حفظ التعديلات...' : 'حفظ التعديلات'}
+                {isSavingEditCustomer ? t('جاري حفظ التعديلات...', 'Saving changes...') : t('حفظ التعديلات', 'Save Changes')}
               </button>
             </form>
           </div>
@@ -11091,9 +11317,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           <div className="w-full max-w-lg bg-white rounded-t-lg sm:rounded-lg p-2.5 border border-slate-200 max-h-[88vh] flex flex-col gap-2 text-xs pb-safe">
             <div className="flex items-center justify-between border-b border-slate-200 pb-1.5">
               <div>
-                <h4 className="font-black text-xs text-red-900">حذف العميل الآمن</h4>
+                <h4 className="font-black text-xs text-red-900">{t('حذف العميل الآمن', 'Safe Customer Delete')}</h4>
                 <p className="text-[10px] text-slate-500">
-                  يسمح النظام بالحذف فقط للعملاء ذوي الرصيد الصفرى بدون فواتير أو حركات مالية مرتبطة.
+                  {t('يسمح النظام بالحذف فقط للعملاء ذوي الرصيد الصفرى بدون فواتير أو حركات مالية مرتبطة.', 'Deletion is allowed only for zero-balance customers with no linked invoices or financial transactions.')}
                 </p>
               </div>
               <button
@@ -11101,7 +11327,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 onClick={() => setSafeDeleteModalOpen(false)}
                 className="h-7 px-2 rounded-md text-[11px] bg-slate-100 font-bold text-slate-700 cursor-pointer shrink-0"
               >
-                إغلاق
+                {t('إغلاق', 'Close')}
               </button>
             </div>
 
@@ -11110,10 +11336,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 type="text"
                 value={safeDeleteSearch}
                 onChange={(e) => setSafeDeleteSearch(e.target.value)}
-                placeholder="ابحث باسم العميل أو المحل أو الكود..."
-                className="w-full h-8 rounded-md border border-slate-300 pr-7 pl-2 font-semibold outline-hidden focus:border-red-500"
+                placeholder={t('ابحث باسم العميل أو المحل أو الكود...', 'Search by customer, shop, or code...')}
+                className="w-full h-8 rounded-md border border-slate-300 ps-7 pe-2 font-semibold outline-hidden focus:border-red-500"
               />
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2 top-2" />
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute start-2 top-2" />
             </div>
 
             <UnifiedDataTable<Customer>
@@ -11132,11 +11358,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 );
               })}
               rowKey={(c) => c.id}
-              emptyTitle="لا يوجد عملاء مطابقون"
+              emptyTitle={t('لا يوجد عملاء مطابقون', 'No matching customers')}
               columns={[
                 {
                   key: 'shopName',
-                  header: 'العميل',
+                  header: t('العميل', 'Customer'),
                   render: (c) => (
                     <div>
                       <span className="font-black text-slate-900 block">{c.shopName || c.name}</span>
@@ -11146,20 +11372,20 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 },
                 {
                   key: 'currentBalance',
-                  header: 'الرصيد',
+                  header: t('الرصيد', 'Balance'),
                   align: 'center',
                   render: (c) => {
                     const hasBalance = Math.abs(Number(c.currentBalance || 0)) > 0.009;
                     return (
                       <span className={`font-mono font-bold ${hasBalance ? 'text-red-700' : 'text-emerald-700'}`}>
-                        {Number(c.currentBalance || 0).toLocaleString()} {data.settings.currency}
+                        {formatLocaleNumber(Number(c.currentBalance || 0))} {t(data.settings.currency)}
                       </span>
                     );
                   },
                 },
                 {
                   key: 'actions',
-                  header: 'الإجراء',
+                  header: t('الإجراء', 'Action'),
                   align: 'center',
                   sortable: false,
                   render: (c) => {
@@ -11178,7 +11404,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         }`}
                       >
                         <Trash2 className="w-3 h-3" />
-                        <span>{hasBalance ? 'فحص والحذف' : 'حذف'}</span>
+                        <span>{hasBalance ? t('فحص والحذف', 'Check & Delete') : t('حذف', 'Delete')}</span>
                       </button>
                     );
                   },
@@ -11196,16 +11422,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         const bal = Number(stmt?.summary?.currentBalance ?? sup.currentBalance ?? 0);
         const dirText =
           bal > 0.009
-            ? 'رصيد مستحق للمورد (علينا)'
+            ? t('رصيد مستحق للمورد (علينا)', 'Due to Supplier (We Owe)')
             : bal < -0.009
-            ? 'دفعة مقدمة عند المورد (لنا)'
-            : 'الحساب متوازن';
+            ? t('دفعة مقدمة عند المورد (لنا)', 'Advance at Supplier (Due to Us)')
+            : t('الحساب متوازن', 'Balanced');
         return (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs">
             <div className="w-full max-w-lg bg-white rounded-t-lg sm:rounded-lg p-2.5 border border-slate-200 max-h-[88vh] overflow-y-auto space-y-2 text-xs pb-safe">
               <div className="flex items-start justify-between gap-2 border-b border-slate-200 pb-1.5">
                 <div>
-                  <h4 className="font-black text-xs text-slate-900">كشف حساب المورد — {sup.name}</h4>
+                  <h4 className="font-black text-xs text-slate-900">{t('كشف حساب المورد', 'Supplier Statement')} — {sup.name}</h4>
                   <p className="text-[10px] text-slate-500">
                     {sup.companyName ? `${sup.companyName} · ` : ''}
                     {sup.code}
@@ -11217,37 +11443,37 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   onClick={() => setSelectedSupplierDetail(null)}
                   className="h-7 px-2 rounded-md text-[11px] bg-slate-100 font-bold text-slate-700 cursor-pointer shrink-0"
                 >
-                  إغلاق
+                  {t('إغلاق', 'Close')}
                 </button>
               </div>
 
               <div className="px-2 py-1 rounded-md bg-[#EEF3FA] border border-[#DCE6F5] text-[#011E58] font-bold text-[10px]">
-                رصيد حساب المورد عام للشركة، والحركات أدناه تخص فواتيرك ومرتجعاتك ودفعاتك فقط.
+                {t('رصيد حساب المورد عام للشركة، والحركات أدناه تخص فواتيرك ومرتجعاتك ودفعاتك فقط.', 'Supplier balance is company-wide; entries below reflect only your invoices, returns, and payments.')}
               </div>
 
               {isLoadingSupplierStmt ? (
-                <div className="p-3 text-center text-slate-500 font-bold">جاري تحميل كشف حساب المورد...</div>
+                <div className="p-3 text-center text-slate-500 font-bold">{t('جاري تحميل كشف حساب المورد...', 'Loading supplier statement...')}</div>
               ) : supStmtError ? (
-                <div className="p-2 rounded-md bg-red-50 border border-red-200 text-red-700 font-bold">{supStmtError}</div>
+                <div className="p-2 rounded-md bg-red-50 border border-red-200 text-red-700 font-bold">{t(supStmtError)}</div>
               ) : (
                 <>
                   <div className="grid grid-cols-3 gap-px bg-slate-200 border border-slate-200 rounded-md overflow-hidden text-center tabular-nums">
                     <div className="px-2 py-1.5 bg-white">
-                      <span className="text-[10px] text-[#003589] block font-bold">مشترياتك</span>
+                      <span className="text-[10px] text-[#003589] block font-bold">{t('مشترياتك', 'Your Purchases')}</span>
                       <strong className="font-mono text-xs text-[#011E58]">
-                        {Number(stmt?.summary?.totalPurchases || 0).toLocaleString()}
+                        {formatLocaleNumber(Number(stmt?.summary?.totalPurchases || 0))}
                       </strong>
                     </div>
                     <div className="px-2 py-1.5 bg-white">
-                      <span className="text-[10px] text-emerald-800 block">سداد/مرتجعك</span>
+                      <span className="text-[10px] text-emerald-800 block">{t('سداد/مرتجعك', 'Your Paid/Returns')}</span>
                       <strong className="font-mono text-xs text-emerald-800">
-                        {Number(stmt?.summary?.totalDebit || 0).toLocaleString()}
+                        {formatLocaleNumber(Number(stmt?.summary?.totalDebit || 0))}
                       </strong>
                     </div>
                     <div className="px-2 py-1.5 bg-white">
                       <span className="text-[10px] text-rose-800 block">{dirText}</span>
                       <strong className="font-mono text-xs text-rose-900">
-                        {Math.abs(bal).toLocaleString()}
+                        {formatLocaleNumber(Math.abs(bal))}
                       </strong>
                     </div>
                   </div>
@@ -11259,14 +11485,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     maxHeightClassName="max-h-[42vh]"
                     data={stmt?.entries || []}
                     rowKey={(entry) => entry.id}
-                    emptyTitle="لا توجد حركات مسجلة لك مع هذا المورد"
+                    emptyTitle={t('لا توجد حركات مسجلة لك مع هذا المورد', 'No transactions recorded for you with this supplier')}
                     columns={[
                       {
                         key: 'label',
-                        header: 'العملية',
+                        header: t('العملية', 'Operation'),
                         render: (entry) => (
                           <div>
-                            <span className="font-black text-slate-900 block">{entry.label}</span>
+                            <span className="font-black text-slate-900 block">{t(entry.label)}</span>
                             <span className="font-mono text-[10px] text-slate-500 block">{entry.docNumber} · {entry.date}</span>
                             {entry.description && <span className="text-[10px] text-slate-500 block">{entry.description}</span>}
                           </div>
@@ -11274,21 +11500,21 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       },
                       {
                         key: 'credit',
-                        header: 'له (علينا)',
+                        header: t('له (علينا)', 'Credit (We Owe)'),
                         align: 'center',
-                        render: (entry) => <span className="font-mono text-rose-700">{entry.credit ? entry.credit.toLocaleString() : '-'}</span>,
+                        render: (entry) => <span className="font-mono text-rose-700">{entry.credit ? formatLocaleNumber(entry.credit) : '-'}</span>,
                       },
                       {
                         key: 'debit',
-                        header: 'سداد/مرتجع',
+                        header: t('سداد/مرتجع', 'Paid/Return'),
                         align: 'center',
-                        render: (entry) => <span className="font-mono text-emerald-700">{entry.debit ? entry.debit.toLocaleString() : '-'}</span>,
+                        render: (entry) => <span className="font-mono text-emerald-700">{entry.debit ? formatLocaleNumber(entry.debit) : '-'}</span>,
                       },
                       {
                         key: 'runningBalance',
-                        header: 'الرصيد',
+                        header: t('الرصيد', 'Balance'),
                         align: 'center',
-                        render: (entry) => <strong className="font-mono text-[#011E58]">{Math.abs(Number(entry.runningBalance || 0)).toLocaleString()}</strong>,
+                        render: (entry) => <strong className="font-mono text-[#011E58]">{formatLocaleNumber(Math.abs(Number(entry.runningBalance || 0)))}</strong>,
                       },
                     ]}
                   />
@@ -11309,11 +11535,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             <div className="flex items-center justify-between border-b border-slate-200 pb-1.5">
               <div>
                 <h4 className="font-black text-xs text-slate-900">
-                  تسجيل دفعة سداد — {payingPurchaseTarget.invoiceNumber}
+                  {t('تسجيل دفعة سداد', 'Record Payment')} — {payingPurchaseTarget.invoiceNumber}
                 </h4>
                 <p className="text-[10px] text-slate-500">
-                  {payingPurchaseTarget.supplierName} · المتبقي:{' '}
-                  {Math.max(0, Number(payingPurchaseTarget.remainingAmount || 0)).toLocaleString()} {data.settings.currency}
+                  {payingPurchaseTarget.supplierName} · {t('المتبقي:', 'Remaining:')}{' '}
+                  {formatLocaleNumber(Math.max(0, Number(payingPurchaseTarget.remainingAmount || 0)))} {t(data.settings.currency)}
                 </p>
               </div>
               <button
@@ -11321,13 +11547,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 onClick={() => setPayingPurchaseTarget(null)}
                 className="h-7 px-2 rounded-md text-[11px] bg-slate-100 font-bold text-slate-700 cursor-pointer shrink-0"
               >
-                إغلاق
+                {t('إغلاق', 'Close')}
               </button>
             </div>
 
             <div>
               <label className="block text-[10px] font-bold text-slate-700 mb-0.5">
-                مبلغ السداد ({data.settings.currency}) *
+                {t('مبلغ السداد', 'Payment Amount')} ({t(data.settings.currency)}) *
               </label>
               <input
                 type="number"
@@ -11343,19 +11569,19 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
             <div className="grid grid-cols-2 gap-1.5">
               <div>
-                <label className="block text-[10px] font-bold text-slate-700 mb-0.5">طريقة السداد</label>
+                <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('طريقة السداد', 'Payment Method')}</label>
                 <select
                   value={purPayMethod}
                   onChange={(e) => setPurPayMethod(e.target.value as any)}
                   className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-bold"
                 >
-                  <option value="cash">نقدي</option>
-                  <option value="bank">تحويل بنكي</option>
-                  <option value="cheque">شيك</option>
+                  <option value="cash">{t('نقدي', 'Cash')}</option>
+                  <option value="bank">{t('تحويل بنكي', 'Bank Transfer')}</option>
+                  <option value="cheque">{t('شيك', 'Cheque')}</option>
                 </select>
               </div>
               <div>
-                <label className="block text-[10px] font-bold text-slate-700 mb-0.5">التاريخ</label>
+                <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('التاريخ', 'Date')}</label>
                 <input
                   type="date"
                   value={purPayDate}
@@ -11369,7 +11595,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               type="text"
               value={purPayNotes}
               onChange={(e) => setPurPayNotes(e.target.value)}
-              placeholder="ملاحظات السداد (اختياري)..."
+              placeholder={t('ملاحظات السداد (اختياري)...', 'Payment notes (optional)...')}
               className="w-full h-8 rounded-md border border-slate-300 px-2"
             />
 
@@ -11378,7 +11604,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               disabled={isSubmittingPurPayment}
               className="w-full h-9 rounded-lg bg-[#003589] hover:bg-[#0049B0] text-white font-black cursor-pointer disabled:opacity-50"
             >
-              {isSubmittingPurPayment ? 'جاري التسجيل...' : 'تأكيد تسجيل دفعة السداد'}
+              {isSubmittingPurPayment ? t('جاري التسجيل...', 'Submitting...') : t('تأكيد تسجيل دفعة السداد', 'Confirm Payment')}
             </button>
           </form>
         </div>
@@ -11439,13 +11665,16 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         onConfirm={handleConfirmDeleteCustomer}
         isLoading={isDeletingCustomer}
         variant="danger"
-        title="تأكيد حذف العميل"
+        title={t('تأكيد حذف العميل', 'Confirm Customer Deletion')}
         message={
           deleteCustomerTarget
-            ? `هل أنت متأكد من حذف العميل (${deleteCustomerTarget.shopName || deleteCustomerTarget.name})؟ يُسمح بالحذف فقط إذا لم يكن للعميل فواتير أو حركات مالية أو رصيد مفتوح.`
+            ? t(
+                `هل أنت متأكد من حذف العميل (${deleteCustomerTarget.shopName || deleteCustomerTarget.name})؟ يُسمح بالحذف فقط إذا لم يكن للعميل فواتير أو حركات مالية أو رصيد مفتوح.`,
+                `Are you sure you want to delete (${deleteCustomerTarget.shopName || deleteCustomerTarget.name})? Deletion is only allowed if there are no invoices, financial transactions, or open balance.`
+              )
             : ''
         }
-        confirmLabel="نعم، حذف العميل"
+        confirmLabel={t('نعم، حذف العميل', 'Yes, Delete Customer')}
       />
     </div>
   );

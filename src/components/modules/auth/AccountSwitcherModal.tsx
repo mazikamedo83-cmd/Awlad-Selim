@@ -11,29 +11,30 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
+import { usePreferences } from '../../../context/PreferencesContext';
 import { SavedDeviceAccount } from '../../../services/accountVault';
 import { Modal } from '../../common/Modal';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { SavedAccountsIcon } from '../../common/AppIcons';
 
-function getRoleArabicBadge(role: string): string {
+function getRoleBadge(role: string, t: (ar: string, en?: string) => string): string {
   switch (role) {
     case 'admin':
-      return 'مدير عام';
+      return t('مدير عام', 'General Manager');
     case 'manager':
-      return 'مدير فرع';
+      return t('مدير فرع', 'Branch Manager');
     case 'accountant':
-      return 'محاسب مالي';
+      return t('محاسب مالي', 'Financial Accountant');
     case 'warehouse':
-      return 'أمين مستودع';
+      return t('أمين مستودع', 'Warehouse Keeper');
     case 'sales':
-      return 'مبيعات';
+      return t('مبيعات', 'Sales');
     case 'purchases':
-      return 'مشتريات';
+      return t('مشتريات', 'Purchases');
     case 'representative':
-      return 'مندوب';
+      return t('مندوب', 'Sales Rep');
     case 'customer':
-      return 'عميل';
+      return t('عميل', 'Customer');
     default:
       return role;
   }
@@ -49,6 +50,7 @@ export const AccountSwitcherModal: React.FC = () => {
     removeSavedAccountFromDevice,
     logout,
   } = useAuth();
+  const { t } = usePreferences();
 
   const [switchingUserId, setSwitchingUserId] = useState<string | null>(null);
   const [accountToRemove, setAccountToRemove] = useState<SavedDeviceAccount | null>(null);
@@ -69,11 +71,18 @@ export const AccountSwitcherModal: React.FC = () => {
         setNotice({
           type: 'info',
           text:
-            res.error ||
-            'انتهت صلاحية الجلسة المحفوظة لهذا الحساب. اضغط «تسجيل الدخول بحساب آخر» لإدخال كلمة المرور بأمان.',
+            res.error
+              ? t(res.error)
+              : t(
+                  'انتهت صلاحية الجلسة المحفوظة لهذا الحساب. اضغط «تسجيل الدخول بحساب آخر» لإدخال كلمة المرور بأمان.',
+                  'The saved session for this account has expired. Click "Add / Sign In with Another Account" to enter your password safely.'
+                ),
         });
       } else {
-        setNotice({ type: 'error', text: res.error || 'تعذر التبديل إلى الحساب المحدد.' });
+        setNotice({
+          type: 'error',
+          text: res.error ? t(res.error) : t('تعذر التبديل إلى الحساب المحدد.', 'Could not switch to the selected account.'),
+        });
       }
     } finally {
       setSwitchingUserId(null);
@@ -85,9 +94,15 @@ export const AccountSwitcherModal: React.FC = () => {
     const res = await removeSavedAccountFromDevice(accountToRemove.userId);
     setAccountToRemove(null);
     if (!res.serverRevoked && res.warning) {
-      setNotice({ type: 'info', text: res.warning });
+      setNotice({ type: 'info', text: t(res.warning) });
     } else {
-      setNotice({ type: 'success', text: 'تمت إزالة الحساب من هذا الجهاز دون التأثير على باقي الحسابات أو بيانات السيرفر.' });
+      setNotice({
+        type: 'success',
+        text: t(
+          'تمت إزالة الحساب من هذا الجهاز دون التأثير على باقي الحسابات أو بيانات السيرفر.',
+          'Account removed from this device without affecting other accounts or server data.'
+        ),
+      });
     }
   };
 
@@ -104,17 +119,23 @@ export const AccountSwitcherModal: React.FC = () => {
           setNotice(null);
           setIsAccountSwitcherOpen(false);
         }}
-        title="الحسابات المحفوظة على هذا الجهاز"
-        subtitle="التبديل الآمن بين الحسابات المسجلة مسبقاً دون حفظ كلمات مرور نصية"
+        title={t('الحسابات المحفوظة على هذا الجهاز', 'Saved Accounts on This Device')}
+        subtitle={t(
+          'التبديل الآمن بين الحسابات المسجلة مسبقاً دون حفظ كلمات مرور نصية',
+          'Switch safely between previously signed-in accounts without storing plain passwords'
+        )}
         maxWidth="lg"
       >
         <div className="space-y-2 text-xs">
           <div className="p-2 rounded-lg bg-[#EEF3FA] border border-[#DCE6F5] flex items-center gap-2">
             <SavedAccountsIcon className="w-7 h-7 shrink-0" />
             <div className="text-[#011E58] leading-snug">
-              <p className="font-black">خزنة الحسابات المشفرة على الجهاز</p>
+              <p className="font-black">{t('خزنة الحسابات المشفرة على الجهاز', 'Encrypted On-Device Account Vault')}</p>
               <p className="text-[11px] text-[#003589]">
-                كل حساب يحتفظ بجلسة وبيانات محلية معزولة تماماً، ولا تُحفظ كلمات المرور بشكل مكشوف مطلقاً.
+                {t(
+                  'كل حساب يحتفظ بجلسة وبيانات محلية معزولة تماماً، ولا تُحفظ كلمات المرور بشكل مكشوف مطلقاً.',
+                  'Each account keeps an isolated local session and data, and plain-text passwords are never stored.'
+                )}
               </p>
             </div>
           </div>
@@ -141,7 +162,7 @@ export const AccountSwitcherModal: React.FC = () => {
           {savedAccounts.length === 0 ? (
             <div className="p-5 rounded-lg bg-slate-50 border border-slate-200 text-center space-y-1.5 text-slate-500">
               <Users className="w-7 h-7 mx-auto text-slate-400" />
-              <p className="font-bold">لا توجد حسابات محفوظة على هذا الجهاز حتى الآن.</p>
+              <p className="font-bold">{t('لا توجد حسابات محفوظة على هذا الجهاز حتى الآن.', 'No accounts saved on this device yet.')}</p>
             </div>
           ) : (
             <div className="border border-slate-200 rounded-lg divide-y divide-slate-200 bg-white max-h-[52vh] overflow-y-auto">
@@ -165,7 +186,7 @@ export const AccountSwitcherModal: React.FC = () => {
                         />
                       ) : (
                         <div className="w-8 h-8 rounded-md awlad-brand-gradient text-white font-black text-xs flex items-center justify-center shrink-0">
-                          {(acc.fullName || acc.username || '؟').trim().charAt(0)}
+                          {(acc.fullName || acc.username || '?').trim().charAt(0)}
                         </div>
                       )}
 
@@ -173,11 +194,11 @@ export const AccountSwitcherModal: React.FC = () => {
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="font-black text-xs text-slate-900 truncate">{acc.fullName}</span>
                           <span className="text-[11px] font-bold text-[#011E58]">
-                            · {getRoleArabicBadge(acc.role)}
+                            · {getRoleBadge(acc.role, t)}
                           </span>
                           {isCurrent && (
                             <span className="text-emerald-700 text-[11px] font-black inline-flex items-center gap-0.5">
-                              · <ShieldCheck className="w-3 h-3" /> نشط
+                              · <ShieldCheck className="w-3 h-3" /> {t('نشط', 'Active')}
                             </span>
                           )}
                         </div>
@@ -196,10 +217,10 @@ export const AccountSwitcherModal: React.FC = () => {
                           >
                             ·{' '}
                             {acc.sessionStatus === 'active'
-                              ? 'جلسة صالحة'
+                              ? t('جلسة صالحة', 'Valid Session')
                               : acc.sessionStatus === 'expired'
-                              ? 'يتطلب كلمة المرور'
-                              : 'تم تسجيل الخروج'}
+                              ? t('يتطلب كلمة المرور', 'Password Required')
+                              : t('تم تسجيل الخروج', 'Signed Out')}
                           </span>
                         </div>
                       </div>
@@ -224,7 +245,13 @@ export const AccountSwitcherModal: React.FC = () => {
                           ) : (
                             <Lock className="w-3.5 h-3.5" />
                           )}
-                          <span>{isSwitching ? 'جاري التبديل...' : canQuickResume ? 'التبديل للحساب' : 'دخول'}</span>
+                          <span>
+                            {isSwitching
+                              ? t('جاري التبديل...', 'Switching...')
+                              : canQuickResume
+                              ? t('التبديل للحساب', 'Switch Account')
+                              : t('دخول', 'Sign In')}
+                          </span>
                         </button>
                       )}
 
@@ -234,10 +261,10 @@ export const AccountSwitcherModal: React.FC = () => {
                           disabled={Boolean(switchingUserId)}
                           onClick={() => setAccountToRemove(acc)}
                           className="h-8 px-2 rounded-md bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 flex items-center gap-1 font-bold cursor-pointer"
-                          title="إزالة هذا الحساب من الجهاز فقط"
+                          title={t('إزالة هذا الحساب من الجهاز فقط', 'Remove this account from this device only')}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
-                          <span className="hidden sm:inline">إزالة</span>
+                          <span className="hidden sm:inline">{t('إزالة', 'Remove')}</span>
                         </button>
                       )}
                     </div>
@@ -254,14 +281,14 @@ export const AccountSwitcherModal: React.FC = () => {
               className="h-8 px-2.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-black flex items-center gap-1.5 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>إضافة / دخول بحساب آخر</span>
+              <span>{t('إضافة / دخول بحساب آخر', 'Add / Sign In with Another Account')}</span>
             </button>
             <button
               type="button"
               onClick={() => setIsAccountSwitcherOpen(false)}
               className="h-8 px-3 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
             >
-              إغلاق
+              {t('إغلاق', 'Close')}
             </button>
           </div>
         </div>
@@ -272,13 +299,16 @@ export const AccountSwitcherModal: React.FC = () => {
         onClose={() => setAccountToRemove(null)}
         onConfirm={handleConfirmRemove}
         variant="danger"
-        title="إزالة الحساب من هذا الجهاز؟"
+        title={t('إزالة الحساب من هذا الجهاز؟', 'Remove account from this device?')}
         message={
           accountToRemove
-            ? `سيتم مسح جلسة وبيانات (${accountToRemove.fullName}) المخزنة محلياً على هذا الجهاز فقط، ولن تتأثر بيانات الحساب على السيرفر المركزي.`
+            ? t(
+                `سيتم مسح جلسة وبيانات (${accountToRemove.fullName}) المخزنة محلياً على هذا الجهاز فقط، ولن تتأثر بيانات الحساب على السيرفر المركزي.`,
+                `Local session and data for (${accountToRemove.fullName}) will be cleared from this device only. Central server data will not be affected.`
+              )
             : ''
         }
-        confirmLabel="نعم، إزالة من الجهاز"
+        confirmLabel={t('نعم، إزالة من الجهاز', 'Yes, Remove from Device')}
       />
     </>
   );

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronLeft,
+  ChevronRight,
   Heart,
   Package,
   Plus,
@@ -27,6 +28,7 @@ import {
   ResolvedProductPromo,
 } from '../../../utils/storefront';
 import { usePreferences } from '../../../context/PreferencesContext';
+import { formatLocaleNumber } from '../../../i18n/translator';
 
 export interface CustomerCartItem {
   product: Product;
@@ -88,7 +90,8 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
   onNavigateTab,
   onOpenCategory,
 }) => {
-  const { t } = usePreferences();
+  const { t, isRtl } = usePreferences();
+  const NavChevron = isRtl ? ChevronLeft : ChevronRight;
   const [activeBannerIdx, setActiveBannerIdx] = useState(0);
   const [quickProduct, setQuickProduct] = useState<Product | null>(null);
   const [quickQty, setQuickQty] = useState(1);
@@ -285,8 +288,8 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
       >
         {/* Promo rectangular corner ribbon (zero pill) */}
         {promo.hasPromo && (
-          <div className="absolute top-1.5 right-1.5 z-10 bg-[#C81E1E] text-white text-[10px] font-black px-1.5 py-0.5 rounded shadow-xs">
-            {promo.badgeText || t('عرض عشانك', 'Offer')}
+          <div className="absolute top-1.5 start-1.5 z-10 bg-[#C81E1E] text-white text-[10px] font-black px-1.5 py-0.5 rounded shadow-xs">
+            {promo.badgeText ? t(promo.badgeText) : t('عرض عشانك', 'Offer')}
           </div>
         )}
 
@@ -294,8 +297,8 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
         <button
           type="button"
           onClick={() => onToggleFavorite(prod.id)}
-          aria-label={isFav ? 'إزالة من المفضلة' : 'إضافة للمفضلة'}
-          className={`absolute top-1.5 left-1.5 z-10 w-7 h-7 rounded-md flex items-center justify-center border cursor-pointer transition-colors ${
+          aria-label={isFav ? t('إزالة من المفضلة', 'Remove from favorites') : t('إضافة للمفضلة', 'Add to favorites')}
+          className={`absolute top-1.5 end-1.5 z-10 w-7 h-7 rounded-md flex items-center justify-center border cursor-pointer transition-colors ${
             isFav
               ? 'bg-red-50 dark:bg-red-950/60 border-red-200 dark:border-red-800 text-[#C81E1E]'
               : 'bg-white/90 dark:bg-[#132544]/95 border-slate-200 dark:border-[#2A436E] text-slate-400 hover:text-red-500'
@@ -325,7 +328,7 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
                 setQuickQty(1);
                 setQuickProduct(prod);
               }}
-              className="text-right w-full cursor-pointer"
+              className="text-start w-full cursor-pointer"
             >
               <h3 className="text-xs font-black text-slate-900 dark:text-[#F3F7FC] line-clamp-2 leading-snug min-h-[2rem]">
                 {prod.name}
@@ -341,17 +344,17 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
                 >
                   {units.map((u) => (
                     <option key={u.name} value={u.name}>
-                      {u.name}
+                      {t(u.name)}
                     </option>
                   ))}
                 </select>
               ) : (
                 <span className="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded border border-slate-200 dark:border-[#2A436E] bg-slate-50 dark:bg-[#132544] text-slate-600 dark:text-[#A9BCD9]">
-                  {activeUnit}
+                  {t(activeUnit)}
                 </span>
               )}
               {!available && (
-                <span className="text-[10px] font-bold text-red-600 dark:text-red-400">غير متاح</span>
+                <span className="text-[10px] font-bold text-red-600 dark:text-red-400">{t('غير متاح', 'Unavailable')}</span>
               )}
             </div>
           </div>
@@ -359,16 +362,16 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
           {allowPriceView ? (
             <div className="pt-0.5 flex items-baseline flex-wrap gap-1 awlad-tabular">
               <strong className="text-xs sm:text-sm font-black text-[var(--awlad-royal-700)] dark:text-[#85B8FF]">
-                {promo.effectivePrice.toLocaleString()} {currency}
+                {formatLocaleNumber(promo.effectivePrice)} {t(currency)}
               </strong>
               {promo.hasPromo && (
                 <span className="text-[10px] font-bold text-slate-400 line-through">
-                  {promo.regularPrice.toLocaleString()}
+                  {formatLocaleNumber(promo.regularPrice)}
                 </span>
               )}
             </div>
           ) : (
-            <p className="text-[10px] text-slate-400 pt-0.5">السعر عند الاعتماد</p>
+            <p className="text-[10px] text-slate-400 pt-0.5">{t('السعر عند الاعتماد', 'Price upon approval')}</p>
           )}
 
           {cartEntry ? (
@@ -377,18 +380,18 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
                 type="button"
                 onClick={() => onUpdateCartItemQty(prod.id, activeUnit, 1)}
                 className="w-7 h-7 rounded-md bg-[var(--awlad-royal-700)] dark:bg-[#1659C8] dark:hover:bg-[#1F6BE6] text-white flex items-center justify-center cursor-pointer"
-                aria-label="زيادة الكمية"
+                aria-label={t('زيادة الكمية', 'Increase quantity')}
               >
                 <Plus className="w-3.5 h-3.5" />
               </button>
               <span className="text-xs font-black text-[var(--awlad-navy-950)] dark:text-[#85B8FF] awlad-tabular">
-                {cartEntry.quantity}
+                {formatLocaleNumber(cartEntry.quantity)}
               </span>
               <button
                 type="button"
                 onClick={() => onUpdateCartItemQty(prod.id, activeUnit, -1)}
                 className="w-7 h-7 rounded-md bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#2A436E] text-slate-700 dark:text-[#DCE6F5] flex items-center justify-center cursor-pointer"
-                aria-label="تقليل الكمية"
+                aria-label={t('تقليل الكمية', 'Decrease quantity')}
               >
                 <Minus className="w-3.5 h-3.5" />
               </button>
@@ -417,14 +420,14 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
       Array.isArray(storefront.sections) && storefront.sections.length > 0
         ? storefront.sections
         : [
-            { key: 'banners', title: 'البانرات الإعلانية', isVisible: true, sortOrder: 1 },
-            { key: 'shortcuts', title: 'اختصاراتك', isVisible: true, sortOrder: 2 },
-            { key: 'offers', title: 'عروض مخصصة عشانك', isVisible: true, sortOrder: 3 },
-            { key: 'categories', title: 'الأقسام المصورة', isVisible: true, sortOrder: 4 },
-            { key: 'featured', title: 'أصناف مقترحة لك', isVisible: true, sortOrder: 5 },
+            { key: 'banners', title: t('البانرات الإعلانية', 'Promotional Banners'), isVisible: true, sortOrder: 1 },
+            { key: 'shortcuts', title: t('اختصاراتك', 'Your Shortcuts'), isVisible: true, sortOrder: 2 },
+            { key: 'offers', title: t('عروض مخصصة عشانك', 'Offers For You'), isVisible: true, sortOrder: 3 },
+            { key: 'categories', title: t('الأقسام المصورة', 'Categories'), isVisible: true, sortOrder: 4 },
+            { key: 'featured', title: t('أصناف مقترحة لك', 'Featured Products'), isVisible: true, sortOrder: 5 },
           ];
     return [...base].filter((s) => s.isVisible !== false).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-  }, [storefront.sections]);
+  }, [storefront.sections, t]);
 
   return (
     <div className="space-y-2">
@@ -492,7 +495,7 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
                         setBannerTick((n) => n + 1);
                         setActiveBannerIdx(idx);
                       }}
-                      aria-label={`بانر ${idx + 1}`}
+                      aria-label={`${t('بانر', 'Banner')} ${idx + 1}`}
                       className={`h-1.5 rounded transition-all cursor-pointer ${
                         idx === activeBannerIdx
                           ? 'w-5 bg-[var(--awlad-royal-700)] dark:bg-[#60A5FA]'
@@ -509,9 +512,9 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
         if (sec.key === 'shortcuts') {
           if (activeShortcuts.length === 0) return null;
           return (
-            <section key="shortcuts" aria-label="إختصاراتك" className="space-y-1.5">
+            <section key="shortcuts" aria-label={t('اختصاراتك', 'Your Shortcuts')} className="space-y-1.5">
               <h2 className="text-xs font-black text-slate-900 dark:text-[#F3F7FC] px-0.5">
-                {sec.title || t('إختصاراتك', 'Your Shortcuts')}
+                {sec.title ? t(sec.title) : t('اختصاراتك', 'Your Shortcuts')}
               </h2>
               <div className="flex items-stretch gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
                 {activeShortcuts.map((sc: StorefrontShortcut) => {
@@ -527,7 +530,7 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
                         <Icon className="w-4 h-4" />
                       </div>
                       <span className="text-[10px] font-black text-slate-800 dark:text-[#DCE6F5] whitespace-nowrap">
-                        {sc.label}
+                        {t(sc.label)}
                       </span>
                     </button>
                   );
@@ -540,10 +543,10 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
         if (sec.key === 'offers') {
           if (offerProductPairs.length === 0) return null;
           return (
-            <section key="offers" aria-label="عروض عشانك" className="space-y-1.5">
+            <section key="offers" aria-label={t('عروض عشانك', 'Offers For You')} className="space-y-1.5">
               <div className="flex items-center justify-between px-0.5">
                 <h2 className="text-xs font-black text-slate-900 dark:text-[#F3F7FC]">
-                  {storefront.offersSectionTitle || sec.title || t('عروض مخصصة عشانك', 'Offers For You')}
+                  {storefront.offersSectionTitle ? t(storefront.offersSectionTitle) : sec.title ? t(sec.title) : t('عروض مخصصة عشانك', 'Offers For You')}
                 </h2>
                 <button
                   type="button"
@@ -551,7 +554,7 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
                   className="text-[11px] font-black text-[var(--awlad-royal-700)] dark:text-[#85B8FF] flex items-center gap-0.5 cursor-pointer"
                 >
                   <span>{t('عرض الكل', 'View all')}</span>
-                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <NavChevron className="w-3.5 h-3.5" />
                 </button>
               </div>
 
@@ -565,10 +568,10 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
         if (sec.key === 'categories') {
           if (imageCategoryTiles.length === 0) return null;
           return (
-            <section key="categories" aria-label="الأقسام المصورة" className="space-y-1.5">
+            <section key="categories" aria-label={t('الأقسام المصورة', 'Categories')} className="space-y-1.5">
               <div className="flex items-center justify-between px-0.5">
                 <h2 className="text-xs font-black text-slate-900 dark:text-[#F3F7FC]">
-                  {storefront.categoriesSectionTitle || sec.title || t('الأقسام المصورة', 'Categories')}
+                  {storefront.categoriesSectionTitle ? t(storefront.categoriesSectionTitle) : sec.title ? t(sec.title) : t('الأقسام المصورة', 'Categories')}
                 </h2>
                 <button
                   type="button"
@@ -576,7 +579,7 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
                   className="text-[11px] font-black text-[var(--awlad-royal-700)] dark:text-[#85B8FF] flex items-center gap-0.5 cursor-pointer"
                 >
                   <span>{t('عرض الكل', 'View all')}</span>
-                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <NavChevron className="w-3.5 h-3.5" />
                 </button>
               </div>
 
@@ -608,10 +611,10 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
         if (sec.key === 'featured') {
           if (featuredProducts.length === 0) return null;
           return (
-            <section key="featured" aria-label="الأصناف المميزة" className="space-y-1.5">
+            <section key="featured" aria-label={t('الأصناف المميزة', 'Featured Products')} className="space-y-1.5">
               <div className="flex items-center justify-between px-0.5">
                 <h2 className="text-xs font-black text-slate-900 dark:text-[#F3F7FC]">
-                  {storefront.featuredSectionTitle || sec.title || t('أصناف مقترحة لك', 'Featured Products')}
+                  {storefront.featuredSectionTitle ? t(storefront.featuredSectionTitle) : sec.title ? t(sec.title) : t('أصناف مقترحة لك', 'Featured Products')}
                 </h2>
                 <button
                   type="button"
@@ -619,7 +622,7 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
                   className="text-[11px] font-black text-[var(--awlad-royal-700)] dark:text-[#85B8FF] flex items-center gap-0.5 cursor-pointer"
                 >
                   <span>{t('تصفح الكل', 'Browse all')}</span>
-                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <NavChevron className="w-3.5 h-3.5" />
                 </button>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
@@ -645,7 +648,7 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
                 type="button"
                 onClick={() => setQuickProduct(null)}
                 className="p-1 rounded-md bg-slate-100 dark:bg-[#132544] text-slate-600 dark:text-[#DCE6F5] cursor-pointer"
-                aria-label="إغلاق"
+                aria-label={t('إغلاق', 'Close')}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -670,18 +673,18 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
                     >
                       {units.map((u) => (
                         <option key={u.name} value={u.name}>
-                          {u.name}
+                          {t(u.name)}
                         </option>
                       ))}
                     </select>
                     {allowPriceView && (
-                      <div className="text-left awlad-tabular">
+                      <div className="text-end awlad-tabular">
                         <strong className="text-sm font-black text-[var(--awlad-royal-700)] dark:text-[#85B8FF]">
-                          {promo.effectivePrice.toLocaleString()} {currency}
+                          {formatLocaleNumber(promo.effectivePrice)} {t(currency)}
                         </strong>
                         {promo.hasPromo && (
                           <span className="block text-[11px] text-slate-400 line-through">
-                            {promo.regularPrice.toLocaleString()} {currency}
+                            {formatLocaleNumber(promo.regularPrice)} {t(currency)}
                           </span>
                         )}
                       </div>
@@ -689,7 +692,7 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
                   </div>
 
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-bold text-slate-600 dark:text-[#A9BCD9]">الكمية:</span>
+                    <span className="text-xs font-bold text-slate-600 dark:text-[#A9BCD9]">{t('الكمية:', 'Quantity:')}</span>
                     <div className="flex items-center gap-1.5">
                       <button
                         type="button"
@@ -698,7 +701,7 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
                       >
                         <Plus className="w-4 h-4" />
                       </button>
-                      <span className="w-9 text-center text-sm font-black text-slate-900 dark:text-[#F3F7FC] awlad-tabular">{quickQty}</span>
+                      <span className="w-9 text-center text-sm font-black text-slate-900 dark:text-[#F3F7FC] awlad-tabular">{formatLocaleNumber(quickQty)}</span>
                       <button
                         type="button"
                         onClick={() => setQuickQty((q) => Math.max(1, q - 1))}
@@ -720,7 +723,7 @@ export const CustomerStorefrontHome: React.FC<CustomerStorefrontHomeProps> = ({
                     className="w-full h-9 rounded-lg bg-[var(--awlad-royal-700)] hover:bg-[var(--awlad-royal-600)] dark:bg-[#1659C8] dark:hover:bg-[#1F6BE6] disabled:bg-slate-300 dark:disabled:bg-[#132544] dark:disabled:text-[#849BBF] text-white text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer"
                   >
                     <Check className="w-4 h-4" />
-                    <span>{available ? 'إضافة الكمية للسلة' : 'غير متوفر حالياً'}</span>
+                    <span>{available ? t('إضافة الكمية للسلة', 'Add quantity to cart') : t('غير متوفر حالياً', 'Currently unavailable')}</span>
                   </button>
                 </div>
               );

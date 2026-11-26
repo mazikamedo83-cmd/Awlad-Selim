@@ -1,9 +1,15 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { LanguagePreference, ThemePreference } from '../types';
 import { getPref, setPref, syncNativeStatusBarStyle } from '../services/native';
+import {
+  LANGUAGE_PREF_KEY,
+  getActiveLocale,
+  setActiveLanguageRuntime,
+  syncDocumentLanguageAndDir,
+  tr,
+} from '../i18n/translator';
 
 const THEME_PREF_KEY = 'awlad_selim_theme_pref_v1';
-const LANGUAGE_PREF_KEY = 'awlad_selim_language_v1';
 const DASHBOARD_HIDDEN_BALANCES_KEY = 'awlad_selim_hidden_balances_v1';
 const DASHBOARD_BALANCES_RESET_EVENT = 'awlad_selim:reset_dashboard_balances';
 
@@ -91,8 +97,11 @@ interface PreferencesContextType {
   setThemePreference: (pref: ThemePreference) => void;
   language: LanguagePreference;
   dir: 'rtl' | 'ltr';
+  isRtl: boolean;
+  isLtr: boolean;
+  locale: 'ar-EG' | 'en-US';
   setLanguage: (lang: LanguagePreference) => void;
-  t: (arText: string, enText: string) => string;
+  t: (arText: string, enText?: string) => string;
   hiddenDashboardBalances: Record<DashboardBalanceSectionKey, boolean>;
   isDashboardBalanceHidden: (key: DashboardBalanceSectionKey) => boolean;
   toggleDashboardBalanceSection: (key: DashboardBalanceSectionKey) => void;
@@ -123,10 +132,14 @@ export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [language, setLanguageState] = useState<LanguagePreference>(() => {
     try {
       const saved = localStorage.getItem(LANGUAGE_PREF_KEY);
-      if (saved === 'ar' || saved === 'en') return saved;
+      if (saved === 'ar' || saved === 'en') {
+        setActiveLanguageRuntime(saved);
+        return saved;
+      }
     } catch {
       // ignore
     }
+    setActiveLanguageRuntime('ar');
     return 'ar';
   });
 
@@ -148,6 +161,7 @@ export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setThemePrefState(savedTheme);
       }
       if (savedLang === 'ar' || savedLang === 'en') {
+        setActiveLanguageRuntime(savedLang);
         setLanguageState(savedLang);
       }
     })();
@@ -176,31 +190,38 @@ export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const resolvedTheme: 'light' | 'dark' =
     themePreference === 'system' ? (systemPrefersDark ? 'dark' : 'light') : themePreference;
   const dir: 'rtl' | 'ltr' = language === 'ar' ? 'rtl' : 'ltr';
+  const locale: 'ar-EG' | 'en-US' = language === 'en' ? 'en-US' : 'ar-EG';
 
   useEffect(() => {
+    setActiveLanguageRuntime(language);
     if (typeof document !== 'undefined') {
       const root = document.documentElement;
       root.classList.toggle('dark', resolvedTheme === 'dark');
       root.style.colorScheme = resolvedTheme;
-      root.dir = dir;
-      root.lang = language;
-      if (document.body) {
-        document.body.dir = dir;
-        document.body.style.textAlign = dir === 'rtl' ? 'right' : 'left';
-      }
+      syncDocumentLanguageAndDir(language);
     }
     syncNativeStatusBarStyle('dark-header');
   }, [resolvedTheme, dir, language]);
 
-  const setThemePreference = (pref: ThemePreference) => {
+  const setThemePreference = useCallback((pref: ThemePreference) => {
     setThemePrefState(pref);
     setPref(THEME_PREF_KEY, pref).catch(() => {});
-  };
+  }, []);
 
-  const setLanguage = (lang: LanguagePreference) => {
+  const setLanguage = useCallback((lang: LanguagePreference) => {
+    setActiveLanguageRuntime(lang);
     setLanguageState(lang);
     setPref(LANGUAGE_PREF_KEY, lang).catch(() => {});
-  };
+  }, []);
+
+  const t = useCallback(
+    (arText: string, enText?: string): string => {
+      if (language !== 'en') return arText;
+      if (enText !== undefined) return enText;
+      return tr(arText);
+    },
+    [language]
+  );
 
   const isDashboardBalanceHidden = useCallback(
     (key: DashboardBalanceSectionKey) => Boolean(hiddenDashboardBalances[key]),
@@ -253,8 +274,11 @@ export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setThemePreference,
       language,
       dir,
+      isRtl: dir === 'rtl',
+      isLtr: dir === 'ltr',
+      locale,
       setLanguage,
-      t: (arText: string, enText: string) => (language === 'en' ? enText : arText),
+      t,
       hiddenDashboardBalances,
       isDashboardBalanceHidden,
       toggleDashboardBalanceSection,
@@ -266,8 +290,12 @@ export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ c
     [
       themePreference,
       resolvedTheme,
+      setThemePreference,
       language,
       dir,
+      locale,
+      setLanguage,
+      t,
       hiddenDashboardBalances,
       isDashboardBalanceHidden,
       toggleDashboardBalanceSection,
@@ -290,8 +318,11 @@ export function usePreferences(): PreferencesContextType {
       setThemePreference: () => {},
       language: 'ar',
       dir: 'rtl',
+      isRtl: true,
+      isLtr: false,
+      locale: getActiveLocale(),
       setLanguage: () => {},
-      t: (arText: string) => arText,
+      t: (arText: string, enText?: string) => tr(arText, enText),
       hiddenDashboardBalances: createInitialHiddenBalancesMap(false),
       isDashboardBalanceHidden: () => false,
       toggleDashboardBalanceSection: () => {},
@@ -303,4 +334,3 @@ export function usePreferences(): PreferencesContextType {
   }
   return ctx;
 }
-

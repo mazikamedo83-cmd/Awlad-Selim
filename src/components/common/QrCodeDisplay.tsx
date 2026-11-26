@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { Download, Share2, Loader2 } from 'lucide-react';
 import { isNativeCapacitor, saveAndShareDocument } from '../../services/native';
+import { usePreferences } from '../../context/PreferencesContext';
 
 interface QrCodeDisplayProps {
   value: string;
@@ -18,6 +19,7 @@ export const QrCodeDisplay: React.FC<QrCodeDisplayProps> = ({
   filename = 'awlad-selim-pairing-qr.png',
   size = 240,
 }) => {
+  const { t } = usePreferences();
   const [dataUrl, setDataUrl] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -44,12 +46,12 @@ export const QrCodeDisplay: React.FC<QrCodeDisplayProps> = ({
         }
       })
       .catch(() => {
-        if (active) setError('تعذر توليد صورة رمز QR');
+        if (active) setError(t('تعذر توليد صورة رمز QR', 'Failed to generate QR code image'));
       });
     return () => {
       active = false;
     };
-  }, [value, size]);
+  }, [value, size, t]);
 
   const handleDownloadOrShare = async () => {
     if (!dataUrl) return;
@@ -60,7 +62,7 @@ export const QrCodeDisplay: React.FC<QrCodeDisplayProps> = ({
         filename,
         content: base64,
         mimeType: 'image/png',
-        title: title || 'رمز QR لربط الجهاز — AWLAD SELIM',
+        title: title || t('رمز QR لربط الجهاز — AWLAD SELIM', 'Device Pairing QR Code — AWLAD SELIM'),
         isBase64: true,
       });
     } finally {
@@ -99,7 +101,13 @@ export const QrCodeDisplay: React.FC<QrCodeDisplayProps> = ({
           className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 dark:bg-[#1659C8] dark:hover:bg-[#1F6BE6] text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
         >
           {isNativeCapacitor() ? <Share2 className="w-3.5 h-3.5" /> : <Download className="w-3.5 h-3.5" />}
-          <span>{saving ? 'جاري التجهيز...' : isNativeCapacitor() ? 'مشاركة / حفظ صورة QR' : 'تنزيل صورة QR (PNG)'}</span>
+          <span>
+            {saving
+              ? t('جاري التجهيز...', 'Preparing...')
+              : isNativeCapacitor()
+              ? t('مشاركة / حفظ صورة QR', 'Share / Save QR Image')
+              : t('تنزيل صورة QR (PNG)', 'Download QR Image (PNG)')}
+          </span>
         </button>
       )}
     </div>

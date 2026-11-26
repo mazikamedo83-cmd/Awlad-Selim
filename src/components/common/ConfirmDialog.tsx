@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AlertTriangle, CheckCircle2, Info, X } from 'lucide-react';
+import { usePreferences } from '../../context/PreferencesContext';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -23,17 +24,23 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   onConfirm,
   title,
   message,
-  confirmLabel = 'تأكيد',
-  cancelLabel = 'إلغاء',
+  confirmLabel,
+  cancelLabel,
   variant = 'danger',
   requireInput = false,
-  inputLabel = 'السبب / الملاحظة:',
-  inputPlaceholder = 'اكتب التفاصيل هنا...',
+  inputLabel,
+  inputPlaceholder,
   defaultInputValue = '',
   isLoading = false,
 }) => {
+  const { t, dir } = usePreferences();
   const [inputValue, setInputValue] = useState(defaultInputValue);
   const [inputError, setInputError] = useState<string | null>(null);
+
+  const effectiveConfirmLabel = confirmLabel ?? t('تأكيد', 'Confirm');
+  const effectiveCancelLabel = cancelLabel ?? t('إلغاء', 'Cancel');
+  const effectiveInputLabel = inputLabel ?? t('السبب / الملاحظة:', 'Reason / Note:');
+  const effectiveInputPlaceholder = inputPlaceholder ?? t('اكتب التفاصيل هنا...', 'Enter details here...');
 
   useEffect(() => {
     if (isOpen) {
@@ -88,7 +95,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   const handleConfirmClick = async (e: React.FormEvent) => {
     e.preventDefault();
     if (requireInput && !inputValue.trim()) {
-      setInputError('يرجى إدخال البيان المطلوب قبل المتابعة.');
+      setInputError(t('يرجى إدخال البيان المطلوب قبل المتابعة.', 'Please enter the required details before continuing.'));
       return;
     }
     setInputError(null);
@@ -96,11 +103,11 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 bg-slate-900/60 dark:bg-[#040B17]/75 backdrop-blur-xs no-print">
+    <div dir={dir} className="fixed inset-0 z-50 flex items-center justify-center p-2.5 bg-slate-900/60 dark:bg-[#040B17]/75 backdrop-blur-xs no-print">
       <div
         role="dialog"
         aria-modal="true"
-        className="w-full max-w-md rounded-lg bg-white dark:bg-[#0E1C36] p-3 shadow-2xl border border-slate-200 dark:border-[#21375C] text-right"
+        className="w-full max-w-md rounded-lg bg-white dark:bg-[#0E1C36] p-3 shadow-2xl border border-slate-200 dark:border-[#21375C] text-start"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between mb-1.5">
@@ -111,19 +118,20 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             type="button"
             disabled={isLoading}
             onClick={onClose}
+            aria-label={t('إغلاق')}
             className="p-1 rounded-md text-slate-400 dark:text-[#849BBF] hover:bg-slate-100 dark:hover:bg-[#1A3461] hover:text-slate-600 dark:hover:text-[#F3F7FC] cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <h3 className="text-sm font-black text-slate-900 dark:text-[#F3F7FC] mb-0.5">{title}</h3>
-        <p className="text-xs text-slate-600 dark:text-[#A9BCD9] leading-relaxed whitespace-pre-line">{message}</p>
+        <h3 className="text-sm font-black text-slate-900 dark:text-[#F3F7FC] mb-0.5">{t(title)}</h3>
+        <p className="text-xs text-slate-600 dark:text-[#A9BCD9] leading-relaxed whitespace-pre-line">{t(message)}</p>
 
         <form onSubmit={handleConfirmClick} className="mt-2.5 space-y-2">
           {requireInput && (
             <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-[#CBD9EE] mb-1">{inputLabel}</label>
+              <label className="block text-xs font-bold text-slate-700 dark:text-[#CBD9EE] mb-1">{effectiveInputLabel}</label>
               <input
                 type="text"
                 autoFocus
@@ -132,7 +140,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                   setInputValue(e.target.value);
                   if (inputError) setInputError(null);
                 }}
-                placeholder={inputPlaceholder}
+                placeholder={effectiveInputPlaceholder}
                 className="w-full border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] rounded-md px-2.5 py-1.5 text-xs font-bold focus:outline-hidden focus:border-blue-700 dark:focus:border-[#3B82F6]"
               />
               {inputError && <p className="text-[11px] text-red-600 dark:text-red-400 font-bold mt-1">{inputError}</p>}
@@ -146,14 +154,14 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
               onClick={onClose}
               className="px-3 py-1 rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-[#132544] dark:hover:bg-[#1A3461] text-slate-700 dark:text-[#DCE6F5] border border-transparent dark:border-[#21375C] text-xs font-bold cursor-pointer disabled:opacity-50"
             >
-              {cancelLabel}
+              {effectiveCancelLabel}
             </button>
             <button
               type="submit"
               disabled={isLoading}
               className={`px-3.5 py-1 rounded-md text-xs font-black shadow-xs cursor-pointer disabled:opacity-50 ${palette.btn}`}
             >
-              {isLoading ? 'جاري التنفيذ...' : confirmLabel}
+              {isLoading ? t('جاري التنفيذ...') : effectiveConfirmLabel}
             </button>
           </div>
         </form>

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { Check, ChevronDown, Search, X } from 'lucide-react';
+import { usePreferences } from '../../context/PreferencesContext';
 
 export interface SearchableFilterOption {
   value: string;
@@ -54,20 +55,26 @@ export const SearchableFilterSelect: React.FC<SearchableFilterSelectProps> = ({
   value,
   onChange,
   options,
-  allOptionLabel = 'الكل',
+  allOptionLabel,
   allOptionValue = 'all',
   includeAllOption = true,
-  placeholder = 'اختر...',
-  searchPlaceholder = 'بحث بالاسم أو الكود...',
+  placeholder,
+  searchPlaceholder,
   disabled = false,
   className = '',
   buttonClassName = '',
   labelClassName = '',
-  dir = 'rtl',
+  dir: dirProp,
   allowClear = false,
-  emptyText = 'لا توجد نتائج مطابقة',
+  emptyText,
   minPanelWidth = 240,
 }) => {
+  const { t, dir: activeDir } = usePreferences();
+  const dir = dirProp ?? activeDir;
+  const resolvedAllLabel = allOptionLabel ?? t('الكل', 'All');
+  const resolvedPlaceholder = placeholder ?? t('اختر...', 'Select...');
+  const resolvedSearchPlaceholder = searchPlaceholder ?? t('بحث بالاسم أو الكود...', 'Search by name or code...');
+  const resolvedEmptyText = emptyText ?? t('لا توجد نتائج مطابقة', 'No matching results');
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [highlightedIdx, setHighlightedIdx] = useState(0);
@@ -92,10 +99,10 @@ export const SearchableFilterSelect: React.FC<SearchableFilterSelectProps> = ({
 
   const normalizedOptions = useMemo(() => {
     const base: SearchableFilterOption[] = includeAllOption
-      ? [{ value: allOptionValue, label: allOptionLabel, searchText: allOptionLabel }]
+      ? [{ value: allOptionValue, label: resolvedAllLabel, searchText: resolvedAllLabel }]
       : [];
     return [...base, ...options];
-  }, [includeAllOption, allOptionValue, allOptionLabel, options]);
+  }, [includeAllOption, allOptionValue, resolvedAllLabel, options]);
 
   const selectedOption = useMemo(() => {
     const exact = normalizedOptions.find((opt) => opt.value === value);
@@ -250,7 +257,7 @@ export const SearchableFilterSelect: React.FC<SearchableFilterSelectProps> = ({
     }
   };
 
-  const displayLabel = selectedOption ? selectedOption.label : placeholder;
+  const displayLabel = selectedOption ? selectedOption.label : resolvedPlaceholder;
   const showClear =
     allowClear &&
     !disabled &&
@@ -278,7 +285,7 @@ export const SearchableFilterSelect: React.FC<SearchableFilterSelectProps> = ({
         onClick={() => {
           if (!disabled) setIsOpen((prev) => !prev);
         }}
-        className={`w-full h-8 px-2 rounded-md border text-[12px] flex items-center justify-between gap-1.5 transition-colors text-right ${
+        className={`w-full h-8 px-2 rounded-md border text-[12px] flex items-center justify-between gap-1.5 transition-colors text-start ${
           disabled
             ? 'bg-slate-100 dark:bg-[#0B172E] border-slate-200 dark:border-[#1E3254] text-slate-400 dark:text-[#7C92B5] cursor-not-allowed'
             : isOpen
@@ -305,7 +312,7 @@ export const SearchableFilterSelect: React.FC<SearchableFilterSelectProps> = ({
             <span
               role="button"
               tabIndex={-1}
-              aria-label="مسح الاختيار"
+              aria-label={t('مسح الاختيار', 'Clear selection')}
               onClick={(e) => {
                 e.stopPropagation();
                 onChange(allOptionValue);
@@ -343,7 +350,7 @@ export const SearchableFilterSelect: React.FC<SearchableFilterSelectProps> = ({
           >
             <div className="p-2 border-b border-slate-200 dark:border-[#21375C] bg-slate-50/80 dark:bg-[#132544] shrink-0">
               <div className="relative">
-                <Search className="w-3.5 h-3.5 text-slate-400 dark:text-[#849BBF] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <Search className="w-3.5 h-3.5 text-slate-400 dark:text-[#849BBF] absolute start-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   ref={searchInputRef}
                   type="text"
@@ -353,15 +360,15 @@ export const SearchableFilterSelect: React.FC<SearchableFilterSelectProps> = ({
                     setHighlightedIdx(0);
                   }}
                   onKeyDown={handleSearchKeyDown}
-                  placeholder={searchPlaceholder}
-                  className="w-full h-8 pr-8 pl-7 text-xs rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-800 dark:text-[#EEF4FC] dark:placeholder-[#7F96BA] focus:outline-none focus:border-[var(--awlad-royal-700)] dark:focus:border-[#3B82F6]"
+                  placeholder={resolvedSearchPlaceholder}
+                  className="w-full h-8 ps-8 pe-7 text-xs rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-800 dark:text-[#EEF4FC] dark:placeholder-[#7F96BA] focus:outline-none focus:border-[var(--awlad-royal-700)] dark:focus:border-[#3B82F6]"
                 />
                 {query && (
                   <button
                     type="button"
                     onClick={() => setQuery('')}
-                    className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 dark:text-[#849BBF] hover:text-slate-600 dark:hover:text-[#F3F7FC]"
-                    aria-label="مسح البحث"
+                    className="absolute end-2 top-1/2 -translate-y-1/2 text-slate-400 dark:text-[#849BBF] hover:text-slate-600 dark:hover:text-[#F3F7FC]"
+                    aria-label={t('مسح البحث', 'Clear search')}
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -372,7 +379,7 @@ export const SearchableFilterSelect: React.FC<SearchableFilterSelectProps> = ({
             <div className="overflow-y-auto flex-1 py-1">
               {filteredOptions.length === 0 ? (
                 <div className="px-3 py-4 text-center text-xs text-slate-500 dark:text-[#97AECE]">
-                  {emptyText}
+                  {resolvedEmptyText}
                 </div>
               ) : (
                 filteredOptions.map((opt, idx) => {
@@ -397,7 +404,7 @@ export const SearchableFilterSelect: React.FC<SearchableFilterSelectProps> = ({
                         onClick={() => {
                           if (!opt.disabled) selectValue(opt.value);
                         }}
-                        className={`w-full px-3 py-1.5 text-right flex items-center justify-between gap-2 text-xs transition-colors ${
+                        className={`w-full px-3 py-1.5 text-start flex items-center justify-between gap-2 text-xs transition-colors ${
                           opt.disabled
                             ? 'opacity-45 cursor-not-allowed'
                             : isSelected

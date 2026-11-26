@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import ReactDOM from 'react-dom';
 import { Search, X, Package, ChevronDown } from 'lucide-react';
 import { Product, Warehouse } from '../../types';
+import { usePreferences } from '../../context/PreferencesContext';
+import { formatLocaleNumber } from '../../i18n/translator';
 
 function normalizeSearchText(raw: string): string {
   return String(raw || '')
@@ -42,7 +44,7 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
   warehouses = [],
   priceMode = 'selling',
   currency = 'ج.م',
-  placeholder = 'ابحث باسم الصنف (عربي/إنجليزي) أو الكود أو الباركود...',
+  placeholder,
   excludeProductIds = [],
   allowInactive = false,
   inputId,
@@ -51,6 +53,9 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
   clearOnSelect = false,
   className = '',
 }) => {
+  const { t, dir } = usePreferences();
+  const resolvedCurrency = currency === 'ج.م' ? t('ج.م', 'EGP') : currency;
+  const resolvedPlaceholder = placeholder ?? t('ابحث باسم الصنف (عربي/إنجليزي) أو الكود أو الباركود...', 'Search by item name, code, or barcode...');
   const internalInputRef = useRef<HTMLInputElement | null>(null);
   const inputElRef = externalInputRef || internalInputRef;
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -63,9 +68,9 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
   );
 
   const warehouseName = useMemo(() => {
-    if (!warehouseId) return 'جميع المخازن';
-    return warehouses.find((w) => w.id === warehouseId)?.name || 'المخزن المحدد';
-  }, [warehouseId, warehouses]);
+    if (!warehouseId) return t('جميع المخازن', 'All Warehouses');
+    return warehouses.find((w) => w.id === warehouseId)?.name || t('المخزن المحدد', 'Selected Warehouse');
+  }, [warehouseId, warehouses, t]);
 
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -92,7 +97,7 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
     const margin = 8;
     const desiredWidth = Math.min(Math.max(rect.width, 300), vw - margin * 2);
 
-    let left = rect.right - desiredWidth;
+    let left = dir === 'ltr' ? rect.left : rect.right - desiredWidth;
     if (left + desiredWidth > vw - margin) {
       left = vw - desiredWidth - margin;
     }
@@ -121,7 +126,7 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
         maxHeight,
       });
     }
-  }, []);
+  }, [dir]);
 
   // Sync display text when closed or when selectedProductId changes externally
   useEffect(() => {
@@ -171,11 +176,11 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
       return warehouseName;
     }
     const entries = Object.entries(p.stockPerWarehouse || {}).filter(([, q]) => Number(q) > 0);
-    if (entries.length === 0) return 'لا يوجد رصيد';
+    if (entries.length === 0) return t('لا يوجد رصيد', 'Out of stock');
     if (entries.length === 1) {
-      return warehouses.find((w) => w.id === entries[0][0])?.name || 'مخزن';
+      return warehouses.find((w) => w.id === entries[0][0])?.name || t('مخزن', 'Warehouse');
     }
-    return `${entries.length} مخازن`;
+    return t(`${entries.length} مخازن`, `${entries.length} warehouses`);
   };
 
   const filteredProducts = useMemo(() => {
@@ -316,7 +321,7 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
   return (
     <div ref={containerRef} className={`relative ${className}`}>
       <div className="relative flex items-center">
-        <Search className="w-4 h-4 text-slate-400 absolute right-3 pointer-events-none" />
+        <Search className="w-4 h-4 text-slate-400 absolute start-3 pointer-events-none" />
         <input
           ref={inputElRef as React.RefObject<HTMLInputElement>}
           id={inputId}
@@ -330,11 +335,11 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
             if (!isOpen) setIsOpen(true);
           }}
           onKeyDown={handleKeyDown}
-          placeholder={placeholder}
+          placeholder={resolvedPlaceholder}
           autoComplete="off"
-          className="w-full pr-8 pl-12 py-1.5 h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md text-xs font-bold text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-500 dark:placeholder:text-[#8CA3C7] placeholder:font-normal focus:outline-hidden focus:border-[#003589] dark:focus:border-[#3B82F6] focus:ring-1 focus:ring-[#DCE6F5] dark:focus:ring-[#3B82F6]/30 disabled:bg-slate-100 dark:disabled:bg-[#0B172E] disabled:cursor-not-allowed"
+          className="w-full ps-8 pe-12 py-1.5 h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md text-xs font-bold text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-500 dark:placeholder:text-[#8CA3C7] placeholder:font-normal focus:outline-hidden focus:border-[#003589] dark:focus:border-[#3B82F6] focus:ring-1 focus:ring-[#DCE6F5] dark:focus:ring-[#3B82F6]/30 disabled:bg-slate-100 dark:disabled:bg-[#0B172E] disabled:cursor-not-allowed"
         />
-        <div className="absolute left-2 flex items-center gap-1">
+        <div className="absolute end-2 flex items-center gap-1">
           {(query || selectedProductId) && !disabled && (
             <button
               type="button"
@@ -345,7 +350,7 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
                 inputElRef.current?.focus();
               }}
               className="p-1 text-slate-400 dark:text-[#849BBF] hover:text-red-600 dark:hover:text-red-400 rounded cursor-pointer"
-              title="مسح البحث"
+              title={t('مسح البحث', 'Clear search')}
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -371,7 +376,7 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
         ReactDOM.createPortal(
           <div
             ref={listRef}
-            dir="rtl"
+            dir={dir}
             style={{
               position: 'fixed',
               top: panelStyle.top,
@@ -386,7 +391,7 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
           {filteredProducts.length === 0 ? (
             <div className="p-3 text-center text-xs text-slate-500 dark:text-[#97AECE]">
               <Package className="w-5 h-5 text-slate-300 dark:text-[#5F789E] mx-auto mb-1" />
-              لا توجد أصناف مطابقة للبحث "{query}"
+              {t(`لا توجد أصناف مطابقة للبحث "${query}"`, `No items match "${query}"`)}
             </div>
           ) : (
             filteredProducts.map((p, idx) => {
@@ -405,7 +410,7 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
                     e.preventDefault();
                     commitSelection(p);
                   }}
-                  className={`w-full px-3 py-1.5 text-right flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                  className={`w-full px-3 py-1.5 text-start flex items-center justify-between gap-2 transition-colors cursor-pointer ${
                     isHighlighted
                       ? 'bg-[#EEF3FA] dark:bg-[#16366B] text-[#011E58] dark:text-[#F3F7FC]'
                       : isSelected
@@ -426,15 +431,15 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
                     <div className="flex items-center gap-2 text-[10px] text-slate-500 dark:text-[#97AECE] mt-0.5 flex-wrap">
                       <span>{p.category}</span>
                       <span>•</span>
-                      <span>الوحدة: {p.baseUnit}</span>
+                      <span>{t('الوحدة:', 'Unit:')} {t(p.baseUnit)}</span>
                       <span>•</span>
                       <span className="text-slate-600 dark:text-[#CBD9EE] font-semibold">{getProductWarehouseDisplay(p)}</span>
                     </div>
                   </div>
 
-                  <div className="text-left shrink-0 space-y-0.5">
+                  <div className="text-end shrink-0 space-y-0.5">
                     <div className="text-xs font-black text-blue-900 dark:text-[#85B8FF] font-mono">
-                      {Number(price || 0).toLocaleString()} {currency}
+                      {formatLocaleNumber(Number(price || 0))} {resolvedCurrency}
                     </div>
                     <div
                       className={`text-[10px] font-bold px-1.5 py-0.5 rounded inline-block ${
@@ -445,7 +450,7 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
                           : 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-800 dark:text-emerald-300'
                       }`}
                     >
-                      المتاح: {stockQty} {p.baseUnit}
+                      {t('المتاح:', 'Available:')} {stockQty} {t(p.baseUnit)}
                     </div>
                   </div>
                 </button>

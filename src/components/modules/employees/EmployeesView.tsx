@@ -3,6 +3,8 @@ import {
   CheckCircle2, AlertCircle, Edit, UserX, UserCheck, Link2
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
+import { usePreferences } from '../../../context/PreferencesContext';
+import { formatLocaleNumber } from '../../../i18n/translator';
 import { Employee } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { UnifiedDataTable } from '../../common/UnifiedDataTable';
@@ -11,6 +13,7 @@ export const EmployeesView: React.FC = () => {
   const {
     employees, users, representatives, addEmployee, updateEmployee
   } = useData();
+  const { t } = usePreferences();
 
   const [empDeptFilter, setEmpDeptFilter] = useState<string>('all');
   const [empStatusFilter, setEmpStatusFilter] = useState<'all' | 'active' | 'suspended'>('all');
@@ -99,7 +102,7 @@ export const EmployeesView: React.FC = () => {
     e.preventDefault();
     setEmpError(null);
     if (!empName.trim()) {
-      setEmpError('يرجى إدخال اسم الموظف');
+      setEmpError(t('يرجى إدخال اسم الموظف', 'Please enter the employee name'));
       return;
     }
 
@@ -120,10 +123,16 @@ export const EmployeesView: React.FC = () => {
           notes: empNotes.trim() || undefined,
         });
         if (!res.success) {
-          setEmpError(res.error || 'تعذر تحديث بيانات الموظف');
+          setEmpError(t(res.error || 'تعذر تحديث بيانات الموظف', res.error || 'Could not update employee details'));
           return;
         }
-        setActionMessage({ type: 'success', text: `تم تحديث بيانات الموظف (${empName.trim()}) بنجاح.` });
+        setActionMessage({
+          type: 'success',
+          text: t(
+            `تم تحديث بيانات الموظف (${empName.trim()}) بنجاح.`,
+            `Employee (${empName.trim()}) updated successfully.`
+          ),
+        });
       } else {
         const res = await addEmployee({
           code: `EMP-${employees.length + 101}`,
@@ -138,10 +147,16 @@ export const EmployeesView: React.FC = () => {
           notes: empNotes.trim() || undefined,
         });
         if (!res.success) {
-          setEmpError(res.error || 'تعذر إضافة الموظف');
+          setEmpError(t(res.error || 'تعذر إضافة الموظف', res.error || 'Could not add employee'));
           return;
         }
-        setActionMessage({ type: 'success', text: `تمت إضافة الموظف (${empName.trim()}) بنجاح.` });
+        setActionMessage({
+          type: 'success',
+          text: t(
+            `تمت إضافة الموظف (${empName.trim()}) بنجاح.`,
+            `Employee (${empName.trim()}) added successfully.`
+          ),
+        });
       }
       setIsEmpModalOpen(false);
     } finally {
@@ -156,11 +171,14 @@ export const EmployeesView: React.FC = () => {
       const nextStatus = emp.status === 'active' ? 'suspended' : 'active';
       const res = await updateEmployee(emp.id, { status: nextStatus });
       if (!res.success) {
-        setActionMessage({ type: 'error', text: res.error || 'تعذر تغيير حالة الموظف' });
+        setActionMessage({ type: 'error', text: t(res.error || 'تعذر تغيير حالة الموظف', res.error || 'Could not update employee status') });
       } else {
         setActionMessage({
           type: 'success',
-          text: `تم ${nextStatus === 'active' ? 'تفعيل' : 'إيقاف'} الموظف (${emp.name}) بنجاح.`,
+          text:
+            nextStatus === 'active'
+              ? t(`تم تفعيل الموظف (${emp.name}) بنجاح.`, `Employee (${emp.name}) activated successfully.`)
+              : t(`تم إيقاف الموظف (${emp.name}) بنجاح.`, `Employee (${emp.name}) suspended successfully.`),
         });
       }
     } finally {
@@ -173,9 +191,12 @@ export const EmployeesView: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-white px-2.5 py-2 rounded-lg border border-slate-200">
         <div>
-          <h2 className="text-sm font-black text-slate-900 tracking-tight">إدارة شؤون الموظفين</h2>
+          <h2 className="text-sm font-black text-slate-900 tracking-tight">{t('إدارة شؤون الموظفين', 'Employee Management')}</h2>
           <p className="text-[11px] text-slate-500">
-            سجلات الموظفين والكادر الوظيفي والربط الوظيفي الموحد مع حسابات الدخول
+            {t(
+              'سجلات الموظفين والكادر الوظيفي والربط الوظيفي الموحد مع حسابات الدخول',
+              'Employee records, staff directory, and unified user account linking'
+            )}
           </p>
         </div>
 
@@ -185,7 +206,7 @@ export const EmployeesView: React.FC = () => {
             onClick={openAddEmployeeModal}
             className="h-8 px-2.5 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md text-xs font-black cursor-pointer"
           >
-            + إضافة موظف
+            {t('+ إضافة موظف', '+ Add Employee')}
           </button>
         </div>
       </div>
@@ -207,7 +228,7 @@ export const EmployeesView: React.FC = () => {
             <span>{actionMessage.text}</span>
           </div>
           <button type="button" onClick={() => setActionMessage(null)} className="underline text-[11px] cursor-pointer">
-            إغلاق
+            {t('إغلاق', 'Close')}
           </button>
         </div>
       )}
@@ -215,66 +236,69 @@ export const EmployeesView: React.FC = () => {
       {/* Compact Summary Strip */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-px bg-slate-200 dark:bg-[#21375C] border border-slate-200 dark:border-[#21375C] rounded-lg overflow-hidden text-xs">
         <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
-          <div className="text-[11px] font-bold text-slate-500 dark:text-[#A9BCD9]">الموظفون النشطون</div>
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#A9BCD9]">{t('الموظفون النشطون', 'Active Employees')}</div>
           <div className="text-sm font-black font-mono tabular-nums text-[var(--awlad-navy-950)] dark:text-[#F3F7FC]">
-            {activeEmployees.length} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">من أصل {employees.length}</span>
+            {formatLocaleNumber(activeEmployees.length)}{' '}
+            <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">
+              {t(`من أصل ${formatLocaleNumber(employees.length)}`, `of ${formatLocaleNumber(employees.length)}`)}
+            </span>
           </div>
         </div>
         <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
-          <div className="text-[11px] font-bold text-slate-500 dark:text-[#A9BCD9]">الموظفون الموقوفون</div>
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#A9BCD9]">{t('الموظفون الموقوفون', 'Suspended Employees')}</div>
           <div className="text-sm font-black font-mono tabular-nums text-slate-700 dark:text-[#DCE6F5]">
-            {suspendedCount}
+            {formatLocaleNumber(suspendedCount)}
           </div>
         </div>
         <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
-          <div className="text-[11px] font-bold text-slate-500 dark:text-[#A9BCD9]">مربوطون بحساب مستخدم</div>
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#A9BCD9]">{t('مربوطون بحساب مستخدم', 'Linked to User Account')}</div>
           <div className="text-sm font-black font-mono tabular-nums text-[var(--awlad-royal-700)] dark:text-[#85B8FF]">
-            {linkedAccountsCount}
+            {formatLocaleNumber(linkedAccountsCount)}
           </div>
         </div>
       </div>
 
       {/* Employees Table */}
       <UnifiedDataTable<Employee>
-        title={`سجل الموظفين (${filteredEmployees.length})`}
+        title={t(`سجل الموظفين (${formatLocaleNumber(filteredEmployees.length)})`, `Employees Directory (${formatLocaleNumber(filteredEmployees.length)})`)}
         data={filteredEmployees}
         rowKey={(emp) => emp.id}
         onRowClick={(emp) => openEditEmployeeModal(emp)}
         compact
-        searchPlaceholder="بحث باسم الموظف أو الكود أو المسمى الوظيفي أو الهاتف..."
+        searchPlaceholder={t('بحث باسم الموظف أو الكود أو المسمى الوظيفي أو الهاتف...', 'Search by name, code, job title, or phone...')}
         exportFilename="AWLAD_SELIM_Employees"
-        pdfTitle="قائمة الموظفين والكادر الوظيفي"
-        emptyTitle="لا يوجد موظفون مطابقون"
-        emptySubtitle={'انقر على زر "+ إضافة موظف" للبدء بتسجيل بيانات الكادر الوظيفي والربط مع الحسابات.'}
+        pdfTitle={t('قائمة الموظفين والكادر الوظيفي', 'Employees & Staff Directory')}
+        emptyTitle={t('لا يوجد موظفون مطابقون', 'No Matching Employees')}
+        emptySubtitle={t('انقر على زر "+ إضافة موظف" للبدء بتسجيل بيانات الكادر الوظيفي والربط مع الحسابات.', 'Click "+ Add Employee" to start registering staff records and linking user accounts.')}
         toolbarFilters={
           <div className="flex flex-nowrap items-center gap-1.5 shrink-0">
             <select
-              aria-label="تصفية بالقسم"
+              aria-label={t('تصفية بالقسم', 'Filter by Department')}
               value={empDeptFilter}
               onChange={(e) => setEmpDeptFilter(e.target.value)}
               className="h-8 shrink-0 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC]"
             >
-              <option value="all">كل الأقسام</option>
+              <option value="all">{t('كل الأقسام', 'All Departments')}</option>
               {employeeDepartments.map((d) => (
-                <option key={d} value={d}>{d}</option>
+                <option key={d} value={d}>{t(d)}</option>
               ))}
             </select>
             <select
-              aria-label="تصفية بالحالة"
+              aria-label={t('تصفية بالحالة', 'Filter by Status')}
               value={empStatusFilter}
               onChange={(e) => setEmpStatusFilter(e.target.value as 'all' | 'active' | 'suspended')}
               className="h-8 shrink-0 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC]"
             >
-              <option value="all">كل الحالات</option>
-              <option value="active">نشط فقط</option>
-              <option value="suspended">موقوف</option>
+              <option value="all">{t('كل الحالات', 'All Statuses')}</option>
+              <option value="active">{t('نشط فقط', 'Active Only')}</option>
+              <option value="suspended">{t('موقوف', 'Suspended')}</option>
             </select>
           </div>
         }
         columns={[
           {
             key: 'code',
-            header: 'الكود',
+            header: t('الكود', 'Code'),
             sortValue: (e) => e.code,
             exportValue: (e) => e.code,
             render: (emp) => (
@@ -285,7 +309,7 @@ export const EmployeesView: React.FC = () => {
           },
           {
             key: 'name',
-            header: 'الاسم والربط الوظيفي',
+            header: t('الاسم والربط الوظيفي', 'Name & Role Link'),
             sortValue: (e) => e.name,
             exportValue: (e) => e.name,
             render: (emp) => {
@@ -306,7 +330,7 @@ export const EmployeesView: React.FC = () => {
                     )}
                     {linkedRep && (
                       <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#DCE6F5] text-[#002160] border border-[#B8CAE8]">
-                        مندوب ميداني
+                        {t('مندوب ميداني', 'Field Representative')}
                       </span>
                     )}
                   </div>
@@ -316,19 +340,19 @@ export const EmployeesView: React.FC = () => {
           },
           {
             key: 'jobTitle',
-            header: 'المسمى والقسم',
+            header: t('المسمى والقسم', 'Job Title & Department'),
             sortValue: (e) => `${e.jobTitle} ${e.department}`,
-            exportValue: (e) => `${e.jobTitle} - ${e.department}`,
+            exportValue: (e) => `${t(e.jobTitle)} - ${t(e.department)}`,
             render: (emp) => (
               <div>
-                <div className="font-bold text-slate-800">{emp.jobTitle || '—'}</div>
-                <div className="text-[11px] text-slate-500">{emp.department || '—'}</div>
+                <div className="font-bold text-slate-800">{emp.jobTitle ? t(emp.jobTitle) : '—'}</div>
+                <div className="text-[11px] text-slate-500">{emp.department ? t(emp.department) : '—'}</div>
               </div>
             ),
           },
           {
             key: 'phone',
-            header: 'الهاتف',
+            header: t('الهاتف', 'Phone'),
             sortValue: (e) => e.phone || '',
             exportValue: (e) => e.phone || '',
             render: (emp) => (
@@ -339,10 +363,10 @@ export const EmployeesView: React.FC = () => {
           },
           {
             key: 'status',
-            header: 'الحالة',
+            header: t('الحالة', 'Status'),
             align: 'center',
             sortValue: (e) => e.status,
-            exportValue: (e) => (e.status === 'active' ? 'نشط' : 'موقوف'),
+            exportValue: (e) => (e.status === 'active' ? t('نشط', 'Active') : t('موقوف', 'Suspended')),
             render: (emp) => (
               <span
                 className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
@@ -351,13 +375,13 @@ export const EmployeesView: React.FC = () => {
                     : 'bg-red-50 text-red-800 border-red-200'
                 }`}
               >
-                {emp.status === 'active' ? 'نشط' : 'موقوف'}
+                {emp.status === 'active' ? t('نشط', 'Active') : t('موقوف', 'Suspended')}
               </span>
             ),
           },
           {
             key: 'actions',
-            header: 'الإجراءات',
+            header: t('الإجراءات', 'Actions'),
             align: 'center',
             sortable: false,
             render: (emp) => (
@@ -368,7 +392,7 @@ export const EmployeesView: React.FC = () => {
                     e.stopPropagation();
                     openEditEmployeeModal(emp);
                   }}
-                  title="تعديل بيانات الموظف"
+                  title={t('تعديل بيانات الموظف', 'Edit Employee Details')}
                   className="p-1 rounded-md text-slate-500 hover:text-blue-900 hover:bg-blue-50 cursor-pointer"
                 >
                   <Edit className="w-3.5 h-3.5" />
@@ -380,7 +404,7 @@ export const EmployeesView: React.FC = () => {
                     e.stopPropagation();
                     handleToggleEmployeeStatus(emp);
                   }}
-                  title={emp.status === 'active' ? 'إيقاف الموظف' : 'تفعيل الموظف'}
+                  title={emp.status === 'active' ? t('إيقاف الموظف', 'Suspend Employee') : t('تفعيل الموظف', 'Activate Employee')}
                   className={`p-1 rounded-md cursor-pointer disabled:opacity-40 ${
                     emp.status === 'active' ? 'text-red-500 hover:bg-red-50' : 'text-emerald-600 hover:bg-emerald-50'
                   }`}
@@ -397,7 +421,7 @@ export const EmployeesView: React.FC = () => {
       <Modal
         isOpen={isEmpModalOpen}
         onClose={() => setIsEmpModalOpen(false)}
-        title={editingEmp ? `تعديل بيانات الموظف: ${editingEmp.name}` : 'إضافة موظف جديد'}
+        title={editingEmp ? t(`تعديل بيانات الموظف: ${editingEmp.name}`, `Edit Employee: ${editingEmp.name}`) : t('إضافة موظف جديد', 'Add New Employee')}
         maxWidth="md"
       >
         <form onSubmit={handleEmployeeSubmit} className="space-y-2 text-xs">
@@ -406,7 +430,7 @@ export const EmployeesView: React.FC = () => {
           )}
 
           <div>
-            <label className="block text-[11px] font-bold mb-0.5">اسم الموظف الثلاثي:</label>
+            <label className="block text-[11px] font-bold mb-0.5">{t('اسم الموظف الثلاثي:', 'Full Name:')}</label>
             <input
               type="text"
               required
@@ -417,19 +441,21 @@ export const EmployeesView: React.FC = () => {
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-[11px] font-bold mb-0.5">رقم الهاتف:</label>
+              <label className="block text-[11px] font-bold mb-0.5">{t('رقم الهاتف:', 'Phone Number:')}</label>
               <input
                 type="tel"
                 required
+                dir="ltr"
                 value={empPhone}
                 onChange={(e) => setEmpPhone(e.target.value)}
                 className="w-full h-8 border border-slate-300 rounded-md px-2 font-mono"
               />
             </div>
             <div>
-              <label className="block text-[11px] font-bold mb-0.5">الرقم القومي (اختياري):</label>
+              <label className="block text-[11px] font-bold mb-0.5">{t('الرقم القومي (اختياري):', 'National ID (Optional):')}</label>
               <input
                 type="text"
+                dir="ltr"
                 value={empNationalId}
                 onChange={(e) => setEmpNationalId(e.target.value)}
                 className="w-full h-8 border border-slate-300 rounded-md px-2 font-mono"
@@ -438,22 +464,22 @@ export const EmployeesView: React.FC = () => {
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-[11px] font-bold mb-0.5">المسمى الوظيفي:</label>
+              <label className="block text-[11px] font-bold mb-0.5">{t('المسمى الوظيفي:', 'Job Title:')}</label>
               <input
                 type="text"
                 required
-                placeholder="أدخل المسمى الوظيفي"
+                placeholder={t('أدخل المسمى الوظيفي', 'Enter job title')}
                 value={empJob}
                 onChange={(e) => setEmpJob(e.target.value)}
                 className="w-full h-8 border border-slate-300 rounded-md px-2"
               />
             </div>
             <div>
-              <label className="block text-[11px] font-bold mb-0.5">القسم:</label>
+              <label className="block text-[11px] font-bold mb-0.5">{t('القسم:', 'Department:')}</label>
               <input
                 type="text"
                 required
-                placeholder="أدخل القسم"
+                placeholder={t('أدخل القسم', 'Enter department')}
                 value={empDept}
                 onChange={(e) => setEmpDept(e.target.value)}
                 className="w-full h-8 border border-slate-300 rounded-md px-2"
@@ -461,27 +487,27 @@ export const EmployeesView: React.FC = () => {
             </div>
           </div>
           <div>
-            <label className="block text-[11px] font-bold mb-0.5">الحالة:</label>
+            <label className="block text-[11px] font-bold mb-0.5">{t('الحالة:', 'Status:')}</label>
             <select
               value={empStatus}
               onChange={(e) => setEmpStatus(e.target.value as 'active' | 'suspended')}
               className="w-full h-8 border border-slate-300 rounded-md px-2 font-bold bg-white"
             >
-              <option value="active">نشط (على رأس العمل)</option>
-              <option value="suspended">موقوف</option>
+              <option value="active">{t('نشط (على رأس العمل)', 'Active (On Duty)')}</option>
+              <option value="suspended">{t('موقوف', 'Suspended')}</option>
             </select>
           </div>
           <div>
             <label className="block text-[11px] font-bold mb-0.5 flex items-center gap-1">
               <Link2 className="w-3.5 h-3.5 text-[#003589]" />
-              <span>ربط بحساب مستخدم دخول للنظام (اختياري):</span>
+              <span>{t('ربط بحساب مستخدم دخول للنظام (اختياري):', 'Link to System Login User Account (Optional):')}</span>
             </label>
             <select
               value={empUserId}
               onChange={(e) => setEmpUserId(e.target.value)}
               className="w-full h-8 border border-slate-300 rounded-md px-2 font-bold bg-slate-50"
             >
-              <option value="">-- بدون ربط بحساب مستخدم --</option>
+              <option value="">{t('-- بدون ربط بحساب مستخدم --', '-- Not linked to a user account --')}</option>
               {users
                 .filter((u) => {
                   if (u.role === 'customer') return false;
@@ -495,13 +521,13 @@ export const EmployeesView: React.FC = () => {
                 })
                 .map((u) => (
                   <option key={u.id} value={u.id}>
-                    {u.fullName} (@{u.username}) — {u.role}
+                    {u.fullName} (@{u.username}) — {t(u.role)}
                   </option>
                 ))}
             </select>
           </div>
           <div>
-            <label className="block text-[11px] font-bold mb-0.5">ملاحظات:</label>
+            <label className="block text-[11px] font-bold mb-0.5">{t('ملاحظات:', 'Notes:')}</label>
             <input
               type="text"
               value={empNotes}
@@ -511,14 +537,14 @@ export const EmployeesView: React.FC = () => {
           </div>
           <div className="flex justify-end gap-1.5 pt-2 border-t">
             <button type="button" onClick={() => setIsEmpModalOpen(false)} className="h-8 px-2.5 border border-slate-300 rounded-md font-bold cursor-pointer">
-              إلغاء
+              {t('إلغاء', 'Cancel')}
             </button>
             <button
               type="submit"
               disabled={isSavingEmp}
               className="h-8 px-3 bg-blue-900 text-white rounded-md font-bold disabled:opacity-50 cursor-pointer"
             >
-              {isSavingEmp ? 'جاري الحفظ...' : editingEmp ? 'حفظ التعديلات' : 'حفظ الموظف'}
+              {isSavingEmp ? t('جاري الحفظ...', 'Saving...') : editingEmp ? t('حفظ التعديلات', 'Save Changes') : t('حفظ الموظف', 'Save Employee')}
             </button>
           </div>
         </form>

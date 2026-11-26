@@ -7,6 +7,8 @@ import {
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useShortcuts } from '../../../context/ShortcutsContext';
+import { usePreferences } from '../../../context/PreferencesContext';
+import { formatLocaleNumber } from '../../../i18n/translator';
 import {
   Customer, Supplier, CustomerStatementResponse, SupplierStatementResponse,
   CustomerStatementEntry, SupplierStatementEntry, Invoice, InvoiceItem
@@ -37,6 +39,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
   } = useData();
   const { currentUser, hasPermission } = useAuth();
   const { registerHandler, consumePendingAction } = useShortcuts();
+  const { t, language } = usePreferences();
 
   const resolveTabFromInitial = (tab?: FinanceViewProps['initialTab']): FinanceTabKey => {
     if (tab === 'expenses') return 'expenses';
@@ -258,9 +261,9 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
       .sort((a, b) => {
         if (custSort === 'balance_desc') return Number(b.currentBalance || 0) - Number(a.currentBalance || 0);
         if (custSort === 'balance_asc') return Number(a.currentBalance || 0) - Number(b.currentBalance || 0);
-        return (a.shopName || a.name).localeCompare(b.shopName || b.name, 'ar');
+        return (a.shopName || a.name).localeCompare(b.shopName || b.name, language);
       });
-  }, [customers, custSearch, custDirFilter, custSort]);
+  }, [customers, custSearch, custDirFilter, custSort, language]);
 
   // Supplier Accounts KPIs (Strictly separated: NEVER net علينا and لنا together)
   const supplierKpis = useMemo(() => {
@@ -331,9 +334,9 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
       .sort((a, b) => {
         if (suppSort === 'balance_desc') return Number(b.currentBalance || 0) - Number(a.currentBalance || 0);
         if (suppSort === 'balance_asc') return Number(a.currentBalance || 0) - Number(b.currentBalance || 0);
-        return a.name.localeCompare(b.name, 'ar');
+        return a.name.localeCompare(b.name, language);
       });
-  }, [suppliers, suppSearch, suppDirFilter, suppSort]);
+  }, [suppliers, suppSearch, suppDirFilter, suppSort, language]);
 
   const getSupplierAdvanceInfo = (supp: Supplier) => {
     const openInvoices = invoices.filter(
@@ -377,11 +380,11 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
     if (!custPaymentTarget || isSubmittingCustPay) return;
     setCustPayError(null);
     if (custPayAmount <= 0) {
-      setCustPayError('يرجى إدخال مبلغ تحصيل أكبر من صفر.');
+      setCustPayError(t('يرجى إدخال مبلغ تحصيل أكبر من صفر.', 'Please enter a collection amount greater than zero.'));
       return;
     }
     if (!custPayCashboxId) {
-      setCustPayError('يرجى اختيار الخزينة أو الحساب البنكي.');
+      setCustPayError(t('يرجى اختيار الخزينة أو الحساب البنكي.', 'Please select a cashbox or bank account.'));
       return;
     }
     setIsSubmittingCustPay(true);
@@ -394,7 +397,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
         custPayMethod
       );
       if (!res.success) {
-        setCustPayError(res.error || 'تعذر تسجيل التحصيل');
+        setCustPayError(res.error ? t(res.error) : t('تعذر تسجيل التحصيل', 'Failed to record collection'));
         return;
       }
       const nextBal = Number((Number(custPaymentTarget.currentBalance || 0) - custPayAmount).toFixed(2));
@@ -402,8 +405,14 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
         type: 'success',
         text:
           nextBal < 0
-            ? `تم تحصيل ${custPayAmount.toLocaleString()} ${settings.currency} من (${custPaymentTarget.name}) — تم قيد الزيادة كرصيد دائن / دفعة مقدمة للعميل (${Math.abs(nextBal).toLocaleString()} ${settings.currency}).`
-            : `تم تحصيل ${custPayAmount.toLocaleString()} ${settings.currency} من العميل (${custPaymentTarget.name}) بنجاح.`,
+            ? t(
+                `تم تحصيل ${formatLocaleNumber(custPayAmount)} ${settings.currency} من (${custPaymentTarget.name}) — تم قيد الزيادة كرصيد دائن / دفعة مقدمة للعميل (${formatLocaleNumber(Math.abs(nextBal))} ${settings.currency}).`,
+                `Collected ${formatLocaleNumber(custPayAmount)} ${settings.currency} from (${custPaymentTarget.name}) — excess recorded as customer credit / advance (${formatLocaleNumber(Math.abs(nextBal))} ${settings.currency}).`
+              )
+            : t(
+                `تم تحصيل ${formatLocaleNumber(custPayAmount)} ${settings.currency} من العميل (${custPaymentTarget.name}) بنجاح.`,
+                `Successfully collected ${formatLocaleNumber(custPayAmount)} ${settings.currency} from customer (${custPaymentTarget.name}).`
+              ),
       });
       if (custStatementTarget?.id === custPaymentTarget.id) {
         handleOpenCustomerStatement({ ...custPaymentTarget, currentBalance: nextBal });
@@ -421,17 +430,22 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
     if (!suppPaymentTarget || isSubmittingSuppPay) return;
     setSuppPayError(null);
     if (suppPayAmount <= 0) {
-      setSuppPayError('يرجى إدخال مبلغ سداد أكبر من صفر.');
+      setSuppPayError(t('يرجى إدخال مبلغ سداد أكبر من صفر.', 'Please enter a payment amount greater than zero.'));
       return;
     }
     if (!suppPayCashboxId) {
-      setSuppPayError('يرجى اختيار الخزينة المسدد منها.');
+      setSuppPayError(t('يرجى اختيار الخزينة المسدد منها.', 'Please select the source cashbox.'));
       return;
     }
     const debt = Math.max(0, Number(suppPaymentTarget.currentBalance || 0));
     const overpayment = Math.max(0, Number((suppPayAmount - debt).toFixed(2)));
     if (overpayment > 0.009 && !canApproveSupplierOverpayment) {
-      setSuppPayError('يتجاوز المبلغ المستحق للمورد — يتطلب سداد الدفعة المقدمة موافقة المدير العام أو مدير الفرع أو صلاحية الاعتماد.');
+      setSuppPayError(
+        t(
+          'يتجاوز المبلغ المستحق للمورد — يتطلب سداد الدفعة المقدمة موافقة المدير العام أو مدير الفرع أو صلاحية الاعتماد.',
+          'Exceeds amount due to supplier — advance overpayment requires General Manager, Branch Manager, or approval permission.'
+        )
+      );
       return;
     }
     setIsSubmittingSuppPay(true);
@@ -443,14 +457,20 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
         suppPayNotes || `سداد دفعة للمورد ${suppPaymentTarget.name}`
       );
       if (!res.success) {
-        setSuppPayError(res.error || 'تعذر تسجيل السداد للمورد');
+        setSuppPayError(res.error ? t(res.error) : t('تعذر تسجيل السداد للمورد', 'Failed to record supplier payment'));
         return;
       }
       setStatusBanner({
         type: 'success',
         text: res.isAdvancePayment
-          ? `تم سداد ${suppPayAmount.toLocaleString()} ${settings.currency} للمورد (${suppPaymentTarget.name}) وقيد الزيادة كدفعة مقدمة لنا عند المورد.`
-          : `تم سداد مبلغ ${suppPayAmount.toLocaleString()} ${settings.currency} للمورد (${suppPaymentTarget.name}) بنجاح.`,
+          ? t(
+              `تم سداد ${formatLocaleNumber(suppPayAmount)} ${settings.currency} للمورد (${suppPaymentTarget.name}) وقيد الزيادة كدفعة مقدمة لنا عند المورد.`,
+              `Paid ${formatLocaleNumber(suppPayAmount)} ${settings.currency} to supplier (${suppPaymentTarget.name}) and recorded excess as our advance payment.`
+            )
+          : t(
+              `تم سداد مبلغ ${formatLocaleNumber(suppPayAmount)} ${settings.currency} للمورد (${suppPaymentTarget.name}) بنجاح.`,
+              `Successfully paid ${formatLocaleNumber(suppPayAmount)} ${settings.currency} to supplier (${suppPaymentTarget.name}).`
+            ),
       });
       if (suppStatementTarget?.id === suppPaymentTarget.id) {
         const nextBal = Number((Number(suppPaymentTarget.currentBalance || 0) - suppPayAmount).toFixed(2));
@@ -477,13 +497,16 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
       if (res.success) {
         setStatusBanner({
           type: 'success',
-          text: `تمت تسوية دفعة مقدمة بمبلغ ${settleAmount.toLocaleString()} ${settings.currency} للمورد (${settleSupplierTarget.name}) دون حركة خزينة.`,
+          text: t(
+            `تمت تسوية دفعة مقدمة بمبلغ ${formatLocaleNumber(settleAmount)} ${settings.currency} للمورد (${settleSupplierTarget.name}) دون حركة خزينة.`,
+            `Settled an advance payment of ${formatLocaleNumber(settleAmount)} ${settings.currency} for supplier (${settleSupplierTarget.name}) without cashbox movement.`
+          ),
         });
         setIsConfirmingSettle(false);
         setSettleSupplierTarget(null);
       } else {
         setIsConfirmingSettle(false);
-        setSettleError(res.error || 'تعذر تسوية الدفعة المقدمة');
+        setSettleError(res.error ? t(res.error) : t('تعذر تسوية الدفعة المقدمة', 'Failed to settle advance payment'));
       }
     } finally {
       setIsSettlingAdvance(false);
@@ -500,22 +523,24 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
         ? invoiceReturns.find((r) => r.id === entry.docId || r.returnNumber === entry.docNumber)
         : undefined;
     setPreviewStatementDoc({
-      title: linkedInv ? `تفاصيل فاتورة مبيعات ${linkedInv.invoiceNumber}` : `${entry.label} (${entry.docNumber})`,
+      title: linkedInv
+        ? `${t('تفاصيل فاتورة مبيعات', 'Sales Invoice Details')} ${linkedInv.invoiceNumber}`
+        : `${t(entry.label)} (${entry.docNumber})`,
       docNumber: entry.docNumber,
       date: entry.date,
-      badge: entry.label,
+      badge: t(entry.label),
       description: entry.description,
       invoice: linkedInv,
       extraLines: linkedRet
         ? [
-            { label: 'الفاتورة الأصلية', value: linkedRet.originalInvoiceNumber },
-            { label: 'طريقة التسوية', value: linkedRet.refundType === 'cash' ? 'رد نقدي' : 'خصم من الرصيد' },
-            { label: 'إجمالي المرتجع', value: `${Number(linkedRet.grandTotal || 0).toLocaleString()} ${settings.currency}` },
+            { label: t('الفاتورة الأصلية', 'Original Invoice'), value: linkedRet.originalInvoiceNumber },
+            { label: t('طريقة التسوية', 'Settlement Method'), value: linkedRet.refundType === 'cash' ? t('رد نقدي', 'Cash Refund') : t('خصم من الرصيد', 'Balance Credit') },
+            { label: t('إجمالي المرتجع', 'Return Total'), value: `${formatLocaleNumber(Number(linkedRet.grandTotal || 0))} ${settings.currency}` },
           ]
         : [
-            { label: 'مدين (مستحق لنا)', value: `${Number(entry.debit || 0).toLocaleString()} ${settings.currency}` },
-            { label: 'دائن (تحصيل/سداد)', value: `${Number(entry.credit || 0).toLocaleString()} ${settings.currency}` },
-            { label: 'الرصيد بعد الحركة', value: `${Math.abs(Number(entry.runningBalance || 0)).toLocaleString()} ${settings.currency}` },
+            { label: t('مدين (مستحق لنا)', 'Debit (Receivable)'), value: `${formatLocaleNumber(Number(entry.debit || 0))} ${settings.currency}` },
+            { label: t('دائن (تحصيل/سداد)', 'Credit (Paid)'), value: `${formatLocaleNumber(Number(entry.credit || 0))} ${settings.currency}` },
+            { label: t('الرصيد بعد الحركة', 'Balance After Entry'), value: `${formatLocaleNumber(Math.abs(Number(entry.runningBalance || 0)))} ${settings.currency}` },
           ],
     });
   };
@@ -530,22 +555,24 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
         ? invoiceReturns.find((r) => r.id === entry.docId || r.returnNumber === entry.docNumber)
         : undefined;
     setPreviewStatementDoc({
-      title: linkedInv ? `تفاصيل فاتورة مشتريات ${linkedInv.invoiceNumber}` : `${entry.label} (${entry.docNumber})`,
+      title: linkedInv
+        ? `${t('تفاصيل فاتورة مشتريات', 'Purchase Invoice Details')} ${linkedInv.invoiceNumber}`
+        : `${t(entry.label)} (${entry.docNumber})`,
       docNumber: entry.docNumber,
       date: entry.date,
-      badge: entry.label,
+      badge: t(entry.label),
       description: entry.description,
       invoice: linkedInv,
       extraLines: linkedRet
         ? [
-            { label: 'الفاتورة الأصلية', value: linkedRet.originalInvoiceNumber },
-            { label: 'طريقة التسوية', value: linkedRet.refundType === 'cash' ? 'استرداد نقدي' : 'خصم من رصيد المورد' },
-            { label: 'إجمالي المرتجع', value: `${Number(linkedRet.grandTotal || 0).toLocaleString()} ${settings.currency}` },
+            { label: t('الفاتورة الأصلية', 'Original Invoice'), value: linkedRet.originalInvoiceNumber },
+            { label: t('طريقة التسوية', 'Settlement Method'), value: linkedRet.refundType === 'cash' ? t('استرداد نقدي', 'Cash Refund') : t('خصم من رصيد المورد', 'Deducted from Supplier Balance') },
+            { label: t('إجمالي المرتجع', 'Return Total'), value: `${formatLocaleNumber(Number(linkedRet.grandTotal || 0))} ${settings.currency}` },
           ]
         : [
-            { label: 'له / مشتريات', value: `${Number(entry.credit || 0).toLocaleString()} ${settings.currency}` },
-            { label: 'سداد / مرتجع', value: `${Number(entry.debit || 0).toLocaleString()} ${settings.currency}` },
-            { label: 'الرصيد بعد الحركة', value: `${Math.abs(Number(entry.runningBalance || 0)).toLocaleString()} ${settings.currency}` },
+            { label: t('له / مشتريات', 'Credit / Purchases'), value: `${formatLocaleNumber(Number(entry.credit || 0))} ${settings.currency}` },
+            { label: t('سداد / مرتجع', 'Payment / Return'), value: `${formatLocaleNumber(Number(entry.debit || 0))} ${settings.currency}` },
+            { label: t('الرصيد بعد الحركة', 'Balance After Entry'), value: `${formatLocaleNumber(Math.abs(Number(entry.runningBalance || 0)))} ${settings.currency}` },
           ],
     });
   };
@@ -556,27 +583,33 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
     setTransferError(null);
     const numTransferAmount = Number(transferAmount || 0);
     if (!fromCbId || !toCbId) {
-      setTransferError('يرجى تحديد الخزينة المحول منها والمحول إليها.');
+      setTransferError(t('يرجى تحديد الخزينة المحول منها والمحول إليها.', 'Please select source and target cashboxes.'));
       return;
     }
     if (fromCbId === toCbId) {
-      setTransferError('لا يمكن التحويل من نفس الخزينة إلى نفسها.');
+      setTransferError(t('لا يمكن التحويل من نفس الخزينة إلى نفسها.', 'Cannot transfer from a cashbox to itself.'));
       return;
     }
     if (numTransferAmount <= 0) {
-      setTransferError('يرجى إدخال مبلغ تحويل أكبر من صفر.');
+      setTransferError(t('يرجى إدخال مبلغ تحويل أكبر من صفر.', 'Please enter a transfer amount greater than zero.'));
       return;
     }
     setIsSubmittingTransfer(true);
     try {
       const res = await transferBetweenCashboxes(fromCbId, toCbId, numTransferAmount, transferNotes || 'تحويل مالي بين الخزائن');
       if (!res.success) {
-        setTransferError(res.error || 'فشل التحويل');
+        setTransferError(res.error ? t(res.error) : t('فشل التحويل', 'Transfer failed'));
       } else {
         setIsTransferModalOpen(false);
         setTransferAmount('');
         setTransferNotes('');
-        setStatusBanner({ type: 'success', text: `تم تنفيذ التحويل المالي بمبلغ ${numTransferAmount.toLocaleString()} ${settings.currency} بنجاح.` });
+        setStatusBanner({
+          type: 'success',
+          text: t(
+            `تم تنفيذ التحويل المالي بمبلغ ${formatLocaleNumber(numTransferAmount)} ${settings.currency} بنجاح.`,
+            `Successfully transferred ${formatLocaleNumber(numTransferAmount)} ${settings.currency}.`
+          ),
+        });
       }
     } finally {
       setIsSubmittingTransfer(false);
@@ -588,7 +621,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
     if (isSubmittingCashbox) return;
     setCashboxError(null);
     if (!newCbName.trim()) {
-      setCashboxError('يرجى إدخال اسم الخزينة أو الحساب البنكي.');
+      setCashboxError(t('يرجى إدخال اسم الخزينة أو الحساب البنكي.', 'Please enter the cashbox or bank account name.'));
       return;
     }
     setIsSubmittingCashbox(true);
@@ -601,12 +634,12 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
         isDefault: false,
       });
       setIsAddCashboxOpen(false);
-      setStatusBanner({ type: 'success', text: `تمت إضافة (${newCbName.trim()}) بنجاح.` });
+      setStatusBanner({ type: 'success', text: t(`تمت إضافة (${newCbName.trim()}) بنجاح.`, `Successfully added (${newCbName.trim()}).`) });
       setNewCbName('');
       setNewCbAccount('');
       setNewCbOpening('');
     } catch (err: any) {
-      setCashboxError(err?.message || 'تعذر إنشاء الخزينة أو الحساب البنكي');
+      setCashboxError(err?.message ? t(err.message) : t('تعذر إنشاء الخزينة أو الحساب البنكي', 'Failed to create cashbox or bank account'));
     } finally {
       setIsSubmittingCashbox(false);
     }
@@ -618,15 +651,19 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
     setExpenseError(null);
     const numAmount = Number(amount || 0);
     if (!category.trim()) {
-      setExpenseError(`يرجى إدخال بند ${recordType === 'expense' ? 'المصروف' : 'الإيراد'}.`);
+      setExpenseError(
+        recordType === 'expense'
+          ? t('يرجى إدخال بند المصروف.', 'Please enter the expense category.')
+          : t('يرجى إدخال بند الإيراد.', 'Please enter the income category.')
+      );
       return;
     }
     if (numAmount <= 0) {
-      setExpenseError('يرجى إدخال مبلغ أكبر من صفر.');
+      setExpenseError(t('يرجى إدخال مبلغ أكبر من صفر.', 'Please enter an amount greater than zero.'));
       return;
     }
     if (!selectedCashboxId) {
-      setExpenseError('يرجى اختيار الخزينة المتأثرة.');
+      setExpenseError(t('يرجى اختيار الخزينة المتأثرة.', 'Please select the affected cashbox.'));
       return;
     }
     const cb = cashboxes.find((c) => c.id === selectedCashboxId);
@@ -654,14 +691,20 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
         type: 'success',
         text:
           recordType === 'expense'
-            ? `تم تسجيل سند صرف (${category.trim()}) بمبلغ ${numAmount.toLocaleString()} ${settings.currency}.`
-            : `تم تسجيل سند قبض إيراد (${category.trim()}) بمبلغ ${numAmount.toLocaleString()} ${settings.currency}.`,
+            ? t(
+                `تم تسجيل سند صرف (${category.trim()}) بمبلغ ${formatLocaleNumber(numAmount)} ${settings.currency}.`,
+                `Recorded expense voucher (${category.trim()}) for ${formatLocaleNumber(numAmount)} ${settings.currency}.`
+              )
+            : t(
+                `تم تسجيل سند قبض إيراد (${category.trim()}) بمبلغ ${formatLocaleNumber(numAmount)} ${settings.currency}.`,
+                `Recorded income voucher (${category.trim()}) for ${formatLocaleNumber(numAmount)} ${settings.currency}.`
+              ),
       });
 
       setPrintData({
-        title: recordType === 'expense' ? 'سند صرف مصروفات' : 'سند قبض إيرادات',
+        title: recordType === 'expense' ? t('سند صرف مصروفات', 'Expense Payment Voucher') : t('سند قبض إيرادات', 'Income Receipt Voucher'),
         docNumber: `${recordType === 'expense' ? 'EXP' : 'INC'}-${Date.now().toString().slice(-6)}`,
-        docType: recordType === 'expense' ? 'سند صرف' : 'سند قبض',
+        docType: recordType === 'expense' ? t('سند صرف', 'Expense Voucher') : t('سند قبض', 'Receipt Voucher'),
         date: new Date().toISOString().split('T')[0],
         partyName: recipientOrPayer,
         grandTotal: numAmount,
@@ -670,7 +713,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
       });
       setIsPrintModalOpen(true);
     } catch (err: any) {
-      setExpenseError(err?.message || 'تعذر تسجيل السند المالي');
+      setExpenseError(err?.message ? t(err.message) : t('تعذر تسجيل السند المالي', 'Failed to record financial voucher'));
     } finally {
       setIsSubmittingExpense(false);
     }
@@ -705,20 +748,20 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
     if (bal > 0.005) {
       return (
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-red-50 text-red-800 border border-red-200 text-[10px] font-black tabular-nums">
-          لنا (مستحق): {bal.toLocaleString()} {settings.currency}
+          {t('لنا (مستحق):', 'Receivable:')} {formatLocaleNumber(bal)} {settings.currency}
         </span>
       );
     }
     if (bal < -0.005) {
       return (
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-black tabular-nums">
-          علينا (دفعة مقدمة): {Math.abs(bal).toLocaleString()} {settings.currency}
+          {t('علينا (دفعة مقدمة):', 'Credit (Advance):')} {formatLocaleNumber(Math.abs(bal))} {settings.currency}
         </span>
       );
     }
     return (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 text-[10px] font-bold">
-        متوازن (0)
+        {t('متوازن (0)', 'Settled (0)')}
       </span>
     );
   };
@@ -727,20 +770,20 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
     if (bal > 0.005) {
       return (
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-50 text-amber-900 border border-amber-200 text-[10px] font-black tabular-nums">
-          علينا للمورد: {bal.toLocaleString()} {settings.currency}
+          {t('علينا للمورد:', 'Payable to Supplier:')} {formatLocaleNumber(bal)} {settings.currency}
         </span>
       );
     }
     if (bal < -0.005) {
       return (
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-black tabular-nums">
-          لنا (دفعة مقدمة): {Math.abs(bal).toLocaleString()} {settings.currency}
+          {t('لنا (دفعة مقدمة):', 'Our Advance:')} {formatLocaleNumber(Math.abs(bal))} {settings.currency}
         </span>
       );
     }
     return (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 text-[10px] font-bold">
-        متوازن (0)
+        {t('متوازن (0)', 'Settled (0)')}
       </span>
     );
   };
@@ -754,9 +797,11 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             <AccountsLedgerIcon className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-sm font-black text-slate-900 dark:text-[#F3F7FC] tracking-tight">مركز الحسابات والعملاء والموردين والخزائن</h2>
+            <h2 className="text-sm font-black text-slate-900 dark:text-[#F3F7FC] tracking-tight">
+              {t('مركز الحسابات والعملاء والموردين والخزائن', 'Accounts, Customers, Suppliers & Cashboxes Center')}
+            </h2>
             <p className="text-[11px] text-slate-500 dark:text-[#97AECE]">
-              كشوف الحسابات التفصيلية للعملاء والموردين، السيولة النقدية ({totalLiquidity.toLocaleString()} {settings.currency})، وسندات الصرف والقبض
+              {t('كشوف الحسابات التفصيلية للعملاء والموردين، السيولة النقدية', 'Detailed customer & supplier statements, cash liquidity')} ({formatLocaleNumber(totalLiquidity)} {settings.currency})، {t('وسندات الصرف والقبض', 'and payment/receipt vouchers')}
             </p>
           </div>
         </div>
@@ -771,7 +816,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             className="h-8 flex items-center gap-1 px-2.5 bg-amber-700 hover:bg-amber-800 text-white rounded-md text-xs font-bold transition-all cursor-pointer"
           >
             <TrendingDown className="w-3.5 h-3.5" />
-            <span>سند صرف مصروف</span>
+            <span>{t('سند صرف مصروف', 'Expense Voucher')}</span>
           </button>
 
           <button
@@ -783,7 +828,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             className="h-8 flex items-center gap-1 px-2.5 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md text-xs font-bold transition-all cursor-pointer"
           >
             <TrendingUp className="w-3.5 h-3.5" />
-            <span>سند قبض إيراد</span>
+            <span>{t('سند قبض إيراد', 'Income Voucher')}</span>
           </button>
 
           <button
@@ -794,7 +839,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             className="h-8 flex items-center gap-1 px-2.5 bg-[#011E58] hover:bg-[#002160] text-white rounded-md text-xs font-bold transition-all cursor-pointer"
           >
             <ArrowLeftRight className="w-3.5 h-3.5" />
-            <span>تحويل بين الخزائن</span>
+            <span>{t('تحويل بين الخزائن', 'Transfer Between Cashboxes')}</span>
           </button>
         </div>
       </div>
@@ -816,7 +861,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             <span>{statusBanner.text}</span>
           </div>
           <button onClick={() => setStatusBanner(null)} className="underline text-[11px] cursor-pointer">
-            إغلاق
+            {t('إغلاق', 'Close')}
           </button>
         </div>
       )}
@@ -824,11 +869,11 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
       {/* Navigation Tabs */}
       <div className="flex flex-wrap border-b border-slate-200 dark:border-[#21375C] text-xs font-bold gap-2 sm:gap-3 bg-white dark:bg-[#0E1C36] px-2.5 pt-1 rounded-t-lg">
         {[
-          { key: 'customer-accounts' as const, label: `حسابات العملاء (${customers.length})`, Icon: CustomersGroupIcon },
-          { key: 'supplier-accounts' as const, label: `حسابات الموردين (${suppliers.length})`, Icon: SuppliersTruckIcon },
-          { key: 'cashboxes' as const, label: `الخزائن والبنوك (${cashboxes.length})`, Icon: SafeVaultIcon },
-          { key: 'transactions' as const, label: `الحركات المالية (${financialTransactions.length})`, Icon: AccountsLedgerIcon },
-          { key: 'expenses' as const, label: `المصروفات والإيرادات (${expenseIncomes.length})`, Icon: ExpensesCashIcon },
+          { key: 'customer-accounts' as const, label: `${t('حسابات العملاء', 'Customer Accounts')} (${customers.length})`, Icon: CustomersGroupIcon },
+          { key: 'supplier-accounts' as const, label: `${t('حسابات الموردين', 'Supplier Accounts')} (${suppliers.length})`, Icon: SuppliersTruckIcon },
+          { key: 'cashboxes' as const, label: `${t('الخزائن والبنوك', 'Cashboxes & Banks')} (${cashboxes.length})`, Icon: SafeVaultIcon },
+          { key: 'transactions' as const, label: `${t('الحركات المالية', 'Financial Transactions')} (${financialTransactions.length})`, Icon: AccountsLedgerIcon },
+          { key: 'expenses' as const, label: `${t('المصروفات والإيرادات', 'Expenses & Income')} (${expenseIncomes.length})`, Icon: ExpensesCashIcon },
         ].map((tab) => {
           const isActive = activeTab === tab.key;
           return (
@@ -848,57 +893,57 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
         })}
       </div>
 
-      {/* TAB: CUSTOMER ACCOUNTS (حسابات جميع العملاء بالتفصيل) */}
+      {/* TAB: CUSTOMER ACCOUNTS */}
       {activeTab === 'customer-accounts' && (
         <div className="space-y-2">
           {/* Separated KPI Strip: NEVER net لنا & علينا */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-slate-200 dark:bg-[#21375C] border border-slate-200 dark:border-[#21375C] rounded-lg overflow-hidden text-xs">
             <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
-              <span className="text-[10px] font-bold text-slate-600 dark:text-[#A9BCD9] block">إجمالي مستحقاتنا عند العملاء (لنا)</span>
+              <span className="text-[10px] font-bold text-slate-600 dark:text-[#A9BCD9] block">{t('إجمالي مستحقاتنا عند العملاء (لنا)', 'Total Customer Receivables (Due to Us)')}</span>
               <div className="text-sm font-black font-mono tabular-nums text-red-700 dark:text-rose-400">
-                {customerKpis.receivableTotal.toLocaleString()} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">{settings.currency}</span>
+                {formatLocaleNumber(customerKpis.receivableTotal)} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">{settings.currency}</span>
               </div>
-              <span className="text-[10px] font-bold text-red-600 dark:text-rose-300">عدد {customerKpis.debtorsCount} عميل مدين</span>
+              <span className="text-[10px] font-bold text-red-600 dark:text-rose-300">{t('عدد', 'Count:')} {customerKpis.debtorsCount} {t('عميل مدين', 'debtor customers')}</span>
             </div>
 
             <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
-              <span className="text-[10px] font-bold text-slate-600 dark:text-[#A9BCD9] block">إجمالي الدفعات المقدمة للعملاء (علينا)</span>
+              <span className="text-[10px] font-bold text-slate-600 dark:text-[#A9BCD9] block">{t('إجمالي الدفعات المقدمة للعملاء (علينا)', 'Total Customer Advances (Credit Liability)')}</span>
               <div className="text-sm font-black font-mono tabular-nums text-emerald-700 dark:text-emerald-400">
-                {customerKpis.advanceTotal.toLocaleString()} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">{settings.currency}</span>
+                {formatLocaleNumber(customerKpis.advanceTotal)} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">{settings.currency}</span>
               </div>
-              <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300">عدد {customerKpis.creditorsCount} عميل برصيد دائن</span>
+              <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300">{t('عدد', 'Count:')} {customerKpis.creditorsCount} {t('عميل برصيد دائن', 'credit-balance customers')}</span>
             </div>
 
             <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
-              <span className="text-[10px] font-bold text-slate-600 dark:text-[#A9BCD9] block">إجمالي التحصيلات من العملاء</span>
+              <span className="text-[10px] font-bold text-slate-600 dark:text-[#A9BCD9] block">{t('إجمالي التحصيلات من العملاء', 'Total Collections from Customers')}</span>
               <div className="text-sm font-black font-mono tabular-nums text-blue-950 dark:text-[#85B8FF]">
-                {customerKpis.totalCollections.toLocaleString()} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">{settings.currency}</span>
+                {formatLocaleNumber(customerKpis.totalCollections)} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">{settings.currency}</span>
               </div>
-              <span className="text-[10px] text-slate-500 dark:text-[#97AECE]">نقدي الفواتير + سندات القبض</span>
+              <span className="text-[10px] text-slate-500 dark:text-[#97AECE]">{t('نقدي الفواتير + سندات القبض', 'Invoice Cash + Receipt Vouchers')}</span>
             </div>
 
             <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
-              <span className="text-[10px] font-bold text-slate-600 dark:text-[#A9BCD9] block">إجمالي عدد العملاء</span>
+              <span className="text-[10px] font-bold text-slate-600 dark:text-[#A9BCD9] block">{t('إجمالي عدد العملاء', 'Total Customers')}</span>
               <div className="text-sm font-black font-mono tabular-nums text-slate-900 dark:text-[#F3F7FC]">
-                {customerKpis.totalCount}
+                {formatLocaleNumber(customerKpis.totalCount)}
               </div>
-              <span className="text-[10px] text-slate-500 dark:text-[#97AECE]">ملفات العملاء النشطة والمسجلة</span>
+              <span className="text-[10px] text-slate-500 dark:text-[#97AECE]">{t('ملفات العملاء النشطة والمسجلة', 'Active & registered customer files')}</span>
             </div>
           </div>
 
           <UnifiedDataTable<Customer>
-            title="حسابات العملاء التفصيلية"
-            subtitle="كشوف الحسابات والتحصيل النقدي والبنكي"
+            title={t('حسابات العملاء التفصيلية', 'Detailed Customer Accounts')}
+            subtitle={t('كشوف الحسابات والتحصيل النقدي والبنكي', 'Account statements and cash/bank collections')}
             data={filteredCustomersList}
             rowKey={(c) => c.id}
             onRowClick={(c) => handleOpenCustomerStatement(c)}
             compact
             searchValue={custSearch}
             onSearchChange={setCustSearch}
-            searchPlaceholder="بحث باسم العميل أو المحل أو الكود أو الموبايل..."
-            exportFilename={`حسابات_العملاء_${new Date().toISOString().split('T')[0]}`}
-            pdfTitle="حسابات العملاء التفصيلية"
-            emptyTitle="لا يوجد عملاء مطابقون لمعايير البحث أو التصفية"
+            searchPlaceholder={t('بحث باسم العميل أو المحل أو الكود أو الموبايل...', 'Search by customer, shop, code, or phone...')}
+            exportFilename={`${t('حسابات_العملاء', 'Customer_Accounts')}_${new Date().toISOString().split('T')[0]}`}
+            pdfTitle={t('حسابات العملاء التفصيلية', 'Detailed Customer Accounts')}
+            emptyTitle={t('لا يوجد عملاء مطابقون لمعايير البحث أو التصفية', 'No customers match the search or filter criteria')}
             toolbarFilters={
               <div className="flex flex-nowrap items-center gap-1.5 text-xs shrink-0">
                 <select
@@ -906,26 +951,26 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                   onChange={(e) => setCustDirFilter(e.target.value as any)}
                   className="h-8 shrink-0 bg-slate-50 border border-slate-300 rounded-md px-2 text-xs font-bold text-slate-700"
                 >
-                  <option value="all">جميع الأرصدة ({customers.length})</option>
-                  <option value="debt">مدينون لنا فقط ({customerKpis.debtorsCount})</option>
-                  <option value="credit">دفعات مقدمة / علينا ({customerKpis.creditorsCount})</option>
-                  <option value="settled">حسابات متوازنة (0)</option>
+                  <option value="all">{t('جميع الأرصدة', 'All Balances')} ({customers.length})</option>
+                  <option value="debt">{t('مدينون لنا فقط', 'Debtors Only')} ({customerKpis.debtorsCount})</option>
+                  <option value="credit">{t('دفعات مقدمة / علينا', 'Advances / Credits')} ({customerKpis.creditorsCount})</option>
+                  <option value="settled">{t('حسابات متوازنة (0)', 'Settled Accounts (0)')}</option>
                 </select>
                 <select
                   value={custSort}
                   onChange={(e) => setCustSort(e.target.value as any)}
                   className="h-8 shrink-0 bg-slate-50 border border-slate-300 rounded-md px-2 text-xs font-bold text-slate-700"
                 >
-                  <option value="balance_desc">الأعلى مديونية</option>
-                  <option value="balance_asc">الأعلى رصيداً مقدماً</option>
-                  <option value="name">ترتيب أبجدي</option>
+                  <option value="balance_desc">{t('الأعلى مديونية', 'Highest Receivable')}</option>
+                  <option value="balance_asc">{t('الأعلى رصيداً مقدماً', 'Highest Advance Credit')}</option>
+                  <option value="name">{t('ترتيب أبجدي', 'Alphabetical')}</option>
                 </select>
               </div>
             }
             columns={[
               {
                 key: 'code',
-                header: 'الكود',
+                header: t('الكود', 'Code'),
                 sortable: true,
                 sortValue: (c) => c.code,
                 exportValue: (c) => c.code,
@@ -933,7 +978,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               },
               {
                 key: 'name',
-                header: 'اسم العميل / المحل',
+                header: t('اسم العميل / المحل', 'Customer / Shop'),
                 sortable: true,
                 sortValue: (c) => c.shopName || c.name,
                 exportValue: (c) => (c.shopName ? `${c.shopName} (${c.name})` : c.name),
@@ -948,7 +993,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               },
               {
                 key: 'phone',
-                header: 'رقم الهاتف',
+                header: t('رقم الهاتف', 'Phone'),
                 exportValue: (c) => c.phone || '-',
                 render: (c) => (
                   <div className="font-mono">
@@ -963,7 +1008,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               },
               {
                 key: 'currentBalance',
-                header: 'موقف الحساب (لنا / علينا)',
+                header: t('موقف الحساب (لنا / علينا)', 'Balance Status'),
                 align: 'center',
                 sortable: true,
                 sortValue: (c) => Number(c.currentBalance || 0),
@@ -972,7 +1017,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               },
               {
                 key: 'actions',
-                header: 'الإجراءات',
+                header: t('الإجراءات', 'Actions'),
                 align: 'center',
                 render: (c) => (
                   <div className="flex items-center justify-center gap-1 flex-wrap">
@@ -982,7 +1027,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                       className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg font-bold cursor-pointer"
                     >
                       <FileText className="w-3.5 h-3.5 text-[#003589]" />
-                      <span>كشف حساب</span>
+                      <span>{t('كشف حساب', 'Statement')}</span>
                     </button>
                     <button
                       type="button"
@@ -996,7 +1041,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                       className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#003589] hover:bg-[#0049B0] text-white rounded-lg font-bold cursor-pointer"
                     >
                       <ArrowDownLeft className="w-3.5 h-3.5" />
-                      <span>تحصيل دفعة</span>
+                      <span>{t('تحصيل دفعة', 'Collect Payment')}</span>
                     </button>
                   </div>
                 ),
@@ -1006,57 +1051,57 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
         </div>
       )}
 
-      {/* TAB: SUPPLIER ACCOUNTS (حسابات جميع الموردين بالتفصيل) */}
+      {/* TAB: SUPPLIER ACCOUNTS */}
       {activeTab === 'supplier-accounts' && (
         <div className="space-y-3">
           {/* Separated KPI Strip: NEVER net علينا & لنا */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden text-xs">
             <div className="bg-white px-3 py-2">
-              <span className="text-[10px] font-bold text-slate-600 block">إجمالي مستحقات الموردين (علينا)</span>
+              <span className="text-[10px] font-bold text-slate-600 block">{t('إجمالي مستحقات الموردين (علينا)', 'Total Supplier Payables (Due)')}</span>
               <div className="text-base font-black font-mono tabular-nums text-amber-800">
-                {supplierKpis.payableTotal.toLocaleString()} <span className="text-[10px] font-sans text-slate-500">{settings.currency}</span>
+                {formatLocaleNumber(supplierKpis.payableTotal)} <span className="text-[10px] font-sans text-slate-500">{settings.currency}</span>
               </div>
-              <span className="text-[10px] font-bold text-amber-700">عدد {supplierKpis.payablesCount} مورد مستحق لهم</span>
+              <span className="text-[10px] font-bold text-amber-700">{t('عدد', 'Count:')} {supplierKpis.payablesCount} {t('مورد مستحق لهم', 'suppliers payable')}</span>
             </div>
 
             <div className="bg-white px-3 py-2">
-              <span className="text-[10px] font-bold text-slate-600 block">إجمالي الدفعات المقدمة عند الموردين (لنا)</span>
+              <span className="text-[10px] font-bold text-slate-600 block">{t('إجمالي الدفعات المقدمة عند الموردين (لنا)', 'Total Advances with Suppliers (Our Credit)')}</span>
               <div className="text-base font-black font-mono tabular-nums text-emerald-700">
-                {supplierKpis.advanceTotal.toLocaleString()} <span className="text-[10px] font-sans text-slate-500">{settings.currency}</span>
+                {formatLocaleNumber(supplierKpis.advanceTotal)} <span className="text-[10px] font-sans text-slate-500">{settings.currency}</span>
               </div>
-              <span className="text-[10px] font-bold text-emerald-700">عدد {supplierKpis.advancesCount} مورد لديهم رصيد لنا</span>
+              <span className="text-[10px] font-bold text-emerald-700">{t('عدد', 'Count:')} {supplierKpis.advancesCount} {t('مورد لديهم رصيد لنا', 'suppliers with advance credit')}</span>
             </div>
 
             <div className="bg-white px-3 py-2">
-              <span className="text-[10px] font-bold text-slate-600 block">إجمالي المدفوعات للموردين</span>
+              <span className="text-[10px] font-bold text-slate-600 block">{t('إجمالي المدفوعات للموردين', 'Total Paid to Suppliers')}</span>
               <div className="text-base font-black font-mono tabular-nums text-blue-950">
-                {supplierKpis.totalPayments.toLocaleString()} <span className="text-[10px] font-sans text-slate-500">{settings.currency}</span>
+                {formatLocaleNumber(supplierKpis.totalPayments)} <span className="text-[10px] font-sans text-slate-500">{settings.currency}</span>
               </div>
-              <span className="text-[10px] text-slate-500">سداد فواتير الشراء + سندات الصرف</span>
+              <span className="text-[10px] text-slate-500">{t('سداد فواتير الشراء + سندات الصرف', 'Purchase Invoices + Payment Vouchers')}</span>
             </div>
 
             <div className="bg-white px-3 py-2">
-              <span className="text-[10px] font-bold text-slate-600 block">إجمالي عدد الموردين</span>
+              <span className="text-[10px] font-bold text-slate-600 block">{t('إجمالي عدد الموردين', 'Total Suppliers')}</span>
               <div className="text-base font-black font-mono tabular-nums text-slate-900">
-                {supplierKpis.totalCount}
+                {formatLocaleNumber(supplierKpis.totalCount)}
               </div>
-              <span className="text-[10px] text-slate-500">شركات ومصانع التوريد المسجلة</span>
+              <span className="text-[10px] text-slate-500">{t('شركات ومصانع التوريد المسجلة', 'Registered supply companies & factories')}</span>
             </div>
           </div>
 
           <UnifiedDataTable<Supplier>
-            title="حسابات الموردين التفصيلية"
-            subtitle="كشوف الحسابات وسداد المستحقات وتسوية الدفعات المقدمة"
+            title={t('حسابات الموردين التفصيلية', 'Detailed Supplier Accounts')}
+            subtitle={t('كشوف الحسابات وسداد المستحقات وتسوية الدفعات المقدمة', 'Account statements, payments, and advance settlements')}
             data={filteredSuppliersList}
             rowKey={(s) => s.id}
             onRowClick={(s) => handleOpenSupplierStatement(s)}
             compact
             searchValue={suppSearch}
             onSearchChange={setSuppSearch}
-            searchPlaceholder="بحث باسم المورد أو الكود أو رقم الهاتف..."
-            exportFilename={`حسابات_الموردين_${new Date().toISOString().split('T')[0]}`}
-            pdfTitle="حسابات الموردين التفصيلية"
-            emptyTitle="لا يوجد موردون مطابقون لمعايير البحث أو التصفية"
+            searchPlaceholder={t('بحث باسم المورد أو الكود أو رقم الهاتف...', 'Search by supplier name, code, or phone...')}
+            exportFilename={`${t('حسابات_الموردين', 'Supplier_Accounts')}_${new Date().toISOString().split('T')[0]}`}
+            pdfTitle={t('حسابات الموردين التفصيلية', 'Detailed Supplier Accounts')}
+            emptyTitle={t('لا يوجد موردون مطابقون لمعايير البحث أو التصفية', 'No suppliers match the search or filter criteria')}
             toolbarFilters={
               <div className="flex flex-nowrap items-center gap-1.5 text-xs shrink-0">
                 <select
@@ -1064,26 +1109,26 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                   onChange={(e) => setSuppDirFilter(e.target.value as any)}
                   className="h-8 shrink-0 bg-slate-50 border border-slate-300 rounded-md px-2 text-xs font-bold text-slate-700"
                 >
-                  <option value="all">جميع الموردين ({suppliers.length})</option>
-                  <option value="payable">مستحق للمورد (علينا) ({supplierKpis.payablesCount})</option>
-                  <option value="advance">دفعة مقدمة لنا ({supplierKpis.advancesCount})</option>
-                  <option value="settled">حسابات متوازنة (0)</option>
+                  <option value="all">{t('جميع الموردين', 'All Suppliers')} ({suppliers.length})</option>
+                  <option value="payable">{t('مستحق للمورد (علينا)', 'Payable to Supplier')} ({supplierKpis.payablesCount})</option>
+                  <option value="advance">{t('دفعة مقدمة لنا', 'Our Advance')} ({supplierKpis.advancesCount})</option>
+                  <option value="settled">{t('حسابات متوازنة (0)', 'Settled Accounts (0)')}</option>
                 </select>
                 <select
                   value={suppSort}
                   onChange={(e) => setSuppSort(e.target.value as any)}
                   className="h-8 shrink-0 bg-slate-50 border border-slate-300 rounded-md px-2 text-xs font-bold text-slate-700"
                 >
-                  <option value="balance_desc">الأعلى مستحقات علينا</option>
-                  <option value="balance_asc">الأعلى دفعات مقدمة لنا</option>
-                  <option value="name">ترتيب أبجدي</option>
+                  <option value="balance_desc">{t('الأعلى مستحقات علينا', 'Highest Payable')}</option>
+                  <option value="balance_asc">{t('الأعلى دفعات مقدمة لنا', 'Highest Advance Credit')}</option>
+                  <option value="name">{t('ترتيب أبجدي', 'Alphabetical')}</option>
                 </select>
               </div>
             }
             columns={[
               {
                 key: 'code',
-                header: 'الكود',
+                header: t('الكود', 'Code'),
                 sortable: true,
                 sortValue: (s) => s.code,
                 exportValue: (s) => s.code,
@@ -1091,7 +1136,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               },
               {
                 key: 'name',
-                header: 'اسم المورد / الشركة',
+                header: t('اسم المورد / الشركة', 'Supplier / Company'),
                 sortable: true,
                 sortValue: (s) => s.name,
                 exportValue: (s) => s.name,
@@ -1104,7 +1149,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               },
               {
                 key: 'phone',
-                header: 'رقم الهاتف',
+                header: t('رقم الهاتف', 'Phone'),
                 exportValue: (s) => s.phone || '-',
                 render: (s) => (
                   <div className="font-mono">
@@ -1119,7 +1164,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               },
               {
                 key: 'currentBalance',
-                header: 'موقف الحساب (علينا / لنا)',
+                header: t('موقف الحساب (علينا / لنا)', 'Balance Status'),
                 align: 'center',
                 sortable: true,
                 sortValue: (s) => Number(s.currentBalance || 0),
@@ -1128,7 +1173,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               },
               {
                 key: 'actions',
-                header: 'الإجراءات',
+                header: t('الإجراءات', 'Actions'),
                 align: 'center',
                 render: (s) => {
                   const { openInvoices, availableAdvance } = getSupplierAdvanceInfo(s);
@@ -1140,7 +1185,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                         className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg font-bold cursor-pointer"
                       >
                         <FileText className="w-3.5 h-3.5 text-[#003589]" />
-                        <span>كشف حساب</span>
+                        <span>{t('كشف حساب', 'Statement')}</span>
                       </button>
                       <button
                         type="button"
@@ -1153,7 +1198,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                         className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#011E58] hover:bg-[#002160] text-white rounded-lg font-bold cursor-pointer"
                       >
                         <ArrowUpRight className="w-3.5 h-3.5" />
-                        <span>سداد دفعة</span>
+                        <span>{t('سداد دفعة', 'Pay Supplier')}</span>
                       </button>
                       {availableAdvance > 0 && openInvoices.length > 0 && (currentUser?.role === 'admin' || hasPermission('canManageAccounts')) && (
                         <button
@@ -1169,7 +1214,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                           className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] border border-[#DCE6F5] rounded-lg font-bold cursor-pointer"
                         >
                           <DollarSign className="w-3.5 h-3.5" />
-                          <span>تسوية مقدم</span>
+                          <span>{t('تسوية مقدم', 'Settle Advance')}</span>
                         </button>
                       )}
                     </div>
@@ -1184,16 +1229,16 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
       {/* Tab 1: Cashboxes List */}
       {activeTab === 'cashboxes' && (
         <UnifiedDataTable
-          title="الخزائن والحسابات البنكية"
-          subtitle="أرصدة النقدية بالخزائن والحسابات البنكية المسجلة"
+          title={t('الخزائن والحسابات البنكية', 'Cashboxes & Bank Accounts')}
+          subtitle={t('أرصدة النقدية بالخزائن والحسابات البنكية المسجلة', 'Cash balances in registered cashboxes and bank accounts')}
           data={cashboxes}
           rowKey={(cb) => cb.id}
           onRowClick={(cb) => setPreviewFinanceItem({ kind: 'cashbox', item: cb })}
           compact
-          searchPlaceholder="بحث باسم الخزينة أو رقم الحساب..."
+          searchPlaceholder={t('بحث باسم الخزينة أو رقم الحساب...', 'Search by cashbox name or account #...')}
           searchFilter={(cb, q) => `${cb.name} ${cb.accountNumber || ''}`.toLowerCase().includes(q)}
           exportFilename="AWLAD_SELIM_Cashboxes"
-          pdfTitle="الخزائن والحسابات البنكية"
+          pdfTitle={t('الخزائن والحسابات البنكية', 'Cashboxes & Bank Accounts')}
           headerActions={
             <button
               type="button"
@@ -1201,13 +1246,13 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               className="px-3 py-1 rounded-lg bg-blue-900 hover:bg-blue-950 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>إضافة خزينة / حساب بنكي</span>
+              <span>{t('إضافة خزينة / حساب بنكي', 'Add Cashbox / Bank Account')}</span>
             </button>
           }
           columns={[
             {
               key: 'name',
-              header: 'الخزينة / الحساب',
+              header: t('الخزينة / الحساب', 'Cashbox / Account'),
               sortable: true,
               sortValue: (cb) => cb.name,
               exportValue: (cb) => cb.name,
@@ -1222,30 +1267,30 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             },
             {
               key: 'type',
-              header: 'النوع',
-              exportValue: (cb) => (cb.type === 'bank' ? 'حساب بنكي' : 'خزينة نقدية'),
+              header: t('النوع', 'Type'),
+              exportValue: (cb) => (cb.type === 'bank' ? t('حساب بنكي', 'Bank Account') : t('خزينة نقدية', 'Cashbox')),
               render: (cb) => (
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
-                  {cb.type === 'bank' ? 'حساب بنكي' : 'خزينة نقدية'}
+                  {cb.type === 'bank' ? t('حساب بنكي', 'Bank Account') : t('خزينة نقدية', 'Cashbox')}
                 </span>
               ),
             },
             {
               key: 'accountNumber',
-              header: 'رقم الحساب',
+              header: t('رقم الحساب', 'Account #'),
               exportValue: (cb) => cb.accountNumber || '-',
               render: (cb) => <span className="font-mono text-slate-600">{cb.accountNumber || '-'}</span>,
             },
             {
               key: 'currentBalance',
-              header: 'الرصيد المتاح',
+              header: t('الرصيد المتاح', 'Available Balance'),
               align: 'center',
               sortable: true,
               sortValue: (cb) => (cb.balanceHidden ? 0 : Number(cb.currentBalance ?? 0)),
-              exportValue: (cb) => (cb.balanceHidden ? 'محجوب' : Number(cb.currentBalance ?? 0)),
+              exportValue: (cb) => (cb.balanceHidden ? t('محجوب', 'Hidden') : Number(cb.currentBalance ?? 0)),
               render: (cb) => (
                 <span className="font-mono text-sm font-black text-blue-950 tabular-nums">
-                  {cb.balanceHidden ? 'محجوب' : `${(cb.currentBalance ?? 0).toLocaleString()} ${settings.currency}`}
+                  {cb.balanceHidden ? t('محجوب', 'Hidden') : `${formatLocaleNumber(cb.currentBalance ?? 0)} ${settings.currency}`}
                 </span>
               ),
             },
@@ -1256,20 +1301,20 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
       {/* Tab 2: Financial Transactions */}
       {activeTab === 'transactions' && (
         <UnifiedDataTable
-          title="حركة الخزائن والبنوك"
+          title={t('حركة الخزائن والبنوك', 'Cashbox & Bank Transactions')}
           data={filteredTransactions}
           rowKey={(tx) => tx.id}
           onRowClick={(tx) => setPreviewFinanceItem({ kind: 'transaction', item: tx })}
           compact
           searchValue={searchTerm}
           onSearchChange={setSearchTerm}
-          searchPlaceholder="بحث برقم الحركة، الخزينة، أو البيان..."
+          searchPlaceholder={t('بحث برقم الحركة، الخزينة، أو البيان...', 'Search by tx #, cashbox, or description...')}
           exportFilename="AWLAD_SELIM_FinancialTransactions"
-          pdfTitle="سجل حركات الخزائن والبنوك"
+          pdfTitle={t('سجل حركات الخزائن والبنوك', 'Cashbox & Bank Transactions Log')}
           columns={[
             {
               key: 'transactionNumber',
-              header: 'رقم الحركة',
+              header: t('رقم الحركة', 'Tx #'),
               sortable: true,
               sortValue: (tx) => tx.transactionNumber,
               exportValue: (tx) => tx.transactionNumber,
@@ -1277,7 +1322,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             },
             {
               key: 'date',
-              header: 'التاريخ',
+              header: t('التاريخ', 'Date'),
               sortable: true,
               sortValue: (tx) => tx.date,
               exportValue: (tx) => tx.date,
@@ -1285,38 +1330,38 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             },
             {
               key: 'cashboxName',
-              header: 'الخزينة',
+              header: t('الخزينة', 'Cashbox'),
               exportValue: (tx) => tx.cashboxName,
               render: (tx) => <span className="font-semibold">{tx.cashboxName}</span>,
             },
             {
               key: 'category',
-              header: 'نوع الحركة',
-              exportValue: (tx) => tx.category,
-              render: (tx) => <span className="font-bold text-slate-800">{tx.category}</span>,
+              header: t('نوع الحركة', 'Transaction Type'),
+              exportValue: (tx) => t(tx.category),
+              render: (tx) => <span className="font-bold text-slate-800">{t(tx.category)}</span>,
             },
             {
               key: 'description',
-              header: 'البيان',
+              header: t('البيان', 'Description'),
               exportValue: (tx) => tx.description,
               render: (tx) => <span className="text-slate-600">{tx.description}</span>,
             },
             {
               key: 'amount',
-              header: 'المبلغ',
+              header: t('المبلغ', 'Amount'),
               align: 'center',
               sortable: true,
               sortValue: (tx) => tx.amount,
               exportValue: (tx) => tx.amount,
               render: (tx) => (
                 <span className="font-mono font-black text-sm text-blue-950 tabular-nums">
-                  {tx.amount.toLocaleString()} {settings.currency}
+                  {formatLocaleNumber(tx.amount)} {settings.currency}
                 </span>
               ),
             },
             {
               key: 'createdBy',
-              header: 'المستخدم المسؤول',
+              header: t('المستخدم المسؤول', 'Created By'),
               exportValue: (tx) => tx.createdBy,
               render: (tx) => <span className="text-slate-500">{tx.createdBy}</span>,
             },
@@ -1327,32 +1372,32 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
       {/* Tab 3: Expenses & Income */}
       {activeTab === 'expenses' && (
         <UnifiedDataTable
-          title="سندات المصروفات والإيرادات"
+          title={t('سندات المصروفات والإيرادات', 'Expenses & Income Vouchers')}
           data={filteredExpenses}
           rowKey={(rec) => rec.id}
           onRowClick={(rec) => setPreviewFinanceItem({ kind: 'expense', item: rec })}
           compact
           searchValue={searchTerm}
           onSearchChange={setSearchTerm}
-          searchPlaceholder="بحث برقم السند، البند، الخزينة، أو الجهة..."
-          exportFilename={`المصروفات_والإيرادات_${new Date().toISOString().split('T')[0]}`}
-          pdfTitle="سندات المصروفات والإيرادات"
-          emptyTitle="لا توجد مصروفات أو إيرادات مسجلة مطابقة للبحث"
+          searchPlaceholder={t('بحث برقم السند، البند، الخزينة، أو الجهة...', 'Search by voucher #, category, cashbox, or party...')}
+          exportFilename={`${t('المصروفات_والإيرادات', 'Expenses_and_Income')}_${new Date().toISOString().split('T')[0]}`}
+          pdfTitle={t('سندات المصروفات والإيرادات', 'Expenses & Income Vouchers')}
+          emptyTitle={t('لا توجد مصروفات أو إيرادات مسجلة مطابقة للبحث', 'No expenses or income vouchers match the search')}
           toolbarFilters={
             <select
               value={expenseTypeFilter}
               onChange={(e) => setExpenseTypeFilter(e.target.value as any)}
               className="h-8 shrink-0 bg-slate-50 border border-slate-300 rounded-md px-2 text-xs font-bold text-slate-700 outline-hidden"
             >
-              <option value="all">الكل (مصروفات وإيرادات)</option>
-              <option value="expense">المصروفات فقط</option>
-              <option value="income">الإيرادات فقط</option>
+              <option value="all">{t('الكل (مصروفات وإيرادات)', 'All (Expenses & Income)')}</option>
+              <option value="expense">{t('المصروفات فقط', 'Expenses Only')}</option>
+              <option value="income">{t('الإيرادات فقط', 'Income Only')}</option>
             </select>
           }
           columns={[
             {
               key: 'recordNumber',
-              header: 'رقم السند',
+              header: t('رقم السند', 'Voucher #'),
               sortable: true,
               sortValue: (rec) => rec.recordNumber,
               exportValue: (rec) => rec.recordNumber,
@@ -1360,7 +1405,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             },
             {
               key: 'date',
-              header: 'التاريخ',
+              header: t('التاريخ', 'Date'),
               sortable: true,
               sortValue: (rec) => rec.date,
               exportValue: (rec) => rec.date,
@@ -1368,22 +1413,22 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             },
             {
               key: 'type',
-              header: 'النوع',
-              exportValue: (rec) => (rec.type === 'expense' ? 'مصروف' : 'إيراد'),
+              header: t('النوع', 'Type'),
+              exportValue: (rec) => (rec.type === 'expense' ? t('مصروف', 'Expense') : t('إيراد', 'Income')),
               render: (rec) =>
                 rec.type === 'expense' ? (
                   <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-900 border border-amber-200 font-bold text-[10px]">
-                    سند صرف (مصروف)
+                    {t('سند صرف (مصروف)', 'Payment Voucher (Expense)')}
                   </span>
                 ) : (
                   <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold text-[10px]">
-                    سند قبض (إيراد)
+                    {t('سند قبض (إيراد)', 'Receipt Voucher (Income)')}
                   </span>
                 ),
             },
             {
               key: 'category',
-              header: 'البند / التصنيف',
+              header: t('البند / التصنيف', 'Category'),
               sortable: true,
               sortValue: (rec) => rec.category,
               exportValue: (rec) => rec.category,
@@ -1391,32 +1436,32 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             },
             {
               key: 'cashboxName',
-              header: 'الخزينة',
+              header: t('الخزينة', 'Cashbox'),
               exportValue: (rec) => rec.cashboxName,
               render: (rec) => <span className="font-semibold text-slate-700">{rec.cashboxName}</span>,
             },
             {
               key: 'recipientOrPayer',
-              header: 'الجهة المستلمة / الدافعة',
+              header: t('الجهة المستلمة / الدافعة', 'Recipient / Payer'),
               exportValue: (rec) => rec.recipientOrPayer,
               render: (rec) => <span className="text-slate-700">{rec.recipientOrPayer}</span>,
             },
             {
               key: 'amount',
-              header: 'المبلغ',
+              header: t('المبلغ', 'Amount'),
               align: 'center',
               sortable: true,
               sortValue: (rec) => rec.amount,
               exportValue: (rec) => rec.amount,
               render: (rec) => (
                 <span className={`font-mono font-black text-sm tabular-nums ${rec.type === 'expense' ? 'text-amber-800' : 'text-emerald-700'}`}>
-                  {rec.amount.toLocaleString()} {settings.currency}
+                  {formatLocaleNumber(rec.amount)} {settings.currency}
                 </span>
               ),
             },
             {
               key: 'notes',
-              header: 'ملاحظات',
+              header: t('ملاحظات', 'Notes'),
               exportValue: (rec) => rec.notes || '-',
               render: (rec) => <span className="text-slate-500">{rec.notes || '-'}</span>,
             },
@@ -1429,70 +1474,82 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
         <Modal
           isOpen={!!custStatementTarget}
           onClose={() => setCustStatementTarget(null)}
-          title={`كشف حساب العميل التفصيلي: ${custStatementTarget.shopName || custStatementTarget.name}`}
+          title={t(
+            `كشف حساب العميل التفصيلي: ${custStatementTarget.shopName || custStatementTarget.name}`,
+            `Detailed Customer Statement: ${custStatementTarget.shopName || custStatementTarget.name}`
+          )}
           subtitle={`${custStatementTarget.code}${custStatementTarget.phone ? ` · ${custStatementTarget.phone}` : ''}`}
           maxWidth="6xl"
         >
           {isLoadingCustStatement || !custStatementData ? (
-            <div className="p-4 text-center text-xs font-bold text-slate-500">جاري تحميل كشف حساب العميل...</div>
+            <div className="p-4 text-center text-xs font-bold text-slate-500">{t('جاري تحميل كشف حساب العميل...', 'Loading customer statement...')}</div>
           ) : (
             <div className="space-y-2 text-xs">
               {/* Summary Strip (Separated Debt vs Advance Credit) */}
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-slate-200 dark:bg-[#21375C] border border-slate-200 dark:border-[#21375C] rounded-lg overflow-hidden">
                 <div className="px-2.5 py-2 bg-slate-50 dark:bg-[#132544]">
-                  <span className="text-[10px] font-bold text-slate-500 dark:text-[#A9BCD9] block">رصيد أول المدة</span>
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-[#A9BCD9] block">{t('رصيد أول المدة', 'Opening Balance')}</span>
                   <span className="font-mono font-black text-sm text-slate-900 dark:text-[#F3F7FC]">
-                    {Number(custStatementData.summary.openingBalance || 0).toLocaleString()} {settings.currency}
+                    {formatLocaleNumber(Number(custStatementData.summary.openingBalance || 0))} {settings.currency}
                   </span>
                 </div>
                 <div className="px-2.5 py-2 bg-blue-50 dark:bg-[#16366B]/60">
-                  <span className="text-[10px] font-bold text-blue-700 dark:text-[#85B8FF] block">إجمالي المبيعات</span>
+                  <span className="text-[10px] font-bold text-blue-700 dark:text-[#85B8FF] block">{t('إجمالي المبيعات', 'Total Sales')}</span>
                   <span className="font-mono font-black text-sm text-blue-950 dark:text-[#F3F7FC]">
-                    {Number(custStatementData.summary.totalSales ?? custStatementData.summary.totalDebit ?? 0).toLocaleString()} {settings.currency}
+                    {formatLocaleNumber(Number(custStatementData.summary.totalSales ?? custStatementData.summary.totalDebit ?? 0))} {settings.currency}
                   </span>
                 </div>
                 <div className="px-2.5 py-2 bg-emerald-50 dark:bg-emerald-950/40">
-                  <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 block">إجمالي المدفوعات</span>
+                  <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 block">{t('إجمالي المدفوعات', 'Total Payments')}</span>
                   <span className="font-mono font-black text-sm text-emerald-900 dark:text-emerald-200">
-                    {Number(custStatementData.summary.totalPaid ?? custStatementData.summary.totalCredit ?? 0).toLocaleString()} {settings.currency}
+                    {formatLocaleNumber(Number(custStatementData.summary.totalPaid ?? custStatementData.summary.totalCredit ?? 0))} {settings.currency}
                   </span>
                 </div>
                 <div className="px-2.5 py-2 bg-red-50 dark:bg-rose-950/40">
-                  <span className="text-[10px] font-bold text-red-700 dark:text-rose-300 block">مستحق لنا (لنا)</span>
+                  <span className="text-[10px] font-bold text-red-700 dark:text-rose-300 block">{t('مستحق لنا (لنا)', 'Receivable (Owed to Us)')}</span>
                   <span className="font-mono font-black text-sm text-red-700 dark:text-rose-200">
-                    {Number(custStatementData.summary.debtAmount ?? Math.max(0, Number(custStatementData.summary.currentBalance || 0))).toLocaleString()} {settings.currency}
+                    {formatLocaleNumber(Number(custStatementData.summary.debtAmount ?? Math.max(0, Number(custStatementData.summary.currentBalance || 0))))} {settings.currency}
                   </span>
                 </div>
                 <div className="px-2.5 py-2 bg-[#EEF3FA] dark:bg-[#132544]">
-                  <span className="text-[10px] font-bold text-[#003589] dark:text-[#85B8FF] block">رصيد دائن للعميل (علينا)</span>
+                  <span className="text-[10px] font-bold text-[#003589] dark:text-[#85B8FF] block">{t('رصيد دائن للعميل (علينا)', 'Customer Credit (We Owe)')}</span>
                   <span className="font-mono font-black text-sm text-[#011E58] dark:text-[#F3F7FC]">
-                    {Number(custStatementData.summary.creditAmount ?? Math.max(0, -Number(custStatementData.summary.currentBalance || 0))).toLocaleString()} {settings.currency}
+                    {formatLocaleNumber(Number(custStatementData.summary.creditAmount ?? Math.max(0, -Number(custStatementData.summary.currentBalance || 0))))} {settings.currency}
                   </span>
                 </div>
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-1.5 bg-slate-50 dark:bg-[#132544] rounded-lg border border-slate-200 dark:border-[#21375C]">
                 <div className="text-[11px] text-slate-600 dark:text-[#A9BCD9] font-bold">
-                  آخر فاتورة: {custStatementData.summary.lastInvoiceNumber || '-'} ({custStatementData.summary.lastInvoiceDate || '-'})
+                  {t('آخر فاتورة', 'Last Invoice')}: {custStatementData.summary.lastInvoiceNumber || '-'} ({custStatementData.summary.lastInvoiceDate || '-'})
                   {' | '}
-                  آخر حركة: {custStatementData.summary.lastTransactionDate || '-'}
+                  {t('آخر حركة', 'Last Activity')}: {custStatementData.summary.lastTransactionDate || '-'}
                 </div>
                 <div className="flex items-center gap-1.5">
                   <button
                     type="button"
                     onClick={() => {
-                      const headers = ['التاريخ', 'رقم المستند', 'النوع', 'البيان', 'مدين (لنا)', 'دائن (سداد)', 'الرصيد التراكمي', 'الاتجاه'];
+                      const headers = [
+                        t('التاريخ', 'Date'),
+                        t('رقم المستند', 'Document No.'),
+                        t('النوع', 'Type'),
+                        t('البيان', 'Description'),
+                        t('مدين (لنا)', 'Debit (Receivable)'),
+                        t('دائن (سداد)', 'Credit (Paid)'),
+                        t('الرصيد التراكمي', 'Running Balance'),
+                        t('الاتجاه', 'Direction'),
+                      ];
                       const rows = custStatementData.entries.map((en) => [
                         en.date,
                         en.docNumber,
-                        en.label,
-                        en.description,
+                        t(en.label),
+                        t(en.description),
                         en.debit || 0,
                         en.credit || 0,
                         Math.abs(Number(en.runningBalance || 0)),
-                        Number(en.runningBalance || 0) > 0.005 ? 'لنا' : Number(en.runningBalance || 0) < -0.005 ? 'علينا' : 'متوازن',
+                        Number(en.runningBalance || 0) > 0.005 ? t('لنا', 'Receivable') : Number(en.runningBalance || 0) < -0.005 ? t('علينا', 'Credit') : t('متوازن', 'Settled'),
                       ]);
-                      exportToExcel(`كشف_حساب_عميل_${custStatementTarget.name}_${new Date().toISOString().split('T')[0]}`, headers, rows);
+                      exportToExcel(`${t('كشف_حساب_عميل', 'Customer_Statement')}_${custStatementTarget.name}_${new Date().toISOString().split('T')[0]}`, headers, rows);
                     }}
                     className="flex items-center gap-1 px-2.5 py-1 bg-white border border-slate-300 rounded-lg font-bold text-emerald-800 hover:bg-slate-100 cursor-pointer"
                   >
@@ -1503,9 +1560,9 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                     type="button"
                     onClick={() => {
                       setPrintData({
-                        title: 'كشف حساب عميل معتمد',
+                        title: t('كشف حساب عميل معتمد', 'Certified Customer Account Statement'),
                         docNumber: custStatementTarget.code,
-                        docType: 'كشف حساب',
+                        docType: t('كشف حساب', 'Account Statement'),
                         date: new Date().toISOString().split('T')[0],
                         partyName: custStatementTarget.shopName || custStatementTarget.name,
                         partyPhone: custStatementTarget.phone,
@@ -1513,9 +1570,17 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                         previousBalance: Number(custStatementData.summary.openingBalance || 0),
                         currentBalance: Number(custStatementData.summary.currentBalance || 0),
                         grandTotal: Math.abs(Number(custStatementData.summary.currentBalance || 0)),
-                        tableHeaders: ['م', 'البيان', 'التاريخ', 'العدد', 'مدين (لنا)', 'دائن (سداد)', 'الرصيد التراكمي'],
+                        tableHeaders: [
+                          t('م', '#'),
+                          t('البيان', 'Description'),
+                          t('التاريخ', 'Date'),
+                          t('العدد', 'Count'),
+                          t('مدين (لنا)', 'Debit (Receivable)'),
+                          t('دائن (سداد)', 'Credit (Paid)'),
+                          t('الرصيد التراكمي', 'Running Balance'),
+                        ],
                         items: custStatementData.entries.map((en) => ({
-                          name: `${en.label} (${en.docNumber}) - ${en.description}`,
+                          name: `${t(en.label)} (${en.docNumber}) - ${t(en.description)}`,
                           unit: en.date,
                           quantity: 1,
                           price: Number(en.debit || 0),
@@ -1528,74 +1593,74 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                     className="flex items-center gap-1 px-2.5 py-1 bg-blue-900 text-white rounded-lg font-bold hover:bg-blue-950 cursor-pointer"
                   >
                     <Printer className="w-3.5 h-3.5" />
-                    <span>طباعة</span>
+                    <span>{t('طباعة', 'Print')}</span>
                   </button>
                 </div>
               </div>
 
               <UnifiedDataTable<CustomerStatementEntry>
-                title="سجل حركات كشف حساب العميل"
+                title={t('سجل حركات كشف حساب العميل', 'Customer Account Statement Entries')}
                 data={custStatementData.entries}
                 rowKey={(entry) => entry.id}
                 compact
                 searchable={false}
                 defaultPageSize={25}
                 onRowClick={(entry) => inspectCustomerEntry(entry)}
-                emptyTitle="لا توجد حركات مسجلة لهذا العميل حتى الآن"
+                emptyTitle={t('لا توجد حركات مسجلة لهذا العميل حتى الآن', 'No transactions recorded for this customer yet')}
                 columns={[
                   {
                     key: 'date',
-                    header: 'التاريخ',
+                    header: t('التاريخ', 'Date'),
                     render: (entry) => <span className="font-mono text-slate-600">{entry.date}</span>,
                   },
                   {
                     key: 'docNumber',
-                    header: 'رقم المستند',
+                    header: t('رقم المستند', 'Document No.'),
                     render: (entry) => <span className="font-mono font-bold text-blue-900">{entry.docNumber}</span>,
                   },
                   {
                     key: 'label',
-                    header: 'نوع الحركة',
-                    render: (entry) => <span className="font-bold">{entry.label}</span>,
+                    header: t('نوع الحركة', 'Transaction Type'),
+                    render: (entry) => <span className="font-bold">{t(entry.label)}</span>,
                   },
                   {
                     key: 'description',
-                    header: 'البيان',
-                    render: (entry) => <span className="text-slate-700">{entry.description}</span>,
+                    header: t('البيان', 'Description'),
+                    render: (entry) => <span className="text-slate-700">{t(entry.description)}</span>,
                   },
                   {
                     key: 'debit',
-                    header: 'مدين (لنا)',
+                    header: t('مدين (لنا)', 'Debit (Receivable)'),
                     align: 'center',
                     render: (entry) => (
                       <span className="font-mono font-bold text-red-700 tabular-nums">
-                        {Number(entry.debit || 0) > 0 ? Number(entry.debit).toLocaleString() : '-'}
+                        {Number(entry.debit || 0) > 0 ? formatLocaleNumber(Number(entry.debit)) : '-'}
                       </span>
                     ),
                   },
                   {
                     key: 'credit',
-                    header: 'دائن (سداد)',
+                    header: t('دائن (سداد)', 'Credit (Paid)'),
                     align: 'center',
                     render: (entry) => (
                       <span className="font-mono font-bold text-emerald-700 tabular-nums">
-                        {Number(entry.credit || 0) > 0 ? Number(entry.credit).toLocaleString() : '-'}
+                        {Number(entry.credit || 0) > 0 ? formatLocaleNumber(Number(entry.credit)) : '-'}
                       </span>
                     ),
                   },
                   {
                     key: 'runningBalance',
-                    header: 'الرصيد التراكمي',
+                    header: t('الرصيد التراكمي', 'Running Balance'),
                     align: 'center',
                     render: (entry) => (
                       <span className="font-mono font-black tabular-nums">
-                        {Math.abs(Number(entry.runningBalance || 0)).toLocaleString()}
+                        {formatLocaleNumber(Math.abs(Number(entry.runningBalance || 0)))}
                       </span>
                     ),
                   },
                   {
                     key: 'direction',
-                    header: 'الحالة',
+                    header: t('الحالة', 'Status'),
                     align: 'center',
                     render: (entry) => {
                       const rb = Number(entry.runningBalance || 0);
@@ -1609,14 +1674,14 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                               : 'bg-slate-100 text-slate-600 border-slate-200'
                           }`}
                         >
-                          {rb > 0.005 ? 'لنا' : rb < -0.005 ? 'علينا' : 'متوازن'}
+                          {rb > 0.005 ? t('لنا', 'Receivable') : rb < -0.005 ? t('علينا', 'Credit') : t('متوازن', 'Settled')}
                         </span>
                       );
                     },
                   },
                   {
                     key: 'view',
-                    header: 'عرض',
+                    header: t('عرض', 'View'),
                     align: 'center',
                     render: () => <Eye className="w-4 h-4 text-blue-800 inline" />,
                   },
@@ -1632,69 +1697,78 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
         <Modal
           isOpen={!!suppStatementTarget}
           onClose={() => setSuppStatementTarget(null)}
-          title={`كشف حساب المورد التفصيلي: ${suppStatementTarget.name}`}
+          title={t(`كشف حساب المورد التفصيلي: ${suppStatementTarget.name}`, `Detailed Supplier Statement: ${suppStatementTarget.name}`)}
           subtitle={`${suppStatementTarget.code}${suppStatementTarget.phone ? ` · ${suppStatementTarget.phone}` : ''}`}
           maxWidth="6xl"
         >
           {isLoadingSuppStatement || !suppStatementData ? (
-            <div className="p-4 text-center text-xs font-bold text-slate-500">جاري تحميل كشف حساب المورد...</div>
+            <div className="p-4 text-center text-xs font-bold text-slate-500">{t('جاري تحميل كشف حساب المورد...', 'Loading supplier statement...')}</div>
           ) : (
             <div className="space-y-2 text-xs">
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-slate-200 dark:bg-[#21375C] border border-slate-200 dark:border-[#21375C] rounded-lg overflow-hidden">
                 <div className="px-2.5 py-2 bg-slate-50 dark:bg-[#132544]">
-                  <span className="text-[10px] font-bold text-slate-500 dark:text-[#A9BCD9] block">رصيد أول المدة</span>
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-[#A9BCD9] block">{t('رصيد أول المدة', 'Opening Balance')}</span>
                   <span className="font-mono font-black text-sm text-slate-900 dark:text-[#F3F7FC]">
-                    {Number(suppStatementData.summary.openingBalance || 0).toLocaleString()} {settings.currency}
+                    {formatLocaleNumber(Number(suppStatementData.summary.openingBalance || 0))} {settings.currency}
                   </span>
                 </div>
                 <div className="px-2.5 py-2 bg-[#EEF3FA] dark:bg-[#16366B]/60">
-                  <span className="text-[10px] font-bold text-[#003589] dark:text-[#85B8FF] block">إجمالي المشتريات</span>
+                  <span className="text-[10px] font-bold text-[#003589] dark:text-[#85B8FF] block">{t('إجمالي المشتريات', 'Total Purchases')}</span>
                   <span className="font-mono font-black text-sm text-[#011E58] dark:text-[#F3F7FC]">
-                    {Number(suppStatementData.summary.totalPurchases || 0).toLocaleString()} {settings.currency}
+                    {formatLocaleNumber(Number(suppStatementData.summary.totalPurchases || 0))} {settings.currency}
                   </span>
                 </div>
                 <div className="px-2.5 py-2 bg-emerald-50 dark:bg-emerald-950/40">
-                  <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 block">إجمالي المدفوعات</span>
+                  <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 block">{t('إجمالي المدفوعات', 'Total Payments')}</span>
                   <span className="font-mono font-black text-sm text-emerald-900 dark:text-emerald-200">
-                    {Number(suppStatementData.summary.totalPaid || 0).toLocaleString()} {settings.currency}
+                    {formatLocaleNumber(Number(suppStatementData.summary.totalPaid || 0))} {settings.currency}
                   </span>
                 </div>
                 <div className="px-2.5 py-2 bg-amber-50 dark:bg-amber-950/40">
-                  <span className="text-[10px] font-bold text-amber-800 dark:text-amber-300 block">مستحق للمورد (علينا)</span>
+                  <span className="text-[10px] font-bold text-amber-800 dark:text-amber-300 block">{t('مستحق للمورد (علينا)', 'Payable (We Owe)')}</span>
                   <span className="font-mono font-black text-sm text-amber-900 dark:text-amber-200">
-                    {Number(suppStatementData.summary.payableAmount || 0).toLocaleString()} {settings.currency}
+                    {formatLocaleNumber(Number(suppStatementData.summary.payableAmount || 0))} {settings.currency}
                   </span>
                 </div>
                 <div className="px-2.5 py-2 bg-emerald-50/70 dark:bg-emerald-950/30">
-                  <span className="text-[10px] font-bold text-emerald-800 dark:text-emerald-300 block">دفعة مقدمة عند المورد (لنا)</span>
+                  <span className="text-[10px] font-bold text-emerald-800 dark:text-emerald-300 block">{t('دفعة مقدمة عند المورد (لنا)', 'Advance Credit (For Us)')}</span>
                   <span className="font-mono font-black text-sm text-emerald-900 dark:text-emerald-200">
-                    {Number(suppStatementData.summary.advanceCreditAmount || 0).toLocaleString()} {settings.currency}
+                    {formatLocaleNumber(Number(suppStatementData.summary.advanceCreditAmount || 0))} {settings.currency}
                   </span>
                 </div>
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-1.5 bg-slate-50 dark:bg-[#132544] rounded-lg border border-slate-200 dark:border-[#21375C]">
                 <div className="text-[11px] text-slate-600 dark:text-[#A9BCD9] font-bold">
-                  آخر فاتورة شراء: {suppStatementData.summary.lastInvoiceNumber || '-'} ({suppStatementData.summary.lastInvoiceDate || '-'})
+                  {t('آخر فاتورة شراء', 'Last Purchase Invoice')}: {suppStatementData.summary.lastInvoiceNumber || '-'} ({suppStatementData.summary.lastInvoiceDate || '-'})
                   {' | '}
-                  آخر حركة: {suppStatementData.summary.lastTransactionDate || '-'}
+                  {t('آخر حركة', 'Last Activity')}: {suppStatementData.summary.lastTransactionDate || '-'}
                 </div>
                 <div className="flex items-center gap-1.5">
                   <button
                     type="button"
                     onClick={() => {
-                      const headers = ['التاريخ', 'رقم المستند', 'النوع', 'البيان', 'له / مشتريات', 'سداد / مرتجع', 'الرصيد التراكمي', 'الحالة'];
+                      const headers = [
+                        t('التاريخ', 'Date'),
+                        t('رقم المستند', 'Document No.'),
+                        t('النوع', 'Type'),
+                        t('البيان', 'Description'),
+                        t('له / مشتريات', 'Credit / Purchases'),
+                        t('سداد / مرتجع', 'Payment / Return'),
+                        t('الرصيد التراكمي', 'Running Balance'),
+                        t('الحالة', 'Status'),
+                      ];
                       const rows = suppStatementData.entries.map((en) => [
                         en.date,
                         en.docNumber,
-                        en.label,
-                        en.description,
+                        t(en.label),
+                        t(en.description),
                         en.credit || 0,
                         en.debit || 0,
                         Math.abs(Number(en.runningBalance || 0)),
-                        Number(en.runningBalance || 0) > 0.005 ? 'علينا' : Number(en.runningBalance || 0) < -0.005 ? 'لنا (مقدم)' : 'متوازن',
+                        Number(en.runningBalance || 0) > 0.005 ? t('علينا', 'Payable') : Number(en.runningBalance || 0) < -0.005 ? t('لنا (مقدم)', 'Advance Credit') : t('متوازن', 'Settled'),
                       ]);
-                      exportToExcel(`كشف_حساب_مورد_${suppStatementTarget.name}_${new Date().toISOString().split('T')[0]}`, headers, rows);
+                      exportToExcel(`${t('كشف_حساب_مورد', 'Supplier_Statement')}_${suppStatementTarget.name}_${new Date().toISOString().split('T')[0]}`, headers, rows);
                     }}
                     className="flex items-center gap-1 px-2.5 py-1 bg-white border border-slate-300 rounded-lg font-bold text-emerald-800 hover:bg-slate-100 cursor-pointer"
                   >
@@ -1705,9 +1779,9 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                     type="button"
                     onClick={() => {
                       setPrintData({
-                        title: 'كشف حساب مورد معتمد',
+                        title: t('كشف حساب مورد معتمد', 'Certified Supplier Account Statement'),
                         docNumber: suppStatementTarget.code,
-                        docType: 'كشف حساب',
+                        docType: t('كشف حساب', 'Account Statement'),
                         date: new Date().toISOString().split('T')[0],
                         partyName: suppStatementTarget.name,
                         partyPhone: suppStatementTarget.phone,
@@ -1715,9 +1789,17 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                         previousBalance: Number(suppStatementData.summary.openingBalance || 0),
                         currentBalance: Number(suppStatementData.summary.currentBalance || 0),
                         grandTotal: Math.abs(Number(suppStatementData.summary.currentBalance || 0)),
-                        tableHeaders: ['م', 'البيان', 'التاريخ', 'العدد', 'له / مشتريات', 'سداد / مرتجع', 'الرصيد التراكمي'],
+                        tableHeaders: [
+                          t('م', '#'),
+                          t('البيان', 'Description'),
+                          t('التاريخ', 'Date'),
+                          t('العدد', 'Count'),
+                          t('له / مشتريات', 'Credit / Purchases'),
+                          t('سداد / مرتجع', 'Payment / Return'),
+                          t('الرصيد التراكمي', 'Running Balance'),
+                        ],
                         items: suppStatementData.entries.map((en) => ({
-                          name: `${en.label} (${en.docNumber}) - ${en.description}`,
+                          name: `${t(en.label)} (${en.docNumber}) - ${t(en.description)}`,
                           unit: en.date,
                           quantity: 1,
                           price: Number(en.credit || 0),
@@ -1730,74 +1812,74 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                     className="flex items-center gap-1 px-2.5 py-1 bg-blue-900 text-white rounded-lg font-bold hover:bg-blue-950 cursor-pointer"
                   >
                     <Printer className="w-3.5 h-3.5" />
-                    <span>طباعة</span>
+                    <span>{t('طباعة', 'Print')}</span>
                   </button>
                 </div>
               </div>
 
               <UnifiedDataTable<SupplierStatementEntry>
-                title="سجل حركات كشف حساب المورد"
+                title={t('سجل حركات كشف حساب المورد', 'Supplier Account Statement Entries')}
                 data={suppStatementData.entries}
                 rowKey={(entry) => entry.id}
                 compact
                 searchable={false}
                 defaultPageSize={25}
                 onRowClick={(entry) => inspectSupplierEntry(entry)}
-                emptyTitle="لا توجد حركات مسجلة لهذا المورد حتى الآن"
+                emptyTitle={t('لا توجد حركات مسجلة لهذا المورد حتى الآن', 'No transactions recorded for this supplier yet')}
                 columns={[
                   {
                     key: 'date',
-                    header: 'التاريخ',
+                    header: t('التاريخ', 'Date'),
                     render: (entry) => <span className="font-mono text-slate-600">{entry.date}</span>,
                   },
                   {
                     key: 'docNumber',
-                    header: 'رقم المستند',
+                    header: t('رقم المستند', 'Document No.'),
                     render: (entry) => <span className="font-mono font-bold text-[#011E58]">{entry.docNumber}</span>,
                   },
                   {
                     key: 'label',
-                    header: 'نوع الحركة',
-                    render: (entry) => <span className="font-bold">{entry.label}</span>,
+                    header: t('نوع الحركة', 'Transaction Type'),
+                    render: (entry) => <span className="font-bold">{t(entry.label)}</span>,
                   },
                   {
                     key: 'description',
-                    header: 'البيان',
-                    render: (entry) => <span className="text-slate-700">{entry.description}</span>,
+                    header: t('البيان', 'Description'),
+                    render: (entry) => <span className="text-slate-700">{t(entry.description)}</span>,
                   },
                   {
                     key: 'credit',
-                    header: 'له / مشتريات',
+                    header: t('له / مشتريات', 'Credit / Purchases'),
                     align: 'center',
                     render: (entry) => (
                       <span className="font-mono font-bold text-slate-900 tabular-nums">
-                        {Number(entry.credit || 0) > 0 ? Number(entry.credit).toLocaleString() : '-'}
+                        {Number(entry.credit || 0) > 0 ? formatLocaleNumber(Number(entry.credit)) : '-'}
                       </span>
                     ),
                   },
                   {
                     key: 'debit',
-                    header: 'سداد / مرتجع',
+                    header: t('سداد / مرتجع', 'Payment / Return'),
                     align: 'center',
                     render: (entry) => (
                       <span className="font-mono font-bold text-emerald-700 tabular-nums">
-                        {Number(entry.debit || 0) > 0 ? Number(entry.debit).toLocaleString() : '-'}
+                        {Number(entry.debit || 0) > 0 ? formatLocaleNumber(Number(entry.debit)) : '-'}
                       </span>
                     ),
                   },
                   {
                     key: 'runningBalance',
-                    header: 'الرصيد التراكمي',
+                    header: t('الرصيد التراكمي', 'Running Balance'),
                     align: 'center',
                     render: (entry) => (
                       <span className="font-mono font-black tabular-nums">
-                        {Math.abs(Number(entry.runningBalance || 0)).toLocaleString()}
+                        {formatLocaleNumber(Math.abs(Number(entry.runningBalance || 0)))}
                       </span>
                     ),
                   },
                   {
                     key: 'direction',
-                    header: 'الحالة',
+                    header: t('الحالة', 'Status'),
                     align: 'center',
                     render: (entry) => {
                       const rb = Number(entry.runningBalance || 0);
@@ -1811,14 +1893,14 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                               : 'bg-slate-100 text-slate-600 border-slate-200'
                           }`}
                         >
-                          {rb > 0.005 ? 'علينا' : rb < -0.005 ? 'لنا (مقدم)' : 'متوازن'}
+                          {rb > 0.005 ? t('علينا', 'Payable') : rb < -0.005 ? t('لنا (مقدم)', 'Advance Credit') : t('متوازن', 'Settled')}
                         </span>
                       );
                     },
                   },
                   {
                     key: 'view',
-                    header: 'عرض',
+                    header: t('عرض', 'View'),
                     align: 'center',
                     render: () => <Eye className="w-4 h-4 text-[#003589] inline" />,
                   },
@@ -1835,7 +1917,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
           isOpen={!!previewStatementDoc}
           onClose={() => setPreviewStatementDoc(null)}
           title={previewStatementDoc.title}
-          subtitle={`رقم المستند: ${previewStatementDoc.docNumber} · التاريخ: ${previewStatementDoc.date}`}
+          subtitle={`${t('رقم المستند', 'Document No.')}: ${previewStatementDoc.docNumber} · ${t('التاريخ', 'Date')}: ${previewStatementDoc.date}`}
           maxWidth="4xl"
         >
           <div className="space-y-3 text-xs">
@@ -1849,13 +1931,13 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             {previewStatementDoc.invoice ? (
               <div className="space-y-2.5">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50 px-2.5 py-2 rounded-lg border border-slate-200 font-bold">
-                  <div>المستودع: {previewStatementDoc.invoice.warehouseName || '-'}</div>
-                  <div>المدفوع: {Number(previewStatementDoc.invoice.paidAmount || 0).toLocaleString()} {settings.currency}</div>
-                  <div>المتبقي: {Number(previewStatementDoc.invoice.remainingAmount || 0).toLocaleString()} {settings.currency}</div>
-                  <div>الإجمالي: {Number(previewStatementDoc.invoice.grandTotal || 0).toLocaleString()} {settings.currency}</div>
+                  <div>{t('المستودع', 'Warehouse')}: {previewStatementDoc.invoice.warehouseName || '-'}</div>
+                  <div>{t('المدفوع', 'Paid')}: {formatLocaleNumber(Number(previewStatementDoc.invoice.paidAmount || 0))} {settings.currency}</div>
+                  <div>{t('المتبقي', 'Remaining')}: {formatLocaleNumber(Number(previewStatementDoc.invoice.remainingAmount || 0))} {settings.currency}</div>
+                  <div>{t('الإجمالي', 'Total')}: {formatLocaleNumber(Number(previewStatementDoc.invoice.grandTotal || 0))} {settings.currency}</div>
                 </div>
                 <UnifiedDataTable<InvoiceItem>
-                  title="أصناف المستند"
+                  title={t('أصناف المستند', 'Document Items')}
                   data={previewStatementDoc.invoice.items || []}
                   rowKey={(it, idx) => `${it.productId || it.productName}-${idx}`}
                   compact
@@ -1864,31 +1946,31 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                   columns={[
                     {
                       key: 'productName',
-                      header: 'الصنف',
+                      header: t('الصنف', 'Item'),
                       render: (it) => <span className="font-bold">{it.productName}</span>,
                     },
                     {
                       key: 'unit',
-                      header: 'الوحدة',
-                      render: (it) => <span>{it.unit}</span>,
+                      header: t('الوحدة', 'Unit'),
+                      render: (it) => <span>{t(it.unit)}</span>,
                     },
                     {
                       key: 'quantity',
-                      header: 'الكمية',
+                      header: t('الكمية', 'Qty'),
                       align: 'center',
-                      render: (it) => <span className="font-mono font-bold tabular-nums">{it.quantity}</span>,
+                      render: (it) => <span className="font-mono font-bold tabular-nums">{formatLocaleNumber(it.quantity)}</span>,
                     },
                     {
                       key: 'unitPrice',
-                      header: 'السعر',
+                      header: t('السعر', 'Price'),
                       align: 'center',
-                      render: (it) => <span className="font-mono tabular-nums">{Number(it.unitPrice || 0).toLocaleString()}</span>,
+                      render: (it) => <span className="font-mono tabular-nums">{formatLocaleNumber(Number(it.unitPrice || 0))}</span>,
                     },
                     {
                       key: 'total',
-                      header: 'الإجمالي',
+                      header: t('الإجمالي', 'Total'),
                       align: 'center',
-                      render: (it) => <span className="font-mono font-bold tabular-nums">{Number(it.total || 0).toLocaleString()}</span>,
+                      render: (it) => <span className="font-mono font-bold tabular-nums">{formatLocaleNumber(Number(it.total || 0))}</span>,
                     },
                   ]}
                 />
@@ -1912,7 +1994,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                 onClick={() => setPreviewStatementDoc(null)}
                 className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg font-bold cursor-pointer"
               >
-                إغلاق المعاينة
+                {t('إغلاق المعاينة', 'Close Preview')}
               </button>
             </div>
           </div>
@@ -1924,13 +2006,13 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
         <Modal
           isOpen={!!custPaymentTarget}
           onClose={() => setCustPaymentTarget(null)}
-          title={`تحصيل دفعة من العميل: ${custPaymentTarget.shopName || custPaymentTarget.name}`}
+          title={t(`تحصيل دفعة من العميل: ${custPaymentTarget.shopName || custPaymentTarget.name}`, `Collect Payment from Customer: ${custPaymentTarget.shopName || custPaymentTarget.name}`)}
           subtitle={
             custPaymentTarget.currentBalance > 0
-              ? `المديونية الحالية (لنا): ${custPaymentTarget.currentBalance.toLocaleString()} ${settings.currency}`
+              ? `${t('المديونية الحالية (لنا)', 'Current Debt (Receivable)')}: ${formatLocaleNumber(custPaymentTarget.currentBalance)} ${settings.currency}`
               : custPaymentTarget.currentBalance < 0
-              ? `رصيد دائن للعميل حالياً (علينا): ${Math.abs(custPaymentTarget.currentBalance).toLocaleString()} ${settings.currency}`
-              : 'الحساب متوازن حالياً (0)'
+              ? `${t('رصيد دائن للعميل حالياً (علينا)', 'Current Customer Credit (We Owe)')}: ${formatLocaleNumber(Math.abs(custPaymentTarget.currentBalance))} ${settings.currency}`
+              : t('الحساب متوازن حالياً (0)', 'Account currently settled (0)')
           }
           maxWidth="md"
         >
@@ -1943,7 +2025,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             )}
 
             <div>
-              <label className="block font-bold mb-1">المبلغ المحصل ({settings.currency}):</label>
+              <label className="block font-bold mb-1">{t(`المبلغ المحصل (${settings.currency}):`, `Collected Amount (${settings.currency}):`)}</label>
               <input
                 type="number"
                 min="0.01"
@@ -1957,17 +2039,20 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
 
             {custPayAmount > Math.max(0, Number(custPaymentTarget.currentBalance || 0)) + 0.009 && (
               <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 font-bold leading-relaxed">
-                تنبيه محاسبي: المبلغ المحصل يتجاوز المديونية الحالية ({Math.max(0, Number(custPaymentTarget.currentBalance || 0)).toLocaleString()} {settings.currency}). سيتم حفظ الزيادة كـ "رصيد دائن / دفعة مقدمة للعميل (علينا)" دون تصفير الرصيد السالب.
+                {t(
+                  `تنبيه محاسبي: المبلغ المحصل يتجاوز المديونية الحالية (${formatLocaleNumber(Math.max(0, Number(custPaymentTarget.currentBalance || 0)))} ${settings.currency}). سيتم حفظ الزيادة كـ "رصيد دائن / دفعة مقدمة للعميل (علينا)" دون تصفير الرصيد السالب.`,
+                  `Accounting notice: Collected amount exceeds current debt (${formatLocaleNumber(Math.max(0, Number(custPaymentTarget.currentBalance || 0)))} ${settings.currency}). Excess will be saved as customer advance credit without zeroing the negative balance.`
+                )}
               </div>
             )}
 
             <div>
-              <label className="block font-bold mb-1">وسيلة التحصيل:</label>
+              <label className="block font-bold mb-1">{t('وسيلة التحصيل:', 'Collection Method:')}</label>
               <div className="grid grid-cols-3 gap-2 font-bold">
                 {[
-                  { id: 'cash' as const, label: 'نقدي' },
-                  { id: 'bank' as const, label: 'تحويل بنكي' },
-                  { id: 'cheque' as const, label: 'شيك' },
+                  { id: 'cash' as const, label: t('نقدي', 'Cash') },
+                  { id: 'bank' as const, label: t('تحويل بنكي', 'Bank Transfer') },
+                  { id: 'cheque' as const, label: t('شيك', 'Cheque') },
                 ].map((m) => (
                   <button
                     key={m.id}
@@ -1984,7 +2069,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             </div>
 
             <div>
-              <label className="block font-bold mb-1">الخزينة المودع بها:</label>
+              <label className="block font-bold mb-1">{t('الخزينة المودع بها:', 'Deposit Cashbox:')}</label>
               <select
                 value={custPayCashboxId}
                 onChange={(e) => setCustPayCashboxId(e.target.value)}
@@ -1992,33 +2077,35 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               >
                 {cashboxes.map((cb) => (
                   <option key={cb.id} value={cb.id}>
-                    {cb.balanceHidden ? `${cb.name} (رصيد محجوب)` : `${cb.name} (رصيدها: ${(cb.currentBalance ?? 0).toLocaleString()})`}
+                    {cb.balanceHidden
+                      ? `${cb.name} (${t('رصيد محجوب', 'Balance hidden')})`
+                      : `${cb.name} (${t('رصيدها:', 'Balance:')} ${formatLocaleNumber(cb.currentBalance ?? 0)})`}
                   </option>
                 ))}
               </select>
             </div>
 
             <div>
-              <label className="block font-bold mb-1">البيان والملاحظات:</label>
+              <label className="block font-bold mb-1">{t('البيان والملاحظات:', 'Description & Notes:')}</label>
               <input
                 type="text"
                 value={custPayNotes}
                 onChange={(e) => setCustPayNotes(e.target.value)}
-                placeholder="تحصيل نقدي من حساب العميل..."
+                placeholder={t('تحصيل نقدي من حساب العميل...', 'Cash collection from customer account...')}
                 className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1"
               />
             </div>
 
             <div className="flex justify-end gap-2 pt-2 border-t">
               <button type="button" onClick={() => setCustPaymentTarget(null)} className="px-3.5 py-1.5 border rounded-lg font-bold cursor-pointer">
-                إلغاء
+                {t('إلغاء', 'Cancel')}
               </button>
               <button
                 type="submit"
                 disabled={isSubmittingCustPay}
                 className="px-4 py-1.5 bg-[#003589] hover:bg-[#0049B0] text-white rounded-lg font-bold cursor-pointer disabled:opacity-50"
               >
-                {isSubmittingCustPay ? 'جاري التسجيل...' : 'تأكيد التحصيل'}
+                {isSubmittingCustPay ? t('جاري التسجيل...', 'Recording...') : t('تأكيد التحصيل', 'Confirm Collection')}
               </button>
             </div>
           </form>
@@ -2030,13 +2117,13 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
         <Modal
           isOpen={!!suppPaymentTarget}
           onClose={() => setSuppPaymentTarget(null)}
-          title={`سداد دفعة للمورد: ${suppPaymentTarget.name}`}
+          title={t(`سداد دفعة للمورد: ${suppPaymentTarget.name}`, `Pay Supplier: ${suppPaymentTarget.name}`)}
           subtitle={
             suppPaymentTarget.currentBalance > 0
-              ? `المستحق للمورد (علينا): ${suppPaymentTarget.currentBalance.toLocaleString()} ${settings.currency}`
+              ? `${t('المستحق للمورد (علينا)', 'Payable to Supplier (We Owe)')}: ${formatLocaleNumber(suppPaymentTarget.currentBalance)} ${settings.currency}`
               : suppPaymentTarget.currentBalance < 0
-              ? `دفعة مقدمة لنا عند المورد: ${Math.abs(suppPaymentTarget.currentBalance).toLocaleString()} ${settings.currency}`
-              : 'حساب المورد متوازن حالياً (0)'
+              ? `${t('دفعة مقدمة لنا عند المورد', 'Our Advance Credit with Supplier')}: ${formatLocaleNumber(Math.abs(suppPaymentTarget.currentBalance))} ${settings.currency}`
+              : t('حساب المورد متوازن حالياً (0)', 'Supplier account currently settled (0)')
           }
           maxWidth="md"
         >
@@ -2049,7 +2136,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             )}
 
             <div>
-              <label className="block font-bold mb-1">المبلغ المسدد ({settings.currency}):</label>
+              <label className="block font-bold mb-1">{t(`المبلغ المسدد (${settings.currency}):`, `Paid Amount (${settings.currency}):`)}</label>
               <input
                 type="number"
                 min="0.01"
@@ -2077,16 +2164,22 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                     <ShieldAlert className="w-4 h-4 shrink-0" />
                     <span>
                       {canApproveSupplierOverpayment
-                        ? 'تنبيه دفعة مقدمة للمورد (رصيد لنا)'
-                        : 'سداد يتجاوز المستحق يتطلب صلاحية اعتماد إدارية'}
+                        ? t('تنبيه دفعة مقدمة للمورد (رصيد لنا)', 'Supplier Advance Payment Notice (Credit for Us)')
+                        : t('سداد يتجاوز المستحق يتطلب صلاحية اعتماد إدارية', 'Overpayment requires administrative approval permission')}
                     </span>
                   </div>
                   <p>
-                    المبلغ الزائد ({overpayment.toLocaleString()} {settings.currency}) يتجاوز المديونية الحالية ({debt.toLocaleString()} {settings.currency}) وسيُسجل كـ "دفعة مقدمة للمورد (لنا)" لحين تسويته مع فواتير مشتريات قادمة.
+                    {t(
+                      `المبلغ الزائد (${formatLocaleNumber(overpayment)} ${settings.currency}) يتجاوز المديونية الحالية (${formatLocaleNumber(debt)} ${settings.currency}) وسيُسجل كـ "دفعة مقدمة للمورد (لنا)" لحين تسويته مع فواتير مشتريات قادمة.`,
+                      `The excess amount (${formatLocaleNumber(overpayment)} ${settings.currency}) exceeds current debt (${formatLocaleNumber(debt)} ${settings.currency}) and will be recorded as supplier advance credit until settled against future purchase invoices.`
+                    )}
                   </p>
                   {!canApproveSupplierOverpayment && (
                     <p className="text-[11px] underline">
-                      لا تملك صلاحية اعتماد الدفعة الزائدة للمورد (مسموح للمدير العام / مدير الفرع / صلاحية الاعتماد فقط).
+                      {t(
+                        'لا تملك صلاحية اعتماد الدفعة الزائدة للمورد (مسموح للمدير العام / مدير الفرع / صلاحية الاعتماد فقط).',
+                        'You do not have permission to approve supplier overpayments (allowed for General Manager / Branch Manager / Approver only).'
+                      )}
                     </p>
                   )}
                 </div>
@@ -2094,7 +2187,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             })()}
 
             <div>
-              <label className="block font-bold mb-1">الخزينة أو الحساب المسدد منه:</label>
+              <label className="block font-bold mb-1">{t('الخزينة أو الحساب المسدد منه:', 'Paying Cashbox / Account:')}</label>
               <select
                 value={suppPayCashboxId}
                 onChange={(e) => setSuppPayCashboxId(e.target.value)}
@@ -2102,26 +2195,28 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               >
                 {cashboxes.map((cb) => (
                   <option key={cb.id} value={cb.id}>
-                    {cb.balanceHidden ? `${cb.name} (رصيد محجوب)` : `${cb.name} (رصيدها: ${(cb.currentBalance ?? 0).toLocaleString()})`}
+                    {cb.balanceHidden
+                      ? `${cb.name} (${t('رصيد محجوب', 'Balance hidden')})`
+                      : `${cb.name} (${t('رصيدها:', 'Balance:')} ${formatLocaleNumber(cb.currentBalance ?? 0)})`}
                   </option>
                 ))}
               </select>
             </div>
 
             <div>
-              <label className="block font-bold mb-1">ملاحظات الصرف:</label>
+              <label className="block font-bold mb-1">{t('ملاحظات الصرف:', 'Payment Notes:')}</label>
               <input
                 type="text"
                 value={suppPayNotes}
                 onChange={(e) => setSuppPayNotes(e.target.value)}
-                placeholder="سداد دفعة من حساب المورد..."
+                placeholder={t('سداد دفعة من حساب المورد...', 'Payment to supplier account...')}
                 className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1"
               />
             </div>
 
             <div className="flex justify-end gap-2 pt-2 border-t">
               <button type="button" onClick={() => setSuppPaymentTarget(null)} className="px-3.5 py-1.5 border rounded-lg font-bold cursor-pointer">
-                إلغاء
+                {t('إلغاء', 'Cancel')}
               </button>
               <button
                 type="submit"
@@ -2132,7 +2227,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                 }
                 className="px-4 py-1.5 bg-[#011E58] hover:bg-[#002160] text-white rounded-lg font-bold cursor-pointer disabled:opacity-50"
               >
-                {isSubmittingSuppPay ? 'جاري الصرف...' : 'تأكيد الصرف للمورد'}
+                {isSubmittingSuppPay ? t('جاري الصرف...', 'Processing...') : t('تأكيد الصرف للمورد', 'Confirm Supplier Payment')}
               </button>
             </div>
           </form>
@@ -2144,8 +2239,11 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
         <Modal
           isOpen={!!settleSupplierTarget}
           onClose={() => !isSettlingAdvance && setSettleSupplierTarget(null)}
-          title={`تسوية دفعة مقدمة للمورد: ${settleSupplierTarget.name}`}
-          subtitle="تسوية داخلية من الرصيد المقدم المتاح على فاتورة مشتريات دون التأثير على الخزائن"
+          title={t(`تسوية دفعة مقدمة للمورد: ${settleSupplierTarget.name}`, `Settle Supplier Advance: ${settleSupplierTarget.name}`)}
+          subtitle={t(
+            'تسوية داخلية من الرصيد المقدم المتاح على فاتورة مشتريات دون التأثير على الخزائن',
+            'Internal settlement from available advance balance onto a purchase invoice without affecting cashboxes'
+          )}
           maxWidth="md"
         >
           <form
@@ -2154,11 +2252,11 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               const { availableAdvance, openInvoices } = getSupplierAdvanceInfo(settleSupplierTarget);
               const inv = openInvoices.find((i) => i.id === settleInvoiceId);
               if (!inv) {
-                setSettleError('يرجى اختيار فاتورة مشتريات مفتوحة للتسوية.');
+                setSettleError(t('يرجى اختيار فاتورة مشتريات مفتوحة للتسوية.', 'Please select an open purchase invoice to settle.'));
                 return;
               }
               if (settleAmount <= 0 || settleAmount > Math.min(availableAdvance, inv.remainingAmount) + 0.01) {
-                setSettleError('مبلغ التسوية يتجاوز المسموح به على الفاتورة أو الرصيد المقدم المتاح.');
+                setSettleError(t('مبلغ التسوية يتجاوز المسموح به على الفاتورة أو الرصيد المقدم المتاح.', 'Settlement amount exceeds invoice remaining balance or available advance credit.'));
                 return;
               }
               setSettleError(null);
@@ -2173,7 +2271,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               </div>
             )}
             <div>
-              <label className="block font-bold mb-1">فاتورة المشتريات المفتوحة:</label>
+              <label className="block font-bold mb-1">{t('فاتورة المشتريات المفتوحة:', 'Open Purchase Invoice:')}</label>
               <select
                 value={settleInvoiceId}
                 onChange={(e) => {
@@ -2187,14 +2285,14 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               >
                 {getSupplierAdvanceInfo(settleSupplierTarget).openInvoices.map((inv) => (
                   <option key={inv.id} value={inv.id}>
-                    {inv.invoiceNumber} — متبقي: {Number(inv.remainingAmount || 0).toLocaleString()} {settings.currency}
+                    {inv.invoiceNumber} — {t('متبقي:', 'Remaining:')} {formatLocaleNumber(Number(inv.remainingAmount || 0))} {settings.currency}
                   </option>
                 ))}
               </select>
             </div>
             <div>
               <label className="block font-bold mb-1">
-                مبلغ التسوية ({settings.currency}) — المتاح: {getSupplierAdvanceInfo(settleSupplierTarget).availableAdvance.toLocaleString()}
+                {t(`مبلغ التسوية (${settings.currency}) — المتاح:`, `Settlement Amount (${settings.currency}) — Available:`)} {formatLocaleNumber(getSupplierAdvanceInfo(settleSupplierTarget).availableAdvance)}
               </label>
               <input
                 type="number"
@@ -2207,7 +2305,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               />
             </div>
             <div>
-              <label className="block font-bold mb-1">ملاحظات التسوية:</label>
+              <label className="block font-bold mb-1">{t('ملاحظات التسوية:', 'Settlement Notes:')}</label>
               <input
                 type="text"
                 value={settleNotes}
@@ -2217,14 +2315,14 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             </div>
             <div className="flex justify-end gap-2 pt-2 border-t">
               <button type="button" onClick={() => setSettleSupplierTarget(null)} className="px-3.5 py-1.5 border rounded-lg font-bold cursor-pointer">
-                إلغاء
+                {t('إلغاء', 'Cancel')}
               </button>
               <button
                 type="submit"
                 disabled={isSettlingAdvance}
                 className="px-4 py-1.5 bg-[#003589] hover:bg-[#0049B0] text-white rounded-lg font-bold cursor-pointer disabled:opacity-50"
               >
-                تنفيذ التسوية
+                {t('تنفيذ التسوية', 'Execute Settlement')}
               </button>
             </div>
           </form>
@@ -2237,20 +2335,23 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
         onConfirm={handleConfirmSettleAdvance}
         variant="warning"
         isLoading={isSettlingAdvance}
-        title="تأكيد تسوية الدفعة المقدمة"
+        title={t('تأكيد تسوية الدفعة المقدمة', 'Confirm Advance Settlement')}
         message={
           settleSupplierTarget
-            ? `سيتم تسوية مبلغ ${settleAmount.toLocaleString()} ${settings.currency} من رصيد الدفعة المقدمة لحساب المورد (${settleSupplierTarget.name}) على الفاتورة المحددة دون أي سحب جديد من الخزينة.`
+            ? t(
+                `سيتم تسوية مبلغ ${formatLocaleNumber(settleAmount)} ${settings.currency} من رصيد الدفعة المقدمة لحساب المورد (${settleSupplierTarget.name}) على الفاتورة المحددة دون أي سحب جديد من الخزينة.`,
+                `An amount of ${formatLocaleNumber(settleAmount)} ${settings.currency} will be settled from supplier (${settleSupplierTarget.name}) advance balance onto the selected invoice with no new cashbox withdrawal.`
+              )
             : ''
         }
-        confirmLabel="تأكيد التسوية"
+        confirmLabel={t('تأكيد التسوية', 'Confirm Settlement')}
       />
 
       {/* Transfer Modal */}
       <Modal
         isOpen={isTransferModalOpen}
         onClose={() => setIsTransferModalOpen(false)}
-        title="تحويل نقدية بين الخزائن والبنوك"
+        title={t('تحويل نقدية بين الخزائن والبنوك', 'Transfer Funds Between Cashboxes & Banks')}
         maxWidth="md"
       >
         <form onSubmit={handleExecuteTransfer} className="space-y-3 text-xs">
@@ -2261,7 +2362,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             </div>
           )}
           <div>
-            <label className="block font-bold mb-1">من الخزينة / الحساب:</label>
+            <label className="block font-bold mb-1">{t('من الخزينة / الحساب:', 'From Cashbox / Account:')}</label>
             <select
               value={fromCbId}
               onChange={(e) => setFromCbId(e.target.value)}
@@ -2269,14 +2370,14 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             >
               {cashboxes.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name} (رصيدها: {c.currentBalance})
+                  {c.name} ({t('رصيدها:', 'Balance:')} {c.balanceHidden ? t('محجوب', 'Hidden') : formatLocaleNumber(c.currentBalance ?? 0)})
                 </option>
               ))}
             </select>
           </div>
 
           <div>
-            <label className="block font-bold mb-1">إلى الخزينة / الحساب:</label>
+            <label className="block font-bold mb-1">{t('إلى الخزينة / الحساب:', 'To Cashbox / Account:')}</label>
             <select
               value={toCbId}
               onChange={(e) => setToCbId(e.target.value)}
@@ -2284,14 +2385,14 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             >
               {cashboxes.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name} (رصيدها: {c.currentBalance})
+                  {c.name} ({t('رصيدها:', 'Balance:')} {c.balanceHidden ? t('محجوب', 'Hidden') : formatLocaleNumber(c.currentBalance ?? 0)})
                 </option>
               ))}
             </select>
           </div>
 
           <div>
-            <label className="block font-bold mb-1">المبلغ المراد تحويله ({settings.currency}):</label>
+            <label className="block font-bold mb-1">{t(`المبلغ المراد تحويله (${settings.currency}):`, `Amount to Transfer (${settings.currency}):`)}</label>
             <input
               type="number"
               min="1"
@@ -2304,22 +2405,22 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
           </div>
 
           <div>
-            <label className="block font-bold mb-1">البيان:</label>
+            <label className="block font-bold mb-1">{t('البيان:', 'Description:')}</label>
             <input
               type="text"
               value={transferNotes}
               onChange={(e) => setTransferNotes(e.target.value)}
-              placeholder="إيداع بنكي لحساب المبيعات..."
+              placeholder={t('إيداع بنكي لحساب المبيعات...', 'Bank deposit for sales account...')}
               className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1"
             />
           </div>
 
           <div className="flex justify-end gap-2 pt-2 border-t">
             <button type="button" onClick={() => setIsTransferModalOpen(false)} className="px-3.5 py-1.5 border rounded-lg font-bold cursor-pointer">
-              إلغاء
+              {t('إلغاء', 'Cancel')}
             </button>
             <button type="submit" disabled={isSubmittingTransfer} className="px-4 py-1.5 bg-blue-900 text-white rounded-lg font-bold cursor-pointer disabled:opacity-50">
-              {isSubmittingTransfer ? 'جاري التنفيذ...' : 'تنفيذ التحويل المالي'}
+              {isSubmittingTransfer ? t('جاري التنفيذ...', 'Executing...') : t('تنفيذ التحويل المالي', 'Execute Transfer')}
             </button>
           </div>
         </form>
@@ -2329,7 +2430,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
       <Modal
         isOpen={isAddCashboxOpen}
         onClose={() => setIsAddCashboxOpen(false)}
-        title="إضافة خزينة أو حساب بنكي"
+        title={t('إضافة خزينة أو حساب بنكي', 'Add Cashbox or Bank Account')}
         maxWidth="md"
       >
         <form onSubmit={handleAddCashboxSubmit} className="space-y-3 text-xs">
@@ -2340,31 +2441,31 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             </div>
           )}
           <div>
-            <label className="block font-bold mb-1">نوع الحساب:</label>
+            <label className="block font-bold mb-1">{t('نوع الحساب:', 'Account Type:')}</label>
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => setNewCbType('cashbox')}
                 className={`py-1.5 px-2 border rounded-lg font-bold cursor-pointer ${newCbType === 'cashbox' ? 'bg-blue-900 text-white' : 'bg-slate-50'}`}
               >
-                خزينة نقدية
+                {t('خزينة نقدية', 'Cashbox')}
               </button>
               <button
                 type="button"
                 onClick={() => setNewCbType('bank')}
                 className={`py-1.5 px-2 border rounded-lg font-bold cursor-pointer ${newCbType === 'bank' ? 'bg-blue-900 text-white' : 'bg-slate-50'}`}
               >
-                حساب بنكي
+                {t('حساب بنكي', 'Bank Account')}
               </button>
             </div>
           </div>
 
           <div>
-            <label className="block font-bold mb-1">اسم الخزينة أو البنك:</label>
+            <label className="block font-bold mb-1">{t('اسم الخزينة أو البنك:', 'Cashbox or Bank Name:')}</label>
             <input
               type="text"
               required
-              placeholder="مثال: حساب البنك الأهلي الجاري"
+              placeholder={t('مثال: حساب البنك الأهلي الجاري', 'e.g., National Bank Current Account')}
               value={newCbName}
               onChange={(e) => setNewCbName(e.target.value)}
               className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1 font-bold"
@@ -2373,9 +2474,10 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
 
           {newCbType === 'bank' && (
             <div>
-              <label className="block font-bold mb-1">رقم الحساب أو الآيبان:</label>
+              <label className="block font-bold mb-1">{t('رقم الحساب أو الآيبان:', 'Account Number / IBAN:')}</label>
               <input
                 type="text"
+                dir="ltr"
                 placeholder="IBAN / Account Number"
                 value={newCbAccount}
                 onChange={(e) => setNewCbAccount(e.target.value)}
@@ -2385,7 +2487,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
           )}
 
           <div>
-            <label className="block font-bold mb-1">الرصيد الافتتاحي:</label>
+            <label className="block font-bold mb-1">{t('الرصيد الافتتاحي:', 'Opening Balance:')}</label>
             <input
               type="number"
               placeholder="0.00"
@@ -2397,10 +2499,10 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
 
           <div className="flex justify-end gap-2 pt-2 border-t">
             <button type="button" onClick={() => setIsAddCashboxOpen(false)} className="px-3.5 py-1.5 border rounded-lg font-bold cursor-pointer">
-              إلغاء
+              {t('إلغاء', 'Cancel')}
             </button>
             <button type="submit" disabled={isSubmittingCashbox} className="px-4 py-1.5 bg-blue-900 text-white rounded-lg font-bold cursor-pointer disabled:opacity-50">
-              {isSubmittingCashbox ? 'جاري الحفظ...' : 'حفظ الحساب'}
+              {isSubmittingCashbox ? t('جاري الحفظ...', 'Saving...') : t('حفظ الحساب', 'Save Account')}
             </button>
           </div>
         </form>
@@ -2410,7 +2512,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
       <Modal
         isOpen={isExpenseModalOpen}
         onClose={() => setIsExpenseModalOpen(false)}
-        title={recordType === 'expense' ? 'تسجيل سند صرف مصروفات' : 'تسجيل سند قبض إيرادات'}
+        title={recordType === 'expense' ? t('تسجيل سند صرف مصروفات', 'Record Expense Voucher') : t('تسجيل سند قبض إيرادات', 'Record Income Voucher')}
         maxWidth="md"
       >
         <form onSubmit={handleAddExpenseIncome} className="space-y-3 text-xs">
@@ -2421,19 +2523,21 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             </div>
           )}
           <div>
-            <label className="block font-bold mb-1">بند {recordType === 'expense' ? 'المصروف' : 'الإيراد'}:</label>
+            <label className="block font-bold mb-1">
+              {recordType === 'expense' ? t('بند المصروف:', 'Expense Category:') : t('بند الإيراد:', 'Income Category:')}
+            </label>
             <input
               type="text"
               required
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              placeholder="وقود، صيانة، كهرباء، إيجار، تخريد..."
+              placeholder={t('وقود، صيانة، كهرباء، إيجار، تخريد...', 'Fuel, maintenance, electricity, rent, scrap...')}
               className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1 font-bold"
             />
           </div>
 
           <div>
-            <label className="block font-bold mb-1">المبلغ ({settings.currency}):</label>
+            <label className="block font-bold mb-1">{t(`المبلغ (${settings.currency}):`, `Amount (${settings.currency}):`)}</label>
             <input
               type="number"
               min="1"
@@ -2446,7 +2550,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
           </div>
 
           <div>
-            <label className="block font-bold mb-1">الخزينة المتأثرة:</label>
+            <label className="block font-bold mb-1">{t('الخزينة المتأثرة:', 'Affected Cashbox:')}</label>
             <select
               value={selectedCashboxId}
               onChange={(e) => setSelectedCashboxId(e.target.value)}
@@ -2454,14 +2558,16 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             >
               {cashboxes.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name} (رصيدها: {c.currentBalance})
+                  {c.name} ({t('رصيدها:', 'Balance:')} {c.balanceHidden ? t('محجوب', 'Hidden') : formatLocaleNumber(c.currentBalance ?? 0)})
                 </option>
               ))}
             </select>
           </div>
 
           <div>
-            <label className="block font-bold mb-1">{recordType === 'expense' ? 'الجهة المستلمة للمصروف:' : 'الجهة المسددة للإيراد:'}</label>
+            <label className="block font-bold mb-1">
+              {recordType === 'expense' ? t('الجهة المستلمة للمصروف:', 'Expense Recipient:') : t('الجهة المسددة للإيراد:', 'Income Payer:')}
+            </label>
             <input
               type="text"
               required
@@ -2472,7 +2578,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
           </div>
 
           <div>
-            <label className="block font-bold mb-1">ملاحظات السند:</label>
+            <label className="block font-bold mb-1">{t('ملاحظات السند:', 'Voucher Notes:')}</label>
             <textarea
               rows={2}
               value={notes}
@@ -2483,7 +2589,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
 
           <div className="flex justify-end gap-2 pt-2 border-t">
             <button type="button" onClick={() => setIsExpenseModalOpen(false)} className="px-3.5 py-1.5 border rounded-lg font-bold cursor-pointer">
-              إلغاء
+              {t('إلغاء', 'Cancel')}
             </button>
             <button
               type="submit"
@@ -2492,7 +2598,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                 recordType === 'expense' ? 'bg-amber-700 hover:bg-amber-800' : 'bg-[#003589] hover:bg-[#0049B0]'
               }`}
             >
-              {isSubmittingExpense ? 'جاري الاعتماد...' : 'اعتماد السند وطباعته'}
+              {isSubmittingExpense ? t('جاري الاعتماد...', 'Approving...') : t('اعتماد السند وطباعته', 'Approve & Print Voucher')}
             </button>
           </div>
         </form>
@@ -2504,12 +2610,12 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
         onClose={() => setPreviewFinanceItem(null)}
         title={
           previewFinanceItem?.kind === 'cashbox'
-            ? `تفاصيل الخزينة / الحساب: ${previewFinanceItem.item.name}`
+            ? t(`تفاصيل الخزينة / الحساب: ${previewFinanceItem.item.name}`, `Cashbox / Account Details: ${previewFinanceItem.item.name}`)
             : previewFinanceItem?.kind === 'transaction'
-            ? `تفاصيل الحركة المالية: ${previewFinanceItem.item.transactionNumber}`
+            ? t(`تفاصيل الحركة المالية: ${previewFinanceItem.item.transactionNumber}`, `Transaction Details: ${previewFinanceItem.item.transactionNumber}`)
             : previewFinanceItem?.kind === 'expense'
-            ? `تفاصيل السند المالي: ${previewFinanceItem.item.recordNumber}`
-            : 'تفاصيل السجل المالي'
+            ? t(`تفاصيل السند المالي: ${previewFinanceItem.item.recordNumber}`, `Voucher Details: ${previewFinanceItem.item.recordNumber}`)
+            : t('تفاصيل السجل المالي', 'Financial Record Details')
         }
         maxWidth="md"
       >
@@ -2519,23 +2625,23 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               {previewFinanceItem.kind === 'cashbox' && (
                 <>
                   <div>
-                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الاسم</span>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('الاسم', 'Name')}</span>
                     <strong>{previewFinanceItem.item.name}</strong>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">النوع</span>
-                    <strong>{previewFinanceItem.item.type === 'bank' ? 'حساب بنكي' : 'خزينة نقدية'}</strong>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('النوع', 'Type')}</span>
+                    <strong>{previewFinanceItem.item.type === 'bank' ? t('حساب بنكي', 'Bank Account') : t('خزينة نقدية', 'Cashbox')}</strong>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">رقم الحساب</span>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('رقم الحساب', 'Account Number')}</span>
                     <strong className="font-mono">{previewFinanceItem.item.accountNumber || '—'}</strong>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الرصيد المتاح</span>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('الرصيد المتاح', 'Available Balance')}</span>
                     <strong className="font-mono tabular-nums text-[#003589] dark:text-[#85B8FF]">
                       {previewFinanceItem.item.balanceHidden
-                        ? 'محجوب'
-                        : `${Number(previewFinanceItem.item.currentBalance ?? 0).toLocaleString()} ${settings.currency}`}
+                        ? t('محجوب', 'Hidden')
+                        : `${formatLocaleNumber(Number(previewFinanceItem.item.currentBalance ?? 0))} ${settings.currency}`}
                     </strong>
                   </div>
                 </>
@@ -2543,29 +2649,29 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               {previewFinanceItem.kind === 'transaction' && (
                 <>
                   <div>
-                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">رقم الحركة</span>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('رقم الحركة', 'Transaction No.')}</span>
                     <strong className="font-mono">{previewFinanceItem.item.transactionNumber}</strong>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">التاريخ</span>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('التاريخ', 'Date')}</span>
                     <strong className="font-mono tabular-nums">{previewFinanceItem.item.date}</strong>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الخزينة</span>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('الخزينة', 'Cashbox')}</span>
                     <strong>{previewFinanceItem.item.cashboxName}</strong>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">نوع الحركة</span>
-                    <strong>{previewFinanceItem.item.category}</strong>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('نوع الحركة', 'Transaction Type')}</span>
+                    <strong>{t(previewFinanceItem.item.category)}</strong>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">المبلغ</span>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('المبلغ', 'Amount')}</span>
                     <strong className="font-mono tabular-nums text-[#003589] dark:text-[#85B8FF]">
-                      {Number(previewFinanceItem.item.amount || 0).toLocaleString()} {settings.currency}
+                      {formatLocaleNumber(Number(previewFinanceItem.item.amount || 0))} {settings.currency}
                     </strong>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">المسؤول</span>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('المسؤول', 'Created By')}</span>
                     <strong>{previewFinanceItem.item.createdBy}</strong>
                   </div>
                 </>
@@ -2573,29 +2679,29 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               {previewFinanceItem.kind === 'expense' && (
                 <>
                   <div>
-                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">رقم السند</span>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('رقم السند', 'Voucher No.')}</span>
                     <strong className="font-mono">{previewFinanceItem.item.recordNumber}</strong>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">التاريخ</span>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('التاريخ', 'Date')}</span>
                     <strong className="font-mono tabular-nums">{previewFinanceItem.item.date}</strong>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">النوع</span>
-                    <strong>{previewFinanceItem.item.type === 'expense' ? 'سند صرف (مصروف)' : 'سند قبض (إيراد)'}</strong>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('النوع', 'Type')}</span>
+                    <strong>{previewFinanceItem.item.type === 'expense' ? t('سند صرف (مصروف)', 'Expense Voucher') : t('سند قبض (إيراد)', 'Income Voucher')}</strong>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">البند / التصنيف</span>
-                    <strong>{previewFinanceItem.item.category}</strong>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('البند / التصنيف', 'Category')}</span>
+                    <strong>{t(previewFinanceItem.item.category)}</strong>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الخزينة</span>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('الخزينة', 'Cashbox')}</span>
                     <strong>{previewFinanceItem.item.cashboxName}</strong>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">المبلغ</span>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('المبلغ', 'Amount')}</span>
                     <strong className="font-mono tabular-nums text-[#003589] dark:text-[#85B8FF]">
-                      {Number(previewFinanceItem.item.amount || 0).toLocaleString()} {settings.currency}
+                      {formatLocaleNumber(Number(previewFinanceItem.item.amount || 0))} {settings.currency}
                     </strong>
                   </div>
                 </>
@@ -2605,20 +2711,20 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               <div className="p-2 rounded-md bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C] space-y-1">
                 {previewFinanceItem.item.recipientOrPayer && (
                   <div>
-                    <span className="font-bold text-slate-600 dark:text-[#97AECE]">الجهة: </span>
+                    <span className="font-bold text-slate-600 dark:text-[#97AECE]">{t('الجهة:', 'Party:')} </span>
                     <span>{previewFinanceItem.item.recipientOrPayer}</span>
                   </div>
                 )}
                 {previewFinanceItem.item.description && (
                   <div>
-                    <span className="font-bold text-slate-600 dark:text-[#97AECE]">البيان: </span>
-                    <span>{previewFinanceItem.item.description}</span>
+                    <span className="font-bold text-slate-600 dark:text-[#97AECE]">{t('البيان:', 'Description:')} </span>
+                    <span>{t(previewFinanceItem.item.description)}</span>
                   </div>
                 )}
                 {previewFinanceItem.item.notes && (
                   <div>
-                    <span className="font-bold text-slate-600 dark:text-[#97AECE]">ملاحظات: </span>
-                    <span>{previewFinanceItem.item.notes}</span>
+                    <span className="font-bold text-slate-600 dark:text-[#97AECE]">{t('ملاحظات:', 'Notes:')} </span>
+                    <span>{t(previewFinanceItem.item.notes)}</span>
                   </div>
                 )}
               </div>
@@ -2629,7 +2735,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                 onClick={() => setPreviewFinanceItem(null)}
                 className="h-8 px-3 rounded-md border border-slate-300 dark:border-[#2A436E] font-bold cursor-pointer"
               >
-                إغلاق
+                {t('إغلاق', 'Close')}
               </button>
             </div>
           </div>

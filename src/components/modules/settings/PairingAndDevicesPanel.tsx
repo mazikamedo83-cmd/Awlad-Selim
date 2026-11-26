@@ -25,6 +25,8 @@ import {
   validateConnectionUrl,
 } from '../../../services/api';
 import { isNativeCapacitor, saveAndShareDocument } from '../../../services/native';
+import { usePreferences } from '../../../context/PreferencesContext';
+import { formatLocaleDateTime } from '../../../i18n/translator';
 import { QrCodeDisplay } from '../../common/QrCodeDisplay';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { UnifiedDataTable } from '../../common/UnifiedDataTable';
@@ -54,7 +56,7 @@ const DEFAULT_SUMMARY: PairedDevicesSummary = {
   onlineNow: 0,
 };
 
-function deviceTypeLabel(type: string): string {
+function deviceTypeLabel(type: string, t: (ar: string, en?: string) => string): string {
   switch (type) {
     case 'windows':
       return 'Windows';
@@ -63,7 +65,7 @@ function deviceTypeLabel(type: string): string {
     case 'ios':
       return 'iPhone / iOS';
     default:
-      return 'Web Browser';
+      return t('متصفح ويب', 'Web Browser');
   }
 }
 
@@ -80,6 +82,7 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
   profiles,
   onShowToast,
 }) => {
+  const { t } = usePreferences();
   const [tokens, setTokens] = useState<PairingTokenRecord[]>([]);
   const [devices, setDevices] = useState<PairedDevice[]>([]);
   const [summary, setSummary] = useState<PairedDevicesSummary>(DEFAULT_SUMMARY);
@@ -115,11 +118,11 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
       setDevices(Array.isArray(devRes.devices) ? devRes.devices : []);
       setSummary(devRes.summary || DEFAULT_SUMMARY);
     } catch (err: any) {
-      setError(err?.message || 'تعذر تحميل قائمة الأجهزة وروابط الربط');
+      setError(err?.message || t('تعذر تحميل قائمة الأجهزة وروابط الربط', 'Failed to load paired devices and pairing tokens'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     loadAll();
@@ -150,7 +153,10 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
     if (!targetUrlValidation.valid || !targetUrlValidation.normalizedUrl) {
       setError(
         targetUrlValidation.error ||
-          'عنوان السيرفر المختار غير صالح لإنشاء رابط الربط. يرجى ضبط عنوان الوضع المختار أولاً.'
+          t(
+            'عنوان السيرفر المختار غير صالح لإنشاء رابط الربط. يرجى ضبط عنوان الوضع المختار أولاً.',
+            'Selected server URL is invalid for creating a pairing link. Please configure the mode URL first.'
+          )
       );
       return;
     }
@@ -171,10 +177,10 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
       });
       setCreatedInvite(res);
       setNotes('');
-      onShowToast('تم إنشاء رابط الربط المباشر ورمز QR بنجاح');
+      onShowToast(t('تم إنشاء رابط الربط المباشر ورمز QR بنجاح', 'Direct pairing link & QR code generated successfully'));
       await loadAll();
     } catch (err: any) {
-      setError(err?.message || 'تعذر إنشاء رابط الربط');
+      setError(err?.message || t('تعذر إنشاء رابط الربط', 'Failed to create pairing link'));
     } finally {
       setCreating(false);
     }
@@ -184,10 +190,10 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
     setBusyId(tokenId);
     try {
       await apiRequest(`/api/admin/pairing/tokens/${tokenId}/revoke`, { method: 'POST' });
-      onShowToast('تم إلغاء رابط الربط');
+      onShowToast(t('تم إلغاء رابط الربط', 'Pairing link revoked'));
       await loadAll();
     } catch (err: any) {
-      setError(err?.message || 'تعذر إلغاء الرابط');
+      setError(err?.message || t('تعذر إلغاء الرابط', 'Failed to revoke link'));
     } finally {
       setBusyId(null);
     }
@@ -197,10 +203,10 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
     setBusyId(deviceId);
     try {
       await apiRequest(`/api/admin/devices/${deviceId}/approve`, { method: 'POST' });
-      onShowToast('تم اعتماد الجهاز وتفعيل صلاحية دخوله');
+      onShowToast(t('تم اعتماد الجهاز وتفعيل صلاحية دخوله', 'Device approved and access enabled'));
       await loadAll();
     } catch (err: any) {
-      setError(err?.message || 'تعذر اعتماد الجهاز');
+      setError(err?.message || t('تعذر اعتماد الجهاز', 'Failed to approve device'));
     } finally {
       setBusyId(null);
     }
@@ -213,10 +219,10 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
     setBusyId(targetId);
     try {
       await apiRequest(`/api/admin/devices/${targetId}/revoke`, { method: 'POST' });
-      onShowToast('تم فصل الجهاز وإلغاء جميع جلساته النشطة فوراً');
+      onShowToast(t('تم فصل الجهاز وإلغاء جميع جلساته النشطة فوراً', 'Device disconnected and all active sessions revoked immediately'));
       await loadAll();
     } catch (err: any) {
-      setError(err?.message || 'تعذر فصل الجهاز');
+      setError(err?.message || t('تعذر فصل الجهاز', 'Failed to revoke device'));
     } finally {
       setBusyId(null);
     }
@@ -245,7 +251,10 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
     if (!resendCheck.valid || !resendCheck.normalizedUrl) {
       setError(
         resendCheck.error ||
-          `عنوان السيرفر لوضع (${getConnectionModeLabel(resendTarget.effectiveMode)}) غير صالح لإعادة إرسال الرابط.`
+          t(
+            `عنوان السيرفر لوضع (${getConnectionModeLabel(resendTarget.effectiveMode)}) غير صالح لإعادة إرسال الرابط.`,
+            `Server URL for mode (${getConnectionModeLabel(resendTarget.effectiveMode)}) is invalid for resending link.`
+          )
       );
       return;
     }
@@ -264,10 +273,10 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
         }
       );
       setCreatedInvite(res);
-      onShowToast(`تم توليد رابط ربط جديد للجهاز (${device.deviceName})`);
+      onShowToast(t(`تم توليد رابط ربط جديد للجهاز (${device.deviceName})`, `Generated a new pairing link for device (${device.deviceName})`));
       await loadAll();
     } catch (err: any) {
-      setError(err?.message || 'تعذر إعادة إنشاء رابط الربط');
+      setError(err?.message || t('تعذر إعادة إنشاء رابط الربط', 'Failed to regenerate pairing link'));
     } finally {
       setBusyId(null);
     }
@@ -279,20 +288,26 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
     } else if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(text).catch(() => {});
     }
-    onShowToast(`تم نسخ ${label}`);
+    onShowToast(t(`تم نسخ ${label}`, `Copied ${label}`));
   };
 
   const buildWhatsappText = (invite: PairingCreateResponse): string => {
     const modeTitle = getConnectionModeLabel(invite.tokenRecord.connectionMode);
     const target = invite.tokenRecord.targetUserName
-      ? `\nالحساب المخصص: ${invite.tokenRecord.targetUserName}`
+      ? `\n${t('الحساب المخصص:', 'Assigned Account:')} ${invite.tokenRecord.targetUserName}`
       : '';
     return [
-      'دعوة ربط جهاز بنظام AWLAD SELIM (أولاد سليم):',
-      `اضغط على الرابط التالي لإعداد السيرفر تلقائياً على جهازك (${modeTitle}):`,
+      t('دعوة ربط جهاز بنظام AWLAD SELIM (أولاد سليم):', 'AWLAD SELIM Device Pairing Invite:'),
+      t(
+        `اضغط على الرابط التالي لإعداد السيرفر تلقائياً على جهازك (${modeTitle}):`,
+        `Tap the link below to automatically configure the server on your device (${modeTitle}):`
+      ),
       invite.directInviteUrl,
       target,
-      'ملاحظة: بعد فتح التطبيق سيُطلب منك تسجيل الدخول باسم المستخدم وكلمة المرور المعتادة.',
+      t(
+        'ملاحظة: بعد فتح التطبيق سيُطلب منك تسجيل الدخول باسم المستخدم وكلمة المرور المعتادة.',
+        'Note: After opening the app, you will be asked to sign in with your regular username and password.'
+      ),
     ]
       .filter(Boolean)
       .join('\n');
@@ -306,13 +321,13 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
           filename: 'awlad-selim-invite.txt',
           content: text,
           mimeType: 'text/plain',
-          title: 'رابط ربط جهاز — AWLAD SELIM',
+          title: t('رابط ربط جهاز — AWLAD SELIM', 'Device Pairing Link — AWLAD SELIM'),
         });
         return;
       }
       try {
         await (navigator as any).share({
-          title: 'دعوة ربط جهاز — AWLAD SELIM',
+          title: t('دعوة ربط جهاز — AWLAD SELIM', 'Device Pairing Invite — AWLAD SELIM'),
           text,
           url: invite.directInviteUrl,
         });
@@ -321,7 +336,7 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
         // fallback to clipboard
       }
     }
-    copyText(text, 'رسالة الدعوة المباشرة');
+    copyText(text, t('رسالة الدعوة المباشرة', 'Direct Invite Message'));
   };
 
   const activeUsers = users.filter((u) => u.isActive);
@@ -341,10 +356,13 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
           <div>
             <h3 className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5">
               <QrCode className="w-4 h-4 text-[#003589]" />
-              <span>الربط الذكي للأجهزة (رابط دعوة مباشر + QR Code)</span>
+              <span>{t('الربط الذكي للأجهزة (رابط دعوة مباشر + QR Code)', 'Smart Device Pairing (Direct Invite Link + QR Code)')}</span>
             </h3>
             <p className="text-[11px] text-slate-500 mt-0.5">
-              يُعدّ عنوان السيرفر تلقائياً على Android و iPhone و Windows ويفتح شاشة تسجيل الدخول المعتادة — لا تُضمَّن أي كلمات مرور أو أسرار في الرابط.
+              {t(
+                'يُعدّ عنوان السيرفر تلقائياً على Android و iPhone و Windows ويفتح شاشة تسجيل الدخول المعتادة — لا تُضمَّن أي كلمات مرور أو أسرار في الرابط.',
+                'Automatically configures the server URL on Android, iPhone, and Windows and opens the regular login screen — no passwords or secrets are included in the link.'
+              )}
             </p>
           </div>
           <button
@@ -354,79 +372,79 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
             className="h-7 px-2 rounded-md text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold flex items-center gap-1 cursor-pointer self-start"
           >
             <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
-            <span>تحديث السجلات</span>
+            <span>{t('تحديث السجلات', 'Refresh Records')}</span>
           </button>
         </div>
 
         <form onSubmit={handleCreatePairing} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
           <div>
-            <label className="block text-[11px] font-bold mb-0.5 text-slate-700">تخصيص لمستخدم (اختياري):</label>
+            <label className="block text-[11px] font-bold mb-0.5 text-slate-700">{t('تخصيص لمستخدم (اختياري):', 'Assign to User (Optional):')}</label>
             <select
               value={targetUserId}
               onChange={(e) => setTargetUserId(e.target.value)}
               className="w-full h-8 border border-slate-300 rounded-md px-2 bg-white font-bold text-slate-800"
             >
-              <option value="">أي مستخدم لديه حساب</option>
+              <option value="">{t('أي مستخدم لديه حساب', 'Any user with an account')}</option>
               {activeUsers.map((u) => (
                 <option key={u.id} value={u.id}>
-                  {u.fullName} ({u.role})
+                  {u.fullName} ({t(u.role)})
                 </option>
               ))}
             </select>
           </div>
 
           <div>
-            <label className="block text-[11px] font-bold mb-0.5 text-slate-700">نوع الجهاز المستهدف:</label>
+            <label className="block text-[11px] font-bold mb-0.5 text-slate-700">{t('نوع الجهاز المستهدف:', 'Target Device Type:')}</label>
             <select
               value={targetDeviceType}
               onChange={(e) => setTargetDeviceType(e.target.value as any)}
               className="w-full h-8 border border-slate-300 rounded-md px-2 bg-white font-bold text-slate-800"
             >
-              <option value="any">كل الأنظمة (Android / iOS / Windows)</option>
-              <option value="android">هواتف Android فقط</option>
-              <option value="ios">هواتف iPhone / iPad فقط</option>
-              <option value="windows">كمبيوتر Windows فقط</option>
+              <option value="any">{t('كل الأنظمة (Android / iOS / Windows)', 'All Platforms (Android / iOS / Windows)')}</option>
+              <option value="android">{t('هواتف Android فقط', 'Android Phones Only')}</option>
+              <option value="ios">{t('هواتف iPhone / iPad فقط', 'iPhone / iPad Only')}</option>
+              <option value="windows">{t('كمبيوتر Windows فقط', 'Windows PC Only')}</option>
             </select>
           </div>
 
           <div>
-            <label className="block text-[11px] font-bold mb-0.5 text-slate-700">وضع الاتصال بالرابط:</label>
+            <label className="block text-[11px] font-bold mb-0.5 text-slate-700">{t('وضع الاتصال بالرابط:', 'Link Connection Mode:')}</label>
             <select
               value={connectionMode}
               onChange={(e) => setConnectionMode(e.target.value as any)}
               className="w-full h-8 border border-slate-300 rounded-md px-2 bg-white font-bold text-slate-800"
             >
               <option value="auto">
-                تلقائي (Auto — {getConnectionModeLabel(autoPairingTarget.effectiveMode)})
+                {t('تلقائي', 'Auto')} ({getConnectionModeLabel(autoPairingTarget.effectiveMode)})
               </option>
-              <option value="local_network">الشبكة المحلية (Local Network)</option>
-              <option value="free_remote">النفق المجاني (Quick Tunnel)</option>
-              <option value="pro_remote">دومين احترافي (Pro Remote)</option>
-              <option value="cloud_vps">سيرفر سحابي (Cloud VPS)</option>
+              <option value="local_network">{t('الشبكة المحلية (Local Network)', 'Local Network (LAN)')}</option>
+              <option value="free_remote">{t('النفق المجاني (Quick Tunnel)', 'Free Quick Tunnel')}</option>
+              <option value="pro_remote">{t('دومين احترافي (Pro Remote)', 'Pro Remote Domain')}</option>
+              <option value="cloud_vps">{t('سيرفر سحابي (Cloud VPS)', 'Cloud VPS Server')}</option>
             </select>
           </div>
 
           <div>
-            <label className="block text-[11px] font-bold mb-0.5 text-slate-700">صلاحية الرابط:</label>
+            <label className="block text-[11px] font-bold mb-0.5 text-slate-700">{t('صلاحية الرابط:', 'Link Expiration:')}</label>
             <select
               value={ttlMinutes}
               onChange={(e) => setTtlMinutes(Number(e.target.value))}
               className="w-full h-8 border border-slate-300 rounded-md px-2 bg-white font-bold text-slate-800"
             >
-              <option value={15}>15 دقيقة</option>
-              <option value={60}>ساعة واحدة</option>
-              <option value={1440}>24 ساعة (يوم واحد)</option>
-              <option value={10080}>7 أيام</option>
+              <option value={15}>{t('15 دقيقة', '15 Minutes')}</option>
+              <option value={60}>{t('ساعة واحدة', '1 Hour')}</option>
+              <option value={1440}>{t('24 ساعة (يوم واحد)', '24 Hours (1 Day)')}</option>
+              <option value={10080}>{t('7 أيام', '7 Days')}</option>
             </select>
           </div>
 
           <div className="md:col-span-2">
-            <label className="block text-[11px] font-bold mb-0.5 text-slate-700">ملاحظة إدارية (اختيارية):</label>
+            <label className="block text-[11px] font-bold mb-0.5 text-slate-700">{t('ملاحظة إدارية (اختيارية):', 'Admin Note (Optional):')}</label>
             <input
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="مثال: هاتف مندوب خط القاهرة / موبايل عميل جديد"
+              placeholder={t('مثال: هاتف مندوب خط القاهرة / موبايل عميل جديد', 'e.g., Cairo route rep phone / new customer phone')}
               className="w-full h-8 border border-slate-300 rounded-md px-2.5"
             />
           </div>
@@ -439,7 +457,7 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
                 onChange={(e) => setSingleUse(e.target.checked)}
                 className="w-3.5 h-3.5 rounded text-[#003589]"
               />
-              <span>رابط لمرة واحدة فقط (Single-Use)</span>
+              <span>{t('رابط لمرة واحدة فقط (Single-Use)', 'Single-Use Link Only')}</span>
             </label>
             <label className="flex items-center gap-1.5 cursor-pointer font-bold text-slate-800">
               <input
@@ -448,7 +466,7 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
                 onChange={(e) => setRequireAdminApproval(e.target.checked)}
                 className="w-3.5 h-3.5 rounded text-[#003589]"
               />
-              <span>يتطلب موافقة الإدارة بعد الربط</span>
+              <span>{t('يتطلب موافقة الإدارة بعد الربط', 'Requires Admin Approval After Pairing')}</span>
             </label>
           </div>
 
@@ -467,7 +485,11 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
                   <AlertCircle className="w-3.5 h-3.5 text-red-600 shrink-0" />
                 )}
                 <span>
-                  معاينة السيرفر قبل إنشاء الدعوة ({connectionMode === 'auto' ? `تلقائي ← ${getConnectionModeLabel(pairingTarget.effectiveMode)}` : getConnectionModeLabel(pairingTarget.effectiveMode)}):
+                  {t('معاينة السيرفر قبل إنشاء الدعوة', 'Server Preview Before Creating Invite')} (
+                  {connectionMode === 'auto'
+                    ? `${t('تلقائي', 'Auto')} → ${getConnectionModeLabel(pairingTarget.effectiveMode)}`
+                    : getConnectionModeLabel(pairingTarget.effectiveMode)}
+                  ):
                 </span>
               </div>
               <div
@@ -476,11 +498,15 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
                   targetUrlValidation.valid ? 'text-emerald-800' : 'text-red-700'
                 }`}
               >
-                {targetUrlValidation.normalizedUrl || pairingTarget.endpointUrl || '— غير مُعدّ —'}
+                {targetUrlValidation.normalizedUrl || pairingTarget.endpointUrl || t('— غير مُعدّ —', '— Not Configured —')}
               </div>
               {!targetUrlValidation.valid && (
                 <p className="text-[11px] font-bold text-red-700">
-                  {targetUrlValidation.error} يرجى ضبط عنوان هذا الوضع في بطاقات الاتصال أعلاه قبل إنشاء الدعوة.
+                  {targetUrlValidation.error}{' '}
+                  {t(
+                    'يرجى ضبط عنوان هذا الوضع في بطاقات الاتصال أعلاه قبل إنشاء الدعوة.',
+                    'Please configure this mode URL in the connection cards above before creating an invite.'
+                  )}
                 </p>
               )}
             </div>
@@ -491,7 +517,7 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
               className="h-8 px-3 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0 self-start sm:self-center"
             >
               {creating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <QrCode className="w-3.5 h-3.5" />}
-              <span>{creating ? 'جاري التوليد...' : 'توليد رابط الربط ورمز QR'}</span>
+              <span>{creating ? t('جاري التوليد...', 'Generating...') : t('توليد رابط الربط ورمز QR', 'Generate Pairing Link & QR')}</span>
             </button>
           </div>
         </form>
@@ -502,8 +528,8 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
             <div className="md:col-span-4 flex justify-center">
               <QrCodeDisplay
                 value={createdInvite.qrPayload}
-                title="امسح الرمز بكاميرا الهاتف أو التطبيق"
-                subtitle={`ينتهي في ${new Date(createdInvite.tokenRecord.expiresAt).toLocaleString('ar-EG')}`}
+                title={t('امسح الرمز بكاميرا الهاتف أو التطبيق', 'Scan with Phone Camera or App')}
+                subtitle={`${t('ينتهي في', 'Expires at')} ${formatLocaleDateTime(createdInvite.tokenRecord.expiresAt)}`}
                 filename={`AWLAD_SELIM_QR_${createdInvite.tokenRecord.id}.png`}
               />
             </div>
@@ -511,7 +537,7 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h4 className="font-black text-xs sm:text-sm text-slate-900 flex items-center gap-1.5">
                   <Link2 className="w-4 h-4 text-[#003589]" />
-                  <span>رابط الدعوة المباشر جاهز للإرسال</span>
+                  <span>{t('رابط الدعوة المباشر جاهز للإرسال', 'Direct Invite Link Ready to Share')}</span>
                 </h4>
                 <span className="px-2 py-0.5 rounded bg-[#EEF3FA] text-[#011E58] border border-[#DCE6F5] font-bold text-[10px]">
                   {getConnectionModeLabel(createdInvite.tokenRecord.connectionMode)}
@@ -519,14 +545,16 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
               </div>
 
               <div className="px-2.5 py-1.5 rounded-md bg-[#EEF3FA] border border-[#DCE6F5] flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                <span className="font-bold text-[#011E58]">عنوان السيرفر المُضمَّن في الدعوة:</span>
+                <span className="font-bold text-[#011E58]">{t('عنوان السيرفر المُضمَّن في الدعوة:', 'Embedded Server URL:')}</span>
                 <span dir="ltr" className="font-mono font-bold text-[#003589] break-all">
                   {createdInvite.serverBaseUrl}
                 </span>
               </div>
 
               <div className="p-2 rounded-md bg-white border border-slate-200 space-y-1">
-                <span className="text-[11px] font-bold text-slate-500 block">الرابط المباشر (يفتح التطبيق أو صفحة التحميل تلقائياً):</span>
+                <span className="text-[11px] font-bold text-slate-500 block">
+                  {t('الرابط المباشر (يفتح التطبيق أو صفحة التحميل تلقائياً):', 'Direct Link (Automatically opens app or download page):')}
+                </span>
                 <div className="flex items-center gap-1.5">
                   <input
                     type="text"
@@ -537,11 +565,11 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
                   />
                   <button
                     type="button"
-                    onClick={() => copyText(createdInvite.directInviteUrl, 'رابط الربط المباشر')}
+                    onClick={() => copyText(createdInvite.directInviteUrl, t('رابط الربط المباشر', 'Direct Pairing Link'))}
                     className="h-8 px-2.5 rounded-md bg-slate-900 hover:bg-slate-800 text-white font-bold flex items-center gap-1 cursor-pointer shrink-0"
                   >
                     <Copy className="w-3.5 h-3.5" />
-                    <span>نسخ</span>
+                    <span>{t('نسخ', 'Copy')}</span>
                   </button>
                 </div>
               </div>
@@ -553,7 +581,7 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
                   className="px-3 py-1.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold flex items-center gap-1.5 cursor-pointer"
                 >
                   <Share2 className="w-3.5 h-3.5" />
-                  <span>مشاركة / نسخ رسالة الدعوة الكاملة</span>
+                  <span>{t('مشاركة / نسخ رسالة الدعوة الكاملة', 'Share / Copy Full Invite Message')}</span>
                 </button>
                 <a
                   href={`https://wa.me/?text=${encodeURIComponent(buildWhatsappText(createdInvite))}`}
@@ -562,19 +590,22 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
                   className="px-3 py-1.5 rounded-md bg-[#25D366]/15 hover:bg-[#25D366]/25 border border-[#25D366]/40 text-emerald-900 font-bold flex items-center gap-1.5"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>إرسال عبر WhatsApp</span>
+                  <span>{t('إرسال عبر WhatsApp', 'Send via WhatsApp')}</span>
                 </a>
                 <button
                   type="button"
-                  onClick={() => copyText(createdInvite.rawToken, 'رمز الربط اليدوي')}
+                  onClick={() => copyText(createdInvite.rawToken, t('رمز الربط اليدوي', 'Manual Pairing Token'))}
                   className="px-2.5 py-1.5 rounded-md bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold cursor-pointer"
                 >
-                  نسخ الرمز فقط
+                  {t('نسخ الرمز فقط', 'Copy Token Only')}
                 </button>
               </div>
 
               <p className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-md p-2 font-bold">
-                ملاحظة أمنية: هذا الرابط يُجهز إعداد السيرفر فقط، ويلزم بعده إدخال اسم المستخدم وكلمة المرور المعتادة داخل التطبيق.
+                {t(
+                  'ملاحظة أمنية: هذا الرابط يُجهز إعداد السيرفر فقط، ويلزم بعده إدخال اسم المستخدم وكلمة المرور المعتادة داخل التطبيق.',
+                  'Security Note: This link only configures the server address. Users still must sign in with their regular username and password inside the app.'
+                )}
               </p>
             </div>
           </div>
@@ -585,121 +616,121 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
           <div className="pt-2">
             <UnifiedDataTable<PairingTokenRecord>
               compact
-              title={`سجل روابط الربط المصدرة (${tokens.length})`}
+              title={t(`سجل روابط الربط المصدرة (${tokens.length})`, `Issued Pairing Links Log (${tokens.length})`)}
               data={tokens}
-              rowKey={(t) => t.id}
+              rowKey={(tok) => tok.id}
               defaultPageSize={12}
-              searchPlaceholder="بحث بالرمز أو المستخدم أو الوضع..."
+              searchPlaceholder={t('بحث بالرمز أو المستخدم أو الوضع...', 'Search by token, user, or mode...')}
               exportFilename="AWLAD_SELIM_Pairing_Tokens"
               columns={[
                 {
                   key: 'tokenPreview',
-                  header: 'الرمز',
-                  sortValue: (t) => t.tokenPreview,
-                  exportValue: (t) => t.tokenPreview,
-                  render: (t) => (
+                  header: t('الرمز', 'Token'),
+                  sortValue: (tok) => tok.tokenPreview,
+                  exportValue: (tok) => tok.tokenPreview,
+                  render: (tok) => (
                     <span className="font-mono text-slate-800" dir="ltr">
-                      {t.tokenPreview}
+                      {tok.tokenPreview}
                     </span>
                   ),
                 },
                 {
                   key: 'targetUserName',
-                  header: 'المستخدم / الجهاز المستهدف',
-                  sortValue: (t) => t.targetUserName || 'أي مستخدم مصرح',
-                  exportValue: (t) => t.targetUserName || 'أي مستخدم مصرح',
-                  render: (t) => (
+                  header: t('المستخدم / الجهاز المستهدف', 'Target User / Device'),
+                  sortValue: (tok) => tok.targetUserName || t('أي مستخدم مصرح', 'Any Authorized User'),
+                  exportValue: (tok) => tok.targetUserName || t('أي مستخدم مصرح', 'Any Authorized User'),
+                  render: (tok) => (
                     <div>
-                      <div className="font-bold text-slate-900">{t.targetUserName || 'أي مستخدم مصرح'}</div>
+                      <div className="font-bold text-slate-900">{tok.targetUserName || t('أي مستخدم مصرح', 'Any Authorized User')}</div>
                       <div className="text-[10px] text-slate-500">
-                        {t.targetDeviceType === 'any' ? 'كل الأجهزة' : deviceTypeLabel(t.targetDeviceType)}
-                        {t.requireAdminApproval ? ' • بموافقة الإدارة' : ''}
+                        {tok.targetDeviceType === 'any' ? t('كل الأجهزة', 'All Devices') : deviceTypeLabel(tok.targetDeviceType, t)}
+                        {tok.requireAdminApproval ? ` • ${t('بموافقة الإدارة', 'Admin Approval Required')}` : ''}
                       </div>
                     </div>
                   ),
                 },
                 {
                   key: 'connectionMode',
-                  header: 'وضع الاتصال',
-                  sortValue: (t) => getConnectionModeLabel(t.connectionMode),
-                  exportValue: (t) => getConnectionModeLabel(t.connectionMode),
-                  render: (t) => (
-                    <span className="text-slate-700 font-bold">{getConnectionModeLabel(t.connectionMode)}</span>
+                  header: t('وضع الاتصال', 'Connection Mode'),
+                  sortValue: (tok) => getConnectionModeLabel(tok.connectionMode),
+                  exportValue: (tok) => getConnectionModeLabel(tok.connectionMode),
+                  render: (tok) => (
+                    <span className="text-slate-700 font-bold">{getConnectionModeLabel(tok.connectionMode)}</span>
                   ),
                 },
                 {
                   key: 'expiresAt',
-                  header: 'تاريخ الانتهاء',
-                  sortValue: (t) => t.expiresAt,
-                  exportValue: (t) => new Date(t.expiresAt).toLocaleString('en-GB'),
-                  render: (t) => (
+                  header: t('تاريخ الانتهاء', 'Expires At'),
+                  sortValue: (tok) => tok.expiresAt,
+                  exportValue: (tok) => formatLocaleDateTime(tok.expiresAt),
+                  render: (tok) => (
                     <span className="font-mono tabular-nums text-slate-600" dir="ltr">
-                      {new Date(t.expiresAt).toLocaleString('en-GB')}
+                      {formatLocaleDateTime(tok.expiresAt)}
                     </span>
                   ),
                 },
                 {
                   key: 'usedCount',
-                  header: 'الاستخدام',
+                  header: t('الاستخدام', 'Usage'),
                   align: 'center',
-                  sortValue: (t) => t.usedCount,
-                  exportValue: (t) => `${t.usedCount}${t.singleUse ? ' / 1' : ''}`,
-                  render: (t) => (
+                  sortValue: (tok) => tok.usedCount,
+                  exportValue: (tok) => `${tok.usedCount}${tok.singleUse ? ' / 1' : ''}`,
+                  render: (tok) => (
                     <span className="font-mono tabular-nums font-bold text-slate-800">
-                      {t.usedCount}
-                      {t.singleUse ? ' / 1' : ''}
+                      {tok.usedCount}
+                      {tok.singleUse ? ' / 1' : ''}
                     </span>
                   ),
                 },
                 {
                   key: 'status',
-                  header: 'الحالة',
+                  header: t('الحالة', 'Status'),
                   align: 'center',
-                  sortValue: (t) => t.status,
-                  exportValue: (t) =>
-                    t.status === 'active'
-                      ? 'نشط'
-                      : t.status === 'used'
-                      ? 'مُستخدم'
-                      : t.status === 'revoked'
-                      ? 'ملغي'
-                      : 'منتهي',
-                  render: (t) => (
+                  sortValue: (tok) => tok.status,
+                  exportValue: (tok) =>
+                    tok.status === 'active'
+                      ? t('نشط', 'Active')
+                      : tok.status === 'used'
+                      ? t('مُستخدم', 'Used')
+                      : tok.status === 'revoked'
+                      ? t('ملغي', 'Revoked')
+                      : t('منتهي', 'Expired'),
+                  render: (tok) => (
                     <span
                       className={`px-2 py-0.5 rounded font-bold border text-[10px] ${
-                        t.status === 'active'
+                        tok.status === 'active'
                           ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                          : t.status === 'used'
+                          : tok.status === 'used'
                           ? 'bg-blue-50 text-blue-800 border-blue-200'
-                          : t.status === 'revoked'
+                          : tok.status === 'revoked'
                           ? 'bg-red-50 text-red-700 border-red-200'
                           : 'bg-slate-100 text-slate-600 border-slate-200'
                       }`}
                     >
-                      {t.status === 'active'
-                        ? 'نشط'
-                        : t.status === 'used'
-                        ? 'مُستخدم'
-                        : t.status === 'revoked'
-                        ? 'ملغي'
-                        : 'منتهي'}
+                      {tok.status === 'active'
+                        ? t('نشط', 'Active')
+                        : tok.status === 'used'
+                        ? t('مُستخدم', 'Used')
+                        : tok.status === 'revoked'
+                        ? t('ملغي', 'Revoked')
+                        : t('منتهي', 'Expired')}
                     </span>
                   ),
                 },
                 {
                   key: 'actions',
-                  header: 'الإجراءات',
+                  header: t('الإجراءات', 'Actions'),
                   align: 'center',
                   sortable: false,
-                  render: (t) =>
-                    t.status === 'active' ? (
+                  render: (tok) =>
+                    tok.status === 'active' ? (
                       <button
                         type="button"
-                        disabled={busyId === t.id}
-                        onClick={() => handleRevokeToken(t.id)}
+                        disabled={busyId === tok.id}
+                        onClick={() => handleRevokeToken(tok.id)}
                         className="px-2 py-0.5 rounded-md text-[11px] bg-red-50 hover:bg-red-100 text-red-700 font-bold cursor-pointer disabled:opacity-50"
                       >
-                        إلغاء
+                        {t('إلغاء', 'Revoke')}
                       </button>
                     ) : (
                       <span className="text-slate-400">—</span>
@@ -717,10 +748,13 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
           <div>
             <h3 className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5">
               <Smartphone className="w-4 h-4 text-blue-900" />
-              <span>إدارة الأجهزة المرتبطة بالسيرفر (Device Management)</span>
+              <span>{t('إدارة الأجهزة المرتبطة بالسيرفر (Device Management)', 'Paired Device Management')}</span>
             </h3>
             <p className="text-[11px] text-slate-500 mt-0.5">
-              متابعة أجهزة Windows و Android و iPhone المرتبطة، اعتماد الأجهزة الجديدة، إعادة إرسال روابط الربط، أو فصل الجهاز فوراً.
+              {t(
+                'متابعة أجهزة Windows و Android و iPhone المرتبطة، اعتماد الأجهزة الجديدة، إعادة إرسال روابط الربط، أو فصل الجهاز فوراً.',
+                'Monitor paired Windows, Android, and iPhone devices, approve new devices, resend pairing links, or revoke devices immediately.'
+              )}
             </p>
           </div>
         </div>
@@ -728,23 +762,23 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
         {/* Summary Counters */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-slate-200 border border-slate-200 rounded-md overflow-hidden">
           <div className="px-2 py-1.5 bg-slate-50">
-            <span className="text-[10px] text-slate-500 font-bold block">إجمالي الأجهزة</span>
+            <span className="text-[10px] text-slate-500 font-bold block">{t('إجمالي الأجهزة', 'Total Devices')}</span>
             <strong className="text-xs font-black font-mono tabular-nums text-slate-900">{summary.total}</strong>
           </div>
           <div className="px-2 py-1.5 bg-emerald-50/70">
-            <span className="text-[10px] text-emerald-700 font-bold block">أجهزة نشطة</span>
+            <span className="text-[10px] text-emerald-700 font-bold block">{t('أجهزة نشطة', 'Active Devices')}</span>
             <strong className="text-xs font-black font-mono tabular-nums text-emerald-800">{summary.active}</strong>
           </div>
           <div className="px-2 py-1.5 bg-[#EEF3FA]">
-            <span className="text-[10px] text-[#003589] font-bold block">متصل حالياً (5 د)</span>
+            <span className="text-[10px] text-[#003589] font-bold block">{t('متصل حالياً (5 د)', 'Online Now (5m)')}</span>
             <strong className="text-xs font-black font-mono tabular-nums text-[#011E58]">{summary.onlineNow}</strong>
           </div>
           <div className="px-2 py-1.5 bg-amber-50/70">
-            <span className="text-[10px] text-amber-800 font-bold block">بانتظار الاعتماد</span>
+            <span className="text-[10px] text-amber-800 font-bold block">{t('بانتظار الاعتماد', 'Pending Approval')}</span>
             <strong className="text-xs font-black font-mono tabular-nums text-amber-900">{summary.pendingApproval}</strong>
           </div>
           <div className="px-2 py-1.5 bg-red-50/70">
-            <span className="text-[10px] text-red-700 font-bold block">مفصول / ملغي</span>
+            <span className="text-[10px] text-red-700 font-bold block">{t('مفصول / ملغي', 'Revoked')}</span>
             <strong className="text-xs font-black font-mono tabular-nums text-red-800">{summary.revoked}</strong>
           </div>
         </div>
@@ -753,17 +787,17 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
           compact
           data={devices}
           rowKey={(dev) => dev.deviceId}
-          searchPlaceholder="بحث باسم الجهاز أو المستخدم أو العنوان..."
+          searchPlaceholder={t('بحث باسم الجهاز أو المستخدم أو العنوان...', 'Search by device name, user, or address...')}
           exportFilename="AWLAD_SELIM_Paired_Devices"
-          pdfTitle="الأجهزة المرتبطة بالسيرفر"
-          emptyTitle="لا توجد أجهزة مسجلة في السجل بعد"
-          emptySubtitle="ستظهر هنا أي أجهزة يتم ربطها عبر رابط الدعوة أو QR أو عند تسجيل الدخول."
+          pdfTitle={t('الأجهزة المرتبطة بالسيرفر', 'Paired Server Devices')}
+          emptyTitle={t('لا توجد أجهزة مسجلة في السجل بعد', 'No paired devices registered yet')}
+          emptySubtitle={t('ستظهر هنا أي أجهزة يتم ربطها عبر رابط الدعوة أو QR أو عند تسجيل الدخول.', 'Devices paired via invite link, QR code, or login will appear here.')}
           columns={[
             {
               key: 'deviceName',
-              header: 'الجهاز والنوع',
+              header: t('الجهاز والنوع', 'Device & Platform'),
               sortValue: (dev) => dev.deviceName,
-              exportValue: (dev) => `${dev.deviceName} (${deviceTypeLabel(dev.deviceType)})`,
+              exportValue: (dev) => `${dev.deviceName} (${deviceTypeLabel(dev.deviceType, t)})`,
               render: (dev) => (
                 <div className="flex items-center gap-2">
                   <span className="p-1.5 rounded-lg bg-slate-100 border border-slate-200">
@@ -775,12 +809,12 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
                       {dev.isRecentlyOnline && (
                         <span
                           className="inline-block w-2 h-2 rounded bg-emerald-500"
-                          title="متصل حديثاً"
+                          title={t('متصل حديثاً', 'Recently Online')}
                         />
                       )}
                     </div>
                     <div className="text-[10px] text-slate-500 font-mono" dir="ltr">
-                      {deviceTypeLabel(dev.deviceType)} • {dev.deviceId.slice(0, 14)}
+                      {deviceTypeLabel(dev.deviceType, t)} • {dev.deviceId.slice(0, 14)}
                       {dev.ipAddress ? ` • ${dev.ipAddress}` : ''}
                     </div>
                   </div>
@@ -789,18 +823,18 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
             },
             {
               key: 'linkedUserName',
-              header: 'المستخدم المرتبط',
+              header: t('المستخدم المرتبط', 'Linked User'),
               sortValue: (dev) => dev.linkedUserName || '',
-              exportValue: (dev) => dev.linkedUserName || 'بانتظار تسجيل الدخول',
+              exportValue: (dev) => dev.linkedUserName || t('بانتظار تسجيل الدخول', 'Awaiting Login'),
               render: (dev) => (
                 <span className="font-bold text-slate-800">
-                  {dev.linkedUserName || 'بانتظار تسجيل الدخول'}
+                  {dev.linkedUserName || t('بانتظار تسجيل الدخول', 'Awaiting Login')}
                 </span>
               ),
             },
             {
               key: 'connectionMode',
-              header: 'وضع الاتصال المستخدم',
+              header: t('وضع الاتصال المستخدم', 'Connection Mode Used'),
               sortValue: (dev) => getConnectionModeLabel(dev.connectionMode),
               exportValue: (dev) => getConnectionModeLabel(dev.connectionMode),
               render: (dev) => (
@@ -816,37 +850,37 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
             },
             {
               key: 'pairedAt',
-              header: 'تاريخ الربط',
+              header: t('تاريخ الربط', 'Paired At'),
               sortValue: (dev) => dev.pairedAt,
-              exportValue: (dev) => new Date(dev.pairedAt).toLocaleString('en-GB'),
+              exportValue: (dev) => formatLocaleDateTime(dev.pairedAt),
               render: (dev) => (
                 <span className="font-mono tabular-nums text-slate-600" dir="ltr">
-                  {new Date(dev.pairedAt).toLocaleString('en-GB')}
+                  {formatLocaleDateTime(dev.pairedAt)}
                 </span>
               ),
             },
             {
               key: 'lastSeenAt',
-              header: 'آخر اتصال',
+              header: t('آخر اتصال', 'Last Seen'),
               sortValue: (dev) => dev.lastSeenAt,
-              exportValue: (dev) => new Date(dev.lastSeenAt).toLocaleString('en-GB'),
+              exportValue: (dev) => formatLocaleDateTime(dev.lastSeenAt),
               render: (dev) => (
                 <span className="font-mono tabular-nums text-slate-700" dir="ltr">
-                  {new Date(dev.lastSeenAt).toLocaleString('en-GB')}
+                  {formatLocaleDateTime(dev.lastSeenAt)}
                 </span>
               ),
             },
             {
               key: 'status',
-              header: 'الحالة',
+              header: t('الحالة', 'Status'),
               align: 'center',
               sortValue: (dev) => dev.status,
               exportValue: (dev) =>
                 dev.status === 'active'
-                  ? 'نشط ومعتمد'
+                  ? t('نشط ومعتمد', 'Active & Approved')
                   : dev.status === 'pending_approval'
-                  ? 'بانتظار الاعتماد'
-                  : 'ملغي / مفصول',
+                  ? t('بانتظار الاعتماد', 'Pending Approval')
+                  : t('ملغي / مفصول', 'Revoked / Disconnected'),
               render: (dev) => (
                 <span
                   className={`px-2 py-0.5 rounded font-bold border text-[10px] inline-flex items-center gap-1 ${
@@ -862,17 +896,17 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
                   {dev.status === 'revoked' && <XCircle className="w-3 h-3" />}
                   <span>
                     {dev.status === 'active'
-                      ? 'نشط ومعتمد'
+                      ? t('نشط ومعتمد', 'Active & Approved')
                       : dev.status === 'pending_approval'
-                      ? 'بانتظار الاعتماد'
-                      : 'ملغي / مفصول'}
+                      ? t('بانتظار الاعتماد', 'Pending Approval')
+                      : t('ملغي / مفصول', 'Revoked / Disconnected')}
                   </span>
                 </span>
               ),
             },
             {
               key: 'actions',
-              header: 'إجراءات الإدارة',
+              header: t('إجراءات الإدارة', 'Actions'),
               align: 'center',
               sortable: false,
               render: (dev) => (
@@ -884,7 +918,7 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
                       onClick={() => handleApproveDevice(dev.deviceId)}
                       className="px-2 py-0.5 rounded-md text-[11px] bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer disabled:opacity-50"
                     >
-                      اعتماد
+                      {t('اعتماد', 'Approve')}
                     </button>
                   )}
                   <button
@@ -892,9 +926,9 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
                     disabled={busyId === dev.deviceId}
                     onClick={() => handleResendDeviceLink(dev)}
                     className="px-2 py-0.5 rounded-md text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold cursor-pointer disabled:opacity-50"
-                    title="توليد رابط و QR جديد لهذا الجهاز"
+                    title={t('توليد رابط و QR جديد لهذا الجهاز', 'Generate new link & QR for this device')}
                   >
-                    إعادة إرسال رابط
+                    {t('إعادة إرسال رابط', 'Resend Link')}
                   </button>
                   {dev.status !== 'revoked' && (
                     <button
@@ -904,7 +938,7 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
                       className="px-2 py-0.5 rounded-md text-[11px] bg-red-50 hover:bg-red-100 text-red-700 font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50"
                     >
                       <Trash2 className="w-3 h-3" />
-                      <span>فصل</span>
+                      <span>{t('فصل', 'Revoke')}</span>
                     </button>
                   )}
                 </div>
@@ -916,14 +950,17 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
 
       <ConfirmDialog
         isOpen={Boolean(deviceToRevoke)}
-        title="تأكيد فصل وإلغاء ربط الجهاز"
+        title={t('تأكيد فصل وإلغاء ربط الجهاز', 'Confirm Device Disconnect & Revocation')}
         message={
           deviceToRevoke
-            ? `هل أنت متأكد من فصل الجهاز (${deviceToRevoke.deviceName})؟ سيتم إنهاء جميع جلساته النشطة ومنعه من الوصول للسيرفر حتى إعادة ربطه من جديد.`
+            ? t(
+                `هل أنت متأكد من فصل الجهاز (${deviceToRevoke.deviceName})؟ سيتم إنهاء جميع جلساته النشطة ومنعه من الوصول للسيرفر حتى إعادة ربطه من جديد.`,
+                `Are you sure you want to disconnect device (${deviceToRevoke.deviceName})? All its active sessions will be terminated and server access blocked until re-paired.`
+              )
             : ''
         }
-        confirmLabel="نعم، فصل الجهاز فوراً"
-        cancelLabel="تراجع"
+        confirmLabel={t('نعم، فصل الجهاز فوراً', 'Yes, Revoke Device Now')}
+        cancelLabel={t('تراجع', 'Cancel')}
         variant="danger"
         onConfirm={handleConfirmRevokeDevice}
         onClose={() => setDeviceToRevoke(null)}

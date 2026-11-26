@@ -5,11 +5,12 @@ import {
   Server, Wifi, WifiOff, Activity, Monitor, Smartphone, FileSpreadsheet,
   Eye, ArrowLeftRight, CheckCircle2, ShoppingCart, User, Layers,
   Barcode, FileText, Keyboard, Wrench, GitBranch, Plus, Search, Power,
-  Globe, Cloud, Lock, Copy, Radio, Users, Sun, Moon
+  Globe, Cloud, Lock, Copy, Radio, Users, Sun, Moon, Languages
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
 import { usePreferences } from '../../../context/PreferencesContext';
+import { formatLocaleDateTime, formatLocaleNumber } from '../../../i18n/translator';
 import {
   useShortcuts, SHORTCUT_CATALOG, eventToKeyCombo, isReservedSystemCombo, normalizeComboString
 } from '../../../context/ShortcutsContext';
@@ -56,36 +57,36 @@ interface SettingsViewProps {
   initialTab?: SettingsTabKey;
 }
 
-const PERMISSION_LABELS_AR: Record<string, string> = {
-  canView: 'العرض والقراءة',
-  canAdd: 'الإضافة والإنشاء',
-  canEdit: 'التعديل',
-  canDelete: 'الحذف والإلغاء',
-  canPrint: 'الطباعة',
-  canExport: 'تصدير Excel',
-  canViewReports: 'التقارير المالية',
-  canManageSales: 'إدارة المبيعات',
-  canManagePurchases: 'إدارة المشتريات الكاملة',
-  canCreatePurchase: 'إنشاء فواتير شراء مسودة',
-  canManageInventory: 'إدارة المخزون والأصناف',
-  canManageWarehouses: 'إدارة المستودعات',
-  canManageCashboxes: 'إدارة الخزائن',
-  canManageAccounts: 'إدارة الحسابات',
-  canManageTransfers: 'التحويل بالنصف',
-  canManageReps: 'إدارة المندوبين',
-  canApprove: 'اعتماد المستندات',
-  canReviewRepInvoices: 'مراجعة فواتير المناديب',
-  canSend: 'إرسال المزامنة',
-  canReceive: 'استلام المزامنة',
-  canManageEmployees: 'شؤون الموظفين',
-  canManageUsers: 'إدارة المستخدمين',
-  canManageSettings: 'إعدادات النظام',
-  canCreateStockCount: 'إنشاء جرد مخزن',
-  canApproveStockCount: 'اعتماد جرد المخزن',
-  canCreateStockTransfer: 'أوامر تحويل الأصناف',
-  canApproveStockTransfer: 'اعتماد تحويل الأصناف',
-  canExecuteStockTransfer: 'تنفيذ تحويل الأصناف',
-  canViewDeletedInvoices: 'الفواتير المحذوفة',
+const PERMISSION_LABELS: Record<string, { ar: string; en: string }> = {
+  canView: { ar: 'العرض والقراءة', en: 'View & Read' },
+  canAdd: { ar: 'الإضافة والإنشاء', en: 'Add & Create' },
+  canEdit: { ar: 'التعديل', en: 'Edit' },
+  canDelete: { ar: 'الحذف والإلغاء', en: 'Delete & Cancel' },
+  canPrint: { ar: 'الطباعة', en: 'Print' },
+  canExport: { ar: 'تصدير Excel', en: 'Export Excel' },
+  canViewReports: { ar: 'التقارير المالية', en: 'Financial Reports' },
+  canManageSales: { ar: 'إدارة المبيعات', en: 'Manage Sales' },
+  canManagePurchases: { ar: 'إدارة المشتريات الكاملة', en: 'Full Purchases Management' },
+  canCreatePurchase: { ar: 'إنشاء فواتير شراء مسودة', en: 'Create Draft Purchase Invoices' },
+  canManageInventory: { ar: 'إدارة المخزون والأصناف', en: 'Inventory & Products Management' },
+  canManageWarehouses: { ar: 'إدارة المستودعات', en: 'Warehouses Management' },
+  canManageCashboxes: { ar: 'إدارة الخزائن', en: 'Cashboxes Management' },
+  canManageAccounts: { ar: 'إدارة الحسابات', en: 'Accounts Management' },
+  canManageTransfers: { ar: 'التحويل بالنصف', en: 'Half-Transfer System' },
+  canManageReps: { ar: 'إدارة المندوبين', en: 'Representatives Management' },
+  canApprove: { ar: 'اعتماد المستندات', en: 'Approve Documents' },
+  canReviewRepInvoices: { ar: 'مراجعة فواتير المناديب', en: 'Review Rep Invoices' },
+  canSend: { ar: 'إرسال المزامنة', en: 'Send Sync' },
+  canReceive: { ar: 'استلام المزامنة', en: 'Receive Sync' },
+  canManageEmployees: { ar: 'شؤون الموظفين', en: 'HR & Employees' },
+  canManageUsers: { ar: 'إدارة المستخدمين', en: 'User Management' },
+  canManageSettings: { ar: 'إعدادات النظام', en: 'System Settings' },
+  canCreateStockCount: { ar: 'إنشاء جرد مخزن', en: 'Create Stock Count' },
+  canApproveStockCount: { ar: 'اعتماد جرد المخزن', en: 'Approve Stock Count' },
+  canCreateStockTransfer: { ar: 'أوامر تحويل الأصناف', en: 'Create Stock Transfers' },
+  canApproveStockTransfer: { ar: 'اعتماد تحويل الأصناف', en: 'Approve Stock Transfers' },
+  canExecuteStockTransfer: { ar: 'تنفيذ تحويل الأصناف', en: 'Execute Stock Transfers' },
+  canViewDeletedInvoices: { ar: 'الفواتير المحذوفة', en: 'View Deleted Invoices' },
 };
 
 export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'general' }) => {
@@ -95,7 +96,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
     products, addProduct, deleteImportedProducts, warehouses, cashboxes, users, migrationLogs, runMigration, rollbackMigration,
   } = useData();
   const { hasPermission, currentUser, updatePassword, logout, savedAccounts, setIsAccountSwitcherOpen } = useAuth();
-  const { themePreference, setThemePreference } = usePreferences();
+  const { themePreference, setThemePreference, language, setLanguage, dir, t } = usePreferences();
   const {
     shortcuts: userShortcuts,
     catalog: userShortcutCatalog,
@@ -155,14 +156,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
   // General Settings Form
   const [formData, setFormData] = useState({ ...settings });
   const [isSaved, setIsSaved] = useState(false);
-  const [savedNotice, setSavedNotice] = useState<string>('تم حفظ الإعدادات بنجاح');
+  const [savedNotice, setSavedNotice] = useState<string>(() => t('تم حفظ الإعدادات بنجاح', 'Settings saved successfully'));
   const [importError, setImportError] = useState<string | null>(null);
   const [restoreSuccess, setRestoreSuccess] = useState<string | null>(null);
 
   // Extra Control Panel Settings State
   const extra: ExtraSettingsConfig = settings.extraSettings || {};
   const [branches, setBranches] = useState<BranchSettingItem[]>(extra.branches || [
-    { id: 'BR-MAIN', name: 'الفرع الرئيسي - أولاد سليم', code: 'MAIN', warehouseId: warehouses[0]?.id, cashboxId: cashboxes[0]?.id, isDefault: true, isActive: true },
+    { id: 'BR-MAIN', name: t('الفرع الرئيسي - أولاد سليم', 'Main Branch - Awlad Selim'), code: 'MAIN', warehouseId: warehouses[0]?.id, cashboxId: cashboxes[0]?.id, isDefault: true, isActive: true },
   ]);
   const [newBranchName, setNewBranchName] = useState('');
   const [newBranchCode, setNewBranchCode] = useState('');
@@ -182,8 +183,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
   });
 
   const [printers, setPrinters] = useState<PrinterSettingItem[]>(extra.printers || [
-    { id: 'PRT-A4', name: 'طابعة الإدارة الرئيسية A4', role: 'a4', paperWidthMm: 210, ipOrPort: 'USB001', copies: 1, isDefault: true, isActive: true },
-    { id: 'PRT-POS80', name: 'طابعة كاشير حرارية 80مم', role: 'cashier_thermal80', paperWidthMm: 80, ipOrPort: '192.168.1.201', copies: 1, isDefault: false, isActive: true },
+    { id: 'PRT-A4', name: t('طابعة الإدارة الرئيسية A4', 'Main Admin Printer A4'), role: 'a4', paperWidthMm: 210, ipOrPort: 'USB001', copies: 1, isDefault: true, isActive: true },
+    { id: 'PRT-POS80', name: t('طابعة كاشير حرارية 80مم', 'Thermal Cashier Printer 80mm'), role: 'cashier_thermal80', paperWidthMm: 80, ipOrPort: '192.168.1.201', copies: 1, isDefault: false, isActive: true },
   ]);
   const [newPrinterName, setNewPrinterName] = useState('');
   const [newPrinterRole, setNewPrinterRole] = useState<PrinterSettingItem['role']>('cashier_thermal80');
@@ -195,7 +196,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
     showPreviousBalance: true,
     showRemainingBalance: true,
     showSignatureBoxes: true,
-    footerText: settings.invoiceNotes || 'شكراً لتعاملكم مع مؤسسة أولاد سليم',
+    footerText: settings.invoiceNotes || t('شكراً لتعاملكم مع مؤسسة أولاد سليم', 'Thank you for doing business with Awlad Selim'),
   });
 
   const [mobileConfig, setMobileConfig] = useState(extra.mobileConfig || {
@@ -322,10 +323,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
       }
       await loadLiveServerInfo();
       showSavedBanner(
-        `تم تعميم تحديث عنوان الاتصال (الإصدار v${res.connectionConfig?.configVersion || (connProfiles.configVersion || 1) + 1}) لتسحبه جميع الأجهزة تلقائياً عند الاتصال`
+        t(
+          `تم تعميم تحديث عنوان الاتصال (الإصدار v${res.connectionConfig?.configVersion || (connProfiles.configVersion || 1) + 1}) لتسحبه جميع الأجهزة تلقائياً عند الاتصال`,
+          `Connection profile update (v${res.connectionConfig?.configVersion || (connProfiles.configVersion || 1) + 1}) broadcast to sync across all devices automatically.`
+        )
       );
     } catch (err: any) {
-      setServerError(err?.message || 'تعذر تعميم التحديث');
+      setServerError(err?.message || t('تعذر تعميم التحديث', 'Failed to push connection update'));
     } finally {
       setIsPushingUpdate(false);
     }
@@ -437,19 +441,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
       } else {
         map.set(batchId, {
           batchId,
-          fileName: p.sourceFileName || (batchId === 'UNBATCHED' ? 'دفعة استيراد سابقة' : batchId),
+          fileName: p.sourceFileName || (batchId === 'UNBATCHED' ? t('دفعة استيراد سابقة', 'Previous Import Batch') : batchId),
           count: 1,
         });
       }
     });
     return Array.from(map.values());
-  }, [importedProductsList]);
+  }, [importedProductsList, t]);
 
   // 1. General Settings Handlers
   const handleSaveGeneral = async (e: React.FormEvent) => {
     e.preventDefault();
     await updateSettings(formData);
-    showSavedBanner('تم حفظ إعدادات المنشأة والطباعة بنجاح');
+    showSavedBanner(t('تم حفظ إعدادات المنشأة والطباعة بنجاح', 'Company and printing settings saved successfully'));
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -462,10 +466,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
       const res = await importBackup(content);
       if (res.success) {
         setImportError(null);
-        setRestoreSuccess('تمت استعادة قاعدة البيانات بنجاح! جاري تحديث البيانات...');
+        setRestoreSuccess(t('تمت استعادة قاعدة البيانات بنجاح! جاري تحديث البيانات...', 'Database restored successfully! Refreshing data...'));
         setTimeout(() => window.location.reload(), 900);
       } else {
-        setImportError(res.error || 'فشلت استعادة النسخة الاحتياطية');
+        setImportError(res.error || t('فشلت استعادة النسخة الاحتياطية', 'Failed to restore backup'));
       }
     };
     reader.readAsText(file);
@@ -495,7 +499,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
           latencyMs: 0,
           testedUrl: candidate,
           modeLabel: getConnectionModeLabel(modeToTest),
-          message: check.error || 'عنوان السيرفر غير صالح للاختبار',
+          message: check.error || t('عنوان السيرفر غير صالح للاختبار', 'Server URL is invalid for testing'),
         });
         return;
       }
@@ -507,14 +511,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
     setTestingModeKey(null);
 
     if (res.success) {
-      const displayTarget = urlToTest || getConfiguredApiBaseUrl() || 'Same-Origin (السيرفر الحالي)';
+      const displayTarget = urlToTest || getConfiguredApiBaseUrl() || t('Same-Origin (السيرفر الحالي)', 'Same-Origin (Current Server)');
       setServerTestResult({
         success: true,
         latencyMs: res.latencyMs,
         testedUrl: displayTarget,
         httpsActive: res.httpsActive,
         modeLabel: modeToTest ? getConnectionModeLabel(modeToTest) : getConnectionModeLabel(connProfiles.activeMode),
-        message: `تم الاتصال بنجاح (${displayTarget}) — زمن الاستجابة: ${res.latencyMs} مللي ثانية${res.httpsActive ? ' • اتصال HTTPS مشفر' : ''}`,
+        message: t(
+          `تم الاتصال بنجاح (${displayTarget}) — زمن الاستجابة: ${res.latencyMs} مللي ثانية${res.httpsActive ? ' • اتصال HTTPS مشفر' : ''}`,
+          `Connected successfully (${displayTarget}) — Latency: ${res.latencyMs} ms${res.httpsActive ? ' • Encrypted HTTPS' : ''}`
+        ),
       });
       setServerForm((prev) => ({
         ...prev,
@@ -530,7 +537,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
         latencyMs: res.latencyMs,
         testedUrl: urlToTest || getConfiguredApiBaseUrl() || 'Same-Origin',
         modeLabel: modeToTest ? getConnectionModeLabel(modeToTest) : getConnectionModeLabel(connProfiles.activeMode),
-        message: res.error || 'تعذر الاتصال بعنوان السيرفر',
+        message: res.error || t('تعذر الاتصال بعنوان السيرفر', 'Failed to connect to server URL'),
       });
     }
   };
@@ -610,15 +617,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
     setIsSavingServer(false);
     if (!result.success) {
-      setServerError(result.error || 'تعذر حفظ إعدادات الاتصال');
+      setServerError(result.error || t('تعذر حفظ إعدادات الاتصال', 'Failed to save connection settings'));
       return;
     }
     setConnProfiles(cleanedProfiles);
     await loadLiveServerInfo();
     showSavedBanner(
       applyActiveToThisDevice
-        ? `تم حفظ إعدادات الاتصال وتفعيل وضع (${getConnectionModeLabel(cleanedProfiles.activeMode)}) على هذا الجهاز`
-        : 'تم حفظ ملفات الاتصال المركزية في السيرفر بنجاح (مع إبقاء هذا الجهاز على الاتصال المحلي السريع)'
+        ? t(
+            `تم حفظ إعدادات الاتصال وتفعيل وضع (${getConnectionModeLabel(cleanedProfiles.activeMode)}) على هذا الجهاز`,
+            `Connection settings saved and mode (${getConnectionModeLabel(cleanedProfiles.activeMode)}) activated on this device`
+          )
+        : t(
+            'تم حفظ ملفات الاتصال المركزية في السيرفر بنجاح (مع إبقاء هذا الجهاز على الاتصال المحلي السريع)',
+            'Central connection profiles saved on server successfully (keeping this device on fast local connection)'
+          )
     );
   };
 
@@ -628,7 +641,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
     } else if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(text).catch(() => {});
     }
-    showSavedBanner(`تم نسخ ${label}`);
+    showSavedBanner(t(`تم نسخ ${label}`, `Copied ${label}`));
   };
 
   // 3. Abu Selim Files Importer Handler
@@ -658,7 +671,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
           const name = rawName.replace(/\\'/g, "'");
           const description = rawDescription.replace(/\\'/g, "'");
           const code = `AS-${String(index + 1).padStart(4, '0')}`;
-          const category = categoryId === '10' ? 'مشروبات وعصائر' : 'شيبسيات ومقرمشات';
+          const category = categoryId === '10' ? t('مشروبات وعصائر', 'Beverages & Juices') : t('شيبسيات ومقرمشات', 'Chips & Snacks');
           const isDuplicateCode = existingCodes.has(code.toLowerCase()) || seenFileCodes.has(code.toLowerCase());
           const isDuplicateName = existingNames.has(name.toLowerCase()) || seenFileNames.has(name.toLowerCase());
           seenFileCodes.add(code.toLowerCase());
@@ -668,7 +681,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             sourceFile: file.name, isDuplicateCode, isDuplicateName,
             isValid: name.trim().length > 1 && !isDuplicateCode, status: 'pending',
             sellingPrice: Number(price), oldPrice: Number(oldPrice),
-            description: `${description} | رصيد المصدر: ${stock}`,
+            description: `${description} | ${t('رصيد المصدر:', 'Source Stock:')} ${stock}`,
           });
         });
       } else {
@@ -677,7 +690,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
           const parts = line.split(/[,\t;|]/).map(part => part.trim());
           let code = '';
           let name = '';
-          let category = 'مواد غذائية';
+          let category = t('مواد غذائية', 'Food Items');
           let baseUnit = 'قطعة';
           if (parts.length >= 2 && /^[a-zA-Z0-9_\-\.]+$/.test(parts[0])) {
             [code, name] = parts;
@@ -688,8 +701,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             name = parts[0];
           }
           if (!name || name.length < 2) return;
-          if (file.name.includes('شيبس') || file.name.includes('مقرمشات')) category = 'شيبسيات ومقرمشات';
-          else if (file.name.includes('مشروب') || file.name.includes('عصير')) category = 'مشروبات وعصائر';
+          if (file.name.includes('شيبس') || file.name.includes('مقرمشات')) category = t('شيبسيات ومقرمشات', 'Chips & Snacks');
+          else if (file.name.includes('مشروب') || file.name.includes('عصير')) category = t('مشروبات وعصائر', 'Beverages & Juices');
           const isDuplicateCode = existingCodes.has(code.toLowerCase()) || seenFileCodes.has(code.toLowerCase());
           const isDuplicateName = existingNames.has(name.toLowerCase()) || seenFileNames.has(name.toLowerCase());
           seenFileCodes.add(code.toLowerCase());
@@ -734,7 +747,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
     const existingCodes = new Set(products.map(p => p.code.toLowerCase().trim()));
     const validOnes = importCandidates.filter(c => c.isValid && !existingCodes.has(c.code.toLowerCase().trim()));
     if (validOnes.length === 0) {
-      setImportError('لا توجد أصناف جديدة صالحة للاستيراد (قد تكون مسجلة مسبقاً)');
+      setImportError(t('لا توجد أصناف جديدة صالحة للاستيراد (قد تكون مسجلة مسبقاً)', 'No new valid products to import (they may already be registered)'));
       return;
     }
     setImportError(null);
@@ -774,7 +787,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
           importBatchId,
           importedFromFile: true,
           sourceFileName: item.sourceFile || importFileName,
-          notes: [item.description, item.oldPrice != null ? `السعر السابق بالكتالوج: ${item.oldPrice}` : '', `تم الاستيراد من (${item.sourceFile}).`].filter(Boolean).join(' | '),
+          notes: [item.description, item.oldPrice != null ? t(`السعر السابق بالكتالوج: ${item.oldPrice}`, `Previous catalog price: ${item.oldPrice}`) : '', t(`تم الاستيراد من (${item.sourceFile}).`, `Imported from (${item.sourceFile}).`)].filter(Boolean).join(' | '),
         });
         count++;
       } catch {
@@ -785,7 +798,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
     setIsImportingToDb(false);
     setImportSuccessCount(count);
     if (skippedDup > 0) {
-      setImportError(`تم تخطي (${skippedDup}) صنف لوجود تعارض في الكود أو الباركود.`);
+      setImportError(t(`تم تخطي (${skippedDup}) صنف لوجود تعارض في الكود أو الباركود.`, `Skipped (${skippedDup}) products due to code or barcode conflict.`));
     }
     setImportCandidates([]);
   };
@@ -802,7 +815,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
     setIsDeletingImported(false);
     setShowDeleteImportedConfirm(false);
     if (!res.success) {
-      setImportError(res.error || 'تعذر مسح الأصناف المستوردة');
+      setImportError(res.error || t('تعذر مسح الأصناف المستوردة', 'Failed to delete imported products'));
     } else {
       setDeleteImportedReport({
         deletedCount: res.deletedCount || 0,
@@ -821,7 +834,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
       const payload = await apiRequest<{ ok: boolean; health: any }>('/api/admin/db/health');
       setPgHealthInfo(payload.health);
     } catch (err: any) {
-      setPgHealthInfo({ status: 'offline', message: err?.message || 'تعذر الاتصال بخدمة السيرفر' });
+      setPgHealthInfo({ status: 'offline', message: err?.message || t('تعذر الاتصال بخدمة السيرفر', 'Failed to reach server service') });
     } finally {
       setIsTestingPg(false);
     }
@@ -833,9 +846,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
       const latestId = migrationLogs?.[0]?.id;
       const res = await rollbackMigration(latestId);
       if (res.success) {
-        setMigrationResult({ success: true, log: { id: 'ROLLBACK', notes: 'تم التراجع للنسخة الاحتياطية بنجاح.' } });
+        setMigrationResult({ success: true, log: { id: 'ROLLBACK', notes: t('تم التراجع للنسخة الاحتياطية بنجاح.', 'Rolled back to backup successfully.') } });
       } else {
-        setMigrationResult({ success: false, error: res.error || 'فشل التراجع' });
+        setMigrationResult({ success: false, error: res.error || t('فشل التراجع', 'Rollback failed') });
       }
     } finally {
       setIsMigrating(false);
@@ -850,7 +863,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
       if (res.success && res.log) {
         setMigrationResult({ success: true, log: res.log });
       } else {
-        setMigrationResult({ success: false, error: res.error || 'فشل الترحيل' });
+        setMigrationResult({ success: false, error: res.error || t('فشل الترحيل', 'Migration failed') });
       }
     } catch (err: any) {
       setMigrationResult({ success: false, error: err.message });
@@ -864,15 +877,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
       {/* Header */}
       <div className="bg-white dark:bg-[#0E1C36] px-3 py-2 rounded-lg border border-slate-200 dark:border-[#21375C] shadow-xs flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-black text-slate-900 dark:text-[#F3F7FC] tracking-tight">إعدادات منظومة أولاد سليم الشاملة</h2>
+          <h2 className="text-sm font-black text-slate-900 dark:text-[#F3F7FC] tracking-tight">{t('إعدادات منظومة أولاد سليم الشاملة', 'AWLAD SELIM Comprehensive System Settings')}</h2>
           <p className="text-[11px] text-slate-500 dark:text-[#97AECE]">
-            إدارة المنشأة، ربط السيرفر المركزي، استيراد الملفات، والنسخ الاحتياطي
+            {t('إدارة المنشأة، ربط السيرفر المركزي، استيراد الملفات، والنسخ الاحتياطي', 'Company management, central server connection, file imports, and backups')}
           </p>
         </div>
         <div className="no-dark-surface dark:bg-white rounded-md px-2 py-0.5 border border-transparent dark:border-[#2A436E] flex items-center justify-center shrink-0">
           <img
             src="/awlad-selim-logo.png"
-            alt="أولاد سليم"
+            alt={t('أولاد سليم', 'AWLAD SELIM')}
             className="h-8 w-auto object-contain"
           />
         </div>
@@ -881,25 +894,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
       {/* Tabs Navigation */}
       <div className="flex items-center gap-1 p-1 bg-slate-200/80 dark:bg-[#132544] dark:border dark:border-[#21375C] rounded-lg overflow-x-auto text-xs font-bold no-print">
         {[
-          { key: 'account', label: 'حسابي وكلمة المرور والصلاحيات', icon: User, color: 'text-[#011E58]', allowAllStaff: true },
-          { key: 'general', label: 'المنشأة والطباعة', icon: Building2, color: 'text-[#003589]', perm: 'canManageSettings' },
-          { key: 'branches', label: 'الفروع', icon: GitBranch, color: 'text-[#003589]', perm: 'canManageSettings' },
-          { key: 'barcode', label: 'إعدادات الباركود', icon: Barcode, color: 'text-slate-700', perm: 'canManageSettings' },
-          { key: 'printers', label: 'الطابعات المتعددة', icon: Printer, color: 'text-[#011E58]', perm: 'canManageSettings' },
-          { key: 'invoice-design', label: 'إعدادات الفاتورة', icon: FileText, color: 'text-[#0049B0]', perm: 'canManageSettings' },
-          { key: 'mobile-config', label: 'إعدادات الموبايل', icon: Smartphone, color: 'text-[#003589]', perm: 'canManageSettings' },
-          { key: 'online-sync', label: 'مزامنة أونلاين', icon: Wifi, color: 'text-[#0049B0]', perm: 'canManageSettings' },
+          { key: 'account', label: t('حسابي وكلمة المرور والصلاحيات', 'My Account, Password & Permissions'), icon: User, color: 'text-[#011E58]', allowAllStaff: true },
+          { key: 'general', label: t('المنشأة والطباعة', 'Company & Printing'), icon: Building2, color: 'text-[#003589]', perm: 'canManageSettings' },
+          { key: 'branches', label: t('الفروع', 'Branches'), icon: GitBranch, color: 'text-[#003589]', perm: 'canManageSettings' },
+          { key: 'barcode', label: t('إعدادات الباركود', 'Barcode Settings'), icon: Barcode, color: 'text-slate-700', perm: 'canManageSettings' },
+          { key: 'printers', label: t('الطابعات المتعددة', 'Multiple Printers'), icon: Printer, color: 'text-[#011E58]', perm: 'canManageSettings' },
+          { key: 'invoice-design', label: t('إعدادات الفاتورة', 'Invoice Design'), icon: FileText, color: 'text-[#0049B0]', perm: 'canManageSettings' },
+          { key: 'mobile-config', label: t('إعدادات الموبايل', 'Mobile App Settings'), icon: Smartphone, color: 'text-[#003589]', perm: 'canManageSettings' },
+          { key: 'online-sync', label: t('مزامنة أونلاين', 'Online Sync'), icon: Wifi, color: 'text-[#0049B0]', perm: 'canManageSettings' },
           ...(!isMobilePlatform
-            ? [{ key: 'shortcuts', label: 'اختصارات لوحة المفاتيح', icon: Keyboard, color: 'text-[#011E58]', allowAllStaff: true }]
+            ? [{ key: 'shortcuts', label: t('اختصارات لوحة المفاتيح', 'Keyboard Shortcuts'), icon: Keyboard, color: 'text-[#011E58]', allowAllStaff: true }]
             : []),
-          { key: 'services', label: 'الخدمات', icon: Wrench, color: 'text-amber-700', perm: 'canManageSettings' },
-          { key: 'server', label: 'Server & Connection Settings', icon: Server, color: 'text-[#003589]', perm: 'canManageSettings' },
-          { key: 'diagnostics', label: 'سجل التشخيص والأخطاء', icon: Activity, color: 'text-rose-700', perm: 'canManageSettings' },
-          { key: 'abu-selim', label: 'استيراد الملفات', icon: FileSpreadsheet, color: 'text-amber-600', perm: 'canManageInventory' },
-          { key: 'backup', label: 'النسخ الاحتياطي', icon: Database, color: 'text-[#011E58]', perm: 'canManageSettings' },
-          { key: 'migration', label: 'الترحيل و PostgreSQL', icon: Layers, color: 'text-[#003589]', perm: 'canManageSettings' },
+          { key: 'services', label: t('الخدمات', 'Services'), icon: Wrench, color: 'text-amber-700', perm: 'canManageSettings' },
+          { key: 'server', label: t('إعدادات السيرفر والاتصال', 'Server & Connection Settings'), icon: Server, color: 'text-[#003589]', perm: 'canManageSettings' },
+          { key: 'diagnostics', label: t('سجل التشخيص والأخطاء', 'Diagnostics & Error Log'), icon: Activity, color: 'text-rose-700', perm: 'canManageSettings' },
+          { key: 'abu-selim', label: t('استيراد الملفات', 'File Import'), icon: FileSpreadsheet, color: 'text-amber-600', perm: 'canManageInventory' },
+          { key: 'backup', label: t('النسخ الاحتياطي', 'Backup'), icon: Database, color: 'text-[#011E58]', perm: 'canManageSettings' },
+          { key: 'migration', label: t('الترحيل و PostgreSQL', 'Migration & PostgreSQL'), icon: Layers, color: 'text-[#003589]', perm: 'canManageSettings' },
         ]
-          .filter((t: any) => t.allowAllStaff || !t.perm || currentUser?.role === 'admin' || hasPermission(t.perm as any))
+          .filter((tabItem: any) => tabItem.allowAllStaff || !tabItem.perm || currentUser?.role === 'admin' || hasPermission(tabItem.perm as any))
           .map((tab) => {
             const TabIcon = tab.icon;
             const isActive = activeTab === tab.key;
@@ -957,7 +970,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   className="min-h-[32px] px-3 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 font-black flex items-center gap-1.5 cursor-pointer"
                 >
                   <Users className="w-3.5 h-3.5" />
-                  <span>الحسابات المحفوظة على الجهاز ({savedAccounts.length})</span>
+                  <span>{t(`الحسابات المحفوظة على الجهاز (${savedAccounts.length})`, `Saved Accounts on Device (${savedAccounts.length})`)}</span>
                 </button>
                 <button
                   type="button"
@@ -965,7 +978,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   className="min-h-[32px] px-3 rounded-md bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-black flex items-center gap-1.5 cursor-pointer"
                 >
                   <Power className="w-3.5 h-3.5" />
-                  <span>تسجيل الخروج</span>
+                  <span>{t('تسجيل الخروج', 'Log Out')}</span>
                 </button>
               </div>
             </div>
@@ -973,11 +986,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             <div className="space-y-1.5">
               <h4 className="font-black text-slate-800 dark:text-[#F3F7FC] flex items-center gap-1.5">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
-                <span>الصلاحيات النشطة لحسابك:</span>
+                <span>{t('الصلاحيات النشطة لحسابك:', 'Active Permissions for Your Account:')}</span>
               </h4>
               {currentUser?.role === 'admin' ? (
                 <div className="px-2.5 py-1.5 rounded-md bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-400/30 text-emerald-900 dark:text-emerald-200 font-bold">
-                  حساب مدير عام بصلاحيات إدارية ومالية وتشغيلية كاملة على جميع أقسام المنظومة.
+                  {t('حساب مدير عام بصلاحيات إدارية ومالية وتشغيلية كاملة على جميع أقسام المنظومة.', 'General Manager account with full administrative, financial, and operational permissions across all system modules.')}
                 </div>
               ) : (
                 <div className="flex flex-wrap gap-1">
@@ -988,7 +1001,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                         key={key}
                         className="px-2 py-0.5 rounded bg-blue-50 dark:bg-[#132544] text-blue-900 dark:text-[#85B8FF] border border-blue-200 dark:border-[#2A436E] font-bold text-[11px]"
                       >
-                        {PERMISSION_LABELS_AR[key] || key}
+                        {PERMISSION_LABELS[key] ? (language === 'en' ? PERMISSION_LABELS[key].en : PERMISSION_LABELS[key].ar) : key}
                       </span>
                     ))}
                 </div>
@@ -997,15 +1010,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
             <div className="pt-2 border-t border-slate-200 dark:border-[#21375C] flex flex-wrap items-center justify-between gap-2">
               <div>
-                <h4 className="font-black text-slate-800 dark:text-[#F3F7FC]">مظهر العرض (Theme)</h4>
-                <p className="text-[11px] text-slate-500 dark:text-[#97AECE]">اختيار الوضع النهاري أو الداكن أو مطابقة إعدادات الجهاز</p>
+                <h4 className="font-black text-slate-800 dark:text-[#F3F7FC]">{t('مظهر العرض (Theme)', 'Display Theme')}</h4>
+                <p className="text-[11px] text-slate-500 dark:text-[#97AECE]">{t('اختيار الوضع النهاري أو الداكن أو مطابقة إعدادات الجهاز', 'Choose Light, Dark, or match system device settings')}</p>
               </div>
               <div className="inline-flex items-center gap-1 p-0.5 rounded-md bg-slate-100 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C]">
                 {(
                   [
-                    { key: 'light', label: 'نهاري', icon: Sun },
-                    { key: 'dark', label: 'داكن', icon: Moon },
-                    { key: 'system', label: 'تلقائي', icon: Monitor },
+                    { key: 'light', label: t('نهاري', 'Light'), icon: Sun },
+                    { key: 'dark', label: t('داكن', 'Dark'), icon: Moon },
+                    { key: 'system', label: t('تلقائي', 'Auto'), icon: Monitor },
                   ] as const
                 ).map((opt) => {
                   const Icon = opt.icon;
@@ -1035,11 +1048,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               e.preventDefault();
               setAccountPasswordFeedback(null);
               if (accountNewPassword.length < 4) {
-                setAccountPasswordFeedback({ type: 'error', text: 'كلمة المرور الجديدة يجب ألا تقل عن 4 أحرف.' });
+                setAccountPasswordFeedback({ type: 'error', text: t('كلمة المرور الجديدة يجب ألا تقل عن 4 أحرف.', 'New password must be at least 4 characters.') });
                 return;
               }
               if (accountNewPassword !== accountConfirmPassword) {
-                setAccountPasswordFeedback({ type: 'error', text: 'تأكيد كلمة المرور غير مطابق.' });
+                setAccountPasswordFeedback({ type: 'error', text: t('تأكيد كلمة المرور غير مطابق.', 'Password confirmation does not match.') });
                 return;
               }
               setIsUpdatingAccountPassword(true);
@@ -1049,16 +1062,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                 setAccountCurrentPassword('');
                 setAccountNewPassword('');
                 setAccountConfirmPassword('');
-                setAccountPasswordFeedback({ type: 'success', text: 'تم تحديث كلمة المرور بنجاح وحفظها على السيرفر المركزي.' });
+                setAccountPasswordFeedback({ type: 'success', text: t('تم تحديث كلمة المرور بنجاح وحفظها على السيرفر المركزي.', 'Password updated successfully and saved to the central server.') });
               } else {
-                setAccountPasswordFeedback({ type: 'error', text: res.error || 'تعذر تغيير كلمة المرور.' });
+                setAccountPasswordFeedback({ type: 'error', text: res.error || t('تعذر تغيير كلمة المرور.', 'Failed to change password.') });
               }
             }}
             className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs space-y-2.5"
           >
             <h3 className="text-xs sm:text-sm font-black text-slate-900 border-b pb-1.5 flex items-center gap-1.5">
               <Lock className="w-4 h-4 text-blue-900" />
-              <span>تغيير كلمة المرور الشخصية</span>
+              <span>{t('تغيير كلمة المرور الشخصية', 'Change Personal Password')}</span>
             </h3>
 
             {accountPasswordFeedback && (
@@ -1076,9 +1089,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <div>
-                <label className="block text-[11px] font-bold mb-0.5">كلمة المرور الحالية:</label>
+                <label className="block text-[11px] font-bold mb-0.5">{t('كلمة المرور الحالية:', 'Current Password:')}</label>
                 <input
                   type="password"
+                  dir="ltr"
                   required
                   value={accountCurrentPassword}
                   onChange={(e) => setAccountCurrentPassword(e.target.value)}
@@ -1086,9 +1100,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-bold mb-0.5">كلمة المرور الجديدة:</label>
+                <label className="block text-[11px] font-bold mb-0.5">{t('كلمة المرور الجديدة:', 'New Password:')}</label>
                 <input
                   type="password"
+                  dir="ltr"
                   required
                   minLength={4}
                   value={accountNewPassword}
@@ -1097,9 +1112,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-bold mb-0.5">تأكيد كلمة المرور الجديدة:</label>
+                <label className="block text-[11px] font-bold mb-0.5">{t('تأكيد كلمة المرور الجديدة:', 'Confirm New Password:')}</label>
                 <input
                   type="password"
+                  dir="ltr"
                   required
                   minLength={4}
                   value={accountConfirmPassword}
@@ -1116,7 +1132,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                 className="min-h-[32px] px-4 bg-blue-900 hover:bg-blue-950 text-white rounded-md font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
                 <Save className="w-3.5 h-3.5" />
-                <span>{isUpdatingAccountPassword ? 'جاري التحديث...' : 'حفظ كلمة المرور الجديدة'}</span>
+                <span>{isUpdatingAccountPassword ? t('جاري التحديث...', 'Updating...') : t('حفظ كلمة المرور الجديدة', 'Save New Password')}</span>
               </button>
             </div>
           </form>
@@ -1129,12 +1145,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
           <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs space-y-2.5">
             <h3 className="text-xs sm:text-sm font-black text-slate-900 border-b pb-1.5 flex items-center gap-1.5">
               <Building2 className="w-4 h-4 text-blue-900" />
-              <span>بيانات منشأة أولاد سليم ورأس الفواتير</span>
+              <span>{t('بيانات منشأة أولاد سليم ورأس الفواتير', 'AWLAD SELIM Company Profile & Invoice Header')}</span>
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
               <div>
-                <label className="block text-[11px] font-bold mb-0.5">اسم المنشأة التجاري:</label>
+                <label className="block text-[11px] font-bold mb-0.5">{t('اسم المنشأة التجاري:', 'Commercial Name:')}</label>
                 <input
                   type="text"
                   required
@@ -1145,7 +1161,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold mb-0.5">الشعار والوصف الفرعي:</label>
+                <label className="block text-[11px] font-bold mb-0.5">{t('الشعار والوصف الفرعي:', 'Tagline & Subtitle:')}</label>
                 <input
                   type="text"
                   value={formData.companySubtitle}
@@ -1155,9 +1171,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold mb-0.5">رقم هاتف المحل / الإدارة 1:</label>
+                <label className="block text-[11px] font-bold mb-0.5">{t('رقم هاتف المحل / الإدارة 1:', 'Shop / Admin Phone 1:')}</label>
                 <input
                   type="text"
+                  dir="ltr"
                   value={formData.phone1}
                   onChange={(e) => setFormData({ ...formData, phone1: e.target.value })}
                   className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono"
@@ -1165,9 +1182,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold mb-0.5">رقم هاتف إضافي 2:</label>
+                <label className="block text-[11px] font-bold mb-0.5">{t('رقم هاتف إضافي 2:', 'Secondary Phone 2:')}</label>
                 <input
                   type="text"
+                  dir="ltr"
                   value={formData.phone2}
                   onChange={(e) => setFormData({ ...formData, phone2: e.target.value })}
                   className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono"
@@ -1175,10 +1193,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold mb-0.5">رقم الفرع الرئيسي:</label>
+                <label className="block text-[11px] font-bold mb-0.5">{t('رقم الفرع الرئيسي:', 'Main Branch Number:')}</label>
                 <input
                   type="text"
-                  placeholder="مثال: 01 أو BR-01 (اختياري)"
+                  dir="ltr"
+                  placeholder={t('مثال: 01 أو BR-01 (اختياري)', 'e.g. 01 or BR-01 (Optional)')}
                   value={formData.branchNumber || ''}
                   onChange={(e) => setFormData({ ...formData, branchNumber: e.target.value })}
                   className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono"
@@ -1186,7 +1205,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold mb-0.5">عنوان المحل / المقر الرئيسي:</label>
+                <label className="block text-[11px] font-bold mb-0.5">{t('عنوان المحل / المقر الرئيسي:', 'Shop / HQ Address:')}</label>
                 <input
                   type="text"
                   value={formData.address}
@@ -1196,7 +1215,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold mb-0.5">السجل التجاري:</label>
+                <label className="block text-[11px] font-bold mb-0.5">{t('السجل التجاري:', 'Commercial Registration:')}</label>
                 <input
                   type="text"
                   value={formData.commercialRegistration}
@@ -1206,12 +1225,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold mb-0.5">الرقم الضريبي:</label>
+                <label className="block text-[11px] font-bold mb-0.5">{t('الرقم الضريبي:', 'Tax ID Number:')}</label>
                 <input
                   type="text"
+                  dir="ltr"
                   value={formData.taxNumber}
                   onChange={(e) => setFormData({ ...formData, taxNumber: e.target.value })}
-                  className="w-full h-8 border border-slate-300 rounded-md px-2.5"
+                  className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono"
                 />
               </div>
             </div>
@@ -1221,11 +1241,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
           <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs space-y-2.5">
             <h3 className="text-xs sm:text-sm font-black text-slate-900 border-b pb-1.5 flex items-center gap-1.5">
               <Printer className="w-4 h-4 text-blue-900" />
-              <span>إعدادات الفواتير والطباعة والعمليات</span>
+              <span>{t('إعدادات الفواتير والطباعة والعمليات', 'Invoices, Printing & Operations Settings')}</span>
             </h3>
 
             <div>
-              <label className="block text-[11px] font-bold mb-1">نوع الطباعة الافتراضي عند إصدار الفاتورة:</label>
+              <label className="block text-[11px] font-bold mb-1">{t('نوع الطباعة الافتراضي عند إصدار الفاتورة:', 'Default Print Mode on Invoice Issue:')}</label>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <button
                   type="button"
@@ -1234,7 +1254,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     formData.defaultPrintMode === 'a4' ? 'bg-blue-900 text-white shadow-xs' : 'bg-slate-50 text-slate-700'
                   }`}
                 >
-                  ورق قياسي A4 (مفصل)
+                  {t('ورق قياسي A4 (مفصل)', 'Standard A4 Paper (Detailed)')}
                 </button>
                 <button
                   type="button"
@@ -1243,7 +1263,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     formData.defaultPrintMode === 'thermal80' ? 'bg-blue-900 text-white shadow-xs' : 'bg-slate-50 text-slate-700'
                   }`}
                 >
-                  طابعة إيصالات حرارية 80 مم
+                  {t('طابعة إيصالات حرارية 80 مم', 'Thermal Receipt Printer 80mm')}
                 </button>
                 <button
                   type="button"
@@ -1252,13 +1272,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     formData.defaultPrintMode === 'thermal58' ? 'bg-blue-900 text-white shadow-xs' : 'bg-slate-50 text-slate-700'
                   }`}
                 >
-                  طابعة حرارية 58 مم (بلوتوث محمول)
+                  {t('طابعة حرارية 58 مم (بلوتوث محمول)', 'Thermal Printer 58mm (Portable Bluetooth)')}
                 </button>
               </div>
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold mb-0.5">الشروط والملاحظات المطبوعة أسفل الفاتورة:</label>
+              <label className="block text-[11px] font-bold mb-0.5">{t('الشروط والملاحظات المطبوعة أسفل الفاتورة:', 'Terms & Notes Printed at Invoice Footer:')}</label>
               <textarea
                 rows={2}
                 value={formData.invoiceNotes}
@@ -1276,7 +1296,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   className="w-3.5 h-3.5 rounded text-blue-900"
                 />
                 <span className="font-bold text-slate-800">
-                  السماح بالبيع بالسالب (تجاوز رصيد المخزن في حالات الطوارئ)
+                  {t('السماح بالبيع بالسالب (تجاوز رصيد المخزن في حالات الطوارئ)', 'Allow Negative Stock Sales (Override Warehouse Stock in Emergencies)')}
                 </span>
               </label>
 
@@ -1285,7 +1305,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                 className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-900 hover:bg-blue-950 text-white font-black rounded-md shadow-xs cursor-pointer"
               >
                 <Save className="w-3.5 h-3.5" />
-                <span>حفظ الإعدادات</span>
+                <span>{t('حفظ الإعدادات', 'Save Settings')}</span>
               </button>
             </div>
           </div>
@@ -1300,8 +1320,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
         const activePort = serverInfo?.port || connProfiles.localNetwork.port || 3000;
         const dbLabel =
           serverInfo?.databaseMode === 'postgresql-enterprise'
-            ? 'PostgreSQL (قاعدة بيانات واحدة مركزية)'
-            : 'Local JSON Ledger (قاعدة بيانات واحدة مركزية)';
+            ? t('PostgreSQL (قاعدة بيانات واحدة مركزية)', 'PostgreSQL (Unified Central Database)')
+            : t('Local JSON Ledger (قاعدة بيانات واحدة مركزية)', 'Local JSON Ledger (Unified Central Database)');
 
         const modeCards: Array<{
           key: ConnectionMode;
@@ -1314,36 +1334,36 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
         }> = [
           {
             key: 'local_network',
-            title: 'Local Network',
-            subtitle: 'الشبكة المحلية داخل المحل عبر IP والمنفذ 3000',
-            badge: 'مجاني • LAN',
+            title: t('الشبكة المحلية (Local Network)', 'Local Network'),
+            subtitle: t('الشبكة المحلية داخل المحل عبر IP والمنفذ 3000', 'Local LAN inside store via IP and port 3000'),
+            badge: t('مجاني • LAN', 'Free • LAN'),
             badgeClass: 'bg-[#EEF3FA] text-[#011E58] border-[#DCE6F5]',
             icon: Wifi,
             urlPreview: resolveModeEndpointUrl('local_network', connProfiles) || 'http://192.168.1.100:3000',
           },
           {
             key: 'free_remote',
-            title: 'Free Remote Connection',
-            subtitle: 'اتصال خارجي مجاني عبر Cloudflare Quick Tunnel',
-            badge: 'مجاني • trycloudflare',
+            title: t('اتصال خارجي مجاني', 'Free Remote Connection'),
+            subtitle: t('اتصال خارجي مجاني عبر Cloudflare Quick Tunnel', 'Free remote access via Cloudflare Quick Tunnel'),
+            badge: t('مجاني • trycloudflare', 'Free • trycloudflare'),
             badgeClass: 'bg-[#EEF3FA] text-[#003589] border-[#DCE6F5]',
             icon: Radio,
             urlPreview: connProfiles.freeRemote.tunnelUrl || 'https://xxxx.trycloudflare.com',
           },
           {
             key: 'pro_remote',
-            title: 'Professional Remote Connection',
-            subtitle: 'دومين ثابت وشهادة HTTPS (Named Tunnel / Proxy)',
-            badge: 'احترافي • HTTPS ثابت',
+            title: t('اتصال خارجي احترافي', 'Professional Remote Connection'),
+            subtitle: t('دومين ثابت وشهادة HTTPS (Named Tunnel / Proxy)', 'Static domain & HTTPS SSL (Named Tunnel / Proxy)'),
+            badge: t('احترافي • HTTPS ثابت', 'Pro • Static HTTPS'),
             badgeClass: 'bg-[#DCE6F5] text-[#011E58] border-[#003589]/30',
             icon: Globe,
             urlPreview: connProfiles.proRemote.domainUrl || 'https://erp.yourdomain.com',
           },
           {
             key: 'cloud_vps',
-            title: 'Cloud VPS Connection',
-            subtitle: 'الانتقال مستقبلاً إلى سيرفر سحابي دائم 24/7',
-            badge: 'مستقبلي • Cloud VPS',
+            title: t('اتصال سيرفر سحابي (Cloud VPS)', 'Cloud VPS Connection'),
+            subtitle: t('الانتقال مستقبلاً إلى سيرفر سحابي دائم 24/7', 'Migrate later to a 24/7 Cloud VPS server'),
+            badge: t('مستقبلي • Cloud VPS', 'Future • Cloud VPS'),
             badgeClass: 'bg-slate-100 text-slate-800 border-slate-300',
             icon: Cloud,
             urlPreview: connProfiles.cloudVps.vpsUrl || 'https://vps.yourdomain.com',
@@ -1357,7 +1377,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
                 <div>
                   <span className="text-[10px] uppercase tracking-wider text-[#DCE6F5] font-bold block mb-0.5">
-                    Server & Connection Settings — إدارة أوضاع الاتصال بالسيرفر المركزي
+                    {t('Server & Connection Settings — إدارة أوضاع الاتصال بالسيرفر المركزي', 'Server & Connection Settings — Central Server Connection Modes')}
                   </span>
                   <h3 className="text-sm font-black flex items-center gap-2">
                     <span className="inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 shrink-0"></span>
@@ -1378,7 +1398,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-bold shadow-xs cursor-pointer disabled:opacity-50"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isTestingServer && testingModeKey === 'active' ? 'animate-spin' : ''}`} />
-                    <span>{isTestingServer && testingModeKey === 'active' ? 'جاري الفحص...' : 'اختبار الاتصال الحالي'}</span>
+                    <span>{isTestingServer && testingModeKey === 'active' ? t('جاري الفحص...', 'Testing...') : t('اختبار الاتصال الحالي', 'Test Current Connection')}</span>
                   </button>
                   <button
                     type="button"
@@ -1387,7 +1407,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#011E58] hover:bg-[#003589] border border-[#2E4F86] text-white rounded-md font-bold cursor-pointer disabled:opacity-50"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isPushingUpdate ? 'animate-spin' : ''}`} />
-                    <span>{isPushingUpdate ? 'جاري التعميم...' : 'تحديث/تعميم العنوان للأجهزة'}</span>
+                    <span>{isPushingUpdate ? t('جاري التعميم...', 'Broadcasting...') : t('تحديث/تعميم العنوان للأجهزة', 'Broadcast URL to Devices')}</span>
                   </button>
                   <button
                     type="button"
@@ -1396,7 +1416,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md font-bold cursor-pointer"
                   >
                     <Activity className={`w-3.5 h-3.5 ${isLoadingServerInfo ? 'animate-pulse' : ''}`} />
-                    <span>تحديث حالة المنفذ</span>
+                    <span>{t('تحديث حالة المنفذ', 'Refresh Port Status')}</span>
                   </button>
                 </div>
               </div>
@@ -1406,22 +1426,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   <div className="flex items-center gap-1.5">
                     <Radio className={`w-3.5 h-3.5 ${serverInfo.tunnelStatus.status === 'online' ? 'text-emerald-400' : 'text-slate-400'}`} />
                     <span className="font-bold text-slate-200">
-                      حالة النفق السريع/الخارجي:
-                      <strong className={`mr-1.5 ${serverInfo.tunnelStatus.status === 'online' ? 'text-emerald-400' : 'text-amber-300'}`}>
+                      {t('حالة النفق السريع/الخارجي:', 'Remote Tunnel Status:')}
+                      <strong className={`ms-1.5 ${serverInfo.tunnelStatus.status === 'online' ? 'text-emerald-400' : 'text-amber-300'}`}>
                         {serverInfo.tunnelStatus.status === 'online'
-                          ? 'متصل (Online)'
+                          ? t('متصل (Online)', 'Online')
                           : serverInfo.tunnelStatus.status === 'starting'
-                          ? 'جاري البدء...'
+                          ? t('جاري البدء...', 'Starting...')
                           : serverInfo.tunnelStatus.status === 'error'
-                          ? 'خطأ في التشغيل'
-                          : 'غير مشغل محلياً'}
+                          ? t('خطأ في التشغيل', 'Runtime Error')
+                          : t('غير مشغل محلياً', 'Not Running Locally')}
                       </strong>
                     </span>
                   </div>
                   {serverInfo.tunnelStatus.tunnelUrl && (
                     <button
                       type="button"
-                      onClick={() => copyCommandOrUrl(serverInfo.tunnelStatus!.tunnelUrl, 'رابط النفق التلقائي')}
+                      onClick={() => copyCommandOrUrl(serverInfo.tunnelStatus!.tunnelUrl, t('رابط النفق التلقائي', 'Auto Tunnel URL'))}
                       className="px-2 py-0.5 rounded bg-slate-900 border border-slate-600 text-blue-200 font-mono flex items-center gap-1 cursor-pointer"
                       dir="ltr"
                     >
@@ -1434,34 +1454,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
               <div className="grid grid-cols-2 lg:grid-cols-6 gap-px bg-slate-800 border border-slate-700 rounded-md overflow-hidden text-[11px]">
                 <div className="px-2.5 py-1.5 bg-slate-900/90">
-                  <span className="text-slate-400 block text-[10px]">نوع الاتصال النشط:</span>
+                  <span className="text-slate-400 block text-[10px]">{t('نوع الاتصال النشط:', 'Active Connection Mode:')}</span>
                   <strong className="text-emerald-400 font-bold block">{getConnectionModeLabel(connProfiles.activeMode)}</strong>
                 </div>
                 <div className="px-2.5 py-1.5 bg-slate-900/90">
-                  <span className="text-slate-400 block text-[10px]">حالة السيرفر والمنفذ:</span>
+                  <span className="text-slate-400 block text-[10px]">{t('حالة السيرفر والمنفذ:', 'Server & Port Status:')}</span>
                   <strong className="text-white font-bold font-mono block" dir="ltr">
                     {serverTestResult?.success === false ? 'Check Failed' : 'Online'} • :{activePort}
                   </strong>
                 </div>
                 <div className="px-2.5 py-1.5 bg-slate-900/90">
-                  <span className="text-slate-400 block text-[10px]">حالة الإنترنت والنفق:</span>
+                  <span className="text-slate-400 block text-[10px]">{t('حالة الإنترنت والنفق:', 'Internet & Tunnel:')}</span>
                   <strong className={`font-bold block ${typeof navigator !== 'undefined' && navigator.onLine === false ? 'text-amber-300' : 'text-emerald-300'}`}>
-                    {typeof navigator !== 'undefined' && navigator.onLine === false ? 'بدون إنترنت (LAN متاح)' : 'الإنترنت متصل'}
-                    {serverInfo?.tunnelStatus?.status === 'online' ? ' • النفق نشط' : ''}
+                    {typeof navigator !== 'undefined' && navigator.onLine === false ? t('بدون إنترنت (LAN متاح)', 'Offline (LAN Available)') : t('الإنترنت متصل', 'Internet Connected')}
+                    {serverInfo?.tunnelStatus?.status === 'online' ? ` • ${t('النفق نشط', 'Tunnel Active')}` : ''}
                   </strong>
                 </div>
                 <div className="px-2.5 py-1.5 bg-slate-900/90">
-                  <span className="text-slate-400 block text-[10px]">بروتوكول الاتصال:</span>
+                  <span className="text-slate-400 block text-[10px]">{t('بروتوكول الاتصال:', 'Protocol:')}</span>
                   <strong className={`font-bold block ${(serverInfo?.httpsActive || /^https:\/\//i.test(activeEndpoint)) ? 'text-blue-300' : 'text-amber-300'}`}>
-                    {serverInfo?.httpsActive || /^https:\/\//i.test(activeEndpoint) ? 'HTTPS (مشفر نشط)' : 'HTTP محلي (LAN)'}
+                    {serverInfo?.httpsActive || /^https:\/\//i.test(activeEndpoint) ? t('HTTPS (مشفر نشط)', 'HTTPS (Encrypted)') : t('HTTP محلي (LAN)', 'Local HTTP (LAN)')}
                   </strong>
                 </div>
                 <div className="px-2.5 py-1.5 bg-slate-900/90">
-                  <span className="text-slate-400 block text-[10px]">قاعدة البيانات الموحدة:</span>
+                  <span className="text-slate-400 block text-[10px]">{t('قاعدة البيانات الموحدة:', 'Unified Database:')}</span>
                   <strong className="text-emerald-300 font-bold block">{dbLabel}</strong>
                 </div>
                 <div className="px-2.5 py-1.5 bg-slate-900/90">
-                  <span className="text-slate-400 block text-[10px]">زمن الاستجابة:</span>
+                  <span className="text-slate-400 block text-[10px]">{t('زمن الاستجابة:', 'Latency:')}</span>
                   <strong className="font-mono text-white font-bold block tabular-nums">
                     {serverTestResult ? `${serverTestResult.latencyMs} ms` : `${serverForm.latencyMs || 0} ms`}
                   </strong>
@@ -1471,7 +1491,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               {/* Detected LAN IPs from live /api/admin/server-info */}
               {serverInfo?.lanUrls && serverInfo.lanUrls.length > 0 && (
                 <div className="px-2.5 py-1.5 rounded-md bg-slate-800/60 border border-slate-700/80 flex flex-wrap items-center gap-1.5">
-                  <span className="text-slate-300 font-bold">عناوين الشبكة المحلية:</span>
+                  <span className="text-slate-300 font-bold">{t('عناوين الشبكة المحلية:', 'Local Network URLs:')}</span>
                   {serverInfo.lanUrls.map((entry) => (
                     <button
                       key={entry.url}
@@ -1481,18 +1501,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                           ...prev,
                           localNetwork: { ...prev.localNetwork, ip: entry.ip, port: serverInfo.port || prev.localNetwork.port },
                         }));
-                        copyCommandOrUrl(entry.url, 'عنوان LAN');
+                        copyCommandOrUrl(entry.url, t('عنوان LAN', 'LAN URL'));
                       }}
                       className="px-2 py-0.5 rounded bg-slate-900 hover:bg-blue-950 border border-slate-600 text-blue-200 font-mono font-bold cursor-pointer flex items-center gap-1"
                       dir="ltr"
-                      title="اضغط لاعتماد العنوان ونسخه"
+                      title={t('اضغط لاعتماد العنوان ونسخه', 'Click to apply and copy URL')}
                     >
                       <span>{entry.url}</span>
                       <Copy className="w-3 h-3" />
                     </button>
                   ))}
                   {serverInfo.hostname && (
-                    <span className="text-[10px] text-slate-400 font-mono mr-auto" dir="ltr">
+                    <span className="text-[10px] text-slate-400 font-mono ms-auto" dir="ltr">
                       Host: {serverInfo.hostname}
                     </span>
                   )}
@@ -1515,23 +1535,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   <div className="space-y-0.5">
                     <span className="font-bold block">{serverTestResult.message}</span>
                     {serverTestResult.modeLabel && (
-                      <span className="text-[10px] opacity-80 block">المسار المختبر: {serverTestResult.modeLabel}</span>
+                      <span className="text-[10px] opacity-80 block">{t('المسار المختبر:', 'Tested Route:')} {serverTestResult.modeLabel}</span>
                     )}
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Electron desktop quick folder controls (unchanged, zero secrets) */}
+            {/* Electron desktop quick folder controls */}
             {desktopInfo?.isElectron && (
               <div className="bg-[#EEF3FA] border border-[#DCE6F5] rounded-lg p-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <h4 className="font-black text-slate-900 flex items-center gap-1.5 text-xs sm:text-sm">
                     <Monitor className="w-4 h-4 text-[#003589]" />
-                    <span>بيئة تطبيق سطح المكتب (Windows Desktop + Embedded Server)</span>
+                    <span>{t('بيئة تطبيق سطح المكتب (Windows Desktop + Embedded Server)', 'Desktop Environment (Windows Desktop + Embedded Server)')}</span>
                   </h4>
                   <p className="text-slate-600 text-[11px] mt-0.5">
-                    مجلد قاعدة البيانات الموحدة: <span className="font-mono font-bold text-slate-900" dir="ltr">{desktopInfo.dataDir}</span>
+                    {t('مجلد قاعدة البيانات الموحدة:', 'Unified Database Directory:')} <span className="font-mono font-bold text-slate-900" dir="ltr">{desktopInfo.dataDir}</span>
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -1540,14 +1560,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     onClick={() => window.awladDesktop?.openDataFolder()}
                     className="px-2.5 py-1 bg-white border border-[#DCE6F5] text-[#011E58] rounded-md font-bold hover:bg-[#DCE6F5] cursor-pointer"
                   >
-                    فتح مجلد البيانات
+                    {t('فتح مجلد البيانات', 'Open Data Folder')}
                   </button>
                   <button
                     type="button"
                     onClick={() => window.awladDesktop?.openBackupsFolder()}
                     className="px-2.5 py-1 bg-white border border-slate-300 text-slate-700 rounded-md font-bold hover:bg-slate-100 cursor-pointer"
                   >
-                    فتح النسخ الاحتياطية
+                    {t('فتح النسخ الاحتياطية', 'Open Backups Folder')}
                   </button>
                 </div>
               </div>
@@ -1561,10 +1581,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   <div>
                     <h3 className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5">
                       <Server className="w-4 h-4 text-[#003589]" />
-                      <span>اختيار وضع الاتصال بالسيرفر (Multi-Connection Mode)</span>
+                      <span>{t('اختيار وضع الاتصال بالسيرفر (Multi-Connection Mode)', 'Select Server Connection Mode')}</span>
                     </h3>
                     <p className="text-[11px] text-slate-500">
-                      جميع الأوضاع تتصل بنفس السيرفر المركزي ونفس قاعدة البيانات المالية — يمكن التبديل بينها في أي وقت دون ترحيل أو فقدان بيانات.
+                      {t(
+                        'جميع الأوضاع تتصل بنفس السيرفر المركزي ونفس قاعدة البيانات المالية — يمكن التبديل بينها في أي وقت دون ترحيل أو فقدان بيانات.',
+                        'All modes connect to the same central server and financial database — switch anytime without migration or data loss.'
+                      )}
                     </p>
                   </div>
                 </div>
@@ -1581,7 +1604,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                           setConnProfiles((prev) => ({ ...prev, activeMode: card.key }));
                           setServerError(null);
                         }}
-                        className={`text-right p-2.5 rounded-lg border transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                        className={`text-start p-2.5 rounded-lg border transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
                           isSelected
                             ? 'border-blue-900 bg-blue-50/70 shadow-2xs ring-1 ring-blue-900/20'
                             : 'border-slate-200 bg-slate-50/50 hover:border-slate-300'
@@ -1627,7 +1650,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   <div className="flex items-center justify-between border-b pb-1.5">
                     <div className="flex items-center gap-1.5">
                       <Wifi className="w-4 h-4 text-[#003589]" />
-                      <h4 className="font-black text-slate-900 text-xs sm:text-sm">1. الشبكة المحلية (Local Network)</h4>
+                      <h4 className="font-black text-slate-900 text-xs sm:text-sm">{t('1. الشبكة المحلية (Local Network)', '1. Local Network (LAN)')}</h4>
                     </div>
                     <button
                       type="button"
@@ -1635,13 +1658,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                       onClick={() => handleTestConnection('local_network')}
                       className="px-2.5 py-1 rounded-md bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] font-bold text-[11px] cursor-pointer"
                     >
-                      اختبار المحلي
+                      {t('اختبار المحلي', 'Test LAN')}
                     </button>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <div className="sm:col-span-2">
-                      <label className="block text-[11px] font-bold mb-0.5">Server IP (عنوان اللابتوب):</label>
+                      <label className="block text-[11px] font-bold mb-0.5">{t('عنوان السيرفر (Server IP):', 'Server IP Address:')}</label>
                       <input
                         type="text"
                         dir="ltr"
@@ -1658,7 +1681,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] font-bold mb-0.5">Port (المنفذ):</label>
+                      <label className="block text-[11px] font-bold mb-0.5">{t('المنفذ (Port):', 'Port:')}</label>
                       <input
                         type="number"
                         required
@@ -1676,7 +1699,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                       />
                     </div>
                     <div className="sm:col-span-3">
-                      <label className="block text-[11px] font-bold mb-0.5">Hostname (اسم الجهاز):</label>
+                      <label className="block text-[11px] font-bold mb-0.5">{t('اسم الجهاز (Hostname):', 'Hostname:')}</label>
                       <input
                         type="text"
                         dir="ltr"
@@ -1693,7 +1716,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   </div>
 
                   <div className="px-2.5 py-1.5 rounded-md bg-slate-50 border border-slate-200 text-[11px] flex items-center justify-between gap-2">
-                    <span className="text-slate-600 font-bold">الرابط المحلي المعتمد:</span>
+                    <span className="text-slate-600 font-bold">{t('الرابط المحلي المعتمد:', 'Active Local URL:')}</span>
                     <span className="font-mono font-bold text-slate-900" dir="ltr">
                       {resolveModeEndpointUrl('local_network', connProfiles)}
                     </span>
@@ -1705,7 +1728,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   <div className="flex items-center justify-between border-b pb-1.5">
                     <div className="flex items-center gap-1.5">
                       <Radio className="w-4 h-4 text-[#003589]" />
-                      <h4 className="font-black text-slate-900 text-xs sm:text-sm">2. الرابط الخارجي المجاني (Cloudflare Quick Tunnel)</h4>
+                      <h4 className="font-black text-slate-900 text-xs sm:text-sm">{t('2. الرابط الخارجي المجاني (Cloudflare Quick Tunnel)', '2. Free Remote Link (Cloudflare Quick Tunnel)')}</h4>
                     </div>
                     <button
                       type="button"
@@ -1713,12 +1736,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                       onClick={() => handleTestConnection('free_remote')}
                       className="px-2.5 py-1 rounded-md bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] font-bold text-[11px] cursor-pointer disabled:opacity-40"
                     >
-                      اختبار الرابط
+                      {t('اختبار الرابط', 'Test Link')}
                     </button>
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-bold mb-0.5">رابط Quick Tunnel (HTTPS):</label>
+                    <label className="block text-[11px] font-bold mb-0.5">{t('رابط Quick Tunnel (HTTPS):', 'Quick Tunnel URL (HTTPS):')}</label>
                     <input
                       type="url"
                       dir="ltr"
@@ -1733,7 +1756,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                       className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono text-[#011E58] font-bold text-left"
                     />
                     <span className="text-[10px] text-slate-500 mt-1 block">
-                      يعمل فوراً بدون دومين أو اشتراك مدفوع؛ يلتقطه السيرفر تلقائياً من <span className="font-mono" dir="ltr">scripts/start-free-tunnel.bat</span> أو يمكنك لصقه يدوياً.
+                      {t('يعمل فوراً بدون دومين أو اشتراك مدفوع؛ يلتقطه السيرفر تلقائياً من', 'Works immediately without a domain or subscription; auto-captured from')} <span className="font-mono" dir="ltr">scripts/start-free-tunnel.bat</span> {t('أو يمكنك لصقه يدوياً.', 'or paste it manually.')}
                     </span>
                   </div>
 
@@ -1750,35 +1773,35 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                       className="w-3.5 h-3.5 mt-0.5 rounded text-[#003589]"
                     />
                     <div>
-                      <span className="font-bold text-slate-800 block">تحديث رابط النفق تلقائياً عند تشغيل/تغيير النفق على اللابتوب</span>
-                      <span className="text-[10px] text-slate-500">يستقبل الرابط الجديد ويرفع إصدار الاتصال لتقوم الأجهزة المتصلة بالتحديث تلقائياً.</span>
+                      <span className="font-bold text-slate-800 block">{t('تحديث رابط النفق تلقائياً عند تشغيل/تغيير النفق على اللابتوب', 'Auto-update tunnel URL when restarted on host')}</span>
+                      <span className="text-[10px] text-slate-500">{t('يستقبل الرابط الجديد ويرفع إصدار الاتصال لتقوم الأجهزة المتصلة بالتحديث تلقائياً.', 'Captures new URL and increments connection config version for connected devices.')}</span>
                     </div>
                   </label>
 
                   <div className="p-2 rounded-md bg-amber-50 border border-amber-200 text-[11px] text-amber-900 font-bold flex items-start gap-1.5">
                     <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
                     <span>
-                      تنبيه هام: رابط Quick Tunnel المجاني (<span className="font-mono" dir="ltr">trycloudflare.com</span>) مؤقت وقد يتغير عند إعادة تشغيل النفق أو اللابتوب — وعند تغيّره يمكنك إعادة ربط أي جهاز بسهولة عبر رابط الدعوة أو مسح QR جديد.
+                      {t('تنبيه هام: رابط Quick Tunnel المجاني', 'Notice: Free Quick Tunnel URL')} (<span className="font-mono" dir="ltr">trycloudflare.com</span>) {t('مؤقت وقد يتغير عند إعادة تشغيل النفق أو اللابتوب — وعند تغيّره يمكنك إعادة ربط أي جهاز بسهولة عبر رابط الدعوة أو مسح QR جديد.', 'is temporary and may change upon restart — you can easily re-pair devices via invite link or new QR.')}
                     </span>
                   </div>
 
                   <div className="p-2 rounded-md bg-[#EEF3FA] border border-[#DCE6F5] space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-[#011E58] text-[11px]">تشغيل النفق المجاني مع الالتقاط التلقائي للرابط:</span>
+                      <span className="font-bold text-[#011E58] text-[11px]">{t('تشغيل النفق المجاني مع الالتقاط التلقائي للرابط:', 'Run Free Tunnel with Auto-Capture:')}</span>
                       <button
                         type="button"
-                        onClick={() => copyCommandOrUrl(`node scripts/tunnel-supervisor.mjs --mode=quick --port=${activePort}`, 'أمر مراقب النفق المجاني')}
+                        onClick={() => copyCommandOrUrl(`node scripts/tunnel-supervisor.mjs --mode=quick --port=${activePort}`, t('أمر مراقب النفق المجاني', 'Free Tunnel Command'))}
                         className="px-2 py-0.5 rounded bg-white border border-[#DCE6F5] text-[#003589] text-[10px] font-bold flex items-center gap-1 cursor-pointer"
                       >
                         <Copy className="w-3 h-3" />
-                        <span>نسخ الأمر</span>
+                        <span>{t('نسخ الأمر', 'Copy Command')}</span>
                       </button>
                     </div>
                     <code className="block px-2 py-1.5 rounded bg-slate-900 text-blue-200 font-mono text-[10px] overflow-x-auto" dir="ltr">
                       node scripts/tunnel-supervisor.mjs --mode=quick --port={activePort}
                     </code>
                     <p className="text-[10px] text-slate-600">
-                      أو افتح الملف الجاهز <span className="font-mono font-bold" dir="ltr">scripts/start-free-tunnel.bat</span> (يدعم أيضاً التشغيل التلقائي مع Windows via <span className="font-mono" dir="ltr">install-windows-tunnel-task.ps1</span>).
+                      {t('أو افتح الملف الجاهز', 'Or open')} <span className="font-mono font-bold" dir="ltr">scripts/start-free-tunnel.bat</span> ({t('يدعم أيضاً التشغيل التلقائي مع Windows via', 'also supports Windows autostart via')} <span className="font-mono" dir="ltr">install-windows-tunnel-task.ps1</span>).
                     </p>
                   </div>
                 </div>
@@ -1788,7 +1811,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   <div className="flex items-center justify-between border-b pb-1.5">
                     <div className="flex items-center gap-1.5">
                       <Globe className="w-4 h-4 text-[#003589]" />
-                      <h4 className="font-black text-slate-900 text-xs sm:text-sm">3. الرابط الخارجي الاحترافي (Named Tunnel + Domain)</h4>
+                      <h4 className="font-black text-slate-900 text-xs sm:text-sm">{t('3. الرابط الخارجي الاحترافي (Named Tunnel + Domain)', '3. Professional Remote Domain (Named Tunnel)')}</h4>
                     </div>
                     <button
                       type="button"
@@ -1796,13 +1819,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                       onClick={() => handleTestConnection('pro_remote')}
                       className="px-2.5 py-1 rounded-md bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] font-bold text-[11px] cursor-pointer disabled:opacity-40"
                     >
-                      اختبار الدومين
+                      {t('اختبار الدومين', 'Test Domain')}
                     </button>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div className="sm:col-span-2">
-                      <label className="block text-[11px] font-bold mb-0.5">الدومين الثابت المشفر (HTTPS):</label>
+                      <label className="block text-[11px] font-bold mb-0.5">{t('الدومين الثابت المشفر (HTTPS):', 'Encrypted Static Domain (HTTPS):')}</label>
                       <input
                         type="url"
                         dir="ltr"
@@ -1818,7 +1841,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                       />
                     </div>
                     <div className="sm:col-span-2">
-                      <label className="block text-[11px] font-bold mb-0.5">مزود البوابة الاحترافية:</label>
+                      <label className="block text-[11px] font-bold mb-0.5">{t('مزود البوابة الاحترافية:', 'Pro Gateway Provider:')}</label>
                       <select
                         value={connProfiles.proRemote.provider || 'cloudflare_named_tunnel'}
                         onChange={(e) =>
@@ -1829,12 +1852,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                         }
                         className="w-full h-8 border border-slate-300 rounded-md px-2 bg-white font-bold text-slate-800"
                       >
-                        <option value="cloudflare_named_tunnel">Cloudflare Named Tunnel (دومين العميل بدون فتح بورتات الراوتر)</option>
-                        <option value="nginx_reverse_proxy">Nginx Reverse Proxy + SSL (شهادة Let's Encrypt أو مملوكة للعميل)</option>
-                        <option value="custom">مزود أو بوابة HTTPS مخصصة حسب باقة العميل</option>
+                        <option value="cloudflare_named_tunnel">{t('Cloudflare Named Tunnel (دومين العميل بدون فتح بورتات الراوتر)', 'Cloudflare Named Tunnel (Customer domain without router port forwarding)')}</option>
+                        <option value="nginx_reverse_proxy">{t("Nginx Reverse Proxy + SSL (شهادة Let's Encrypt أو مملوكة للعميل)", "Nginx Reverse Proxy + SSL (Let's Encrypt or custom certificate)")}</option>
+                        <option value="custom">{t('مزود أو بوابة HTTPS مخصصة حسب باقة العميل', 'Custom HTTPS Gateway Provider')}</option>
                       </select>
                       <span className="text-[10px] text-slate-500 mt-1 block">
-                        يدعم أي دومين مملوك للعميل دون فرض شراء دومين أو اشتراك محدد، ويعمل مع <span className="font-mono" dir="ltr">scripts/start-pro-tunnel.bat</span> أو <span className="font-mono" dir="ltr">scripts/reverse-proxy-nginx.conf</span>.
+                        {t('يدعم أي دومين مملوك للعميل ويعمل مع', 'Supports any custom domain and works with')} <span className="font-mono" dir="ltr">scripts/start-pro-tunnel.bat</span> / <span className="font-mono" dir="ltr">scripts/reverse-proxy-nginx.conf</span>.
                       </span>
                     </div>
                   </div>
@@ -1842,10 +1865,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   <div className="p-2 rounded-md bg-[#EEF3FA] border border-[#DCE6F5] text-[11px] text-slate-700 space-y-0.5">
                     <div className="font-bold text-[#011E58] flex items-center gap-1.5">
                       <Lock className="w-3.5 h-3.5" />
-                      <span>أمان الأسرار والتوكنات:</span>
+                      <span>{t('أمان الأسرار والتوكنات:', 'Tokens & Secrets Security:')}</span>
                     </div>
                     <p>
-                      يتم حفظ التوكن الخاص بـ Cloudflare Named Tunnel (<span className="font-mono" dir="ltr">CLOUDFLARE_TUNNEL_TOKEN</span>) أو شهادات SSL في ملف <span className="font-mono" dir="ltr">.env</span> على السيرفر فقط — ولا تُعرض أو تُحفظ أي مفاتيح سرية داخل قاعدة البيانات أو الواجهة.
+                      {t('يتم حفظ التوكن الخاص بـ Cloudflare Named Tunnel', 'Cloudflare Named Tunnel token')} (<span className="font-mono" dir="ltr">CLOUDFLARE_TUNNEL_TOKEN</span>) {t('أو شهادات SSL في ملف', 'and SSL certs are kept in server')} <span className="font-mono" dir="ltr">.env</span> {t('على السيرفر فقط — ولا تُعرض أو تُحفظ أي مفاتيح سرية داخل قاعدة البيانات أو الواجهة.', 'only — no secrets are stored in database or UI.')}
                     </p>
                   </div>
                 </div>
@@ -1855,7 +1878,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   <div className="flex items-center justify-between border-b pb-1.5">
                     <div className="flex items-center gap-1.5">
                       <Cloud className="w-4 h-4 text-[#011E58]" />
-                      <h4 className="font-black text-slate-900 text-xs sm:text-sm">4. الاتصال عبر سيرفر سحابي (Cloud VPS)</h4>
+                      <h4 className="font-black text-slate-900 text-xs sm:text-sm">{t('4. الاتصال عبر سيرفر سحابي (Cloud VPS)', '4. Cloud VPS Server Connection')}</h4>
                     </div>
                     <button
                       type="button"
@@ -1863,12 +1886,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                       onClick={() => handleTestConnection('cloud_vps')}
                       className="px-2.5 py-1 rounded-md bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] font-bold text-[11px] cursor-pointer disabled:opacity-40"
                     >
-                      اختبار الـ VPS
+                      {t('اختبار الـ VPS', 'Test VPS')}
                     </button>
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-bold mb-0.5">عنوان السيرفر السحابي المستقبلي (HTTPS):</label>
+                    <label className="block text-[11px] font-bold mb-0.5">{t('عنوان السيرفر السحابي المستقبلي (HTTPS):', 'Cloud VPS Server URL (HTTPS):')}</label>
                     <input
                       type="url"
                       dir="ltr"
@@ -1885,10 +1908,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-bold mb-0.5">ملاحظات الاستضافة (بدون كلمات مرور أو مفاتيح):</label>
+                    <label className="block text-[11px] font-bold mb-0.5">{t('ملاحظات الاستضافة (بدون كلمات مرور أو مفاتيح):', 'Hosting Notes (No passwords or keys):')}</label>
                     <input
                       type="text"
-                      placeholder="مثال: VPS مستقبلي — ترحيل يدوي عند الحاجة"
+                      placeholder={t('مثال: VPS مستقبلي — ترحيل يدوي عند الحاجة', 'e.g., Future VPS — manual migration when needed')}
                       value={connProfiles.cloudVps.notes || ''}
                       onChange={(e) =>
                         setConnProfiles((prev) => ({
@@ -1901,7 +1924,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   </div>
 
                   <div className="p-2 rounded-md bg-slate-50 border border-slate-200 text-[11px] text-slate-700">
-                    لا يتم تفعيل أي اشتراك أو نقل بيانات تلقائي. عند قرار الانتقال إلى VPS لاحقاً، تُنقل نفس قاعدة البيانات عبر النسخ الاحتياطي أو ترحيل PostgreSQL بموافقة الإدارة فقط.
+                    {t(
+                      'لا يتم تفعيل أي اشتراك أو نقل بيانات تلقائي. عند قرار الانتقال إلى VPS لاحقاً، تُنقل نفس قاعدة البيانات عبر النسخ الاحتياطي أو ترحيل PostgreSQL بموافقة الإدارة فقط.',
+                      'No automatic subscription or data transfer occurs. When migrating to VPS later, database moves only via backup or admin-approved PostgreSQL migration.'
+                    )}
                   </div>
                 </div>
               </div>
@@ -1922,8 +1948,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                       className="w-3.5 h-3.5 mt-0.5 rounded text-blue-900"
                     />
                     <div>
-                      <span className="font-bold text-slate-900 block">إلزام بروتوكول HTTPS لجميع الاتصالات الخارجية</span>
-                      <span className="text-[10px] text-slate-500">يمنع إرسال التوكنات وبيانات العملاء عبر HTTP غير المشفر خارج الشبكة المحلية.</span>
+                      <span className="font-bold text-slate-900 block">{t('إلزام بروتوكول HTTPS لجميع الاتصالات الخارجية', 'Require HTTPS for all remote connections')}</span>
+                      <span className="text-[10px] text-slate-500">{t('يمنع إرسال التوكنات وبيانات العملاء عبر HTTP غير المشفر خارج الشبكة المحلية.', 'Blocks sending tokens or customer data over unencrypted HTTP outside the LAN.')}</span>
                     </div>
                   </label>
 
@@ -1935,9 +1961,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                       className="w-3.5 h-3.5 mt-0.5 rounded text-blue-900"
                     />
                     <div>
-                      <span className="font-bold text-slate-900 block">تطبيق عنوان الوضع النشط على هذا الجهاز فوراً</span>
+                      <span className="font-bold text-slate-900 block">{t('تطبيق عنوان الوضع النشط على هذا الجهاز فوراً', 'Apply active mode URL to this device immediately')}</span>
                       <span className="text-[10px] text-slate-500">
-                        فعّلها على أجهزة الفروع أو الموبايل. اتركها غير مفعّلة على لابتوب السيرفر الرئيسي ليبقى على الاتصال السريع المباشر (Same-Origin).
+                        {t(
+                          'فعّلها على أجهزة الفروع أو الموبايل. اتركها غير مفعّلة على لابتوب السيرفر الرئيسي ليبقى على الاتصال السريع المباشر (Same-Origin).',
+                          'Enable on branch PCs or mobile devices. Keep unchecked on the main server laptop to stay on fast Same-Origin.'
+                        )}
                       </span>
                     </div>
                   </label>
@@ -1949,16 +1978,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                       type="button"
                       onClick={() => {
                         setConfiguredApiBaseUrl('');
-                        showSavedBanner('تمت إعادة هذا الجهاز للاتصال المحلي المباشر (Same-Origin)');
+                        showSavedBanner(t('تمت إعادة هذا الجهاز للاتصال المحلي المباشر (Same-Origin)', 'Reset this device to direct local connection (Same-Origin)'));
                       }}
                       className="px-3 py-1.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
                     >
-                      العودة للاتصال المباشر (Same-Origin) على هذا الجهاز
+                      {t('العودة للاتصال المباشر (Same-Origin) على هذا الجهاز', 'Revert to Direct Connection (Same-Origin)')}
                     </button>
                   ) : (
                     <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
                       <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>إعدادات الاتصال تُحفظ مركزياً في قاعدة البيانات الموحدة وتنطبق على Windows و Android بدون إعادة بناء.</span>
+                      <span>{t('إعدادات الاتصال تُحفظ مركزياً في قاعدة البيانات الموحدة وتنطبق على Windows و Android بدون إعادة بناء.', 'Connection settings are stored centrally in the unified DB and apply across Windows & Android without rebuilds.')}</span>
                     </div>
                   )}
 
@@ -1968,7 +1997,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     className="flex items-center gap-1.5 px-4 py-1.5 bg-[#003589] hover:bg-[#0049B0] text-white font-black rounded-md shadow-xs cursor-pointer disabled:opacity-50"
                   >
                     <Save className="w-3.5 h-3.5" />
-                    <span>{isSavingServer ? 'جاري الحفظ...' : 'حفظ إعدادات السيرفر والاتصال'}</span>
+                    <span>{isSavingServer ? t('جاري الحفظ...', 'Saving...') : t('حفظ إعدادات السيرفر والاتصال', 'Save Server & Connection Settings')}</span>
                   </button>
                 </div>
               </div>
@@ -1992,24 +2021,32 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
           <div className="border-b pb-2">
             <h3 className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5">
               <FileSpreadsheet className="w-4 h-4 text-amber-600" />
-              <span>استيراد وتدقيق ملفات المنتجات (Product Import Engine)</span>
+              <span>{t('استيراد وتدقيق ملفات المنتجات (Product Import Engine)', 'Product File Import & Audit Engine')}</span>
             </h3>
             <p className="text-[11px] text-slate-500 mt-0.5">
-              وفق تعليمات الإدارة الصارمة: استخراج أسماء المنتجات والأكواد الأصلية فقط، عدم اختراع بيانات، وترك أسعار الشراء والبيع والكميات والصور فارغة بالكامل (0) لتحديدها لاحقاً بمعرفتكم.
+              {t(
+                'وفق تعليمات الإدارة الصارمة: استخراج أسماء المنتجات والأكواد الأصلية فقط، عدم اختراع بيانات، وترك أسعار الشراء والبيع والكميات والصور فارغة بالكامل (0) لتحديدها لاحقاً بمعرفتكم.',
+                'Per strict management policy: extract only original product names and codes without inventing data, leaving purchase/sale prices, quantities, and images at 0/blank for manual setup.'
+              )}
             </p>
           </div>
 
           {importSuccessCount !== null && (
             <div className="px-2.5 py-2 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-md font-bold flex items-center gap-1.5">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>تم استيراد ({importSuccessCount}) صنف جديد بنجاح إلى قاعدة البيانات دون أسعار أو كميات مسبقة!</span>
+              <span>
+                {t(
+                  `تم استيراد (${importSuccessCount}) صنف جديد بنجاح إلى قاعدة البيانات دون أسعار أو كميات مسبقة!`,
+                  `Successfully imported (${importSuccessCount}) new items to the database without preset prices or quantities!`
+                )}
+              </span>
             </div>
           )}
 
           {importError && (
             <div className="px-2.5 py-2 bg-red-50 border border-red-200 text-red-800 rounded-md font-bold flex items-center gap-1.5">
               <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{importError}</span>
+              <span>{t(importError)}</span>
             </div>
           )}
 
@@ -2017,12 +2054,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             <div className="px-2.5 py-2 bg-blue-50 border border-blue-200 text-blue-950 rounded-md space-y-1">
               <div className="font-black flex items-center gap-1.5">
                 <CheckCircle2 className="w-4 h-4 text-blue-700" />
-                <span>تم حذف ({deleteImportedReport.deletedCount}) صنف مستورد من الملفات بأمان.</span>
+                <span>
+                  {t(
+                    `تم حذف (${deleteImportedReport.deletedCount}) صنف مستورد من الملفات بأمان.`,
+                    `Safely deleted (${deleteImportedReport.deletedCount}) imported file items.`
+                  )}
+                </span>
               </div>
               {deleteImportedReport.skippedCount > 0 && (
                 <p className="text-[11px] text-amber-800 font-bold">
-                  تم الحفاظ على ({deleteImportedReport.skippedCount}) صنف مستورد لارتباطها بفواتير أو حركات سابقة:{' '}
-                  {(deleteImportedReport.skippedItems || []).slice(0, 5).map((s) => `${s.name} (${s.code})`).join('، ')}
+                  {t(
+                    `تم الحفاظ على (${deleteImportedReport.skippedCount}) صنف مستورد لارتباطها بفواتير أو حركات سابقة: `,
+                    `Preserved (${deleteImportedReport.skippedCount}) imported items linked to prior invoices or movements: `
+                  )}
+                  {(deleteImportedReport.skippedItems || []).slice(0, 5).map((s) => `${s.name} (${s.code})`).join(', ')}
                   {deleteImportedReport.skippedCount > 5 ? '...' : ''}
                 </p>
               )}
@@ -2032,11 +2077,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
           {/* Upload Box */}
           <div className="p-3 border border-dashed border-slate-300 rounded-lg text-center bg-slate-50/50 hover:bg-slate-50 transition-colors">
             <FileSpreadsheet className="w-7 h-7 text-slate-400 mx-auto mb-1" />
-            <p className="font-bold text-slate-800 mb-0.5">اختر ملف الأصناف (شيبسيات.txt، مشروبات.txt، tool.txt، أو ملفات CSV)</p>
-            <p className="text-[11px] text-slate-500 mb-2">يتم فحص وتدقيق الأكواد المكررة تلقائياً وعرض معاينة تفصيلية قبل الاعتماد النهائي</p>
+            <p className="font-bold text-slate-800 mb-0.5">
+              {t('اختر ملف الأصناف (شيبسيات.txt، مشروبات.txt، tool.txt، أو ملفات CSV)', 'Select items file (chips.txt, drinks.txt, tool.txt, or CSV files)')}
+            </p>
+            <p className="text-[11px] text-slate-500 mb-2">
+              {t('يتم فحص وتدقيق الأكواد المكررة تلقائياً وعرض معاينة تفصيلية قبل الاعتماد النهائي', 'Duplicate codes are automatically checked and a detailed preview is displayed before final approval.')}
+            </p>
             <label className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-900 hover:bg-blue-950 text-white font-bold rounded-md cursor-pointer shadow-xs transition-all">
               <Upload className="w-3.5 h-3.5" />
-              <span>اختيار ملف الأصناف للفحص</span>
+              <span>{t('اختيار ملف الأصناف للفحص', 'Choose Items File to Scan')}</span>
               <input
                 type="file"
                 accept=".txt,.csv,.tsv,.sql"
@@ -2045,7 +2094,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               />
             </label>
             {importFileName && (
-              <p className="mt-2 font-mono font-bold text-blue-900 text-xs">الملف المختار: {importFileName}</p>
+              <p className="mt-2 font-mono font-bold text-blue-900 text-xs">
+                {t('الملف المختار:', 'Selected File:')} {importFileName}
+              </p>
             )}
           </div>
 
@@ -2054,18 +2105,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             <div className="space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-2.5 py-2 rounded-md border border-slate-200">
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="font-bold text-slate-800">إجمالي السجلات ({importCandidates.length}):</span>
+                  <span className="font-bold text-slate-800">{t('إجمالي السجلات', 'Total Records')} ({importCandidates.length}):</span>
                   <span className="text-[11px] text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-300 font-bold">
-                    صالح: {importCandidates.filter(c => c.isValid).length}
+                    {t('صالح:', 'Valid:')} {importCandidates.filter(c => c.isValid).length}
                   </span>
                   {importCandidates.some(c => c.isDuplicateCode) && (
                     <span className="text-[11px] text-red-800 bg-red-50 px-2 py-0.5 rounded border border-red-300 font-bold">
-                      أكواد مكررة: {importCandidates.filter(c => c.isDuplicateCode).length}
+                      {t('أكواد مكررة:', 'Duplicate Codes:')} {importCandidates.filter(c => c.isDuplicateCode).length}
                     </span>
                   )}
                   {importCandidates.some(c => c.isDuplicateName) && (
                     <span className="text-[11px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-300 font-bold">
-                      أسماء مكررة: {importCandidates.filter(c => c.isDuplicateName).length}
+                      {t('أسماء مكررة:', 'Duplicate Names:')} {importCandidates.filter(c => c.isDuplicateName).length}
                     </span>
                   )}
                 </div>
@@ -2076,7 +2127,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     onClick={handleCancelImport}
                     className="px-2.5 py-1 border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold rounded-md cursor-pointer"
                   >
-                    إلغاء
+                    {t('إلغاء', 'Cancel')}
                   </button>
                   <button
                     type="button"
@@ -2085,17 +2136,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     className="flex items-center gap-1 px-3 py-1 bg-[#003589] hover:bg-[#0049B0] text-white font-black rounded-md shadow-xs cursor-pointer disabled:opacity-50"
                   >
                     <Check className="w-3.5 h-3.5" />
-                    <span>{isImportingToDb ? 'جاري الاستيراد...' : 'اعتماد واستيراد الأصناف المعتمدة'}</span>
+                    <span>{isImportingToDb ? t('جاري الاستيراد...', 'Importing...') : t('اعتماد واستيراد الأصناف المعتمدة', 'Approve & Import Valid Items')}</span>
                   </button>
                 </div>
               </div>
 
               <UnifiedDataTable
                 compact
-                title="معاينة الأصناف المفحوصة قبل الاستيراد"
+                title={t('معاينة الأصناف المفحوصة قبل الاستيراد', 'Preview Scanned Items Before Import')}
                 data={importCandidates.slice(0, 50).map((cand, idx) => ({ ...cand, _rowNo: idx + 1 }))}
                 rowKey={(cand) => cand.id}
-                searchPlaceholder="بحث بالكود أو اسم الصنف..."
+                searchPlaceholder={t('بحث بالكود أو اسم الصنف...', 'Search by item code or name...')}
                 searchFilter={(cand, q) =>
                   cand.code.toLowerCase().includes(q) ||
                   cand.name.toLowerCase().includes(q) ||
@@ -2106,44 +2157,49 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                 maxHeightClassName="max-h-80"
                 columns={[
                   { key: '_rowNo', header: '#', width: '44px', align: 'center', render: (cand) => <span className="text-slate-400 font-mono">{cand._rowNo}</span> },
-                  { key: 'code', header: 'كود الصنف', render: (cand) => <span className="font-mono font-bold text-slate-800">{cand.code}</span> },
-                  { key: 'name', header: 'اسم الصنف الأصلي', render: (cand) => <span className="font-bold text-slate-900">{cand.name}</span> },
-                  { key: 'category', header: 'التصنيف', render: (cand) => <span className="text-slate-600">{cand.category}</span> },
-                  { key: 'buyPrice', header: 'سعر الشراء', align: 'center', render: () => <span className="text-slate-400 font-mono">0 (فارغ)</span> },
-                  { key: 'sellPrice', header: 'سعر البيع', align: 'center', render: () => <span className="text-slate-400 font-mono">0 (فارغ)</span> },
-                  { key: 'stock', header: 'الرصيد', align: 'center', render: () => <span className="text-slate-400 font-mono">0 (فارغ)</span> },
+                  { key: 'code', header: t('كود الصنف', 'Item Code'), render: (cand) => <span className="font-mono font-bold text-slate-800">{cand.code}</span> },
+                  { key: 'name', header: t('اسم الصنف الأصلي', 'Original Item Name'), render: (cand) => <span className="font-bold text-slate-900">{cand.name}</span> },
+                  { key: 'category', header: t('التصنيف', 'Category'), render: (cand) => <span className="text-slate-600">{t(cand.category || '')}</span> },
+                  { key: 'buyPrice', header: t('سعر الشراء', 'Purchase Price'), align: 'center', render: () => <span className="text-slate-400 font-mono">0 ({t('فارغ', 'Empty')})</span> },
+                  { key: 'sellPrice', header: t('سعر البيع', 'Sale Price'), align: 'center', render: () => <span className="text-slate-400 font-mono">0 ({t('فارغ', 'Empty')})</span> },
+                  { key: 'stock', header: t('الرصيد', 'Stock'), align: 'center', render: () => <span className="text-slate-400 font-mono">0 ({t('فارغ', 'Empty')})</span> },
                   {
                     key: 'status',
-                    header: 'حالة التدقيق',
+                    header: t('حالة التدقيق', 'Audit Status'),
                     align: 'center',
                     render: (cand) =>
                       cand.isValid ? (
-                        <span className="px-2 py-0.5 rounded border border-emerald-200 bg-emerald-50 text-emerald-800 text-[10px] font-bold">صالح</span>
+                        <span className="px-2 py-0.5 rounded border border-emerald-200 bg-emerald-50 text-emerald-800 text-[10px] font-bold">{t('صالح', 'Valid')}</span>
                       ) : cand.isDuplicateCode ? (
-                        <span className="px-2 py-0.5 rounded border border-red-200 bg-red-50 text-red-800 text-[10px] font-bold">كود مكرر</span>
+                        <span className="px-2 py-0.5 rounded border border-red-200 bg-red-50 text-red-800 text-[10px] font-bold">{t('كود مكرر', 'Duplicate Code')}</span>
                       ) : (
-                        <span className="px-2 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-800 text-[10px] font-bold">اسم مكرر</span>
+                        <span className="px-2 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-800 text-[10px] font-bold">{t('اسم مكرر', 'Duplicate Name')}</span>
                       ),
                   },
                   {
                     key: 'actions',
-                    header: 'الإجراءات',
+                    header: t('الإجراءات', 'Actions'),
                     align: 'center',
                     render: (cand) => (
                       <button
                         type="button"
                         onClick={() => handleExcludeCandidate(cand.id)}
                         className="text-red-600 hover:text-red-800 p-1 text-[10px] font-bold hover:underline cursor-pointer"
-                        title="استبعاد هذا السجل من الاستيراد"
+                        title={t('استبعاد هذا السجل من الاستيراد', 'Exclude this record from import')}
                       >
-                        استبعاد
+                        {t('استبعاد', 'Exclude')}
                       </button>
                     ),
                   },
                 ]}
               />
               {importCandidates.length > 50 && (
-                <p className="text-[10px] text-slate-400 text-center">يتم عرض أول 50 صنف من أصل {importCandidates.length} صنف تم فحصها</p>
+                <p className="text-[10px] text-slate-400 text-center">
+                  {t(
+                    `يتم عرض أول 50 صنف من أصل ${importCandidates.length} صنف تم فحصها`,
+                    `Showing first 50 of ${importCandidates.length} scanned items`
+                  )}
+                </p>
               )}
             </div>
           )}
@@ -2154,10 +2210,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               <div>
                 <h4 className="font-black text-red-900 flex items-center gap-1.5 text-xs">
                   <Trash2 className="w-3.5 h-3.5 text-red-600" />
-                  <span>إدارة وحذف الأصناف المستوردة من الملفات ({importedProductsList.length} صنف مستورد)</span>
+                  <span>
+                    {t(
+                      `إدارة وحذف الأصناف المستوردة من الملفات (${importedProductsList.length} صنف مستورد)`,
+                      `Manage & Delete File-Imported Items (${importedProductsList.length} imported)`
+                    )}
+                  </span>
                 </h4>
                 <p className="text-[11px] text-red-800/80 mt-0.5">
-                  يحذف فقط الأصناف التي تم استيرادها من الملفات ولم تُستخدم في فواتير أو جرد أو تحويلات أو حركات مخزنية غير افتتاحية، مع الحفاظ التام على الأصناف المضافة يدوياً.
+                  {t(
+                    'يحذف فقط الأصناف التي تم استيرادها من الملفات ولم تُستخدم في فواتير أو جرد أو تحويلات أو حركات مخزنية غير افتتاحية، مع الحفاظ التام على الأصناف المضافة يدوياً.',
+                    'Deletes only file-imported items not used in invoices, stock counts, transfers, or non-opening movements, while fully preserving manually added items.'
+                  )}
                 </p>
               </div>
               <button
@@ -2169,26 +2233,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>
                   {selectedDeleteBatchId === 'all'
-                    ? 'مسح جميع الأصناف المستوردة من الملفات'
-                    : 'مسح أصناف الدفعة المحددة فقط'}
+                    ? t('مسح جميع الأصناف المستوردة من الملفات', 'Delete All File-Imported Items')
+                    : t('مسح أصناف الدفعة المحددة فقط', 'Delete Selected Batch Items Only')}
                 </span>
               </button>
             </div>
 
             {importBatches.length > 0 && (
               <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1.5 border-t border-red-200/60">
-                <label className="text-[11px] font-bold text-red-950 shrink-0">نطاق الحذف:</label>
+                <label className="text-[11px] font-bold text-red-950 shrink-0">{t('نطاق الحذف:', 'Delete Scope:')}</label>
                 <select
                   value={selectedDeleteBatchId}
                   onChange={(e) => setSelectedDeleteBatchId(e.target.value)}
                   className="h-8 bg-white border border-red-200 rounded-md px-2.5 text-xs font-bold text-slate-800"
                 >
-                  <option value="all">جميع الأصناف المستوردة من الملفات ({importedProductsList.length} صنف)</option>
+                  <option value="all">
+                    {t(`جميع الأصناف المستوردة من الملفات (${importedProductsList.length} صنف)`, `All file-imported items (${importedProductsList.length} items)`)}
+                  </option>
                   {importBatches
                     .filter((b) => b.batchId !== 'UNBATCHED')
                     .map((b) => (
                       <option key={b.batchId} value={b.batchId}>
-                        دفعة: {b.fileName} — {b.batchId} ({b.count} صنف)
+                        {t('دفعة:', 'Batch:')} {b.fileName} — {b.batchId} ({b.count} {t('صنف', 'items')})
                       </option>
                     ))}
                 </select>
@@ -2200,9 +2266,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             isOpen={showImportConfirm}
             onClose={() => setShowImportConfirm(false)}
             onConfirm={handleExecuteImport}
-            title="اعتماد استيراد الأصناف من الملف"
-            message={`هل أنت متأكد من استيراد (${importCandidates.filter(c => c.isValid).length}) صنف جديد من ملف (${importFileName})؟`}
-            confirmLabel="استيراد وحفظ الأصناف"
+            title={t('اعتماد استيراد الأصناف من الملف', 'Approve File Items Import')}
+            message={t(
+              `هل أنت متأكد من استيراد (${importCandidates.filter(c => c.isValid).length}) صنف جديد من ملف (${importFileName})؟`,
+              `Are you sure you want to import (${importCandidates.filter(c => c.isValid).length}) new items from (${importFileName})?`
+            )}
+            confirmLabel={t('استيراد وحفظ الأصناف', 'Import & Save Items')}
             variant="info"
             isLoading={isImportingToDb}
           />
@@ -2211,15 +2280,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             isOpen={showDeleteImportedConfirm}
             onClose={() => setShowDeleteImportedConfirm(false)}
             onConfirm={handleExecuteDeleteImported}
-            title={selectedDeleteBatchId === 'all' ? 'مسح جميع الأصناف المستوردة من الملفات' : 'مسح أصناف دفعة الاستيراد المحددة'}
+            title={selectedDeleteBatchId === 'all' ? t('مسح جميع الأصناف المستوردة من الملفات', 'Delete All File-Imported Items') : t('مسح أصناف دفعة الاستيراد المحددة', 'Delete Selected Import Batch Items')}
             message={(() => {
               const targetCount =
                 selectedDeleteBatchId === 'all'
                   ? importedProductsList.length
                   : importBatches.find((b) => b.batchId === selectedDeleteBatchId)?.count || importedProductsList.length;
-              return `سيتم حذف الأصناف المستوردة (${targetCount} صنف في النطاق المحدد) بشرط عدم ارتباطها بأي فواتير أو مرتجعات أو طلبات أو جرد أو تحويلات أو حركات مخزنية. الأصناف المضافة يدوياً أو المرتبطة بحركات لن تُحذف. هل تريد المتابعة؟`;
+              return t(
+                `سيتم حذف الأصناف المستوردة (${targetCount} صنف في النطاق المحدد) بشرط عدم ارتباطها بأي فواتير أو مرتجعات أو طلبات أو جرد أو تحويلات أو حركات مخزنية. الأصناف المضافة يدوياً أو المرتبطة بحركات لن تُحذف. هل تريد المتابعة؟`,
+                `Imported items (${targetCount} in selected scope) will be deleted provided they have no linked invoices, returns, orders, stock counts, transfers, or inventory movements. Manually added or linked items will not be deleted. Continue?`
+              );
             })()}
-            confirmLabel="نعم، مسح الأصناف غير المستخدمة"
+            confirmLabel={t('نعم، مسح الأصناف غير المستخدمة', 'Yes, Delete Unused Items')}
             variant="danger"
             isLoading={isDeletingImported}
           />
@@ -2232,10 +2304,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
           <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs space-y-2.5 text-xs">
             <h3 className="text-xs sm:text-sm font-black text-slate-900 border-b pb-1.5 flex items-center gap-1.5">
               <Database className="w-4 h-4 text-blue-900" />
-              <span>النسخ الاحتياطي واستعادة قاعدة البيانات (Backup & Recovery)</span>
+              <span>{t('النسخ الاحتياطي واستعادة قاعدة البيانات (Backup & Recovery)', 'Database Backup & Recovery')}</span>
             </h3>
             <p className="text-[11px] text-slate-500">
-              يمكنك في أي وقت تنزيل نسخة احتياطية كاملة ومأمونة من كافة فواتير المبيعات، المشتريات، حركة الخزائن، حسابات العملاء والموردين بصيغة JSON، واستعادتها على أي جهاز كمبيوتر أو هاتف محمول.
+              {t(
+                'يمكنك في أي وقت تنزيل نسخة احتياطية كاملة ومأمونة من كافة فواتير المبيعات، المشتريات، حركة الخزائن، حسابات العملاء والموردين بصيغة JSON، واستعادتها على أي جهاز كمبيوتر أو هاتف محمول.',
+                'Download a complete JSON backup of all sales/purchase invoices, cashbox movements, customer/supplier accounts at any time, and restore it on any PC or mobile device.'
+              )}
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -2243,17 +2318,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               <div className="p-2.5 bg-slate-50 border rounded-lg space-y-2">
                 <h4 className="font-bold text-slate-900 flex items-center gap-1.5">
                   <Download className="w-4 h-4 text-blue-900" />
-                  <span>تصدير نسخة احتياطية كاملة</span>
+                  <span>{t('تصدير نسخة احتياطية كاملة', 'Export Full Backup')}</span>
                 </h4>
                 <p className="text-[11px] text-slate-500">
-                  توليد ملف مشفر ومفصل لجميع قيود المنظومة لحفظه على قرص خارجي أو فلاش ميموري
+                  {t(
+                    'توليد ملف مشفر ومفصل لجميع قيود المنظومة لحفظه على قرص خارجي أو فلاش ميموري',
+                    'Generate an encrypted detailed file of all system records for external drive or USB storage'
+                  )}
                 </p>
                 <button
                   type="button"
                   onClick={exportBackup}
                   className="w-full py-1.5 px-3 bg-blue-900 hover:bg-blue-950 text-white font-bold rounded-md shadow-xs text-center cursor-pointer"
                 >
-                  تنزيل ملف النسخة الاحتياطية الآن
+                  {t('تنزيل ملف النسخة الاحتياطية الآن', 'Download Backup File Now')}
                 </button>
               </div>
 
@@ -2261,13 +2339,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               <div className="p-2.5 bg-slate-50 border rounded-lg space-y-2">
                 <h4 className="font-bold text-slate-900 flex items-center gap-1.5">
                   <Upload className="w-4 h-4 text-[#003589]" />
-                  <span>استعادة نسخة احتياطية سابقة</span>
+                  <span>{t('استعادة نسخة احتياطية سابقة', 'Restore Previous Backup')}</span>
                 </h4>
                 <p className="text-[11px] text-slate-500">
-                  رفع ملف النسخة الاحتياطية (JSON) واسترجاع كامل العمليات والأرصدة بأمان
+                  {t(
+                    'رفع ملف النسخة الاحتياطية (JSON) واسترجاع كامل العمليات والأرصدة بأمان',
+                    'Upload a JSON backup file to safely recover all operations and balances'
+                  )}
                 </p>
                 <label className="w-full block py-1.5 px-3 bg-[#003589] hover:bg-[#0049B0] text-white font-bold rounded-md text-center cursor-pointer shadow-xs">
-                  <span>اختر ملف النسخة واستعادتها</span>
+                  <span>{t('اختر ملف النسخة واستعادتها', 'Select & Restore Backup File')}</span>
                   <input
                     type="file"
                     accept=".json"
@@ -2289,14 +2370,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
               <div>
                 <span className="text-[10px] uppercase tracking-wider text-[#DCE6F5] font-bold block mb-0.5">
-                  قاعدة البيانات المركزية والخادم المحلي (PostgreSQL Relational Engine)
+                  {t('قاعدة البيانات المركزية والخادم المحلي (PostgreSQL Relational Engine)', 'Central Database & Local Server (PostgreSQL Relational Engine)')}
                 </span>
                 <h3 className="text-sm font-black flex items-center gap-2">
                   <span className="inline-flex rounded-full h-2.5 w-2.5 bg-[#0053BE] shrink-0"></span>
-                  <span>PostgreSQL 16 Enterprise · awlad_selim · 20 مستخدم متزامن</span>
+                  <span>{t('PostgreSQL 16 Enterprise · awlad_selim · 20 مستخدم متزامن', 'PostgreSQL 16 Enterprise · awlad_selim · 20 Concurrent Users')}</span>
                 </h3>
                 <p className="text-[11px] text-slate-300 mt-0.5">
-                  نظام المعاملات المالية والمخزنية المتسقة (ACID Transactions)، المفاتيح الأجنبية، الفهارس وسجلات التدقيق المتقدمة.
+                  {t(
+                    'نظام المعاملات المالية والمخزنية المتسقة (ACID Transactions)، المفاتيح الأجنبية، الفهارس وسجلات التدقيق المتقدمة.',
+                    'Consistent financial & inventory ACID Transactions, foreign keys, indexing, and advanced audit logs.'
+                  )}
                 </p>
               </div>
 
@@ -2308,7 +2392,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-[#011E58] hover:bg-[#002160] text-white rounded-md font-bold border border-[#003589] transition-colors disabled:opacity-50 cursor-pointer"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isTestingPg ? 'animate-spin' : ''}`} />
-                  <span>{isTestingPg ? 'جاري الفحص...' : 'فحص اتصال PostgreSQL'}</span>
+                  <span>{isTestingPg ? t('جاري الفحص...', 'Checking...') : t('فحص اتصال PostgreSQL', 'Test PostgreSQL Connection')}</span>
                 </button>
 
                 <button
@@ -2318,7 +2402,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-black shadow-xs transition-all disabled:opacity-50 cursor-pointer"
                 >
                   <ArrowLeftRight className={`w-3.5 h-3.5 ${isMigrating ? 'animate-spin' : ''}`} />
-                  <span>{isMigrating ? 'جاري الترحيل والتحقق...' : 'تشغيل فحص وترحيل البيانات'}</span>
+                  <span>{isMigrating ? t('جاري الترحيل والتحقق...', 'Migrating & Verifying...') : t('تشغيل فحص وترحيل البيانات', 'Run Data Check & Migration')}</span>
                 </button>
 
                 <button
@@ -2328,7 +2412,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-md font-bold transition-colors disabled:opacity-50 cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  <span>التراجع لآخر نسخة احتياطية</span>
+                  <span>{t('التراجع لآخر نسخة احتياطية', 'Rollback to Last Backup')}</span>
                 </button>
               </div>
             </div>
@@ -2336,39 +2420,42 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             {/* Diagnostic stats */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-slate-800 border border-slate-700 rounded-md overflow-hidden text-[11px]">
               <div className="px-2.5 py-1.5 bg-slate-900/90">
-                <span className="text-slate-400 block text-[10px]">حالة المحرك:</span>
+                <span className="text-slate-400 block text-[10px]">{t('حالة المحرك:', 'Engine Status:')}</span>
                 <strong className={pgHealthInfo?.status === 'online' ? 'text-emerald-400 font-bold' : 'text-amber-300 font-bold'}>
                   {pgHealthInfo?.status === 'online'
-                    ? 'PostgreSQL متصل ويعمل'
+                    ? t('PostgreSQL متصل ويعمل', 'PostgreSQL Online & Active')
                     : pgHealthInfo?.status === 'connection_failed'
-                    ? 'تعذر الاتصال بـ PostgreSQL (السجلات المحلية تعمل)'
-                    : 'PostgreSQL غير مُعدّ بعد (السجلات المحلية الآمنة تعمل)'}
+                    ? t('تعذر الاتصال بـ PostgreSQL (السجلات المحلية تعمل)', 'PostgreSQL Connection Failed (Local Stores Active)')
+                    : t('PostgreSQL غير مُعدّ بعد (السجلات المحلية الآمنة تعمل)', 'PostgreSQL Not Configured Yet (Safe Local Stores Active)')}
                 </strong>
               </div>
               <div className="px-2.5 py-1.5 bg-slate-900/90">
-                <span className="text-slate-400 block text-[10px]">استجابة الاتصال:</span>
+                <span className="text-slate-400 block text-[10px]">{t('استجابة الاتصال:', 'Latency:')}</span>
                 <strong className="text-emerald-400 font-mono font-bold">
-                  {pgHealthInfo?.latencyMs ? `${pgHealthInfo.latencyMs} ms` : 'محلي (0 ms)'}
+                  {pgHealthInfo?.latencyMs ? `${pgHealthInfo.latencyMs} ms` : t('محلي (0 ms)', 'Local (0 ms)')}
                 </strong>
               </div>
               <div className="px-2.5 py-1.5 bg-slate-900/90">
-                <span className="text-slate-400 block text-[10px]">قاعدة البيانات:</span>
+                <span className="text-slate-400 block text-[10px]">{t('قاعدة البيانات:', 'Database:')}</span>
                 <strong className="text-slate-200 font-mono font-bold">
                   {pgHealthInfo?.databaseName || 'awlad_selim (v3.0)'}
                 </strong>
               </div>
               <div className="px-2.5 py-1.5 bg-slate-900/90">
-                <span className="text-slate-400 block text-[10px]">المعاملات المالية:</span>
+                <span className="text-slate-400 block text-[10px]">{t('المعاملات المالية:', 'Transactions:')}</span>
                 <strong className="text-emerald-400 font-bold">ACID Enabled / Idempotent</strong>
               </div>
             </div>
 
             {pgHealthInfo && (
               <div className={`px-2.5 py-1.5 rounded-md text-xs ${pgHealthInfo.status === 'online' ? 'bg-emerald-950/60 text-emerald-200 border border-emerald-800/60' : 'bg-slate-800/90 text-amber-200 border border-amber-700/40'}`}>
-                <p><strong>نتيجة الفحص:</strong> {pgHealthInfo.message}</p>
+                <p><strong>{t('نتيجة الفحص:', 'Check Result:')}</strong> {t(pgHealthInfo.message || '')}</p>
                 {pgHealthInfo.status !== 'online' && (
                   <p className="text-[11px] text-slate-300 mt-0.5">
-                    ملاحظة: تبقى جميع بياناتك الحالية محفوظة بالكامل دون حذف أو تصفير. لن يبدأ الترحيل الفعلي إلا بعد إعداد متغيرات اتصال PostgreSQL وتشغيل الخدمة وأخذ نسخة احتياطية تلقائية.
+                    {t(
+                      'ملاحظة: تبقى جميع بياناتك الحالية محفوظة بالكامل دون حذف أو تصفير. لن يبدأ الترحيل الفعلي إلا بعد إعداد متغيرات اتصال PostgreSQL وتشغيل الخدمة وأخذ نسخة احتياطية تلقائية.',
+                      'Note: All existing data remains completely preserved. Actual migration begins only after PostgreSQL connection vars are set, service starts, and automatic backup completes.'
+                    )}
                   </p>
                 )}
               </div>
@@ -2388,7 +2475,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     <AlertCircle className="w-4 h-4 text-red-600" />
                   )}
                   <h4 className="font-black text-xs sm:text-sm">
-                    {migrationResult.success ? 'تم فحص وترحيل البيانات وتوثيقها في سجل الترحيل بنجاح!' : 'تعذر تنفيذ الترحيل'}
+                    {migrationResult.success ? t('تم فحص وترحيل البيانات وتوثيقها في سجل الترحيل بنجاح!', 'Data verified, migrated, and recorded in migration log successfully!') : t('تعذر تنفيذ الترحيل', 'Migration failed')}
                   </h4>
                 </div>
                 {migrationResult.log?.id && (
@@ -2399,16 +2486,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               </div>
 
               <p className={`text-xs font-semibold ${migrationResult.success ? 'text-emerald-800' : 'text-red-800'}`}>
-                {migrationResult.success ? migrationResult.log?.notes : migrationResult.error}
+                {migrationResult.success ? t(migrationResult.log?.notes || '') : t(migrationResult.error || '')}
               </p>
 
               {(() => {
                 const warnings = migrationResult.log?.details?.warnings || migrationResult.log?.warnings;
                 return Array.isArray(warnings) && warnings.length > 0 ? (
                   <div className="p-2 rounded-md bg-amber-50 border border-amber-200 text-amber-900 space-y-0.5">
-                    <strong className="block">تحذيرات الترحيل وربط العملاء:</strong>
+                    <strong className="block">{t('تحذيرات الترحيل وربط العملاء:', 'Migration & Customer Linking Warnings:')}</strong>
                     {warnings.map((w: string, idx: number) => (
-                      <div key={idx}>• {w}</div>
+                      <div key={idx}>• {t(w)}</div>
                     ))}
                   </div>
                 ) : null;
@@ -2418,27 +2505,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               {migrationResult.log?.details && (
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-px bg-emerald-200 border border-emerald-200 rounded-md overflow-hidden">
                   <div className="px-2 py-1.5 bg-white text-center">
-                    <span className="text-[10px] text-slate-500 block">المستخدمون</span>
+                    <span className="text-[10px] text-slate-500 block">{t('المستخدمون', 'Users')}</span>
                     <strong className="text-xs font-black text-emerald-900 font-mono tabular-nums">{migrationResult.log.details.users}</strong>
                   </div>
                   <div className="px-2 py-1.5 bg-white text-center">
-                    <span className="text-[10px] text-slate-500 block">العملاء</span>
+                    <span className="text-[10px] text-slate-500 block">{t('العملاء', 'Customers')}</span>
                     <strong className="text-xs font-black text-emerald-900 font-mono tabular-nums">{migrationResult.log.details.customers}</strong>
                   </div>
                   <div className="px-2 py-1.5 bg-white text-center">
-                    <span className="text-[10px] text-slate-500 block">الموردون</span>
+                    <span className="text-[10px] text-slate-500 block">{t('الموردون', 'Suppliers')}</span>
                     <strong className="text-xs font-black text-emerald-900 font-mono tabular-nums">{migrationResult.log.details.suppliers}</strong>
                   </div>
                   <div className="px-2 py-1.5 bg-white text-center">
-                    <span className="text-[10px] text-slate-500 block">الأصناف والسلع</span>
+                    <span className="text-[10px] text-slate-500 block">{t('الأصناف والسلع', 'Products & Items')}</span>
                     <strong className="text-xs font-black text-emerald-900 font-mono tabular-nums">{migrationResult.log.details.products}</strong>
                   </div>
                   <div className="px-2 py-1.5 bg-white text-center">
-                    <span className="text-[10px] text-slate-500 block">المستودعات</span>
+                    <span className="text-[10px] text-slate-500 block">{t('المستودعات', 'Warehouses')}</span>
                     <strong className="text-xs font-black text-emerald-900 font-mono tabular-nums">{migrationResult.log.details.warehouses}</strong>
                   </div>
                   <div className="px-2 py-1.5 bg-white text-center">
-                    <span className="text-[10px] text-slate-500 block">الفواتير والدفعات</span>
+                    <span className="text-[10px] text-slate-500 block">{t('الفواتير والدفعات', 'Invoices & Payments')}</span>
                     <strong className="text-xs font-black text-emerald-900 font-mono tabular-nums">{migrationResult.log.details.invoices + (migrationResult.log.details.payments || 0)}</strong>
                   </div>
                 </div>
@@ -2449,29 +2536,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
           {/* Migration Logs History Table */}
           <UnifiedDataTable
             compact
-            title="سجل الترحيل التاريخي (Migration Logs)"
-            subtitle="توثيق عمليات الترحيل السابقة، نسب المطابقة، عدد السجلات، وهوية المنفذ"
+            title={t('سجل الترحيل التاريخي (Migration Logs)', 'Historical Migration Logs')}
+            subtitle={t('توثيق عمليات الترحيل السابقة، نسب المطابقة، عدد السجلات، وهوية المنفذ', 'Record of past migrations, match rates, record counts, and executor identity')}
             data={migrationLogs || []}
             rowKey={(log) => log.id}
-            searchPlaceholder="بحث برقم العملية أو المنفذ..."
+            searchPlaceholder={t('بحث برقم العملية أو المنفذ...', 'Search by operation ID or executor...')}
             searchFilter={(log, q) =>
               log.id.toLowerCase().includes(q) ||
               (log.executedBy || '').toLowerCase().includes(q) ||
               (log.destination || '').toLowerCase().includes(q)
             }
-            emptyTitle="لا توجد عمليات ترحيل مسجلة بعد"
-            emptySubtitle="اضغط على «تشغيل فحص وترحيل البيانات» بالأعلى لإجراء عملية ترحيل وتوثيق أولى"
+            emptyTitle={t('لا توجد عمليات ترحيل مسجلة بعد', 'No migration operations recorded yet')}
+            emptySubtitle={t('اضغط على «تشغيل فحص وترحيل البيانات» بالأعلى لإجراء عملية ترحيل وتوثيق أولى', 'Click "Run Data Check & Migration" above to perform an initial migration')}
             columns={[
-              { key: 'id', header: 'رقم العملية', render: (log) => <span className="font-mono font-bold text-[#011E58]">{log.id}</span> },
-              { key: 'timestamp', header: 'التاريخ والوقت', render: (log) => <span className="font-mono text-slate-600 text-[11px]">{new Date(log.timestamp).toLocaleString('ar-EG')}</span> },
-              { key: 'source', header: 'المصدر', render: (log) => <span className="text-slate-600 text-[11px]">{log.source}</span> },
-              { key: 'destination', header: 'الوجهة', render: (log) => <span className="text-slate-700 font-bold text-[11px]">{log.destination}</span> },
-              { key: 'totalRecords', header: 'إجمالي السجلات', align: 'center', render: (log) => <span className="font-mono font-bold text-slate-800 tabular-nums">{log.totalRecords}</span> },
-              { key: 'migratedRecords', header: 'المنقول بنجاح', align: 'center', render: (log) => <span className="font-mono font-black text-emerald-600 tabular-nums">{log.migratedRecords}</span> },
-              { key: 'failedRecords', header: 'الفاشل / المرفوض', align: 'center', render: (log) => <span className="font-mono font-bold text-red-600 tabular-nums">{log.failedRecords}</span> },
+              { key: 'id', header: t('رقم العملية', 'Operation ID'), render: (log) => <span className="font-mono font-bold text-[#011E58]">{log.id}</span> },
+              { key: 'timestamp', header: t('التاريخ والوقت', 'Date & Time'), render: (log) => <span className="font-mono text-slate-600 text-[11px]">{formatLocaleDateTime(log.timestamp)}</span> },
+              { key: 'source', header: t('المصدر', 'Source'), render: (log) => <span className="text-slate-600 text-[11px]">{log.source}</span> },
+              { key: 'destination', header: t('الوجهة', 'Destination'), render: (log) => <span className="text-slate-700 font-bold text-[11px]">{log.destination}</span> },
+              { key: 'totalRecords', header: t('إجمالي السجلات', 'Total Records'), align: 'center', render: (log) => <span className="font-mono font-bold text-slate-800 tabular-nums">{log.totalRecords}</span> },
+              { key: 'migratedRecords', header: t('المنقول بنجاح', 'Migrated'), align: 'center', render: (log) => <span className="font-mono font-black text-emerald-600 tabular-nums">{log.migratedRecords}</span> },
+              { key: 'failedRecords', header: t('الفاشل / المرفوض', 'Failed / Rejected'), align: 'center', render: (log) => <span className="font-mono font-bold text-red-600 tabular-nums">{log.failedRecords}</span> },
               {
                 key: 'status',
-                header: 'الحالة',
+                header: t('الحالة', 'Status'),
                 align: 'center',
                 render: (log) => (
                   <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
@@ -2479,11 +2566,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     log.status === 'pending' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
                     'bg-red-50 text-red-700 border border-red-200'
                   }`}>
-                    {log.status === 'success' ? 'ناجح 100%' : log.status === 'pending' ? 'قيد التنفيذ' : 'تحذير'}
+                    {log.status === 'success' ? t('ناجح 100%', '100% Success') : log.status === 'pending' ? t('قيد التنفيذ', 'Pending') : t('تحذير', 'Warning')}
                   </span>
                 ),
               },
-              { key: 'executedBy', header: 'المنفذ', render: (log) => <span className="text-slate-600 font-semibold">{log.executedBy}</span> },
+              { key: 'executedBy', header: t('المنفذ', 'Executor'), render: (log) => <span className="text-slate-600 font-semibold">{log.executedBy}</span> },
             ]}
           />
         </div>
@@ -2494,20 +2581,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
           <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs space-y-2">
             <h3 className="text-xs sm:text-sm font-black text-slate-900 border-b pb-1.5 flex items-center gap-1.5">
               <GitBranch className="w-4 h-4 text-blue-900" />
-              <span>إدارة الفروع ونقاط التوزيع</span>
+              <span>{t('إدارة الفروع ونقاط التوزيع', 'Branches & Distribution Points Management')}</span>
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-              <input type="text" placeholder="اسم الفرع *" value={newBranchName} onChange={(e) => setNewBranchName(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-bold" />
-              <input type="text" placeholder="رقم الفرع (مثال: 01)" value={newBranchNumber} onChange={(e) => setNewBranchNumber(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
-              <input type="text" placeholder="كود الفرع (BR-02)" value={newBranchCode} onChange={(e) => setNewBranchCode(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
-              <input type="text" placeholder="رقم الهاتف" value={newBranchPhone} onChange={(e) => setNewBranchPhone(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
-              <input type="text" placeholder="العنوان التفصيلي" value={newBranchAddress} onChange={(e) => setNewBranchAddress(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5" />
+              <input type="text" placeholder={t('اسم الفرع *', 'Branch Name *')} value={newBranchName} onChange={(e) => setNewBranchName(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-bold" />
+              <input type="text" placeholder={t('رقم الفرع (مثال: 01)', 'Branch Number (e.g. 01)')} value={newBranchNumber} onChange={(e) => setNewBranchNumber(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
+              <input type="text" placeholder={t('كود الفرع (BR-02)', 'Branch Code (BR-02)')} value={newBranchCode} onChange={(e) => setNewBranchCode(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
+              <input type="text" placeholder={t('رقم الهاتف', 'Phone Number')} value={newBranchPhone} onChange={(e) => setNewBranchPhone(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
+              <input type="text" placeholder={t('العنوان التفصيلي', 'Detailed Address')} value={newBranchAddress} onChange={(e) => setNewBranchAddress(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5" />
               <select value={newBranchWarehouseId} onChange={(e) => setNewBranchWarehouseId(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2 font-bold bg-white">
-                <option value="">-- ربط بمستودع --</option>
+                <option value="">{t('-- ربط بمستودع --', '-- Link Warehouse --')}</option>
                 {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
               </select>
               <select value={newBranchCashboxId} onChange={(e) => setNewBranchCashboxId(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2 font-bold bg-white">
-                <option value="">-- ربط بخزينة --</option>
+                <option value="">{t('-- ربط بخزينة --', '-- Link Cashbox --')}</option>
                 {cashboxes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
               <button
@@ -2532,11 +2619,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   setNewBranchCode('');
                   setNewBranchPhone('');
                   setNewBranchAddress('');
-                  await persistExtraSettings({ branches: next }, `تمت إضافة الفرع (${item.name}) بنجاح.`);
+                  await persistExtraSettings({ branches: next }, t(`تمت إضافة الفرع (${item.name}) بنجاح.`, `Branch (${item.name}) added successfully.`));
                 }}
                 className="h-8 px-3 bg-blue-900 hover:bg-blue-950 text-white rounded-md font-black cursor-pointer"
               >
-                + إضافة وحفظ الفرع
+                {t('+ إضافة وحفظ الفرع', '+ Add & Save Branch')}
               </button>
             </div>
           </div>
@@ -2545,36 +2632,36 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             compact
             searchable={false}
             paginated={false}
-            title="الفروع ونقاط التوزيع المسجلة"
+            title={t('الفروع ونقاط التوزيع المسجلة', 'Registered Branches & Distribution Points')}
             data={branches}
             rowKey={(br) => br.id}
-            emptyTitle="لا توجد فروع مضافة"
+            emptyTitle={t('لا توجد فروع مضافة', 'No branches added')}
             columns={[
-              { key: 'code', header: 'الكود', render: (br) => <span className="font-mono font-bold text-blue-900">{br.code}</span> },
+              { key: 'code', header: t('الكود', 'Code'), render: (br) => <span className="font-mono font-bold text-blue-900">{br.code}</span> },
               {
                 key: 'branchNumber',
-                header: 'رقم الفرع',
+                header: t('رقم الفرع', 'Branch No.'),
                 render: (br) => (
                   <input
                     type="text"
                     value={br.branchNumber || ''}
-                    placeholder="رقم الفرع"
+                    placeholder={t('رقم الفرع', 'Branch No.')}
                     onChange={(e) => {
                       const val = e.target.value;
                       setBranches((prev) => prev.map((b) => (b.id === br.id ? { ...b, branchNumber: val } : b)));
                     }}
                     onBlur={async () => {
-                      await persistExtraSettings({ branches }, `تم تحديث رقم الفرع (${br.name}).`);
+                      await persistExtraSettings({ branches }, t(`تم تحديث رقم الفرع (${br.name}).`, `Updated branch number (${br.name}).`));
                     }}
                     className="w-24 border border-slate-200 rounded-lg px-2 py-1 font-mono text-xs bg-white"
                   />
                 ),
               },
-              { key: 'name', header: 'اسم الفرع', render: (br) => <span className="font-black">{br.name}</span> },
-              { key: 'contact', header: 'الهاتف والعنوان', render: (br) => <span className="text-slate-600">{[br.phone, br.address].filter(Boolean).join(' | ') || '-'}</span> },
+              { key: 'name', header: t('اسم الفرع', 'Branch Name'), render: (br) => <span className="font-black">{br.name}</span> },
+              { key: 'contact', header: t('الهاتف والعنوان', 'Phone & Address'), render: (br) => <span className="text-slate-600">{[br.phone, br.address].filter(Boolean).join(' | ') || '-'}</span> },
               {
                 key: 'links',
-                header: 'المستودع / الخزينة',
+                header: t('المستودع / الخزينة', 'Warehouse / Cashbox'),
                 render: (br) => (
                   <span className="text-slate-700">
                     {warehouses.find((w) => w.id === br.warehouseId)?.name || '-'} / {cashboxes.find((c) => c.id === br.cashboxId)?.name || '-'}
@@ -2583,7 +2670,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               },
               {
                 key: 'actions',
-                header: 'إجراء',
+                header: t('إجراء', 'Action'),
                 align: 'center',
                 render: (br) =>
                   !br.isDefault ? (
@@ -2592,14 +2679,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                       onClick={async () => {
                         const next = branches.filter((b) => b.id !== br.id);
                         setBranches(next);
-                        await persistExtraSettings({ branches: next }, 'تم حذف الفرع وتحديث الإعدادات.');
+                        await persistExtraSettings({ branches: next }, t('تم حذف الفرع وتحديث الإعدادات.', 'Branch deleted and settings updated.'));
                       }}
                       className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg cursor-pointer"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
                   ) : (
-                    <span className="text-[10px] text-slate-400">رئيسي</span>
+                    <span className="text-[10px] text-slate-400">{t('رئيسي', 'Main')}</span>
                   ),
               },
             ]}
@@ -2612,44 +2699,44 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
         <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs space-y-2.5 text-xs">
           <h3 className="text-xs sm:text-sm font-black text-slate-900 border-b pb-1.5 flex items-center gap-1.5">
             <Barcode className="w-4 h-4 text-blue-900" />
-            <span>إعدادات طباعة ملصقات الباركود</span>
+            <span>{t('إعدادات طباعة ملصقات الباركود', 'Barcode Label Printing Settings')}</span>
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div>
-              <label className="block text-[11px] font-bold mb-0.5">عرض الملصق (مم):</label>
+              <label className="block text-[11px] font-bold mb-0.5">{t('عرض الملصق (مم):', 'Label Width (mm):')}</label>
               <input type="number" min="20" value={barcodeConfig.labelWidthMm} onChange={(e) => setBarcodeConfig({ ...barcodeConfig, labelWidthMm: Number(e.target.value) })} className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono font-bold" />
             </div>
             <div>
-              <label className="block text-[11px] font-bold mb-0.5">ارتفاع الملصق (مم):</label>
+              <label className="block text-[11px] font-bold mb-0.5">{t('ارتفاع الملصق (مم):', 'Label Height (mm):')}</label>
               <input type="number" min="15" value={barcodeConfig.labelHeightMm} onChange={(e) => setBarcodeConfig({ ...barcodeConfig, labelHeightMm: Number(e.target.value) })} className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono font-bold" />
             </div>
             <div>
-              <label className="block text-[11px] font-bold mb-0.5">بادئة الباركود التلقائية:</label>
-              <input type="text" value={barcodeConfig.prefix} onChange={(e) => setBarcodeConfig({ ...barcodeConfig, prefix: e.target.value })} className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono font-bold" />
+              <label className="block text-[11px] font-bold mb-0.5">{t('بادئة الباركود التلقائية:', 'Auto Barcode Prefix:')}</label>
+              <input type="text" dir="ltr" value={barcodeConfig.prefix} onChange={(e) => setBarcodeConfig({ ...barcodeConfig, prefix: e.target.value })} className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono font-bold" />
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
               <input type="checkbox" checked={barcodeConfig.showCompanyName} onChange={(e) => setBarcodeConfig({ ...barcodeConfig, showCompanyName: e.target.checked })} />
-              <span className="font-bold">إظهار اسم المؤسسة على الملصق</span>
+              <span className="font-bold">{t('إظهار اسم المؤسسة على الملصق', 'Show Company Name on Label')}</span>
             </label>
             <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
               <input type="checkbox" checked={barcodeConfig.showProductCode} onChange={(e) => setBarcodeConfig({ ...barcodeConfig, showProductCode: e.target.checked })} />
-              <span className="font-bold">إظهار كود الصنف الداخلي</span>
+              <span className="font-bold">{t('إظهار كود الصنف الداخلي', 'Show Internal Product Code')}</span>
             </label>
             <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
               <input type="checkbox" checked={barcodeConfig.showPrice} onChange={(e) => setBarcodeConfig({ ...barcodeConfig, showPrice: e.target.checked })} />
-              <span className="font-bold">إظهار سعر البيع بالجنيه</span>
+              <span className="font-bold">{t('إظهار سعر البيع بالجنيه', 'Show Sale Price')}</span>
             </label>
           </div>
           <div className="flex justify-end">
             <button
               type="button"
-              onClick={() => persistExtraSettings({ barcodeConfig }, 'تم حفظ إعدادات الباركود بنجاح.')}
+              onClick={() => persistExtraSettings({ barcodeConfig }, t('تم حفظ إعدادات الباركود بنجاح.', 'Barcode settings saved successfully.'))}
               className="px-4 py-1.5 bg-blue-900 hover:bg-blue-950 text-white rounded-md font-black cursor-pointer flex items-center gap-1.5"
             >
               <Save className="w-3.5 h-3.5" />
-              <span>حفظ إعدادات الباركود</span>
+              <span>{t('حفظ إعدادات الباركود', 'Save Barcode Settings')}</span>
             </button>
           </div>
         </div>
@@ -2661,19 +2748,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
           <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs space-y-2">
             <h3 className="text-xs sm:text-sm font-black text-slate-900 border-b pb-1.5 flex items-center gap-1.5">
               <Printer className="w-4 h-4 text-blue-900" />
-              <span>إدارة الطابعات المتعددة (الإدارة / الكاشير / الباركود)</span>
+              <span>{t('إدارة الطابعات المتعددة (الإدارة / الكاشير / الباركود)', 'Multi-Printer Management (Admin / Cashier / Barcode)')}</span>
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
-              <input type="text" placeholder="اسم الطابعة *" value={newPrinterName} onChange={(e) => setNewPrinterName(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-bold" />
+              <input type="text" placeholder={t('اسم الطابعة *', 'Printer Name *')} value={newPrinterName} onChange={(e) => setNewPrinterName(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-bold" />
               <select value={newPrinterRole} onChange={(e) => setNewPrinterRole(e.target.value as any)} className="h-8 border border-slate-300 rounded-md px-2 font-bold bg-white">
-                <option value="a4">A4 قياسية (فواتير وتقارير)</option>
-                <option value="cashier_thermal80">كاشير حرارية 80 مم</option>
-                <option value="cashier_thermal58">بلوتوث محمولة 58 مم</option>
-                <option value="barcode_label">طابعة ملصقات باركود</option>
+                <option value="a4">{t('A4 قياسية (فواتير وتقارير)', 'Standard A4 (Invoices & Reports)')}</option>
+                <option value="cashier_thermal80">{t('كاشير حرارية 80 مم', 'Cashier Thermal 80mm')}</option>
+                <option value="cashier_thermal58">{t('بلوتوث محمولة 58 مم', 'Portable Bluetooth 58mm')}</option>
+                <option value="barcode_label">{t('طابعة ملصقات باركود', 'Barcode Label Printer')}</option>
               </select>
-              <input type="text" placeholder="المنفذ أو IP (مثال: 192.168.1.200)" value={newPrinterPort} onChange={(e) => setNewPrinterPort(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
+              <input type="text" dir="ltr" placeholder={t('المنفذ أو IP (مثال: 192.168.1.200)', 'Port or IP (e.g. 192.168.1.200)')} value={newPrinterPort} onChange={(e) => setNewPrinterPort(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
               <div className="flex items-center gap-1.5">
-                <input type="number" min="1" max="5" value={newPrinterCopies} onChange={(e) => setNewPrinterCopies(Number(e.target.value))} className="w-16 h-8 border border-slate-300 rounded-md px-2 font-mono text-center font-bold" title="عدد النسخ" />
+                <input type="number" min="1" max="5" value={newPrinterCopies} onChange={(e) => setNewPrinterCopies(Number(e.target.value))} className="w-16 h-8 border border-slate-300 rounded-md px-2 font-mono text-center font-bold" title={t('عدد النسخ', 'Copies')} />
                 <button
                   type="button"
                   onClick={async () => {
@@ -2690,11 +2777,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     const next = [...printers, item];
                     setPrinters(next);
                     setNewPrinterName('');
-                    await persistExtraSettings({ printers: next }, `تمت إضافة الطابعة (${item.name}) بنجاح.`);
+                    await persistExtraSettings({ printers: next }, t(`تمت إضافة الطابعة (${item.name}) بنجاح.`, `Printer (${item.name}) added successfully.`));
                   }}
                   className="flex-1 h-8 bg-blue-900 hover:bg-blue-950 text-white rounded-md font-black cursor-pointer"
                 >
-                  + إضافة طابعة
+                  {t('+ إضافة طابعة', '+ Add Printer')}
                 </button>
               </div>
             </div>
@@ -2704,18 +2791,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             compact
             searchable={false}
             paginated={false}
-            title="الطابعات المعرّفة"
+            title={t('الطابعات المعرّفة', 'Configured Printers')}
             data={printers}
             rowKey={(pr) => pr.id}
-            emptyTitle="لا توجد طابعات مضافة"
+            emptyTitle={t('لا توجد طابعات مضافة', 'No printers configured')}
             columns={[
-              { key: 'name', header: 'اسم الطابعة', render: (pr) => <span className="font-black">{pr.name}</span> },
-              { key: 'role', header: 'النوع', render: (pr) => <span className="font-mono text-blue-900">{pr.role} ({pr.paperWidthMm}mm)</span> },
-              { key: 'ipOrPort', header: 'المنفذ / IP', render: (pr) => <span className="font-mono">{pr.ipOrPort}</span> },
-              { key: 'copies', header: 'النسخ', align: 'center', render: (pr) => <span className="font-mono font-bold tabular-nums">{pr.copies}</span> },
+              { key: 'name', header: t('اسم الطابعة', 'Printer Name'), render: (pr) => <span className="font-black">{pr.name}</span> },
+              { key: 'role', header: t('النوع', 'Type'), render: (pr) => <span className="font-mono text-blue-900">{pr.role} ({pr.paperWidthMm}mm)</span> },
+              { key: 'ipOrPort', header: t('المنفذ / IP', 'Port / IP'), render: (pr) => <span className="font-mono">{pr.ipOrPort}</span> },
+              { key: 'copies', header: t('النسخ', 'Copies'), align: 'center', render: (pr) => <span className="font-mono font-bold tabular-nums">{pr.copies}</span> },
               {
                 key: 'actions',
-                header: 'إجراء',
+                header: t('إجراء', 'Action'),
                 align: 'center',
                 render: (pr) => (
                   <button
@@ -2723,7 +2810,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     onClick={async () => {
                       const next = printers.filter((x) => x.id !== pr.id);
                       setPrinters(next);
-                      await persistExtraSettings({ printers: next }, 'تم حذف الطابعة من القائمة.');
+                      await persistExtraSettings({ printers: next }, t('تم حذف الطابعة من القائمة.', 'Printer removed from list.'));
                     }}
                     className="p-1 text-red-600 hover:bg-red-50 rounded cursor-pointer"
                   >
@@ -2741,38 +2828,38 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
         <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs space-y-2.5 text-xs">
           <h3 className="text-xs sm:text-sm font-black text-slate-900 border-b pb-1.5 flex items-center gap-1.5">
             <FileText className="w-4 h-4 text-blue-900" />
-            <span>إعدادات قالب ومحتوى الفاتورة</span>
+            <span>{t('إعدادات قالب ومحتوى الفاتورة', 'Invoice Template & Content Settings')}</span>
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
               <input type="checkbox" checked={invoiceTemplate.showLogo} onChange={(e) => setInvoiceTemplate({ ...invoiceTemplate, showLogo: e.target.checked })} />
-              <span className="font-bold">إظهار شعار أولاد سليم في رأس الفاتورة</span>
+              <span className="font-bold">{t('إظهار شعار أولاد سليم في رأس الفاتورة', 'Show Awlad Selim Logo in Invoice Header')}</span>
             </label>
             <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
               <input type="checkbox" checked={invoiceTemplate.showPreviousBalance} onChange={(e) => setInvoiceTemplate({ ...invoiceTemplate, showPreviousBalance: e.target.checked })} />
-              <span className="font-bold">إظهار الرصيد السابق للعميل</span>
+              <span className="font-bold">{t('إظهار الرصيد السابق للعميل', 'Show Customer Previous Balance')}</span>
             </label>
             <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
               <input type="checkbox" checked={invoiceTemplate.showRemainingBalance} onChange={(e) => setInvoiceTemplate({ ...invoiceTemplate, showRemainingBalance: e.target.checked })} />
-              <span className="font-bold">إظهار الرصيد النهائي المستحق بعد الفاتورة</span>
+              <span className="font-bold">{t('إظهار الرصيد النهائي المستحق بعد الفاتورة', 'Show Final Remaining Balance After Invoice')}</span>
             </label>
             <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
               <input type="checkbox" checked={invoiceTemplate.showSignatureBoxes} onChange={(e) => setInvoiceTemplate({ ...invoiceTemplate, showSignatureBoxes: e.target.checked })} />
-              <span className="font-bold">إظهار خانات توقيع المستلم وأمين المخزن</span>
+              <span className="font-bold">{t('إظهار خانات توقيع المستلم وأمين المخزن', 'Show Receiver & Storekeeper Signature Boxes')}</span>
             </label>
           </div>
           <div>
-            <label className="block text-[11px] font-bold mb-0.5">نص تذييل الفاتورة المعتمد:</label>
+            <label className="block text-[11px] font-bold mb-0.5">{t('نص تذييل الفاتورة المعتمد:', 'Approved Invoice Footer Text:')}</label>
             <textarea rows={2} value={invoiceTemplate.footerText} onChange={(e) => setInvoiceTemplate({ ...invoiceTemplate, footerText: e.target.value })} className="w-full border border-slate-300 rounded-md p-2" />
           </div>
           <div className="flex justify-end">
             <button
               type="button"
-              onClick={() => persistExtraSettings({ invoiceTemplate }, 'تم حفظ إعدادات قالب الفاتورة بنجاح.')}
+              onClick={() => persistExtraSettings({ invoiceTemplate }, t('تم حفظ إعدادات قالب الفاتورة بنجاح.', 'Invoice template settings saved successfully.'))}
               className="px-4 py-1.5 bg-blue-900 hover:bg-blue-950 text-white rounded-md font-black cursor-pointer flex items-center gap-1.5"
             >
               <Save className="w-3.5 h-3.5" />
-              <span>حفظ إعدادات الفاتورة</span>
+              <span>{t('حفظ إعدادات الفاتورة', 'Save Invoice Settings')}</span>
             </button>
           </div>
         </div>
@@ -2783,34 +2870,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
         <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs space-y-2.5 text-xs">
           <h3 className="text-xs sm:text-sm font-black text-slate-900 border-b pb-1.5 flex items-center gap-1.5">
             <Smartphone className="w-4 h-4 text-[#003589]" />
-            <span>إعدادات بوابة الموبايل (تطبيق العملاء وتطبيق المناديب)</span>
+            <span>{t('إعدادات بوابة الموبايل (تطبيق العملاء وتطبيق المناديب)', 'Mobile Portal Settings (Customer App & Rep App)')}</span>
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
               <input type="checkbox" checked={mobileConfig.enableCustomerApp} onChange={(e) => setMobileConfig({ ...mobileConfig, enableCustomerApp: e.target.checked })} />
-              <span className="font-bold">تفعيل استقبال الطلبات من تطبيق العملاء</span>
+              <span className="font-bold">{t('تفعيل استقبال الطلبات من تطبيق العملاء', 'Enable Receiving Orders from Customer App')}</span>
             </label>
             <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
               <input type="checkbox" checked={mobileConfig.enableRepApp} onChange={(e) => setMobileConfig({ ...mobileConfig, enableRepApp: e.target.checked })} />
-              <span className="font-bold">تفعيل بوابة المناديب والتحويل بالنصف</span>
+              <span className="font-bold">{t('تفعيل بوابة المناديب والتحويل بالنصف', 'Enable Rep Portal & Split Transfers')}</span>
             </label>
             <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
               <input type="checkbox" checked={mobileConfig.allowCustomerPriceView} onChange={(e) => setMobileConfig({ ...mobileConfig, allowCustomerPriceView: e.target.checked })} />
-              <span className="font-bold">إظهار أسعار البيع للعملاء داخل التطبيق</span>
+              <span className="font-bold">{t('إظهار أسعار البيع للعملاء داخل التطبيق', 'Show Sale Prices to Customers in App')}</span>
             </label>
             <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
               <input type="checkbox" checked={mobileConfig.requireOrderApproval} onChange={(e) => setMobileConfig({ ...mobileConfig, requireOrderApproval: e.target.checked })} />
-              <span className="font-bold">اشتراط اعتماد الإدارة قبل تحويل طلب العميل لفاتورة</span>
+              <span className="font-bold">{t('اشتراط اعتماد الإدارة قبل تحويل طلب العميل لفاتورة', 'Require Management Approval Before Converting Order to Invoice')}</span>
             </label>
           </div>
           <div className="flex justify-end">
             <button
               type="button"
-              onClick={() => persistExtraSettings({ mobileConfig }, 'تم حفظ إعدادات الموبايل بنجاح.')}
+              onClick={() => persistExtraSettings({ mobileConfig }, t('تم حفظ إعدادات الموبايل بنجاح.', 'Mobile settings saved successfully.'))}
               className="px-4 py-1.5 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-black cursor-pointer flex items-center gap-1.5"
             >
               <Save className="w-3.5 h-3.5" />
-              <span>حفظ إعدادات الموبايل</span>
+              <span>{t('حفظ إعدادات الموبايل', 'Save Mobile Settings')}</span>
             </button>
           </div>
         </div>
@@ -2821,15 +2908,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
         <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs space-y-2.5 text-xs">
           <h3 className="text-xs sm:text-sm font-black text-slate-900 border-b pb-1.5 flex items-center gap-1.5">
             <Wifi className="w-4 h-4 text-[#003589]" />
-            <span>إعدادات المزامنة الأونلاين والربط المركزي</span>
+            <span>{t('إعدادات المزامنة الأونلاين والربط المركزي', 'Online Sync & Central Connectivity Settings')}</span>
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer self-end h-8">
               <input type="checkbox" checked={onlineSyncConfig.autoSyncEnabled} onChange={(e) => setOnlineSyncConfig({ ...onlineSyncConfig, autoSyncEnabled: e.target.checked })} />
-              <span className="font-bold">تفعيل المزامنة التلقائية الدورية</span>
+              <span className="font-bold">{t('تفعيل المزامنة التلقائية الدورية', 'Enable Periodic Auto Sync')}</span>
             </label>
             <div>
-              <label className="block text-[11px] font-bold mb-0.5">فاصل المزامنة (بالثواني):</label>
+              <label className="block text-[11px] font-bold mb-0.5">{t('فاصل المزامنة (بالثواني):', 'Sync Interval (seconds):')}</label>
               <input type="number" min="10" value={onlineSyncConfig.syncIntervalSeconds} onChange={(e) => setOnlineSyncConfig({ ...onlineSyncConfig, syncIntervalSeconds: Number(e.target.value) })} className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono font-bold" />
             </div>
             <label className="flex items-center gap-2 p-2 bg-blue-50/70 rounded-md border border-blue-200 cursor-pointer self-end h-8">
@@ -2839,10 +2926,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                 checked={onlineSyncConfig.mandatorySendEnabled !== false}
                 onChange={(e) => setOnlineSyncConfig({ ...onlineSyncConfig, mandatorySendEnabled: e.target.checked })}
               />
-              <span className="font-bold text-blue-950">تفعيل الإرسال الإجباري التلقائي للموبايل</span>
+              <span className="font-bold text-blue-950">{t('تفعيل الإرسال الإجباري التلقائي للموبايل', 'Enable Mandatory Auto-Send for Mobile')}</span>
             </label>
             <div>
-              <label className="block text-[11px] font-bold mb-0.5">مدة الإرسال الإجباري التلقائي (بالدقائق):</label>
+              <label className="block text-[11px] font-bold mb-0.5">{t('مدة الإرسال الإجباري التلقائي (بالدقائق):', 'Mandatory Auto-Send Interval (minutes):')}</label>
               <input
                 type="number"
                 min="1"
@@ -2859,12 +2946,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               />
             </div>
             <div className="sm:col-span-2">
-              <label className="block text-[11px] font-bold mb-0.5">رابط السيرفر البعيد / السحابي (اختياري):</label>
-              <input type="text" placeholder="http://192.168.1.100:3000" value={onlineSyncConfig.cloudEndpointUrl || ''} onChange={(e) => setOnlineSyncConfig({ ...onlineSyncConfig, cloudEndpointUrl: e.target.value })} className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
+              <label className="block text-[11px] font-bold mb-0.5">{t('رابط السيرفر البعيد / السحابي (اختياري):', 'Remote / Cloud Server URL (Optional):')}</label>
+              <input type="text" dir="ltr" placeholder="http://192.168.1.100:3000" value={onlineSyncConfig.cloudEndpointUrl || ''} onChange={(e) => setOnlineSyncConfig({ ...onlineSyncConfig, cloudEndpointUrl: e.target.value })} className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
             </div>
           </div>
           <p className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded-md px-2.5 py-1.5">
-            ملاحظة: يتم مزامنة مدة الإرسال الإجباري تلقائيًا مع تطبيقات Android وiOS لتشغيل العداد التنازلي وإرسال العمليات المعلقة دون تكرار أو فقدان عند انقطاع الشبكة.
+            {t(
+              'ملاحظة: يتم مزامنة مدة الإرسال الإجباري تلقائيًا مع تطبيقات Android وiOS لتشغيل العداد التنازلي وإرسال العمليات المعلقة دون تكرار أو فقدان عند انقطاع الشبكة.',
+              'Note: The mandatory auto-send interval syncs automatically with Android & iOS apps to run the countdown and send pending operations without duplication or loss during network outages.'
+            )}
           </p>
           <div className="flex justify-end gap-1.5">
             <button
@@ -2872,7 +2962,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               onClick={() => handleTestConnection()}
               className="px-3 py-1.5 bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] border border-[#DCE6F5] rounded-md font-bold cursor-pointer"
             >
-              فحص الاتصال الآن
+              {t('فحص الاتصال الآن', 'Test Connection Now')}
             </button>
             <button
               type="button"
@@ -2888,13 +2978,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                       ),
                     },
                   },
-                  'تم حفظ إعدادات المزامنة والإرسال الإجباري بنجاح.'
+                  t('تم حفظ إعدادات المزامنة والإرسال الإجباري بنجاح.', 'Sync & mandatory send settings saved successfully.')
                 )
               }
               className="px-4 py-1.5 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-black cursor-pointer flex items-center gap-1.5"
             >
               <Save className="w-3.5 h-3.5" />
-              <span>حفظ إعدادات المزامنة</span>
+              <span>{t('حفظ إعدادات المزامنة', 'Save Sync Settings')}</span>
             </button>
           </div>
         </div>
@@ -2907,10 +2997,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             <div>
               <h3 className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5">
                 <Keyboard className="w-4 h-4 text-[#003589]" />
-                <span>إعدادات اختصارات لوحة المفاتيح ({currentUser?.fullName})</span>
+                <span>{t('إعدادات اختصارات لوحة المفاتيح', 'Keyboard Shortcuts Settings')} ({currentUser?.fullName})</span>
               </h3>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                تخصيص اختصاراتك الشخصية لكل قسم ووظيفة (تعمل مباشرة دون إعادة تشغيل وتدعم العربية والإنجليزية).
+                {t(
+                  'تخصيص اختصاراتك الشخصية لكل قسم ووظيفة (تعمل مباشرة دون إعادة تشغيل وتدعم العربية والإنجليزية).',
+                  'Customize personal shortcuts for every module and action (work immediately without restart and support Arabic & English layouts).'
+                )}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
@@ -2930,7 +3023,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                 className="flex items-center gap-1 px-2.5 py-1 bg-blue-900 hover:bg-blue-950 text-white rounded-md font-bold cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>إضافة / تخصيص اختصار</span>
+                <span>{t('إضافة / تخصيص اختصار', 'Add / Customize Shortcut')}</span>
               </button>
               <button
                 type="button"
@@ -2938,7 +3031,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                 className="flex items-center gap-1 px-2.5 py-1 border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-md font-bold cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span>استعادة الافتراضي</span>
+                <span>{t('استعادة الافتراضي', 'Restore Defaults')}</span>
               </button>
             </div>
           </div>
@@ -2951,32 +3044,32 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   : 'bg-red-50 border-red-200 text-red-900'
               }`}
             >
-              <span>{shortcutFeedback.text}</span>
+              <span>{t(shortcutFeedback.text)}</span>
               <button type="button" onClick={() => setShortcutFeedback(null)} className="underline text-[11px] cursor-pointer">
-                إغلاق
+                {t('إغلاق', 'Close')}
               </button>
             </div>
           )}
 
           <div className="relative max-w-sm">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2.5" />
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute start-2.5 top-2.5" />
             <input
               type="text"
-              placeholder="ابحث عن وظيفة أو مفتاح اختصار (مثال: الطباعة، Ctrl+S)..."
+              placeholder={t('ابحث عن وظيفة أو مفتاح اختصار (مثال: الطباعة، Ctrl+S)...', 'Search action or key combo (e.g., Print, Ctrl+S)...')}
               value={shortcutSearch}
               onChange={(e) => setShortcutSearch(e.target.value)}
-              className="w-full h-8 pr-8 pl-2.5 bg-slate-50 border border-slate-300 rounded-md font-bold outline-hidden focus:bg-white focus:border-blue-700"
+              className="w-full h-8 ps-8 pe-2.5 bg-slate-50 border border-slate-300 rounded-md font-bold outline-hidden focus:bg-white focus:border-blue-700"
             />
           </div>
 
           <div className="border border-slate-200 rounded-lg overflow-x-auto">
-            <table className="w-full text-right border-collapse">
+            <table className="w-full text-start border-collapse">
               <thead className="bg-slate-100 border-b border-slate-200 text-[11px] text-slate-700">
                 <tr>
-                  <th className="px-2.5 py-1.5 font-black">القسم</th>
-                  <th className="px-2.5 py-1.5 font-black">الوظيفة</th>
-                  <th className="px-2.5 py-1.5 font-black text-center">الاختصار</th>
-                  <th className="px-2.5 py-1.5 font-black text-center">إجراءات</th>
+                  <th className="px-2.5 py-1.5 font-black text-start">{t('القسم', 'Section')}</th>
+                  <th className="px-2.5 py-1.5 font-black text-start">{t('الوظيفة', 'Action')}</th>
+                  <th className="px-2.5 py-1.5 font-black text-center">{t('الاختصار', 'Shortcut')}</th>
+                  <th className="px-2.5 py-1.5 font-black text-center">{t('إجراءات', 'Actions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -2987,6 +3080,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                         sc.category === cat &&
                         (!shortcutSearch.trim() ||
                           sc.label.toLowerCase().includes(shortcutSearch.toLowerCase()) ||
+                          t(sc.label).toLowerCase().includes(shortcutSearch.toLowerCase()) ||
                           (sc.keyCombo || '').toLowerCase().includes(shortcutSearch.toLowerCase()))
                     )
                     .map((sc) => (
@@ -2994,10 +3088,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                         key={sc.actionId}
                         className={sc.enabled === false ? 'bg-slate-50/70 opacity-65' : 'bg-white hover:bg-slate-50/70'}
                       >
-                        <td className="px-2.5 py-1.5 text-[11px] font-bold text-slate-500 whitespace-nowrap">{sc.category}</td>
+                        <td className="px-2.5 py-1.5 text-[11px] font-bold text-slate-500 whitespace-nowrap">{t(sc.category)}</td>
                         <td className="px-2.5 py-1.5">
-                          <span className="font-bold text-slate-900">{sc.label}</span>
-                          <span className="text-[10px] font-mono text-slate-400 mr-1.5">({sc.actionId})</span>
+                          <span className="font-bold text-slate-900">{t(sc.label)}</span>
+                          <span className="text-[10px] font-mono text-slate-400 ms-1.5">({sc.actionId})</span>
                         </td>
                         <td className="px-2.5 py-1.5 text-center whitespace-nowrap">
                           {sc.keyCombo ? (
@@ -3012,7 +3106,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                               {sc.keyCombo}
                             </kbd>
                           ) : (
-                            <span className="text-[11px] text-slate-400">غير معيّن</span>
+                            <span className="text-[11px] text-slate-400">{t('غير معيّن', 'Unassigned')}</span>
                           )}
                         </td>
                         <td className="px-2.5 py-1.5 text-center whitespace-nowrap">
@@ -3031,7 +3125,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                               }}
                               className="px-2 py-0.5 bg-slate-100 hover:bg-blue-100 text-slate-800 hover:text-blue-900 rounded font-bold cursor-pointer"
                             >
-                              تعديل
+                              {t('تعديل', 'Edit')}
                             </button>
                             <button
                               type="button"
@@ -3042,15 +3136,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                                 );
                                 const res = await saveShortcuts(next);
                                 if (!res.success) {
-                                  setShortcutFeedback({ type: 'error', text: res.error || 'تعذر تحديث الحالة' });
+                                  setShortcutFeedback({ type: 'error', text: res.error ? t(res.error) : t('تعذر تحديث الحالة', 'Could not update status') });
                                 } else {
+                                  const nextEnabled = sc.enabled === false;
                                   setShortcutFeedback({
                                     type: 'success',
-                                    text: `تم ${sc.enabled === false ? 'تفعيل' : 'تعطيل'} اختصار (${sc.label}).`,
+                                    text: nextEnabled
+                                      ? t(`تم تفعيل اختصار (${sc.label}).`, `Enabled shortcut (${t(sc.label)}).`)
+                                      : t(`تم تعطيل اختصار (${sc.label}).`, `Disabled shortcut (${t(sc.label)}).`),
                                   });
                                 }
                               }}
-                              title={sc.enabled === false ? 'تفعيل الاختصار' : 'تعطيل الاختصار'}
+                              title={sc.enabled === false ? t('تفعيل الاختصار', 'Enable Shortcut') : t('تعطيل الاختصار', 'Disable Shortcut')}
                               className={`p-1 rounded border cursor-pointer ${
                                 sc.enabled !== false
                                   ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
@@ -3068,10 +3165,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                                 );
                                 const res = await saveShortcuts(next);
                                 if (res.success) {
-                                  setShortcutFeedback({ type: 'success', text: `تم حذف مفتاح الاختصار لوظيفة (${sc.label}).` });
+                                  setShortcutFeedback({
+                                    type: 'success',
+                                    text: t(`تم حذف مفتاح الاختصار لوظيفة (${sc.label}).`, `Removed shortcut key for (${t(sc.label)}).`),
+                                  });
                                 }
                               }}
-                              title="حذف المفتاح"
+                              title={t('حذف المفتاح', 'Remove Key')}
                               className="p-1 rounded text-red-500 hover:bg-red-50 border border-transparent hover:border-red-200 cursor-pointer"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -3089,7 +3189,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
           <Modal
             isOpen={!!recordingTarget}
             onClose={() => setRecordingTarget(null)}
-            title={recordingTarget?.mode === 'add' ? 'إضافة / تخصيص اختصار لوحة مفاتيح' : `تغيير اختصار: ${recordingTarget?.label || ''}`}
+            title={
+              recordingTarget?.mode === 'add'
+                ? t('إضافة / تخصيص اختصار لوحة مفاتيح', 'Add / Customize Keyboard Shortcut')
+                : `${t('تغيير اختصار:', 'Change Shortcut:')} ${t(recordingTarget?.label || '')}`
+            }
             maxWidth="md"
           >
             {recordingTarget && (
@@ -3108,18 +3212,33 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   e.stopPropagation();
 
                   if (isReservedSystemCombo(combo)) {
-                    setRecorderConflict(`الاختصار (${combo}) محجوز لعمليات النظام الأساسية (نسخ/لصق/تحديد). يرجى اختيار مفتاح آخر.`);
+                    setRecorderConflict(
+                      t(
+                        `الاختصار (${combo}) محجوز لعمليات النظام الأساسية (نسخ/لصق/تحديد). يرجى اختيار مفتاح آخر.`,
+                        `Shortcut (${combo}) is reserved for core system actions (Copy/Paste/Select). Choose another key.`
+                      )
+                    );
                     setRecordingTarget({ ...recordingTarget, keyCombo: combo });
                     return;
                   }
                   if (/^Shift\+[A-Z0-9]$/.test(combo)) {
-                    setRecorderConflict(`الاختصار (${combo}) يتعارض مع الكتابة بالحروف الكبيرة داخل الحقول؛ أضف Ctrl أو Alt.`);
+                    setRecorderConflict(
+                      t(
+                        `الاختصار (${combo}) يتعارض مع الكتابة بالحروف الكبيرة داخل الحقول؛ أضف Ctrl أو Alt.`,
+                        `Shortcut (${combo}) conflicts with uppercase typing in inputs; add Ctrl or Alt.`
+                      )
+                    );
                     setRecordingTarget({ ...recordingTarget, keyCombo: combo });
                     return;
                   }
                   const conflict = findConflict(combo, recordingTarget.actionId, userShortcuts);
                   if (conflict) {
-                    setRecorderConflict(`تحذير: الاختصار (${combo}) مستخدم بالفعل في الوظيفة: "${conflict.label}"`);
+                    setRecorderConflict(
+                      t(
+                        `تحذير: الاختصار (${combo}) مستخدم بالفعل في الوظيفة: "${conflict.label}"`,
+                        `Warning: Shortcut (${combo}) is already assigned to "${t(conflict.label)}"`
+                      )
+                    );
                   } else {
                     setRecorderConflict(null);
                   }
@@ -3129,7 +3248,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               >
                 {recordingTarget.mode === 'add' && (
                   <div>
-                    <label className="block text-[11px] font-bold mb-0.5">اختر الوظيفة المراد تخصيص اختصار لها:</label>
+                    <label className="block text-[11px] font-bold mb-0.5">{t('اختر الوظيفة المراد تخصيص اختصار لها:', 'Select action to assign shortcut:')}</label>
                     <select
                       value={recordingTarget.actionId}
                       onChange={(e) => {
@@ -3148,7 +3267,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     >
                       {userShortcutCatalog.map((def) => (
                         <option key={def.actionId} value={def.actionId}>
-                          {def.label} ({def.category})
+                          {t(def.label)} ({t(def.category)})
                         </option>
                       ))}
                     </select>
@@ -3157,18 +3276,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
 
                 <div className="p-3 rounded-lg bg-blue-50/70 border border-dashed border-blue-300 text-center space-y-1.5">
                   <p className="font-bold text-slate-700">
-                    اضغط الآن على مجموعة المفاتيح المطلوبة (مثل Ctrl+P أو Alt+S أو F2)
+                    {t('اضغط الآن على مجموعة المفاتيح المطلوبة (مثل Ctrl+P أو Alt+S أو F2)', 'Press the desired key combination now (e.g., Ctrl+P, Alt+S, or F2)')}
                   </p>
                   <div className="py-1">
                     <kbd
                       dir="ltr"
                       className="inline-block px-4 py-1.5 rounded-md bg-white border border-blue-300 text-blue-950 font-mono font-black text-sm shadow-xs min-w-28"
                     >
-                      {recordingTarget.keyCombo || 'في انتظار الضغط...'}
+                      {recordingTarget.keyCombo || t('في انتظار الضغط...', 'Waiting for key press...')}
                     </kbd>
                   </div>
                   <p className="text-[10px] text-slate-500">
-                    يتم الحفظ اعتماداً على المفتاح الفيزيائي ليعمل مع العربية والإنجليزية.
+                    {t('يتم الحفظ اعتماداً على المفتاح الفيزيائي ليعمل مع العربية والإنجليزية.', 'Saved by physical key code to work seamlessly with both Arabic and English layouts.')}
                   </p>
                 </div>
 
@@ -3192,15 +3311,35 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     nextParts.push(nextKey);
                     const combo = normalizeComboString(nextParts.join('+'));
                     if (isReservedSystemCombo(combo)) {
-                      setRecorderConflict(`الاختصار (${combo}) محجوز لعمليات النظام الأساسية (نسخ/لصق/تحديد). يرجى اختيار مفتاح آخر.`);
+                      setRecorderConflict(
+                        t(
+                          `الاختصار (${combo}) محجوز لعمليات النظام الأساسية (نسخ/لصق/تحديد). يرجى اختيار مفتاح آخر.`,
+                          `Shortcut (${combo}) is reserved for core system actions (Copy/Paste/Select). Choose another key.`
+                        )
+                      );
                     } else if (/^Shift\+[A-Z0-9]$/.test(combo)) {
-                      setRecorderConflict(`الاختصار (${combo}) يتعارض مع الكتابة بالحروف الكبيرة داخل الحقول؛ أضف Ctrl أو Alt.`);
+                      setRecorderConflict(
+                        t(
+                          `الاختصار (${combo}) يتعارض مع الكتابة بالحروف الكبيرة داخل الحقول؛ أضف Ctrl أو Alt.`,
+                          `Shortcut (${combo}) conflicts with uppercase typing in inputs; add Ctrl or Alt.`
+                        )
+                      );
                     } else if (/^[A-Z0-9]$/.test(combo)) {
-                      setRecorderConflict(`الاختصار (${combo}) بدون مفتاح تحكم يتعارض مع الكتابة؛ اختر Ctrl أو Alt أو مفتاح وظيفة F1-F12.`);
+                      setRecorderConflict(
+                        t(
+                          `الاختصار (${combo}) بدون مفتاح تحكم يتعارض مع الكتابة؛ اختر Ctrl أو Alt أو مفتاح وظيفة F1-F12.`,
+                          `Plain key (${combo}) without modifier conflicts with typing; choose Ctrl, Alt, or F1-F12.`
+                        )
+                      );
                     } else {
                       const conflict = findConflict(combo, recordingTarget.actionId, userShortcuts);
                       setRecorderConflict(
-                        conflict ? `تحذير: الاختصار (${combo}) مستخدم بالفعل في الوظيفة: "${conflict.label}"` : null
+                        conflict
+                          ? t(
+                              `تحذير: الاختصار (${combo}) مستخدم بالفعل في الوظيفة: "${conflict.label}"`,
+                              `Warning: Shortcut (${combo}) is already assigned to "${t(conflict.label)}"`
+                            )
+                          : null
                       );
                     }
                     setRecordingTarget({ ...recordingTarget, keyCombo: combo });
@@ -3214,7 +3353,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                   return (
                     <div className="p-2 rounded-md bg-slate-50 border border-slate-200 space-y-1.5">
                       <span className="block font-bold text-slate-700 text-[11px]">
-                        أو اختر مفاتيح التحكم والمفتاح يدوياً:
+                        {t('أو اختر مفاتيح التحكم والمفتاح يدوياً:', 'Or select modifiers and key manually:')}
                       </span>
                       <div className="flex flex-wrap items-center gap-2.5">
                         <label className="flex items-center gap-1 font-mono font-bold text-slate-800 cursor-pointer">
@@ -3250,7 +3389,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                           onChange={(e) => updateManualCombo(hasCtrl, hasAlt, hasShift, e.target.value)}
                           className="flex-1 min-w-28 h-8 bg-white border border-slate-300 rounded-md px-2 font-mono font-bold"
                         >
-                          <option value="">-- اختر المفتاح --</option>
+                          <option value="">{t('-- اختر المفتاح --', '-- Select Key --')}</option>
                           {keyOptions.map((k) => (
                             <option key={k} value={k}>{k}</option>
                           ))}
@@ -3273,7 +3412,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     onClick={() => setRecordingTarget(null)}
                     className="px-3 py-1.5 border rounded-md font-bold cursor-pointer"
                   >
-                    إلغاء
+                    {t('إلغاء', 'Cancel')}
                   </button>
                   <button
                     type="button"
@@ -3297,18 +3436,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                           ];
                       const res = await saveShortcuts(nextList);
                       if (!res.success) {
-                        setRecorderConflict(res.error || 'تعذر حفظ الاختصار');
+                        setRecorderConflict(res.error ? t(res.error) : t('تعذر حفظ الاختصار', 'Could not save shortcut'));
                       } else {
                         setRecordingTarget(null);
                         setShortcutFeedback({
                           type: 'success',
-                          text: `تم حفظ وتفعيل الاختصار (${norm}) للوظيفة (${recordingTarget.label}) فوراً.`,
+                          text: t(
+                            `تم حفظ وتفعيل الاختصار (${norm}) للوظيفة (${recordingTarget.label}) فوراً.`,
+                            `Saved and activated shortcut (${norm}) for (${t(recordingTarget.label)}) immediately.`
+                          ),
                         });
                       }
                     }}
                     className="px-4 py-1.5 bg-blue-900 text-white rounded-md font-black disabled:opacity-50 cursor-pointer"
                   >
-                    {isSavingUserShortcuts ? 'جاري الحفظ...' : 'حفظ الاختصار وتفعيله'}
+                    {isSavingUserShortcuts ? t('جاري الحفظ...', 'Saving...') : t('حفظ الاختصار وتفعيله', 'Save & Activate Shortcut')}
                   </button>
                 </div>
               </div>
@@ -3322,14 +3464,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               const res = await resetToDefaults();
               setShowResetShortcutsConfirm(false);
               if (res.success) {
-                setShortcutFeedback({ type: 'success', text: 'تمت استعادة كافة الاختصارات الافتراضية بنجاح.' });
+                setShortcutFeedback({ type: 'success', text: t('تمت استعادة كافة الاختصارات الافتراضية بنجاح.', 'All default shortcuts restored successfully.') });
               } else {
-                setShortcutFeedback({ type: 'error', text: res.error || 'تعذر استعادة الافتراضي' });
+                setShortcutFeedback({ type: 'error', text: res.error ? t(res.error) : t('تعذر استعادة الافتراضي', 'Could not restore defaults') });
               }
             }}
-            title="استعادة الاختصارات الافتراضية"
-            message="هل تريد استعادة جميع اختصارات لوحة المفاتيح الخاصة بحسابك إلى الإعدادات الافتراضية للنظام؟"
-            confirmLabel="استعادة الافتراضي"
+            title={t('استعادة الاختصارات الافتراضية', 'Restore Default Shortcuts')}
+            message={t('هل تريد استعادة جميع اختصارات لوحة المفاتيح الخاصة بحسابك إلى الإعدادات الافتراضية للنظام؟', 'Restore all your personal keyboard shortcuts to system defaults?')}
+            confirmLabel={t('استعادة الافتراضي', 'Restore Defaults')}
             variant="warning"
             isLoading={isSavingUserShortcuts}
           />
@@ -3341,34 +3483,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
         <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs space-y-2.5 text-xs">
           <h3 className="text-xs sm:text-sm font-black text-slate-900 border-b pb-1.5 flex items-center gap-1.5">
             <Wrench className="w-4 h-4 text-amber-700" />
-            <span>خدمات النظام والأتمتة</span>
+            <span>{t('خدمات النظام والأتمتة', 'System Services & Automation')}</span>
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
               <input type="checkbox" checked={servicesConfig.enableBarcodeScanner} onChange={(e) => setServicesConfig({ ...servicesConfig, enableBarcodeScanner: e.target.checked })} />
-              <span className="font-bold">دعم قارئ الباركود USB / اللاسلكي</span>
+              <span className="font-bold">{t('دعم قارئ الباركود USB / اللاسلكي', 'USB / Wireless Barcode Scanner Support')}</span>
             </label>
             <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
               <input type="checkbox" checked={servicesConfig.enableAutoBackup} onChange={(e) => setServicesConfig({ ...servicesConfig, enableAutoBackup: e.target.checked })} />
-              <span className="font-bold">إنشاء نسخ احتياطي آلي قبل التغييرات الكبرى</span>
+              <span className="font-bold">{t('إنشاء نسخ احتياطي آلي قبل التغييرات الكبرى', 'Create Auto Backup Before Major Changes')}</span>
             </label>
             <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
               <input type="checkbox" checked={servicesConfig.enableWhatsAppAlerts} onChange={(e) => setServicesConfig({ ...servicesConfig, enableWhatsAppAlerts: e.target.checked })} />
-              <span className="font-bold">تجهيز رسائل وإشعارات واتساب للعملاء</span>
+              <span className="font-bold">{t('تجهيز رسائل وإشعارات واتساب للعملاء', 'Prepare Customer WhatsApp Alerts & Messages')}</span>
             </label>
           </div>
           <div>
-            <label className="block text-[11px] font-bold mb-0.5">رقم واتساب المؤسسة المعتمد:</label>
-            <input type="text" value={servicesConfig.whatsappNumber || ''} onChange={(e) => setServicesConfig({ ...servicesConfig, whatsappNumber: e.target.value })} className="w-full max-w-sm h-8 border border-slate-300 rounded-md px-2.5 font-mono font-bold" />
+            <label className="block text-[11px] font-bold mb-0.5">{t('رقم واتساب المؤسسة المعتمد:', 'Approved Company WhatsApp Number:')}</label>
+            <input type="text" dir="ltr" value={servicesConfig.whatsappNumber || ''} onChange={(e) => setServicesConfig({ ...servicesConfig, whatsappNumber: e.target.value })} className="w-full max-w-sm h-8 border border-slate-300 rounded-md px-2.5 font-mono font-bold" />
           </div>
           <div className="flex justify-end">
             <button
               type="button"
-              onClick={() => persistExtraSettings({ servicesConfig }, 'تم حفظ إعدادات الخدمات بنجاح.')}
+              onClick={() => persistExtraSettings({ servicesConfig }, t('تم حفظ إعدادات الخدمات بنجاح.', 'Service settings saved successfully.'))}
               className="px-4 py-1.5 bg-blue-900 hover:bg-blue-950 text-white rounded-md font-black cursor-pointer flex items-center gap-1.5"
             >
               <Save className="w-3.5 h-3.5" />
-              <span>حفظ الخدمات</span>
+              <span>{t('حفظ الخدمات', 'Save Services')}</span>
             </button>
           </div>
         </div>

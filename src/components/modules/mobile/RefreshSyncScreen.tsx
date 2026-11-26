@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
+import { usePreferences } from '../../../context/PreferencesContext';
+import { formatLocaleDateTime, formatLocaleNumber } from '../../../i18n/translator';
 import { fetchDispatchBatchDetails } from '../../../services/api';
 import { formatCountdownMmSs } from '../../../services/syncEngine';
 import { UnifiedColumn, UnifiedDataTable } from '../../common/UnifiedDataTable';
@@ -35,14 +37,26 @@ function formatElapsedTenths(ms: number): string {
   return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${tenths}`;
 }
 
-function formatDateTimeAr(iso?: string | null): string {
+function formatDateTimeLocale(iso?: string | null): string {
   if (!iso) return '—';
   try {
-    return new Date(iso).toLocaleString('ar-EG');
+    return formatLocaleDateTime(iso);
   } catch {
     return String(iso);
   }
 }
+
+const DISPATCH_STATUS_EN: Record<string, string> = {
+  'تم الاستلام': 'Received',
+  'تم الإرسال': 'Sent',
+  'في انتظار الاستلام': 'Awaiting Receipt',
+  'جاهزة للإرسال': 'Ready to Send',
+  'جاري الإرسال': 'Sending...',
+  'جاري الاستلام': 'Receiving...',
+  'محفوظة محليًا': 'Saved Locally',
+  'فشل الإرسال': 'Send Failed',
+  'تعذر الاستلام': 'Receipt Failed',
+};
 
 function getDispatchStatusClasses(status: SyncDispatchBatchStatus | string): string {
   switch (status) {
@@ -68,6 +82,7 @@ function getDispatchStatusClasses(status: SyncDispatchBatchStatus | string): str
 export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) => {
   const data = useData();
   const { currentUser, representativeProfile, hasPermission } = useAuth();
+  const { t, dir } = usePreferences();
 
   const isRepUser = currentUser?.role === 'representative';
   const isOnline =
@@ -240,18 +255,18 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
   const uniqueSenders = useMemo(() => {
     const map = new Map<string, string>();
     allBatches.forEach((b) => {
-      if (b.senderUserId) map.set(b.senderUserId, b.senderName || b.representativeName || 'مندوب');
+      if (b.senderUserId) map.set(b.senderUserId, b.senderName || b.representativeName || t('مندوب', 'Rep'));
     });
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
-  }, [allBatches]);
+  }, [allBatches, t]);
 
   const uniqueRecipients = useMemo(() => {
     const map = new Map<string, string>();
     allBatches.forEach((b) => {
-      if (b.recipientUserId) map.set(b.recipientUserId, b.recipientName || 'مستلم');
+      if (b.recipientUserId) map.set(b.recipientUserId, b.recipientName || t('مستلم', 'Recipient'));
     });
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
-  }, [allBatches]);
+  }, [allBatches, t]);
 
   const filteredBatches = useMemo(() => {
     return allBatches.filter((b) => {
@@ -308,11 +323,11 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
     setActionMsg(null);
     const chosenOps = unsentQueueOps.filter((q) => selectedOpIds.includes(q.operationId));
     if (chosenOps.length === 0) {
-      setActionMsg({ type: 'error', text: 'يرجى تحديد عملية واحدة على الأقل للإرسال.' });
+      setActionMsg({ type: 'error', text: t('يرجى تحديد عملية واحدة على الأقل للإرسال.', 'Please select at least one operation to send.') });
       return;
     }
     if (!recipientUserId) {
-      setActionMsg({ type: 'error', text: 'يرجى اختيار الموظف المستلم أولاً.' });
+      setActionMsg({ type: 'error', text: t('يرجى اختيار الموظف المستلم أولاً.', 'Please select the recipient first.') });
       return;
     }
     const rec = (data.dispatchRecipients || []).find((r) => r.id === recipientUserId);
@@ -391,12 +406,15 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
           id: op.operationId,
           label: op.summaryAr || op.localId || op.operationId,
           ok: true,
-          detail: `تم الإرسال ضمن الدفعة ${res.batch!.batchNumber}`,
+          detail: t(`تم الإرسال ضمن الدفعة ${res.batch!.batchNumber}`, `Sent in batch ${res.batch!.batchNumber}`),
         }))
       );
       setActionMsg({
         type: 'success',
-        text: `تم إرسال الدفعة الرسمية (${res.batch.batchNumber}) بنجاح إلى ${res.batch.recipientName} وهي الآن «${res.batch.receiptStatus}».`,
+        text: t(
+          `تم إرسال الدفعة الرسمية (${res.batch.batchNumber}) بنجاح إلى ${res.batch.recipientName} وهي الآن «${res.batch.receiptStatus}».`,
+          `Official batch (${res.batch.batchNumber}) sent successfully to ${res.batch.recipientName} (${DISPATCH_STATUS_EN[res.batch.receiptStatus] || res.batch.receiptStatus}).`
+        ),
       });
     } else if (res.queuedOfflineConfirmed && res.batch) {
       setBatchNotes('');
@@ -405,12 +423,15 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
           id: op.operationId,
           label: op.summaryAr || op.localId || op.operationId,
           ok: true,
-          detail: `مؤكدة للإرسال عند الاتصال (${res.batch!.batchNumber})`,
+          detail: t(`مؤكدة للإرسال عند الاتصال (${res.batch!.batchNumber})`, `Confirmed for sync when online (${res.batch!.batchNumber})`),
         }))
       );
       setActionMsg({
         type: 'success',
-        text: `طلب الإرسال مؤكد من المرسل (${res.batch.batchNumber}) — تم حفظه في طابور الإرسال المؤكد وسيتم إرساله تلقائياً فور عودة الاتصال دون إرسال أي مسودات غير مؤكدة.`,
+        text: t(
+          `طلب الإرسال مؤكد من المرسل (${res.batch.batchNumber}) — تم حفظه في طابور الإرسال المؤكد وسيتم إرساله تلقائياً فور عودة الاتصال دون إرسال أي مسودات غير مؤكدة.`,
+          `Dispatch confirmed by sender (${res.batch.batchNumber}) — queued in confirmed outbox for auto-send once online without sending unconfirmed drafts.`
+        ),
       });
     } else {
       setLastSendOutcomes(
@@ -418,12 +439,15 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
           id: op.operationId,
           label: op.summaryAr || op.localId || op.operationId,
           ok: false,
-          detail: res.error || 'تعذر الإرسال — محفوظة محلياً لإعادة المحاولة',
+          detail: res.error || t('تعذر الإرسال — محفوظة محلياً لإعادة المحاولة', 'Send failed — kept locally for retry'),
         }))
       );
       setActionMsg({
         type: 'error',
-        text: res.error || 'فشل إرسال الدفعة — بقيت العمليات محفوظة محلياً دون أي حذف، ويمكنك إعادة الإرسال فور عودة الاتصال.',
+        text: res.error || t(
+          'فشل إرسال الدفعة — بقيت العمليات محفوظة محلياً دون أي حذف، ويمكنك إعادة الإرسال فور عودة الاتصال.',
+          'Failed to send batch — operations remain saved locally without data loss and can be retried once connected.'
+        ),
       });
     }
   };
@@ -440,12 +464,12 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
     if (res.success && res.batch) {
       setActionMsg({
         type: 'success',
-        text: `تمت إعادة إرسال الدفعة بنجاح برقم (${res.batch.batchNumber}).`,
+        text: t(`تمت إعادة إرسال الدفعة بنجاح برقم (${res.batch.batchNumber}).`, `Batch resent successfully (#${res.batch.batchNumber}).`),
       });
     } else {
       setActionMsg({
         type: 'error',
-        text: res.error || 'لا يزال الاتصال متعذراً؛ بقيت الدفعة والعمليات محفوظة محلياً.',
+        text: res.error || t('لا يزال الاتصال متعذراً؛ بقيت الدفعة والعمليات محفوظة محلياً.', 'Still offline; batch and operations remain saved locally.'),
       });
     }
   };
@@ -490,10 +514,10 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
             label: op.summaryAr || op.localId || op.operationId,
             ok: !isFailed && res.ok,
             detail: isFailed
-              ? updated?.lastError || 'فشل الإرسال — محفوظة لإعادة المحاولة'
+              ? updated?.lastError || t('فشل الإرسال — محفوظة لإعادة المحاولة', 'Send failed — kept for retry')
               : res.ok
-              ? 'تم الإرسال بنجاح'
-              : res.error || 'تعذر الإرسال',
+              ? t('تم الإرسال بنجاح', 'Sent successfully')
+              : res.error || t('تعذر الإرسال', 'Send failed'),
           };
         })
       );
@@ -504,15 +528,18 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
         type: 'success',
         text:
           res.count > 0
-            ? `تم إرسال (${res.count}) عملية بنجاح.`
-            : 'لا توجد عمليات محلية معلقة للإرسال حالياً — السجل متزامن بالكامل.',
+            ? t(`تم إرسال (${res.count}) عملية بنجاح.`, `Successfully sent (${res.count}) operation(s).`)
+            : t('لا توجد عمليات محلية معلقة للإرسال حالياً — السجل متزامن بالكامل.', 'No pending local operations to send — log is fully synced.'),
       });
     } else {
       setActionMsg({
         type: 'error',
         text:
           res.error ||
-          `اكتمل الإرسال مع وجود (${res.failedCount}) عملية فاشلة و(${res.conflictCount}) تعارض — بقيت العمليات الفاشلة محفوظة لإعادة المحاولة.`,
+          t(
+            `اكتمل الإرسال مع وجود (${res.failedCount}) عملية فاشلة و(${res.conflictCount}) تعارض — بقيت العمليات الفاشلة محفوظة لإعادة المحاولة.`,
+            `Send finished with (${res.failedCount}) failed operation(s) and (${res.conflictCount}) conflict(s) — failed operations remain saved for retry.`
+          ),
       });
     }
   };
@@ -529,12 +556,15 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
     if (res.ok) {
       setActionMsg({
         type: 'success',
-        text: `تم استلام وتحديث البيانات (${res.count} سجل). مراجعة المستندات لا تؤكد الاستلام تلقائياً — استخدم «تأكيد الاستلام» للاعتماد.`,
+        text: t(
+          `تم استلام وتحديث البيانات (${res.count} سجل). مراجعة المستندات لا تؤكد الاستلام تلقائياً — استخدم «تأكيد الاستلام» للاعتماد.`,
+          `Received and updated (${res.count}) records. Inspecting documents does not auto-confirm receipt — use «Confirm Receipt» to approve.`
+        ),
       });
     } else {
       setActionMsg({
         type: 'error',
-        text: res.error || 'تعذر الاتصال لجلب التحديثات.',
+        text: res.error || t('تعذر الاتصال لجلب التحديثات.', 'Connection failed while fetching updates.'),
       });
     }
   };
@@ -586,7 +616,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
     const target = targetBatch || inspectedBatch;
     if (!target || batchActionLoading) return;
     if (hasDiscrepancyInput && !discrepancyNoteInput.trim()) {
-      setActionMsg({ type: 'error', text: 'يرجى كتابة تفاصيل الفرق أو الاعتراض قبل تأكيد الاستلام.' });
+      setActionMsg({ type: 'error', text: t('يرجى كتابة تفاصيل الفرق أو الاعتراض قبل تأكيد الاستلام.', 'Please enter discrepancy or objection details before confirming receipt.') });
       return;
     }
     setBatchActionLoading(true);
@@ -601,17 +631,20 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
       setInspectedBatch(res.batch);
       setActionMsg({
         type: 'success',
-        text: `تم «استلام وتأكيد» الدفعة (${res.batch.batchNumber}) بواسطة ${res.batch.receivedByName || currentUser?.fullName} دون تكرار أي قيد مالي أو مخزني.`,
+        text: t(
+          `تم «استلام وتأكيد» الدفعة (${res.batch.batchNumber}) بواسطة ${res.batch.receivedByName || currentUser?.fullName} دون تكرار أي قيد مالي أو مخزني.`,
+          `Batch (${res.batch.batchNumber}) received and confirmed by ${res.batch.receivedByName || currentUser?.fullName} without duplicate ledger/stock entries.`
+        ),
       });
     } else {
-      setActionMsg({ type: 'error', text: res.error || 'تعذر تأكيد استلام الدفعة.' });
+      setActionMsg({ type: 'error', text: res.error || t('تعذر تأكيد استلام الدفعة.', 'Failed to confirm batch receipt.') });
     }
   };
 
   const handleFailInspectedBatch = async () => {
     if (!inspectedBatch || batchActionLoading) return;
     if (!failReasonInput.trim()) {
-      setActionMsg({ type: 'error', text: 'يرجى كتابة سبب تعذر الاستلام قبل الحفظ.' });
+      setActionMsg({ type: 'error', text: t('يرجى كتابة سبب تعذر الاستلام قبل الحفظ.', 'Please enter the failure reason before saving.') });
       return;
     }
     setBatchActionLoading(true);
@@ -623,10 +656,10 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
       setShowFailReasonBox(false);
       setActionMsg({
         type: 'success',
-        text: `تم تسجيل حالة «تعذر الاستلام» للدفعة (${res.batch.batchNumber}).`,
+        text: t(`تم تسجيل حالة «تعذر الاستلام» للدفعة (${res.batch.batchNumber}).`, `Recorded «Receipt Failed» status for batch (${res.batch.batchNumber}).`),
       });
     } else {
-      setActionMsg({ type: 'error', text: res.error || 'تعذر تسجيل سبب عدم الاستلام.' });
+      setActionMsg({ type: 'error', text: res.error || t('تعذر تسجيل سبب عدم الاستلام.', 'Failed to record non-receipt reason.') });
     }
   };
 
@@ -639,26 +672,26 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
       setActionMsg({
         type: 'success',
         text: res.queuedOffline
-          ? `تم تسجيل استلام العهدة (${requestNumber}) محلياً بانتظار الإرسال.`
-          : `تم تأكيد استلام عهدة التحويل (${requestNumber}) وإضافتها لمخزون السيارة.`,
+          ? t(`تم تسجيل استلام العهدة (${requestNumber}) محلياً بانتظار الإرسال.`, `Custody receipt (${requestNumber}) recorded locally awaiting sync.`)
+          : t(`تم تأكيد استلام عهدة التحويل (${requestNumber}) وإضافتها لمخزون السيارة.`, `Transfer custody (${requestNumber}) confirmed and added to vehicle stock.`),
       });
     } else {
-      setActionMsg({ type: 'error', text: res.error || 'تعذر تأكيد استلام العهدة' });
+      setActionMsg({ type: 'error', text: res.error || t('تعذر تأكيد استلام العهدة', 'Failed to confirm custody receipt') });
     }
   };
 
   const handleConfirmIncomingCash = async (transferId: string, transferNumber: string) => {
     setConfirmingId(transferId);
     setActionMsg(null);
-    const res = await data.confirmRepTransferReceipt(transferId, 'تم تأكيد الاستلام من شاشة REFRESH');
+    const res = await data.confirmRepTransferReceipt(transferId, t('تم تأكيد الاستلام من شاشة REFRESH', 'Receipt confirmed from REFRESH screen'));
     setConfirmingId(null);
     if (res.success) {
       setActionMsg({
         type: 'success',
-        text: `تم تأكيد استلام العهدة النقدية (${transferNumber}) بنجاح.`,
+        text: t(`تم تأكيد استلام العهدة النقدية (${transferNumber}) بنجاح.`, `Cash custody (${transferNumber}) confirmed successfully.`),
       });
     } else {
-      setActionMsg({ type: 'error', text: res.error || 'تعذر تأكيد الاستلام النقدي' });
+      setActionMsg({ type: 'error', text: res.error || t('تعذر تأكيد الاستلام النقدي', 'Failed to confirm cash receipt') });
     }
   };
 
@@ -667,7 +700,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
     () => [
       {
         key: 'summaryAr',
-        header: 'بيان العملية المحلية',
+        header: t('بيان العملية المحلية', 'Local Operation'),
         align: 'right',
         sortValue: (r) => r.summaryAr,
         exportValue: (r) => r.summaryAr,
@@ -680,7 +713,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
       },
       {
         key: 'localId',
-        header: 'المرجع المحلي',
+        header: t('المرجع المحلي', 'Local Ref'),
         align: 'center',
         sortValue: (r) => r.localId || r.operationId,
         exportValue: (r) => r.localId || r.operationId,
@@ -692,7 +725,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
       },
       {
         key: 'amount',
-        header: 'القيمة',
+        header: t('القيمة', 'Amount'),
         align: 'center',
         sortValue: (r) => Number(r.payload?.total ?? r.payload?.amount ?? r.payload?.paidAmount ?? 0),
         exportValue: (r) => Number(r.payload?.total ?? r.payload?.amount ?? r.payload?.paidAmount ?? 0),
@@ -700,24 +733,27 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
           const val = Number(r.payload?.total ?? r.payload?.amount ?? r.payload?.paidAmount ?? 0);
           return (
             <span className="font-mono font-bold text-slate-900 tabular-nums">
-              {val > 0 ? `${val.toLocaleString()} ${data.settings.currency}` : '—'}
+              {val > 0 ? `${formatLocaleNumber(val)} ${data.settings.currency}` : '—'}
             </span>
           );
         },
       },
       {
         key: 'statusLabel',
-        header: 'حالة الحفظ / الإرسال',
+        header: t('حالة الحفظ / الإرسال', 'Save / Send Status'),
         align: 'center',
         sortValue: (r) => r.status,
-        exportValue: (r) =>
-          r.status === 'failed'
-            ? 'فشل الإرسال'
-            : r.status === 'syncing'
-            ? 'جاري الإرسال'
-            : !isOnline || r.status === 'local'
-            ? 'محفوظة محليًا'
-            : 'جاهزة للإرسال',
+        exportValue: (r) => {
+          const rawLabel: SyncDispatchBatchStatus =
+            r.status === 'failed'
+              ? 'فشل الإرسال'
+              : r.status === 'syncing'
+              ? 'جاري الإرسال'
+              : !isOnline || r.status === 'local'
+              ? 'محفوظة محليًا'
+              : 'جاهزة للإرسال';
+          return t(rawLabel, DISPATCH_STATUS_EN[rawLabel] || rawLabel);
+        },
         render: (r) => {
           const label: SyncDispatchBatchStatus =
             r.status === 'failed'
@@ -729,21 +765,21 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
               : 'جاهزة للإرسال';
           return (
             <span className={`inline-block px-2 py-0.5 rounded border text-[11px] font-bold ${getDispatchStatusClasses(label)}`}>
-              {label}
+              {t(label, DISPATCH_STATUS_EN[label] || label)}
             </span>
           );
         },
       },
       {
         key: 'createdAt',
-        header: 'وقت التسجيل',
+        header: t('وقت التسجيل', 'Recorded At'),
         align: 'center',
         sortValue: (r) => r.createdAt,
-        exportValue: (r) => formatDateTimeAr(r.createdAt),
-        render: (r) => <span className="font-mono text-[11px] text-slate-600 tabular-nums">{formatDateTimeAr(r.createdAt)}</span>,
+        exportValue: (r) => formatDateTimeLocale(r.createdAt),
+        render: (r) => <span className="font-mono text-[11px] text-slate-600 tabular-nums">{formatDateTimeLocale(r.createdAt)}</span>,
       },
     ],
-    [data.settings.currency, isOnline]
+    [data.settings.currency, isOnline, t]
   );
 
   // Column definitions: Official 12-Column Dispatch Batches Table (Exact Required Headers)
@@ -751,7 +787,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
     () => [
       {
         key: 'batchNumber',
-        header: 'رقم العملية',
+        header: t('رقم العملية', 'Batch #'),
         align: 'center',
         sortValue: (b) => b.batchNumber,
         exportValue: (b) => b.batchNumber,
@@ -761,7 +797,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
       },
       {
         key: 'senderName',
-        header: 'المرسل',
+        header: t('المرسل', 'Sender'),
         align: 'right',
         sortValue: (b) => b.senderName || b.representativeName || '',
         exportValue: (b) => b.senderName || b.representativeName || '',
@@ -776,7 +812,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
       },
       {
         key: 'recipientName',
-        header: 'المستلم',
+        header: t('المستلم', 'Recipient'),
         align: 'right',
         sortValue: (b) => b.recipientName || '',
         exportValue: (b) => b.recipientName || '',
@@ -784,69 +820,69 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
       },
       {
         key: 'sentAt',
-        header: 'تاريخ الإرسال',
+        header: t('تاريخ الإرسال', 'Sent At'),
         align: 'center',
         sortValue: (b) => b.sentAt || b.createdAt || '',
-        exportValue: (b) => formatDateTimeAr(b.sentAt || b.createdAt),
+        exportValue: (b) => formatDateTimeLocale(b.sentAt || b.createdAt),
         render: (b) => (
           <span className="font-mono text-[11px] text-slate-700 tabular-nums">
-            {formatDateTimeAr(b.sentAt || b.createdAt)}
+            {formatDateTimeLocale(b.sentAt || b.createdAt)}
           </span>
         ),
       },
       {
         key: 'salesCount',
-        header: 'عدد فواتير البيع',
+        header: t('عدد فواتير البيع', 'Sales Invoices'),
         align: 'center',
         sortValue: (b) => Number(b.salesCount || 0),
         exportValue: (b) => Number(b.salesCount || 0),
-        render: (b) => <span className="font-mono font-bold text-slate-900 tabular-nums">{b.salesCount || 0}</span>,
+        render: (b) => <span className="font-mono font-bold text-slate-900 tabular-nums">{formatLocaleNumber(b.salesCount || 0)}</span>,
       },
       {
         key: 'collectionsCount',
-        header: 'عدد التحصيلات',
+        header: t('عدد التحصيلات', 'Collections'),
         align: 'center',
         sortValue: (b) => Number(b.collectionsCount || 0),
         exportValue: (b) => Number(b.collectionsCount || 0),
-        render: (b) => <span className="font-mono font-bold text-slate-900 tabular-nums">{b.collectionsCount || 0}</span>,
+        render: (b) => <span className="font-mono font-bold text-slate-900 tabular-nums">{formatLocaleNumber(b.collectionsCount || 0)}</span>,
       },
       {
         key: 'returnsCount',
-        header: 'عدد المرتجعات',
+        header: t('عدد المرتجعات', 'Returns'),
         align: 'center',
         sortValue: (b) => Number(b.returnsCount || 0),
         exportValue: (b) => Number(b.returnsCount || 0),
-        render: (b) => <span className="font-mono font-bold text-slate-900 tabular-nums">{b.returnsCount || 0}</span>,
+        render: (b) => <span className="font-mono font-bold text-slate-900 tabular-nums">{formatLocaleNumber(b.returnsCount || 0)}</span>,
       },
       {
         key: 'totalCashAmount',
-        header: 'إجمالي التحصيلات',
+        header: t('إجمالي التحصيلات', 'Total Cash'),
         align: 'center',
         sortValue: (b) => Number(b.totalCashAmount || 0),
         exportValue: (b) => Number(b.totalCashAmount || 0),
         render: (b) => (
           <span className="font-mono font-black text-blue-950 tabular-nums">
-            {Number(b.totalCashAmount || 0).toLocaleString()} {data.settings.currency}
+            {formatLocaleNumber(Number(b.totalCashAmount || 0))} {data.settings.currency}
           </span>
         ),
       },
       {
         key: 'sendStatus',
-        header: 'حالة الإرسال',
+        header: t('حالة الإرسال', 'Send Status'),
         align: 'center',
         sortValue: (b) => b.sendStatus,
         exportValue: (b) =>
           b.isConfirmedSendQueued && b.isLocalOnly
-            ? 'طلب الإرسال مؤكد من المرسل — في انتظار المزامنة'
-            : b.sendStatus,
+            ? t('طلب الإرسال مؤكد من المرسل — في انتظار المزامنة', 'Send confirmed by sender — awaiting sync')
+            : t(b.sendStatus, DISPATCH_STATUS_EN[b.sendStatus] || b.sendStatus),
         render: (b) => (
           <div className="flex flex-col items-center gap-0.5">
             <span className={`inline-block px-2 py-0.5 rounded border text-[11px] font-bold whitespace-nowrap ${getDispatchStatusClasses(b.sendStatus)}`}>
-              {b.sendStatus}
+              {t(b.sendStatus, DISPATCH_STATUS_EN[b.sendStatus] || b.sendStatus)}
             </span>
             {b.isConfirmedSendQueued && b.isLocalOnly && (
               <span className="text-[10px] font-bold text-[#003589] dark:text-[#85B8FF]">
-                طلب الإرسال مؤكد · انتظار المزامنة
+                {t('طلب الإرسال مؤكد · انتظار المزامنة', 'Send confirmed · awaiting sync')}
               </span>
             )}
           </div>
@@ -854,31 +890,31 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
       },
       {
         key: 'receiptStatus',
-        header: 'حالة الاستلام',
+        header: t('حالة الاستلام', 'Receipt Status'),
         align: 'center',
         sortValue: (b) => b.receiptStatus,
-        exportValue: (b) => b.receiptStatus,
+        exportValue: (b) => t(b.receiptStatus, DISPATCH_STATUS_EN[b.receiptStatus] || b.receiptStatus),
         render: (b) => (
           <span className={`inline-block px-2 py-0.5 rounded border text-[11px] font-bold whitespace-nowrap ${getDispatchStatusClasses(b.receiptStatus)}`}>
-            {b.receiptStatus}
+            {t(b.receiptStatus, DISPATCH_STATUS_EN[b.receiptStatus] || b.receiptStatus)}
           </span>
         ),
       },
       {
         key: 'receivedAt',
-        header: 'تاريخ الاستلام',
+        header: t('تاريخ الاستلام', 'Received At'),
         align: 'center',
         sortValue: (b) => b.receivedAt || '',
-        exportValue: (b) => formatDateTimeAr(b.receivedAt),
+        exportValue: (b) => formatDateTimeLocale(b.receivedAt),
         render: (b) => (
           <span className="font-mono text-[11px] text-slate-700 dark:text-[#A9BCD8] tabular-nums">
-            {b.receivedAt ? formatDateTimeAr(b.receivedAt) : '—'}
+            {b.receivedAt ? formatDateTimeLocale(b.receivedAt) : '—'}
           </span>
         ),
       },
       {
         key: 'actions',
-        header: 'الإجراءات',
+        header: t('الإجراءات', 'Actions'),
         align: 'center',
         sortable: false,
         render: (b) => (
@@ -892,7 +928,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
               className="px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-[#132544] dark:hover:bg-[#1A3158] dark:text-[#EEF4FC] text-slate-800 text-[11px] font-bold flex items-center gap-1 cursor-pointer whitespace-nowrap"
             >
               <Eye className="w-3.5 h-3.5" />
-              <span>مراجعة</span>
+              <span>{t('مراجعة', 'Inspect')}</span>
             </button>
             {(b.sendStatus === 'فشل الإرسال' || (b.isLocalOnly && b.isConfirmedSendQueued)) && b.senderUserId === currentUser?.id && (
               <button
@@ -905,7 +941,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                 className="px-2 py-0.5 rounded-md bg-blue-900 hover:bg-blue-950 text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer whitespace-nowrap disabled:opacity-50"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span>{b.isConfirmedSendQueued ? 'مزامنة الإرسال' : 'إعادة إرسال'}</span>
+                <span>{b.isConfirmedSendQueued ? t('مزامنة الإرسال', 'Sync Dispatch') : t('إعادة إرسال', 'Retry Send')}</span>
               </button>
             )}
             {canConfirmBatch(b) && (
@@ -919,14 +955,14 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                 className="px-2 py-0.5 rounded-md bg-blue-950 hover:bg-blue-900 text-white text-[11px] font-black flex items-center gap-1 cursor-pointer whitespace-nowrap disabled:opacity-50"
               >
                 <ShieldCheck className="w-3.5 h-3.5" />
-                <span>مراجعة واستلام</span>
+                <span>{t('مراجعة واستلام', 'Inspect & Receive')}</span>
               </button>
             )}
           </div>
         ),
       },
     ],
-    [data.settings.currency, currentUser?.id, isSending, batchActionLoading]
+    [data.settings.currency, currentUser?.id, isSending, batchActionLoading, t]
   );
 
   // Batch inspection document columns
@@ -934,7 +970,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
     () => [
       {
         key: 'docNumber',
-        header: 'رقم المستند',
+        header: t('رقم المستند', 'Doc #'),
         align: 'center',
         sortValue: (d) => d.docNumber || d.entityId || d.operationId,
         exportValue: (d) => d.docNumber || d.entityId || d.operationId,
@@ -942,7 +978,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
       },
       {
         key: 'summaryAr',
-        header: 'العملية',
+        header: t('العملية', 'Operation'),
         align: 'right',
         sortValue: (d) => d.summaryAr,
         exportValue: (d) => d.summaryAr,
@@ -950,7 +986,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
       },
       {
         key: 'customerName',
-        header: 'العميل / الجهة',
+        header: t('العميل / الجهة', 'Customer / Party'),
         align: 'right',
         sortValue: (d) => d.customerName || '',
         exportValue: (d) => d.customerName || '',
@@ -958,38 +994,38 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
       },
       {
         key: 'amount',
-        header: 'القيمة',
+        header: t('القيمة', 'Amount'),
         align: 'center',
         sortValue: (d) => Number(d.amount || 0),
         exportValue: (d) => Number(d.amount || 0),
         render: (d) => (
           <span className="font-mono font-bold text-slate-900 tabular-nums">
-            {Number(d.amount || 0).toLocaleString()} {data.settings.currency}
+            {formatLocaleNumber(Number(d.amount || 0))} {data.settings.currency}
           </span>
         ),
       },
       {
         key: 'paidAmount',
-        header: 'التحصيل النقدي',
+        header: t('التحصيل النقدي', 'Cash Collected'),
         align: 'center',
         sortValue: (d) => Number(d.paidAmount || 0),
         exportValue: (d) => Number(d.paidAmount || 0),
         render: (d) => (
           <span className="font-mono font-bold text-emerald-800 tabular-nums">
-            {Number(d.paidAmount || 0).toLocaleString()} {data.settings.currency}
+            {formatLocaleNumber(Number(d.paidAmount || 0))} {data.settings.currency}
           </span>
         ),
       },
       {
         key: 'createdAt',
-        header: 'وقت الإنشاء',
+        header: t('وقت الإنشاء', 'Created At'),
         align: 'center',
         sortValue: (d) => d.createdAt || '',
-        exportValue: (d) => formatDateTimeAr(d.createdAt),
-        render: (d) => <span className="font-mono text-[11px] text-slate-600 tabular-nums">{formatDateTimeAr(d.createdAt)}</span>,
+        exportValue: (d) => formatDateTimeLocale(d.createdAt),
+        render: (d) => <span className="font-mono text-[11px] text-slate-600 tabular-nums">{formatDateTimeLocale(d.createdAt)}</span>,
       },
     ],
-    [data.settings.currency]
+    [data.settings.currency, t]
   );
 
   // Incoming Custody & Cash Tables for Reps
@@ -1000,7 +1036,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
         rawId: tr.id,
         kind: 'item' as const,
         docNo: tr.requestNumber,
-        typeLabel: tr.transferMode === 'custody_dispatch' ? 'صرف عهدة بضاعة للمندوب' : 'تحويل أصناف للسيارة',
+        typeLabel: tr.transferMode === 'custody_dispatch' ? t('صرف عهدة بضاعة للمندوب', 'Goods Custody Dispatch to Rep') : t('تحويل أصناف للسيارة', 'Vehicle Stock Transfer'),
         detail: (tr.items || []).map((it) => `${it.productName} (${it.approvedQty ?? it.requestedQty} ${it.unit})`).join(' · '),
         date: tr.date,
       })),
@@ -1009,19 +1045,19 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
         rawId: ct.id,
         kind: 'cash' as const,
         docNo: ct.transferNumber,
-        typeLabel: 'عهدة نقدية واردة من الإدارة',
-        detail: `${ct.amount.toLocaleString()} ${data.settings.currency}${ct.notes ? ` · ${ct.notes}` : ''}`,
+        typeLabel: t('عهدة نقدية واردة من الإدارة', 'Incoming Cash Custody from Management'),
+        detail: `${formatLocaleNumber(ct.amount)} ${data.settings.currency}${ct.notes ? ` · ${ct.notes}` : ''}`,
         date: ct.date,
       })),
     ],
-    [awaitingCustodyDispatches, awaitingCashTransfers, data.settings.currency]
+    [awaitingCustodyDispatches, awaitingCashTransfers, data.settings.currency, t]
   );
 
   const incomingCustodyColumns: UnifiedColumn<(typeof incomingCustodyRows)[number]>[] = useMemo(
     () => [
       {
         key: 'docNo',
-        header: 'رقم المستند',
+        header: t('رقم المستند', 'Doc #'),
         align: 'center',
         sortValue: (r) => r.docNo,
         exportValue: (r) => r.docNo,
@@ -1029,7 +1065,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
       },
       {
         key: 'typeLabel',
-        header: 'النوع',
+        header: t('النوع', 'Type'),
         align: 'right',
         sortValue: (r) => r.typeLabel,
         exportValue: (r) => r.typeLabel,
@@ -1037,7 +1073,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
       },
       {
         key: 'detail',
-        header: 'التفاصيل / الأصناف',
+        header: t('التفاصيل / الأصناف', 'Details / Items'),
         align: 'right',
         sortValue: (r) => r.detail,
         exportValue: (r) => r.detail,
@@ -1045,7 +1081,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
       },
       {
         key: 'date',
-        header: 'التاريخ',
+        header: t('التاريخ', 'Date'),
         align: 'center',
         sortValue: (r) => r.date,
         exportValue: (r) => r.date,
@@ -1053,7 +1089,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
       },
       {
         key: 'actions',
-        header: 'الإجراء',
+        header: t('الإجراء', 'Action'),
         align: 'center',
         sortable: false,
         render: (r) => (
@@ -1067,12 +1103,12 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
             }
             className="px-2.5 py-1 rounded-md bg-blue-900 hover:bg-blue-950 text-white text-[11px] font-bold cursor-pointer disabled:opacity-50 whitespace-nowrap"
           >
-            {confirmingId === r.rawId ? 'جاري التأكيد...' : 'تأكيد الاستلام'}
+            {confirmingId === r.rawId ? t('جاري التأكيد...', 'Confirming...') : t('تأكيد الاستلام', 'Confirm Receipt')}
           </button>
         ),
       },
     ],
-    [confirmingId]
+    [confirmingId, t]
   );
 
   const inspectedDocs: SyncDispatchBatchDocSummaryItem[] = useMemo(() => {
@@ -1098,7 +1134,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
   }, [inspectedBatch]);
 
   return (
-    <div className="space-y-2">
+    <div dir={dir} className="space-y-2">
       {/* Top Header Strip */}
       <div className="bg-white dark:bg-[#0E1C36] rounded-lg border border-slate-200 dark:border-[#21375C] px-2.5 py-1.5 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
@@ -1107,20 +1143,20 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
           </div>
           <div className="min-w-0">
             <h2 className="text-xs sm:text-sm font-black text-slate-900 dark:text-[#EEF4FC]">
-              REFRESH · مركز إرسال واستلام المندوبين
+              {t('REFRESH · مركز إرسال واستلام المندوبين', 'REFRESH · Representatives Send & Receive Center')}
             </h2>
             <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600 dark:text-[#8DA2C5]">
               <span className={`inline-flex items-center gap-1 font-bold ${isOnline ? 'text-emerald-800 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>
                 {isOnline ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-                {isOnline ? 'متصل وجاهز للإرسال والاستلام' : 'وضع العمل بدون إنترنت'}
+                {isOnline ? t('متصل وجاهز للإرسال والاستلام', 'Connected & Ready to Send/Receive') : t('وضع العمل بدون إنترنت', 'Offline Working Mode')}
               </span>
               <span aria-hidden="true">·</span>
-              <span>آخر مزامنة: <strong className="font-mono tabular-nums text-slate-900 dark:text-[#EEF4FC]">{formatDateTimeAr(data.lastServerSyncAt)}</strong></span>
+              <span>{t('آخر مزامنة:', 'Last sync:')} <strong className="font-mono tabular-nums text-slate-900 dark:text-[#EEF4FC]">{formatDateTimeLocale(data.lastServerSyncAt)}</strong></span>
               {(isSending || sendElapsedMs > 0) && (
                 <>
                   <span aria-hidden="true">·</span>
                   <span className="font-mono tabular-nums text-[#003589] dark:text-[#85B8FF] font-bold">
-                    زمن الإرسال: {formatElapsedTenths(sendElapsedMs)}
+                    {t('زمن الإرسال:', 'Send time:')} {formatElapsedTenths(sendElapsedMs)}
                   </span>
                 </>
               )}
@@ -1128,7 +1164,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                 <>
                   <span aria-hidden="true">·</span>
                   <span className="font-mono tabular-nums text-emerald-800 dark:text-emerald-400 font-bold">
-                    زمن الاستلام: {formatElapsedTenths(receiveElapsedMs)}
+                    {t('زمن الاستلام:', 'Receive time:')} {formatElapsedTenths(receiveElapsedMs)}
                   </span>
                 </>
               )}
@@ -1147,10 +1183,10 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
             <ArrowUpFromLine className="w-4 h-4 sm:w-3.5 sm:h-3.5 shrink-0" />
             <span>
               {isSending || data.isMandatorySending
-                ? 'جاري الإرسال...'
+                ? t('جاري الإرسال...', 'Sending...')
                 : kpiStats.readyToSend > 0
-                ? `إرسال (${kpiStats.readyToSend})`
-                : 'إرسال'}
+                ? `${t('إرسال', 'Send')} (${formatLocaleNumber(kpiStats.readyToSend)})`
+                : t('إرسال', 'Send')}
             </span>
           </button>
           <button
@@ -1163,10 +1199,10 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
             <ArrowDownToLine className="w-4 h-4 sm:w-3.5 sm:h-3.5 shrink-0" />
             <span>
               {isReceiving
-                ? 'جاري الاستلام...'
+                ? t('جاري الاستلام...', 'Receiving...')
                 : kpiStats.awaitingReceiveTotal > 0
-                ? `استلام (${kpiStats.awaitingReceiveTotal})`
-                : 'استلام'}
+                ? `${t('استلام', 'Receive')} (${formatLocaleNumber(kpiStats.awaitingReceiveTotal)})`
+                : t('استلام', 'Receive')}
             </span>
           </button>
           {onBack && (
@@ -1175,43 +1211,43 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
               onClick={onBack}
               className="min-h-[42px] sm:min-h-0 sm:h-8 px-2.5 rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-[#132544] dark:hover:bg-[#1A3158] text-slate-800 dark:text-[#EEF4FC] text-xs font-bold cursor-pointer whitespace-nowrap"
             >
-              رجوع
+              {t('رجوع', 'Back')}
             </button>
           )}
         </div>
       </div>
 
-      {/* Dedicated Mobile & Tablet Send / Receive Operational Panel (Last Send, Pending Ops, Last Receive, Mandatory Countdown & Progress) */}
+      {/* Dedicated Mobile & Tablet Send / Receive Operational Panel */}
       <div
         data-testid="mobile-send-receive-panel"
         className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-slate-200 dark:bg-[#21375C] border border-slate-200 dark:border-[#21375C] rounded-lg overflow-hidden"
       >
         <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-2 flex flex-col justify-between gap-1" data-testid="sync-last-send">
           <div className="flex items-center justify-between gap-1 text-[11px] font-bold text-slate-500 dark:text-[#8DA2C5]">
-            <span>آخر إرسال</span>
+            <span>{t('آخر إرسال', 'Last Send')}</span>
             <ArrowUpFromLine className="w-3.5 h-3.5 text-[#003589] dark:text-[#85B8FF] shrink-0" />
           </div>
           <div className="text-xs font-black text-slate-900 dark:text-[#EEF4FC] font-mono tabular-nums leading-snug">
-            {data.lastSendSummary?.at ? formatDateTimeAr(data.lastSendSummary.at) : 'لم يتم الإرسال بعد'}
+            {data.lastSendSummary?.at ? formatDateTimeLocale(data.lastSendSummary.at) : t('لم يتم الإرسال بعد', 'Not sent yet')}
           </div>
           <div className="text-[10px] font-bold">
             {data.lastSendSummary?.ok === false && data.lastSendSummary?.error ? (
               <span className="text-red-700 dark:text-red-400">
-                آخر محاولة تعذرت · العمليات محفوظة محلياً
+                {t('آخر محاولة تعذرت · العمليات محفوظة محلياً', 'Last attempt failed · operations saved locally')}
               </span>
             ) : data.lastSendSummary?.at ? (
               <span className="text-emerald-800 dark:text-emerald-400">
-                تم إرسال ({data.lastSendSummary.count || 0}) عملية بنجاح
+                {t(`تم إرسال (${data.lastSendSummary.count || 0}) عملية بنجاح`, `Sent (${data.lastSendSummary.count || 0}) operation(s) successfully`)}
               </span>
             ) : (
-              <span className="text-slate-500 dark:text-[#8DA2C5]">في انتظار أول عملية إرسال</span>
+              <span className="text-slate-500 dark:text-[#8DA2C5]">{t('في انتظار أول عملية إرسال', 'Awaiting first send')}</span>
             )}
           </div>
         </div>
 
         <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-2 flex flex-col justify-between gap-1" data-testid="sync-pending-ops-count">
           <div className="flex items-center justify-between gap-1 text-[11px] font-bold text-slate-500 dark:text-[#8DA2C5]">
-            <span>عدد العمليات المعلقة</span>
+            <span>{t('عدد العمليات المعلقة', 'Pending Operations')}</span>
             <Clock className={`w-3.5 h-3.5 shrink-0 ${unsentQueueOps.length > 0 ? 'text-amber-600' : 'text-emerald-700'}`} />
           </div>
           <div
@@ -1221,61 +1257,61 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                 : 'text-emerald-800 dark:text-emerald-400'
             }`}
           >
-            {unsentQueueOps.length}
+            {formatLocaleNumber(unsentQueueOps.length)}
           </div>
           <div className="text-[10px] font-bold text-slate-600 dark:text-[#97AECE]">
             {unsentQueueOps.length > 0
-              ? 'فواتير / تحصيلات / عمليات بانتظار الإرسال'
-              : 'كافة العمليات متزامنة'}
+              ? t('فواتير / تحصيلات / عمليات بانتظار الإرسال', 'Invoices / collections / ops awaiting send')
+              : t('كافة العمليات متزامنة', 'All operations synced')}
           </div>
         </div>
 
         <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-2 flex flex-col justify-between gap-1" data-testid="sync-last-receive">
           <div className="flex items-center justify-between gap-1 text-[11px] font-bold text-slate-500 dark:text-[#8DA2C5]">
-            <span>آخر استلام</span>
+            <span>{t('آخر استلام', 'Last Receive')}</span>
             <ArrowDownToLine className="w-3.5 h-3.5 text-[#011E58] dark:text-[#85B8FF] shrink-0" />
           </div>
           <div className="text-xs font-black text-slate-900 dark:text-[#EEF4FC] font-mono tabular-nums leading-snug">
-            {data.lastReceiveSummary?.at ? formatDateTimeAr(data.lastReceiveSummary.at) : 'لم يتم الاستلام بعد'}
+            {data.lastReceiveSummary?.at ? formatDateTimeLocale(data.lastReceiveSummary.at) : t('لم يتم الاستلام بعد', 'Not received yet')}
           </div>
           <div className="text-[10px] font-bold">
             {data.lastReceiveSummary?.ok === false && data.lastReceiveSummary?.error ? (
-              <span className="text-red-700 dark:text-red-400">تعذر التحديث الأخير — أعد المحاولة</span>
+              <span className="text-red-700 dark:text-red-400">{t('تعذر التحديث الأخير — أعد المحاولة', 'Last update failed — retry')}</span>
             ) : data.lastReceiveSummary?.at ? (
               <span className="text-[#003589] dark:text-[#85B8FF]">
-                تم تحديث ({data.lastReceiveSummary.count || 0}) سجل
+                {t(`تم تحديث (${data.lastReceiveSummary.count || 0}) سجل`, `Updated (${data.lastReceiveSummary.count || 0}) record(s)`)}
               </span>
             ) : (
-              <span className="text-slate-500 dark:text-[#8DA2C5]">اضغط استلام لجلب التحديثات</span>
+              <span className="text-slate-500 dark:text-[#8DA2C5]">{t('اضغط استلام لجلب التحديثات', 'Press Receive to fetch updates')}</span>
             )}
           </div>
         </div>
 
         <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-2 flex flex-col justify-between gap-1" data-testid="sync-mandatory-countdown">
           <div className="flex items-center justify-between gap-1 text-[11px] font-bold text-slate-500 dark:text-[#8DA2C5]">
-            <span>الإرسال الإجباري بعد</span>
+            <span>{t('الإرسال الإجباري بعد', 'Mandatory Send In')}</span>
             <span className="text-[10px] font-mono text-slate-500 dark:text-[#8DA2C5]">
-              كل {data.mandatorySendIntervalMinutes} د
+              {t(`كل ${data.mandatorySendIntervalMinutes} د`, `Every ${data.mandatorySendIntervalMinutes}m`)}
             </span>
           </div>
           <div className="text-base font-black text-[#011E58] dark:text-[#85B8FF] font-mono tabular-nums leading-tight" dir="ltr">
             {data.isMandatorySending
-              ? 'جاري...'
+              ? t('جاري...', 'Sending...')
               : data.mandatorySendEnabled
               ? formatCountdownMmSs(data.mandatorySendRemainingSeconds)
-              : 'متوقف'}
+              : t('متوقف', 'Paused')}
           </div>
           <div className="text-[10px] font-bold">
             {data.isMandatorySendPendingRetry ? (
               <span className="text-amber-700 dark:text-amber-300">
-                في انتظار عودة الاتصال للإرسال
+                {t('في انتظار عودة الاتصال للإرسال', 'Awaiting connection to send')}
               </span>
             ) : !data.mandatorySendEnabled ? (
-              <span className="text-slate-500 dark:text-[#8DA2C5]">معطل من إعدادات الإدارة</span>
+              <span className="text-slate-500 dark:text-[#8DA2C5]">{t('معطل من إعدادات الإدارة', 'Disabled by management settings')}</span>
             ) : data.isMandatorySending ? (
-              <span className="text-[#003589] dark:text-[#85B8FF]">جاري تنفيذ الإرسال التلقائي...</span>
+              <span className="text-[#003589] dark:text-[#85B8FF]">{t('جاري تنفيذ الإرسال التلقائي...', 'Running automatic send...')}</span>
             ) : (
-              <span className="text-slate-600 dark:text-[#97AECE]">يعمل تلقائياً بدون تداخل</span>
+              <span className="text-slate-600 dark:text-[#97AECE]">{t('يعمل تلقائياً بدون تداخل', 'Runs automatically without overlap')}</span>
             )}
           </div>
         </div>
@@ -1291,7 +1327,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
             <div className="space-y-1">
               <div className="flex items-center justify-between gap-2 text-[11px] font-bold">
                 <span className="text-[#003589] dark:text-[#85B8FF]">
-                  {data.sendProgressStage || 'جاري إرسال العمليات...'}
+                  {data.sendProgressStage || t('جاري إرسال العمليات...', 'Sending operations...')}
                 </span>
                 <span className="font-mono font-black text-[#011E58] dark:text-[#EEF4FC] tabular-nums">
                   {Math.max(5, data.sendProgressPercent || (isSending ? 35 : 0))}%
@@ -1309,7 +1345,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
             <div className="space-y-1">
               <div className="flex items-center justify-between gap-2 text-[11px] font-bold">
                 <span className="text-[#011E58] dark:text-[#85B8FF]">
-                  {data.receiveProgressStage || 'جاري استلام التحديثات...'}
+                  {data.receiveProgressStage || t('جاري استلام التحديثات...', 'Receiving updates...')}
                 </span>
                 <span className="font-mono font-black text-[#011E58] dark:text-[#EEF4FC] tabular-nums">
                   {Math.max(5, data.receiveProgressPercent || (isReceiving ? 35 : 0))}%
@@ -1347,14 +1383,14 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
         <div className="bg-white dark:bg-[#0E1C36] rounded-lg border border-slate-200 dark:border-[#21375C] p-2 space-y-1 text-xs">
           <div className="flex items-center justify-between gap-2">
             <span className="font-black text-[#011E58] dark:text-[#EEF4FC]">
-              نتائج الإرسال التفصيلية ({lastSendOutcomes.length} عملية)
+              {t(`نتائج الإرسال التفصيلية (${lastSendOutcomes.length} عملية)`, `Detailed Send Results (${lastSendOutcomes.length} operations)`)}
             </span>
             <button
               type="button"
               onClick={() => setLastSendOutcomes([])}
               className="text-[11px] font-bold text-slate-500 hover:text-slate-800 dark:text-[#97AECE] cursor-pointer"
             >
-              إخفاء
+              {t('إخفاء', 'Hide')}
             </button>
           </div>
           <div className="divide-y divide-slate-100 dark:divide-[#21375C] max-h-36 overflow-y-auto">
@@ -1377,37 +1413,37 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
       {/* Compact 5-Counter Send & Receive Summary Strip */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-px bg-slate-200 dark:bg-[#21375C] border border-slate-200 dark:border-[#21375C] rounded-md overflow-hidden">
         <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5" data-testid="counter-ready-send">
-          <div className="text-[11px] font-bold text-slate-500 dark:text-[#8DA2C5]">جاهزة للإرسال</div>
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#8DA2C5]">{t('جاهزة للإرسال', 'Ready to Send')}</div>
           <div className="text-sm font-black text-[#003589] dark:text-[#85B8FF] font-mono tabular-nums mt-0.5">
-            {kpiStats.readyToSend}
+            {formatLocaleNumber(kpiStats.readyToSend)}
           </div>
         </div>
         <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5" data-testid="counter-failed">
-          <div className="text-[11px] font-bold text-slate-500 dark:text-[#8DA2C5]">فاشلة / متعذرة</div>
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#8DA2C5]">{t('فاشلة / متعذرة', 'Failed / Rejected')}</div>
           <div className="text-sm font-black text-red-700 dark:text-red-400 font-mono tabular-nums mt-0.5">
-            {kpiStats.failed}
+            {formatLocaleNumber(kpiStats.failed)}
           </div>
         </div>
         <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5" data-testid="counter-synced">
-          <div className="text-[11px] font-bold text-slate-500 dark:text-[#8DA2C5]">متزامنة</div>
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#8DA2C5]">{t('متزامنة', 'Synced')}</div>
           <div className="text-sm font-black text-slate-900 dark:text-[#EEF4FC] font-mono tabular-nums mt-0.5">
-            {kpiStats.syncedTotal}
+            {formatLocaleNumber(kpiStats.syncedTotal)}
           </div>
         </div>
         <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5" data-testid="counter-awaiting-receive">
-          <div className="text-[11px] font-bold text-slate-500 dark:text-[#8DA2C5]">واردة بانتظار الاستلام</div>
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#8DA2C5]">{t('واردة بانتظار الاستلام', 'Incoming Awaiting Receipt')}</div>
           <div className="text-sm font-black text-amber-700 dark:text-amber-300 font-mono tabular-nums mt-0.5">
-            {kpiStats.awaitingReceiveTotal}
+            {formatLocaleNumber(kpiStats.awaitingReceiveTotal)}
           </div>
         </div>
         <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5 col-span-2 sm:col-span-1" data-testid="counter-confirmed-received">
-          <div className="text-[11px] font-bold text-slate-500 dark:text-[#8DA2C5]">مستلمة ومؤكدة</div>
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#8DA2C5]">{t('مستلمة ومؤكدة', 'Received & Confirmed')}</div>
           <div className="flex items-baseline justify-between gap-2 mt-0.5">
             <span className="text-sm font-black text-emerald-800 dark:text-emerald-400 font-mono tabular-nums">
-              {kpiStats.confirmedTotal}
+              {formatLocaleNumber(kpiStats.confirmedTotal)}
             </span>
             <span className="text-[10px] font-bold text-slate-500 dark:text-[#97AECE] font-mono tabular-nums">
-              {kpiStats.totalCash.toLocaleString()} {data.settings.currency}
+              {formatLocaleNumber(kpiStats.totalCash)} {data.settings.currency}
             </span>
           </div>
         </div>
@@ -1420,7 +1456,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
             <div className="bg-blue-50/80 dark:bg-[#132544] rounded-lg border border-blue-200 dark:border-[#2C4775] p-2 space-y-1.5">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-black text-blue-950 dark:text-[#EEF4FC]">
-                  دفعات مؤكدة الإرسال أو تحتاج إعادة محاولة ({failedDraftBatches.length})
+                  {t('دفعات مؤكدة الإرسال أو تحتاج إعادة محاولة', 'Confirmed or Retryable Batches')} ({formatLocaleNumber(failedDraftBatches.length)})
                 </span>
               </div>
               <div className="space-y-1.5">
@@ -1433,13 +1469,13 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                       <div>
                         <span className="font-mono font-bold text-[#011E58] dark:text-[#85B8FF]">{draft.batchNumber}</span>
                         <span className="mx-1.5 text-slate-400">·</span>
-                        <span className="font-bold text-slate-800 dark:text-[#EEF4FC]">المستلم: {draft.recipientName}</span>
+                        <span className="font-bold text-slate-800 dark:text-[#EEF4FC]">{t('المستلم:', 'Recipient:')} {draft.recipientName}</span>
                         <span className="mx-1.5 text-slate-400">·</span>
-                        <span className="font-mono tabular-nums text-slate-700 dark:text-[#A9BCD8]">{draft.operationIds.length} عمليات</span>
+                        <span className="font-mono tabular-nums text-slate-700 dark:text-[#A9BCD8]">{formatLocaleNumber(draft.operationIds.length)} {t('عمليات', 'operations')}</span>
                       </div>
                       {draft.isConfirmedSendQueued && (
                         <div className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300">
-                          طلب الإرسال مؤكد من المرسل — في انتظار المزامنة التلقائية فور عودة الاتصال
+                          {t('طلب الإرسال مؤكد من المرسل — في انتظار المزامنة التلقائية فور عودة الاتصال', 'Dispatch confirmed by sender — awaiting automatic sync when connected')}
                         </div>
                       )}
                     </div>
@@ -1450,7 +1486,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                       className="px-2.5 py-1 rounded-md bg-blue-900 hover:bg-blue-950 text-white font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50"
                     >
                       <RotateCcw className="w-3.5 h-3.5" />
-                      <span>{draft.isConfirmedSendQueued ? 'محاولة المزامنة الآن' : 'إعادة الإرسال الآن'}</span>
+                      <span>{draft.isConfirmedSendQueued ? t('محاولة المزامنة الآن', 'Sync Now') : t('إعادة الإرسال الآن', 'Retry Send Now')}</span>
                     </button>
                   </div>
                 ))}
@@ -1459,18 +1495,18 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
           )}
 
           <UnifiedDataTable<SyncQueueItem>
-            title="العمليات المحفوظة محلياً الجاهزة للإرسال"
-            subtitle="حدد العمليات واختر الموظف المستلم لإصدار دفعة إرسال رسمية برقم متسلسل"
+            title={t('العمليات المحفوظة محلياً الجاهزة للإرسال', 'Locally Saved Operations Ready to Send')}
+            subtitle={t('حدد العمليات واختر الموظف المستلم لإصدار دفعة إرسال رسمية برقم متسلسل', 'Select operations and choose a recipient to issue an official numbered batch')}
             columns={queueColumns}
             data={unsentQueueOps}
             rowKey={(r) => r.operationId}
             selectable={true}
             selectedKeys={selectedOpIds}
             onSelectionChange={setSelectedOpIds}
-            emptyTitle="لا توجد عمليات محلية معلقة"
-            emptySubtitle="جميع فواتيرك وتحصيلاتك مرسلة ومعتمدة بالكامل"
-            exportFilename="العمليات-المحلية-المعلقة"
-            pdfTitle="قائمة العمليات المحلية المعلقة"
+            emptyTitle={t('لا توجد عمليات محلية معلقة', 'No Pending Local Operations')}
+            emptySubtitle={t('جميع فواتيرك وتحصيلاتك مرسلة ومعتمدة بالكامل', 'All your invoices and collections are fully sent and approved')}
+            exportFilename={t('العمليات-المحلية-المعلقة', 'pending-local-operations')}
+            pdfTitle={t('قائمة العمليات المحلية المعلقة', 'Pending Local Operations List')}
             compact
             headerActions={
               unsentQueueOps.length > 0 ? (
@@ -1478,10 +1514,10 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                   <select
                     value={recipientUserId}
                     onChange={(e) => setRecipientUserId(e.target.value)}
-                    aria-label="الموظف المستلم للدفعة"
+                    aria-label={t('الموظف المستلم للدفعة', 'Batch Recipient')}
                     className="h-8 px-2 rounded-md border border-slate-300 dark:border-[#2C4775] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC] shrink-0"
                   >
-                    <option value="">-- اختر المستلم (إدارة / موظف / مندوب) --</option>
+                    <option value="">{t('-- اختر المستلم (إدارة / موظف / مندوب) --', '-- Select Recipient (Admin / Staff / Rep) --')}</option>
                     {(data.dispatchRecipients || []).map((rec) => (
                       <option key={rec.id} value={rec.id}>
                         {rec.fullName} ({rec.jobTitle || rec.role})
@@ -1492,7 +1528,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                     type="text"
                     value={batchNotes}
                     onChange={(e) => setBatchNotes(e.target.value)}
-                    placeholder="ملاحظات الإرسال (اختياري)..."
+                    placeholder={t('ملاحظات الإرسال (اختياري)...', 'Dispatch notes (optional)...')}
                     className="h-8 px-2 rounded-md border border-slate-300 dark:border-[#2C4775] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC] w-40 shrink-0"
                   />
                   <button
@@ -1502,7 +1538,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                     className="h-8 px-3 rounded-md bg-blue-900 hover:bg-blue-950 text-white text-xs font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap shrink-0"
                   >
                     <Send className="w-3.5 h-3.5 shrink-0" />
-                    <span>{isSending ? 'جاري الإرسال...' : `إرسال (${selectedOpIds.length})`}</span>
+                    <span>{isSending ? t('جاري الإرسال...', 'Sending...') : `${t('إرسال', 'Send')} (${formatLocaleNumber(selectedOpIds.length)})`}</span>
                   </button>
                 </div>
               ) : undefined
@@ -1514,8 +1550,8 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
       {/* INCOMING CUSTODY DISPATCHES & CASH TRANSFERS FOR REPS */}
       {(awaitingCustodyDispatches.length > 0 || awaitingCashTransfers.length > 0) && (
         <UnifiedDataTable
-          title="العهد والتحويلات الواردة من الإدارة بانتظار تأكيد الاستلام"
-          subtitle="بضائع منصرفة للسيارة وعهد نقدية بانتظار اعتماد استلامك"
+          title={t('العهد والتحويلات الواردة من الإدارة بانتظار تأكيد الاستلام', 'Incoming Custody & Cash Transfers Awaiting Receipt')}
+          subtitle={t('بضائع منصرفة للسيارة وعهد نقدية بانتظار اعتماد استلامك', 'Goods dispatched to vehicle and cash custody awaiting your confirmation')}
           columns={incomingCustodyColumns}
           data={incomingCustodyRows}
           rowKey={(r) => r.id}
@@ -1526,43 +1562,43 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
 
       {/* OFFICIAL 12-COLUMN DISPATCH BATCHES LOG */}
       <UnifiedDataTable<SyncDispatchBatch>
-        title={isRepUser ? 'سجل دفعات الإرسال والاستلام الرسمية' : 'جدول إرسال واستلام المندوبين المركزي'}
-        subtitle="متابعة كافة دفعات المندوبين وحالات الإرسال والاستلام وتفاصيل كل مستند"
+        title={isRepUser ? t('سجل دفعات الإرسال والاستلام الرسمية', 'Official Dispatch & Receipt Log') : t('جدول إرسال واستلام المندوبين المركزي', 'Central Representatives Dispatch & Receipt Log')}
+        subtitle={t('متابعة كافة دفعات المندوبين وحالات الإرسال والاستلام وتفاصيل كل مستند', 'Track all rep dispatch batches, send/receipt statuses, and document details')}
         columns={dispatchColumns}
         data={filteredBatches}
         rowKey={(b) => b.id}
         onRowClick={(b) => handleOpenInspectBatch(b)}
-        exportFilename="سجل-دفعات-إرسال-واستلام-المندوبين"
-        pdfTitle="سجل دفعات إرسال واستلام المندوبين"
-        searchPlaceholder="ابحث برقم الدفعة، اسم المندوب، المستلم..."
+        exportFilename={t('سجل-دفعات-إرسال-واستلام-المندوبين', 'rep-dispatch-batches-log')}
+        pdfTitle={t('سجل دفعات إرسال واستلام المندوبين', 'Representatives Dispatch Batches Log')}
+        searchPlaceholder={t('ابحث برقم الدفعة، اسم المندوب، المستلم...', 'Search by batch #, rep name, recipient...')}
         toolbarFilters={
           <div className="flex flex-nowrap items-center gap-1.5 shrink-0 [&>*]:shrink-0" data-testid="sync-filter-row">
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              aria-label="تصفية بحالة الدفعة"
+              aria-label={t('تصفية بحالة الدفعة', 'Filter by batch status')}
               className="h-8 px-2 rounded-md border border-slate-300 dark:border-[#2C4775] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC] shrink-0"
             >
-              <option value="all">جميع الحالات</option>
-              <option value="في انتظار الاستلام">في انتظار الاستلام</option>
-              <option value="جاري الاستلام">جاري الاستلام</option>
-              <option value="تم الاستلام">تم الاستلام</option>
-              <option value="تعذر الاستلام">تعذر الاستلام</option>
-              <option value="فشل الإرسال">فشل الإرسال</option>
-              <option value="تم الإرسال">تم الإرسال</option>
-              <option value="جاري الإرسال">جاري الإرسال</option>
-              <option value="جاهزة للإرسال">جاهزة للإرسال</option>
-              <option value="محفوظة محليًا">محفوظة محليًا</option>
+              <option value="all">{t('جميع الحالات', 'All Statuses')}</option>
+              <option value="في انتظار الاستلام">{t('في انتظار الاستلام', 'Awaiting Receipt')}</option>
+              <option value="جاري الاستلام">{t('جاري الاستلام', 'Receiving...')}</option>
+              <option value="تم الاستلام">{t('تم الاستلام', 'Received')}</option>
+              <option value="تعذر الاستلام">{t('تعذر الاستلام', 'Receipt Failed')}</option>
+              <option value="فشل الإرسال">{t('فشل الإرسال', 'Send Failed')}</option>
+              <option value="تم الإرسال">{t('تم الإرسال', 'Sent')}</option>
+              <option value="جاري الإرسال">{t('جاري الإرسال', 'Sending...')}</option>
+              <option value="جاهزة للإرسال">{t('جاهزة للإرسال', 'Ready to Send')}</option>
+              <option value="محفوظة محليًا">{t('محفوظة محليًا', 'Saved Locally')}</option>
             </select>
 
             {!isRepUser && uniqueSenders.length > 0 && (
               <select
                 value={senderFilter}
                 onChange={(e) => setSenderFilter(e.target.value)}
-                aria-label="تصفية بالمرسل"
+                aria-label={t('تصفية بالمرسل', 'Filter by sender')}
                 className="h-8 px-2 rounded-md border border-slate-300 dark:border-[#2C4775] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC] shrink-0"
               >
-                <option value="all">كل المندوبين</option>
+                <option value="all">{t('كل المندوبين', 'All Reps')}</option>
                 {uniqueSenders.map((s) => (
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
@@ -1573,10 +1609,10 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
               <select
                 value={recipientFilter}
                 onChange={(e) => setRecipientFilter(e.target.value)}
-                aria-label="تصفية بالمستلم"
+                aria-label={t('تصفية بالمستلم', 'Filter by recipient')}
                 className="h-8 px-2 rounded-md border border-slate-300 dark:border-[#2C4775] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC] shrink-0"
               >
-                <option value="all">كل المستلمين</option>
+                <option value="all">{t('كل المستلمين', 'All Recipients')}</option>
                 {uniqueRecipients.map((r) => (
                   <option key={r.id} value={r.id}>{r.name}</option>
                 ))}
@@ -1587,7 +1623,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
               type="date"
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value)}
-              aria-label="تصفية بتاريخ الإرسال"
+              aria-label={t('تصفية بتاريخ الإرسال', 'Filter by send date')}
               className="h-8 px-2 rounded-md border border-slate-300 dark:border-[#2C4775] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC] shrink-0"
             />
 
@@ -1602,7 +1638,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                 }}
                 className="h-8 px-2.5 rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-[#132544] dark:hover:bg-[#1A3158] text-slate-700 dark:text-[#EEF4FC] text-xs font-bold cursor-pointer whitespace-nowrap shrink-0"
               >
-                إعادة ضبط
+                {t('إعادة ضبط', 'Reset')}
               </button>
             )}
           </div>
@@ -1620,20 +1656,20 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
             <div
               role="dialog"
               aria-modal="true"
-              dir="rtl"
+              dir={dir}
               onClick={(e) => e.stopPropagation()}
               className="bg-white dark:bg-[#0E1C36] rounded-xl border border-slate-200 dark:border-[#21375C] shadow-2xl w-full max-w-lg overflow-hidden"
             >
               <div className="px-4 py-2.5 bg-blue-950 text-white flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Send className="w-4 h-4" />
-                  <h3 className="text-sm font-black">تأكيد إرسال الدفعة الرسمية</h3>
+                  <h3 className="text-sm font-black">{t('تأكيد إرسال الدفعة الرسمية', 'Confirm Official Batch Dispatch')}</h3>
                 </div>
                 <button
                   type="button"
                   onClick={() => setPendingSendConfirm(null)}
                   className="p-1 rounded-md bg-white/10 hover:bg-white/20 text-white cursor-pointer"
-                  aria-label="إغلاق"
+                  aria-label={t('إغلاق', 'Close')}
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -1641,57 +1677,60 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
               <div className="p-4 space-y-3 text-xs">
                 <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C] space-y-1">
                   <div className="text-slate-600 dark:text-[#8DA2C5]">
-                    المستلم المحدد: <strong className="text-slate-900 dark:text-[#EEF4FC]">{pendingSendConfirm.recipientLabel}</strong>
+                    {t('المستلم المحدد:', 'Selected Recipient:')} <strong className="text-slate-900 dark:text-[#EEF4FC]">{pendingSendConfirm.recipientLabel}</strong>
                   </div>
                   <div className="text-slate-600 dark:text-[#8DA2C5]">
-                    إجمالي العمليات المحددة: <strong className="font-mono text-[#011E58] dark:text-[#85B8FF]">{pendingSendConfirm.chosenOps.length}</strong>
+                    {t('إجمالي العمليات المحددة:', 'Total Selected Operations:')} <strong className="font-mono text-[#011E58] dark:text-[#85B8FF]">{formatLocaleNumber(pendingSendConfirm.chosenOps.length)}</strong>
                   </div>
                   {pendingSendConfirm.notes && (
                     <div className="text-slate-600 dark:text-[#8DA2C5]">
-                      ملاحظات: <span className="text-slate-900 dark:text-[#EEF4FC]">{pendingSendConfirm.notes}</span>
+                      {t('ملاحظات:', 'Notes:')} <span className="text-slate-900 dark:text-[#EEF4FC]">{pendingSendConfirm.notes}</span>
                     </div>
                   )}
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
                   <div className="p-2 rounded-md border border-slate-200 dark:border-[#21375C] bg-white dark:bg-[#10203D]">
-                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">فواتير البيع</div>
-                    <div className="font-mono font-black text-slate-900 dark:text-[#EEF4FC]">{pendingSendConfirm.salesCount}</div>
+                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">{t('فواتير البيع', 'Sales Invoices')}</div>
+                    <div className="font-mono font-black text-slate-900 dark:text-[#EEF4FC]">{formatLocaleNumber(pendingSendConfirm.salesCount)}</div>
                   </div>
                   <div className="p-2 rounded-md border border-slate-200 dark:border-[#21375C] bg-white dark:bg-[#10203D]">
-                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">التحصيلات</div>
-                    <div className="font-mono font-black text-slate-900 dark:text-[#EEF4FC]">{pendingSendConfirm.collectionsCount}</div>
+                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">{t('التحصيلات', 'Collections')}</div>
+                    <div className="font-mono font-black text-slate-900 dark:text-[#EEF4FC]">{formatLocaleNumber(pendingSendConfirm.collectionsCount)}</div>
                   </div>
                   <div className="p-2 rounded-md border border-slate-200 dark:border-[#21375C] bg-white dark:bg-[#10203D]">
-                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">المرتجعات</div>
-                    <div className="font-mono font-black text-slate-900 dark:text-[#EEF4FC]">{pendingSendConfirm.returnsCount}</div>
+                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">{t('المرتجعات', 'Returns')}</div>
+                    <div className="font-mono font-black text-slate-900 dark:text-[#EEF4FC]">{formatLocaleNumber(pendingSendConfirm.returnsCount)}</div>
                   </div>
                   <div className="p-2 rounded-md border border-slate-200 dark:border-[#21375C] bg-white dark:bg-[#10203D]">
-                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">طلبات / أخرى</div>
+                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">{t('طلبات / أخرى', 'Orders / Other')}</div>
                     <div className="font-mono font-black text-slate-900 dark:text-[#EEF4FC]">
-                      {pendingSendConfirm.ordersCount + pendingSendConfirm.purchasesCount + pendingSendConfirm.customersCount + pendingSendConfirm.custodyOpsCount}
+                      {formatLocaleNumber(pendingSendConfirm.ordersCount + pendingSendConfirm.purchasesCount + pendingSendConfirm.customersCount + pendingSendConfirm.custodyOpsCount)}
                     </div>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
                   <div className="p-2 rounded-md border border-slate-200 dark:border-[#21375C] bg-slate-50 dark:bg-[#132544]">
-                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">إجمالي المبيعات</div>
+                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">{t('إجمالي المبيعات', 'Total Sales')}</div>
                     <div className="font-mono font-black text-slate-900 dark:text-[#EEF4FC]">
-                      {pendingSendConfirm.totalSalesAmount.toLocaleString()} {data.settings.currency}
+                      {formatLocaleNumber(pendingSendConfirm.totalSalesAmount)} {data.settings.currency}
                     </div>
                   </div>
                   <div className="p-2 rounded-md border border-slate-200 dark:border-[#21375C] bg-slate-50 dark:bg-[#132544]">
-                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">إجمالي النقدية</div>
+                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">{t('إجمالي النقدية', 'Total Cash')}</div>
                     <div className="font-mono font-black text-emerald-800 dark:text-emerald-400">
-                      {pendingSendConfirm.totalCashAmount.toLocaleString()} {data.settings.currency}
+                      {formatLocaleNumber(pendingSendConfirm.totalCashAmount)} {data.settings.currency}
                     </div>
                   </div>
                 </div>
 
                 {!isOnline && (
                   <div className="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 font-bold">
-                    أنت غير متصل حالياً: عند تأكيد الإرسال، سيتم حفظ الدفعة في طابور الإرسال المؤكد («طلب الإرسال مؤكد من المرسل») وإرسالها تلقائياً عند عودة الاتصال دون إرسال أي مسودات غير مؤكدة.
+                    {t(
+                      'أنت غير متصل حالياً: عند تأكيد الإرسال، سيتم حفظ الدفعة في طابور الإرسال المؤكد («طلب الإرسال مؤكد من المرسل») وإرسالها تلقائياً عند عودة الاتصال دون إرسال أي مسودات غير مؤكدة.',
+                      'You are currently offline: once confirmed, the batch will be queued in Confirmed Outbox and sent automatically upon reconnection without sending unconfirmed drafts.'
+                    )}
                   </div>
                 )}
 
@@ -1701,7 +1740,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                     onClick={() => setPendingSendConfirm(null)}
                     className="h-8 px-3 rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-[#132544] dark:hover:bg-[#1A3158] text-slate-800 dark:text-[#EEF4FC] font-bold cursor-pointer"
                   >
-                    إلغاء
+                    {t('إلغاء', 'Cancel')}
                   </button>
                   <button
                     type="button"
@@ -1709,7 +1748,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                     className="h-8 px-4 rounded-md bg-blue-900 hover:bg-blue-950 text-white font-black flex items-center gap-1.5 cursor-pointer"
                   >
                     <Send className="w-3.5 h-3.5" />
-                    <span>{isOnline ? 'تأكيد الإرسال الآن' : 'تأكيد الحفظ للإرسال عند الاتصال'}</span>
+                    <span>{isOnline ? t('تأكيد الإرسال الآن', 'Confirm & Send Now') : t('تأكيد الحفظ للإرسال عند الاتصال', 'Confirm Save for Online Sync')}</span>
                   </button>
                 </div>
               </div>
@@ -1729,7 +1768,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
             <div
               role="dialog"
               aria-modal="true"
-              dir="rtl"
+              dir={dir}
               onClick={(e) => e.stopPropagation()}
               className="bg-white dark:bg-[#0E1C36] rounded-lg border border-slate-200 dark:border-[#21375C] shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden"
             >
@@ -1737,17 +1776,17 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
               <div className="px-3 py-2 bg-blue-950 text-white flex items-center justify-between gap-2 shrink-0">
                 <div>
                   <h3 className="text-xs sm:text-sm font-black">
-                    مراجعة دفعة الإرسال · <span className="font-mono">{inspectedBatch.batchNumber}</span>
+                    {t('مراجعة دفعة الإرسال', 'Inspect Dispatch Batch')} · <span className="font-mono">{inspectedBatch.batchNumber}</span>
                   </h3>
                   <p className="text-[11px] text-blue-200">
-                    المرسل: {inspectedBatch.senderName} · المستلم المحدد: {inspectedBatch.recipientName} · أرسلت في: {formatDateTimeAr(inspectedBatch.sentAt || inspectedBatch.createdAt)}
+                    {t('المرسل:', 'Sender:')} {inspectedBatch.senderName} · {t('المستلم المحدد:', 'Target Recipient:')} {inspectedBatch.recipientName} · {t('أرسلت في:', 'Sent at:')} {formatDateTimeLocale(inspectedBatch.sentAt || inspectedBatch.createdAt)}
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setInspectedBatch(null)}
                   className="p-1 rounded-md bg-white/10 hover:bg-white/20 text-white cursor-pointer"
-                  aria-label="إغلاق"
+                  aria-label={t('إغلاق', 'Close')}
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -1758,23 +1797,27 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                 {/* Compact Hairline Summary Strip */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-slate-200 dark:bg-[#21375C] border border-slate-200 dark:border-[#21375C] rounded-md overflow-hidden text-xs">
                   <div className="px-2.5 py-1.5 bg-white dark:bg-[#10203D]">
-                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">حالة الإرسال</div>
-                    <div className="font-black text-slate-900 dark:text-[#EEF4FC]">{inspectedBatch.sendStatus}</div>
-                  </div>
-                  <div className="px-2.5 py-1.5 bg-white dark:bg-[#10203D]">
-                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">حالة الاستلام</div>
-                    <div className="font-black text-[#011E58] dark:text-[#85B8FF]">{inspectedBatch.receiptStatus}</div>
-                  </div>
-                  <div className="px-2.5 py-1.5 bg-white dark:bg-[#10203D]">
-                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">إجمالي المبيعات بالدفعة</div>
-                    <div className="font-mono font-black text-slate-900 dark:text-[#EEF4FC] tabular-nums">
-                      {Number(inspectedBatch.totalSalesAmount || 0).toLocaleString()} {data.settings.currency}
+                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">{t('حالة الإرسال', 'Send Status')}</div>
+                    <div className="font-black text-slate-900 dark:text-[#EEF4FC]">
+                      {t(inspectedBatch.sendStatus, DISPATCH_STATUS_EN[inspectedBatch.sendStatus] || inspectedBatch.sendStatus)}
                     </div>
                   </div>
                   <div className="px-2.5 py-1.5 bg-white dark:bg-[#10203D]">
-                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">إجمالي التحصيلات النقدية</div>
+                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">{t('حالة الاستلام', 'Receipt Status')}</div>
+                    <div className="font-black text-[#011E58] dark:text-[#85B8FF]">
+                      {t(inspectedBatch.receiptStatus, DISPATCH_STATUS_EN[inspectedBatch.receiptStatus] || inspectedBatch.receiptStatus)}
+                    </div>
+                  </div>
+                  <div className="px-2.5 py-1.5 bg-white dark:bg-[#10203D]">
+                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">{t('إجمالي المبيعات بالدفعة', 'Batch Total Sales')}</div>
+                    <div className="font-mono font-black text-slate-900 dark:text-[#EEF4FC] tabular-nums">
+                      {formatLocaleNumber(Number(inspectedBatch.totalSalesAmount || 0))} {data.settings.currency}
+                    </div>
+                  </div>
+                  <div className="px-2.5 py-1.5 bg-white dark:bg-[#10203D]">
+                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">{t('إجمالي التحصيلات النقدية', 'Total Cash Collections')}</div>
                     <div className="font-mono font-black text-emerald-800 dark:text-emerald-400 tabular-nums">
-                      {Number(inspectedBatch.totalCashAmount || 0).toLocaleString()} {data.settings.currency}
+                      {formatLocaleNumber(Number(inspectedBatch.totalCashAmount || 0))} {data.settings.currency}
                     </div>
                   </div>
                 </div>
@@ -1782,28 +1825,28 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                 {/* Operational Counts Breakdown */}
                 <div className="grid grid-cols-3 sm:grid-cols-6 gap-px bg-slate-200 dark:bg-[#21375C] border border-slate-200 dark:border-[#21375C] rounded-md overflow-hidden text-center text-xs">
                   <div className="px-2 py-1 bg-white dark:bg-[#10203D]">
-                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">فواتير بيع</div>
-                    <div className="font-mono font-black text-slate-900 dark:text-[#EEF4FC] tabular-nums">{inspectedBatch.salesCount || 0}</div>
+                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">{t('فواتير بيع', 'Sales')}</div>
+                    <div className="font-mono font-black text-slate-900 dark:text-[#EEF4FC] tabular-nums">{formatLocaleNumber(inspectedBatch.salesCount || 0)}</div>
                   </div>
                   <div className="px-2 py-1 bg-white dark:bg-[#10203D]">
-                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">تحصيلات</div>
-                    <div className="font-mono font-black text-slate-900 dark:text-[#EEF4FC] tabular-nums">{inspectedBatch.collectionsCount || 0}</div>
+                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">{t('تحصيلات', 'Collections')}</div>
+                    <div className="font-mono font-black text-slate-900 dark:text-[#EEF4FC] tabular-nums">{formatLocaleNumber(inspectedBatch.collectionsCount || 0)}</div>
                   </div>
                   <div className="px-2 py-1 bg-white dark:bg-[#10203D]">
-                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">مرتجعات</div>
-                    <div className="font-mono font-black text-slate-900 dark:text-[#EEF4FC] tabular-nums">{inspectedBatch.returnsCount || 0}</div>
+                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">{t('مرتجعات', 'Returns')}</div>
+                    <div className="font-mono font-black text-slate-900 dark:text-[#EEF4FC] tabular-nums">{formatLocaleNumber(inspectedBatch.returnsCount || 0)}</div>
                   </div>
                   <div className="px-2 py-1 bg-white dark:bg-[#10203D]">
-                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">فواتير شراء</div>
-                    <div className="font-mono font-black text-slate-900 dark:text-[#EEF4FC] tabular-nums">{inspectedBatch.purchasesCount || 0}</div>
+                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">{t('فواتير شراء', 'Purchases')}</div>
+                    <div className="font-mono font-black text-slate-900 dark:text-[#EEF4FC] tabular-nums">{formatLocaleNumber(inspectedBatch.purchasesCount || 0)}</div>
                   </div>
                   <div className="px-2 py-1 bg-white dark:bg-[#10203D]">
-                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">عملاء جدد</div>
-                    <div className="font-mono font-black text-slate-900 dark:text-[#EEF4FC] tabular-nums">{inspectedBatch.customersCount || 0}</div>
+                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">{t('عملاء جدد', 'New Customers')}</div>
+                    <div className="font-mono font-black text-slate-900 dark:text-[#EEF4FC] tabular-nums">{formatLocaleNumber(inspectedBatch.customersCount || 0)}</div>
                   </div>
                   <div className="px-2 py-1 bg-white dark:bg-[#10203D]">
-                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">عمليات عهدة</div>
-                    <div className="font-mono font-black text-slate-900 dark:text-[#EEF4FC] tabular-nums">{inspectedBatch.custodyOpsCount || 0}</div>
+                    <div className="text-[10px] text-slate-500 dark:text-[#8DA2C5]">{t('عمليات عهدة', 'Custody Ops')}</div>
+                    <div className="font-mono font-black text-slate-900 dark:text-[#EEF4FC] tabular-nums">{formatLocaleNumber(inspectedBatch.custodyOpsCount || 0)}</div>
                   </div>
                 </div>
 
@@ -1811,32 +1854,32 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                   <div className="p-2 rounded-md bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C] text-xs space-y-1">
                     {inspectedBatch.notes && (
                       <div>
-                        <span className="font-bold text-slate-600 dark:text-[#8DA2C5]">ملاحظات المرسل: </span>
+                        <span className="font-bold text-slate-600 dark:text-[#8DA2C5]">{t('ملاحظات المرسل:', 'Sender Notes:')} </span>
                         <span className="text-slate-900 dark:text-[#EEF4FC]">{inspectedBatch.notes}</span>
                       </div>
                     )}
                     {inspectedBatch.receivedByName && (
                       <div>
-                        <span className="font-bold text-emerald-800 dark:text-emerald-400">المستلم الفعلي: </span>
+                        <span className="font-bold text-emerald-800 dark:text-emerald-400">{t('المستلم الفعلي:', 'Actual Receiver:')} </span>
                         <span className="font-black text-slate-900 dark:text-[#EEF4FC]">
-                          {inspectedBatch.receivedByName} ({formatDateTimeAr(inspectedBatch.receivedAt)})
+                          {inspectedBatch.receivedByName} ({formatDateTimeLocale(inspectedBatch.receivedAt)})
                         </span>
                       </div>
                     )}
                     {inspectedBatch.receiptNotes && (
                       <div>
-                        <span className="font-bold text-slate-600 dark:text-[#8DA2C5]">ملاحظات الاستلام: </span>
+                        <span className="font-bold text-slate-600 dark:text-[#8DA2C5]">{t('ملاحظات الاستلام:', 'Receipt Notes:')} </span>
                         <span className="text-slate-900 dark:text-[#EEF4FC]">{inspectedBatch.receiptNotes}</span>
                       </div>
                     )}
                     {inspectedBatch.discrepancyDetails?.hasDiscrepancy && (
                       <div className="text-amber-800 dark:text-amber-300 font-bold">
-                        ملاحظة فرق / اعتراض استلام: {inspectedBatch.discrepancyDetails.note || 'تم توثيق فرق'}
+                        {t('ملاحظة فرق / اعتراض استلام:', 'Discrepancy / Objection Note:')} {inspectedBatch.discrepancyDetails.note || t('تم توثيق فرق', 'Discrepancy noted')}
                       </div>
                     )}
                     {inspectedBatch.errorMessage && (
                       <div className="text-red-700 dark:text-red-300 font-bold">
-                        سبب المشكلة / التعذر: {inspectedBatch.errorMessage}
+                        {t('سبب المشكلة / التعذر:', 'Error / Failure Reason:')} {inspectedBatch.errorMessage}
                       </div>
                     )}
                   </div>
@@ -1844,7 +1887,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
 
                 {/* Document Line Items Table */}
                 <UnifiedDataTable<SyncDispatchBatchDocSummaryItem>
-                  title={`تفاصيل المستندات داخل الدفعة (${inspectedDocs.length})`}
+                  title={t(`تفاصيل المستندات داخل الدفعة (${inspectedDocs.length})`, `Documents in Batch (${inspectedDocs.length})`)}
                   columns={batchDocColumns}
                   data={inspectedDocs}
                   rowKey={(d, idx) => d.operationId || String(idx)}
@@ -1857,14 +1900,14 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                 {(inspectedBatch.deviceId || inspectedBatch.receivedDeviceId || isLoadingInspectDetails || inspectedAuditTrail.length > 0) && (
                   <div className="p-2 rounded-md bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C] text-xs space-y-1.5">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="font-black text-slate-800 dark:text-[#EEF4FC]">سجل التتبع والأجهزة للدفعة</span>
+                      <span className="font-black text-slate-800 dark:text-[#EEF4FC]">{t('سجل التتبع والأجهزة للدفعة', 'Device Traceability & Audit Trail')}</span>
                       <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-slate-600 dark:text-[#97AECE]">
-                        {inspectedBatch.deviceId && <span>جهاز الإرسال: {inspectedBatch.deviceId}</span>}
-                        {inspectedBatch.receivedDeviceId && <span>جهاز الاستلام: {inspectedBatch.receivedDeviceId}</span>}
+                        {inspectedBatch.deviceId && <span>{t('جهاز الإرسال:', 'Sender Device:')} {inspectedBatch.deviceId}</span>}
+                        {inspectedBatch.receivedDeviceId && <span>{t('جهاز الاستلام:', 'Receiver Device:')} {inspectedBatch.receivedDeviceId}</span>}
                       </div>
                     </div>
                     {isLoadingInspectDetails ? (
-                      <div className="text-[11px] text-slate-500 dark:text-[#8DA2C5]">جاري تحميل سجل التدقيق...</div>
+                      <div className="text-[11px] text-slate-500 dark:text-[#8DA2C5]">{t('جاري تحميل سجل التدقيق...', 'Loading audit log...')}</div>
                     ) : inspectedAuditTrail.length > 0 ? (
                       <div className="divide-y divide-slate-200/70 dark:divide-[#21375C] rounded border border-slate-200 dark:border-[#21375C] bg-white dark:bg-[#0E1C36]">
                         {inspectedAuditTrail.map((entry) => (
@@ -1874,7 +1917,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                               {entry.details ? <span className="font-normal text-slate-500 dark:text-[#97AECE]"> — {entry.details}</span> : null}
                             </div>
                             <div className="text-slate-500 dark:text-[#8DA2C5] font-mono">
-                              {entry.userName} · {formatDateTimeAr(entry.timestamp)}
+                              {entry.userName} · {formatDateTimeLocale(entry.timestamp)}
                             </div>
                           </div>
                         ))}
@@ -1887,13 +1930,16 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                 {canConfirmBatch(inspectedBatch) && (
                   <div className="p-2.5 rounded-lg bg-blue-50/70 dark:bg-[#132544] border border-blue-200 dark:border-[#2C4775] space-y-2">
                     <div className="text-xs font-black text-blue-950 dark:text-[#EEF4FC]">
-                      اعتماد استلام الدفعة إدارياً (يتم التوثيق وتأكيد الاستلام يدوياً دون تكرار أي قيد مالي أو مخزني)
+                      {t(
+                        'اعتماد استلام الدفعة إدارياً (يتم التوثيق وتأكيد الاستلام يدوياً دون تكرار أي قيد مالي أو مخزني)',
+                        'Approve batch receipt administratively (manual verification without duplicate financial or stock entries)'
+                      )}
                     </div>
                     <input
                       type="text"
                       value={receiptNotesInput}
                       onChange={(e) => setReceiptNotesInput(e.target.value)}
-                      placeholder="ملاحظات الاستلام والتدقيق (اختياري)..."
+                      placeholder={t('ملاحظات الاستلام والتدقيق (اختياري)...', 'Receipt and audit notes (optional)...')}
                       className="w-full h-8 px-2.5 rounded-md border border-slate-300 dark:border-[#2C4775] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC]"
                     />
 
@@ -1904,7 +1950,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                         onChange={(e) => setHasDiscrepancyInput(e.target.checked)}
                         className="rounded border-slate-300"
                       />
-                      <span>توثيق اعتراض أو فرق جردي/نقدي مع الاستلام</span>
+                      <span>{t('توثيق اعتراض أو فرق جردي/نقدي مع الاستلام', 'Record discrepancy or cash/stock objection upon receipt')}</span>
                     </label>
 
                     {hasDiscrepancyInput && (
@@ -1912,7 +1958,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                         type="text"
                         value={discrepancyNoteInput}
                         onChange={(e) => setDiscrepancyNoteInput(e.target.value)}
-                        placeholder="تفاصيل الفرق أو الاعتراض الموثق..."
+                        placeholder={t('تفاصيل الفرق أو الاعتراض الموثق...', 'Details of discrepancy or objection...')}
                         className="w-full h-8 px-2.5 rounded-md border border-amber-300 dark:border-amber-700 bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC]"
                       />
                     )}
@@ -1920,13 +1966,13 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                     {showFailReasonBox && (
                       <div className="space-y-1.5 p-2 rounded-md bg-white dark:bg-[#0E1C36] border border-red-200 dark:border-red-800">
                         <label className="block text-xs font-bold text-red-800 dark:text-red-300">
-                          سبب تعذر الاستلام / الرفض:
+                          {t('سبب تعذر الاستلام / الرفض:', 'Failure / Rejection Reason:')}
                         </label>
                         <input
                           type="text"
                           value={failReasonInput}
                           onChange={(e) => setFailReasonInput(e.target.value)}
-                          placeholder="مثال: نقص مستندات أو فرق عهدة..."
+                          placeholder={t('مثال: نقص مستندات أو فرق عهدة...', 'Example: Missing documents or custody discrepancy...')}
                           className="w-full h-8 px-2.5 rounded-md border border-red-300 dark:border-red-700 bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC]"
                         />
                         <div className="flex items-center gap-1.5">
@@ -1936,14 +1982,14 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                             onClick={handleFailInspectedBatch}
                             className="h-8 px-3 rounded-md bg-red-600 hover:bg-red-700 text-white text-xs font-bold cursor-pointer disabled:opacity-50"
                           >
-                            حفظ حالة «تعذر الاستلام»
+                            {t('حفظ حالة «تعذر الاستلام»', 'Save «Receipt Failed» Status')}
                           </button>
                           <button
                             type="button"
                             onClick={() => setShowFailReasonBox(false)}
                             className="h-8 px-2.5 rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-[#132544] dark:text-[#EEF4FC] text-slate-700 text-xs font-bold cursor-pointer"
                           >
-                            إلغاء
+                            {t('إلغاء', 'Cancel')}
                           </button>
                         </div>
                       </div>
@@ -1958,7 +2004,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                           className="h-8 px-3 rounded-md bg-white dark:bg-[#0E1C36] border border-red-300 dark:border-red-700 text-red-800 dark:text-red-300 hover:bg-red-50 text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                         >
                           <XCircle className="w-4 h-4" />
-                          <span>رفض / تعذر الاستلام</span>
+                          <span>{t('رفض / تعذر الاستلام', 'Reject / Receipt Failed')}</span>
                         </button>
                       )}
                       <button
@@ -1968,7 +2014,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
                         className="h-8 px-3 rounded-md bg-blue-950 hover:bg-blue-900 text-white text-xs font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                       >
                         <ShieldCheck className="w-4 h-4" />
-                        <span>{batchActionLoading ? 'جاري التأكيد...' : 'تأكيد الاستلام النهائي'}</span>
+                        <span>{batchActionLoading ? t('جاري التأكيد...', 'Confirming...') : t('تأكيد الاستلام النهائي', 'Confirm Final Receipt')}</span>
                       </button>
                     </div>
                   </div>

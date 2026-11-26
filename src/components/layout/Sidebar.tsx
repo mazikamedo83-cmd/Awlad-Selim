@@ -137,7 +137,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const { hasPermission, currentUser } = useAuth();
   const { customerItemOrders = [], incomingDispatchCount = 0 } = useData();
-  const { dir } = usePreferences();
+  const { dir, t, language } = usePreferences();
   const isLtr = dir === 'ltr';
   const pendingOrdersCount = customerItemOrders.filter((o) => o.status === 'pending').length;
 
@@ -159,7 +159,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     () => [
       {
         id: 'sales',
-        title: 'المبيعات والعملاء',
+        title: t('المبيعات والعملاء', 'Sales & Customers'),
         icon: SalesInvoiceIcon,
         headerGradient: 'bg-[var(--awlad-blue-tint-50)] dark:bg-[#132544] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] border-[var(--awlad-blue-tint-100)] dark:border-[#21375C]',
         iconAccent: 'bg-white dark:bg-[#172E56] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E]',
@@ -167,67 +167,67 @@ export const Sidebar: React.FC<SidebarProps> = ({
         items: [
           {
             key: 'customer-orders',
-            label: 'طلبات العملاء والمندوبين',
+            label: t('طلبات العملاء والمندوبين', 'Customer & Rep Orders'),
             badge: pendingOrdersCount > 0 ? `${pendingOrdersCount}` : undefined,
           },
-          { key: 'sales-invoices', label: 'فواتير المبيعات' },
-          { key: 'quotes', label: 'عروض الأسعار' },
-          { key: 'new-sale', label: 'فاتورة مبيعات جديدة (+)' },
-          { key: 'customers', label: 'العملاء والأرصدة' },
-          { key: 'sales-returns', label: 'مرتجع المبيعات' },
-          { key: 'deleted-invoices', label: 'الفواتير المحذوفة والملغاة', permission: 'canViewDeletedInvoices' },
+          { key: 'sales-invoices', label: t('فواتير المبيعات', 'Sales Invoices') },
+          { key: 'quotes', label: t('عروض الأسعار', 'Price Quotes') },
+          { key: 'new-sale', label: t('فاتورة مبيعات جديدة (+)', 'New Sales Invoice (+)') },
+          { key: 'customers', label: t('العملاء والأرصدة', 'Customers & Balances') },
+          { key: 'sales-returns', label: t('مرتجع المبيعات', 'Sales Returns') },
+          { key: 'deleted-invoices', label: t('الفواتير المحذوفة والملغاة', 'Deleted & Cancelled Invoices'), permission: 'canViewDeletedInvoices' },
         ],
       },
       {
         id: 'purchases',
-        title: 'المشتريات والموردون',
+        title: t('المشتريات والموردون', 'Purchases & Suppliers'),
         icon: SuppliersTruckIcon,
         headerGradient: 'bg-[var(--awlad-blue-tint-50)] dark:bg-[#132544] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] border-[var(--awlad-blue-tint-100)] dark:border-[#21375C]',
         iconAccent: 'bg-white dark:bg-[#172E56] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E]',
         permission: ['canManagePurchases', 'canCreatePurchase'],
         items: [
-          { key: 'purchase-invoices', label: 'فواتير المشتريات' },
-          { key: 'new-purchase', label: 'فاتورة شراء جديدة (+)' },
-          { key: 'suppliers', label: 'دليل الموردين والأرصدة' },
-          { key: 'purchase-returns', label: 'مرتجع المشتريات', permission: 'canManagePurchases' },
+          { key: 'purchase-invoices', label: t('فواتير المشتريات', 'Purchase Invoices') },
+          { key: 'new-purchase', label: t('فاتورة شراء جديدة (+)', 'New Purchase Invoice (+)') },
+          { key: 'suppliers', label: t('دليل الموردين والأرصدة', 'Suppliers & Balances') },
+          { key: 'purchase-returns', label: t('مرتجع المشتريات', 'Purchase Returns'), permission: 'canManagePurchases' },
         ],
       },
       {
         id: 'inventory',
-        title: 'المخازن والمنتجات',
+        title: t('المخازن والمنتجات', 'Inventory & Products'),
         icon: WarehouseBoxesIcon,
         headerGradient: 'bg-[var(--awlad-blue-tint-50)] dark:bg-[#132544] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] border-[var(--awlad-blue-tint-100)] dark:border-[#21375C]',
         iconAccent: 'bg-white dark:bg-[#172E56] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E]',
         permission: 'canManageInventory',
         items: [
-          { key: 'products', label: 'المنتجات والأسعار' },
-          { key: 'product-categories', label: 'تصنيفات السلع' },
+          { key: 'products', label: t('المنتجات والأسعار', 'Products & Pricing') },
+          { key: 'product-categories', label: t('تصنيفات السلع', 'Product Categories') },
           {
             key: 'units-settings',
-            label: 'الوحدات ومعاملات التحويل',
+            label: t('الوحدات ومعاملات التحويل', 'Units & Conversions'),
             permission: ['canManageInventory', 'canManageSettings'],
           },
-          { key: 'abu-selim-import', label: 'استيراد الملفات' },
-          { key: 'warehouses', label: 'أرصدة المستودعات', permission: 'canManageWarehouses' },
+          { key: 'abu-selim-import', label: t('استيراد الملفات', 'Import Files') },
+          { key: 'warehouses', label: t('أرصدة المستودعات', 'Warehouse Balances'), permission: 'canManageWarehouses' },
           {
             key: 'stock-transfers-orders',
-            label: 'أوامر تحويل الأصناف',
+            label: t('أوامر تحويل الأصناف', 'Stock Transfer Orders'),
             permission: ['canCreateStockTransfer', 'canApproveStockTransfer', 'canExecuteStockTransfer', 'canManageInventory'],
           },
           {
             key: 'stock-counts',
-            label: 'جرد المخزن المعتمد',
+            label: t('جرد المخزن المعتمد', 'Approved Stock Counts'),
             permission: ['canCreateStockCount', 'canApproveStockCount', 'canManageInventory'],
           },
-          { key: 'stock-transfers', label: 'تحويل سريع بين المستودعات' },
-          { key: 'stock-adjustments', label: 'تسوية سريعة للمخزون' },
-          { key: 'damaged-stock', label: 'بضاعة تالفة ومنتهية' },
-          { key: 'stock-movements', label: 'سجل حركة الأصناف' },
+          { key: 'stock-transfers', label: t('تحويل سريع بين المستودعات', 'Quick Warehouse Transfer') },
+          { key: 'stock-adjustments', label: t('تسوية سريعة للمخزون', 'Quick Stock Adjustment') },
+          { key: 'damaged-stock', label: t('بضاعة تالفة ومنتهية', 'Damaged & Expired Stock') },
+          { key: 'stock-movements', label: t('سجل حركة الأصناف', 'Stock Movement Log') },
         ],
       },
       {
         id: 'finance',
-        title: 'الحسابات والخزائن',
+        title: t('الحسابات والخزائن', 'Finance & Cashboxes'),
         icon: SafeVaultIcon,
         headerGradient: 'bg-[var(--awlad-blue-tint-50)] dark:bg-[#132544] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] border-[var(--awlad-blue-tint-100)] dark:border-[#21375C]',
         iconAccent: 'bg-white dark:bg-[#172E56] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E]',
@@ -235,39 +235,39 @@ export const Sidebar: React.FC<SidebarProps> = ({
         items: [
           {
             key: 'customer-accounts',
-            label: 'حسابات العملاء وكشوف الحساب',
+            label: t('حسابات العملاء وكشوف الحساب', 'Customer Accounts & Statements'),
             permission: ['canManageAccounts', 'canManageCashboxes'],
           },
           {
             key: 'supplier-accounts',
-            label: 'حسابات الموردين وكشوف الحساب',
+            label: t('حسابات الموردين وكشوف الحساب', 'Supplier Accounts & Statements'),
             permission: ['canManageAccounts', 'canManageCashboxes'],
           },
-          { key: 'cashboxes', label: 'الخزائن والبنوك', permission: 'canManageCashboxes' },
-          { key: 'cashbox-transfer', label: 'تحويل بين الخزائن', permission: 'canManageCashboxes' },
-          { key: 'expenses', label: 'المصروفات والإيرادات', permission: 'canManageCashboxes' },
+          { key: 'cashboxes', label: t('الخزائن والبنوك', 'Cashboxes & Banks'), permission: 'canManageCashboxes' },
+          { key: 'cashbox-transfer', label: t('تحويل بين الخزائن', 'Cashbox Transfer'), permission: 'canManageCashboxes' },
+          { key: 'expenses', label: t('المصروفات والإيرادات', 'Expenses & Revenues'), permission: 'canManageCashboxes' },
           {
             key: 'personal-accounts',
-            label: 'الحسابات الشخصية للملاك',
+            label: t('الحسابات الشخصية للملاك', 'Owners Personal Accounts'),
             permission: 'canViewPersonalAccounts',
           },
         ],
       },
       {
         id: 'cheques-inst',
-        title: 'الشيكات والأقساط',
+        title: t('الشيكات والأقساط', 'Cheques & Installments'),
         icon: ChequesIcon,
         headerGradient: 'bg-[var(--awlad-blue-tint-50)] dark:bg-[#132544] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] border-[var(--awlad-blue-tint-100)] dark:border-[#21375C]',
         iconAccent: 'bg-white dark:bg-[#172E56] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E]',
         permission: 'canManageAccounts',
         items: [
-          { key: 'cheques', label: 'الشيكات (واردة / صادرة)' },
-          { key: 'installments', label: 'إدارة وجدولة الأقساط' },
+          { key: 'cheques', label: t('الشيكات (واردة / صادرة)', 'Cheques (Incoming / Outgoing)') },
+          { key: 'installments', label: t('إدارة وجدولة الأقساط', 'Installments & Scheduling') },
         ],
       },
       {
         id: 'representatives',
-        title: 'المندوبون والتحويلات',
+        title: t('المندوبون والتحويلات', 'Representatives & Transfers'),
         icon: RepsFleetIcon,
         headerGradient: 'bg-[var(--awlad-blue-tint-50)] dark:bg-[#132544] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] border-[var(--awlad-blue-tint-100)] dark:border-[#21375C]',
         iconAccent: 'bg-white dark:bg-[#172E56] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E]',
@@ -275,88 +275,88 @@ export const Sidebar: React.FC<SidebarProps> = ({
         items: [
           {
             key: 'refresh-sync',
-            label: 'REFRESH · إرسال واستلام المندوبين',
+            label: t('REFRESH · إرسال واستلام المندوبين', 'REFRESH · Send & Receive'),
             permission: ['canManageReps', 'canManageTransfers', 'canManageSales', 'canManageAccounts', 'canApprove'],
             badge: incomingDispatchCount > 0 ? `${incomingDispatchCount}` : undefined,
           },
-          { key: 'reps', label: 'قائمة المناديب' },
+          { key: 'reps', label: t('قائمة المناديب', 'Representatives List') },
           {
             key: 'rep-transfers',
-            label: 'طلب تحويل بالنصف (المالي)',
+            label: t('طلب تحويل بالنصف (المالي)', 'Financial Transfer Requests'),
             permission: 'canManageTransfers',
           },
           {
             key: 'rep-item-transfers',
-            label: 'تحويل أصناف وعهدة (فاتورة)',
+            label: t('تحويل أصناف وعهدة (فاتورة)', 'Rep Stock & Custody Transfer'),
             permission: 'canManageTransfers',
           },
         ],
       },
       {
         id: 'employees',
-        title: 'الموظفون',
+        title: t('الموظفون', 'Employees'),
         icon: EmployeesHrIcon,
         headerGradient: 'bg-[var(--awlad-blue-tint-50)] dark:bg-[#132544] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] border-[var(--awlad-blue-tint-100)] dark:border-[#21375C]',
         iconAccent: 'bg-white dark:bg-[#172E56] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E]',
         permission: 'canManageEmployees',
         items: [
-          { key: 'employees', label: 'شؤون الموظفين' },
+          { key: 'employees', label: t('شؤون الموظفين', 'HR & Payroll') },
         ],
       },
       {
         id: 'reports',
-        title: 'التقارير المحاسبية',
+        title: t('التقارير المحاسبية', 'Accounting Reports'),
         icon: ReportsChartIcon,
         headerGradient: 'bg-[var(--awlad-blue-tint-50)] dark:bg-[#132544] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] border-[var(--awlad-blue-tint-100)] dark:border-[#21375C]',
         iconAccent: 'bg-white dark:bg-[#172E56] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E]',
         permission: 'canViewReports',
         items: [
-          { key: 'reports', label: 'جميع التقارير والأرباح' },
+          { key: 'reports', label: t('جميع التقارير والأرباح', 'All Reports & Profit') },
           {
             key: 'item-movement-report',
-            label: 'تقرير حركة الصنف المفصل',
+            label: t('تقرير حركة الصنف المفصل', 'Detailed Item Movement Report'),
             permission: ['canViewReports', 'canManageInventory'],
           },
         ],
       },
       {
         id: 'management',
-        title: 'المستخدمون والصلاحيات',
+        title: t('المستخدمون والصلاحيات', 'Users & Permissions'),
         icon: UsersShieldIcon,
         headerGradient: 'bg-[var(--awlad-blue-tint-50)] dark:bg-[#132544] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] border-[var(--awlad-blue-tint-100)] dark:border-[#21375C]',
         iconAccent: 'bg-white dark:bg-[#172E56] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E]',
         permission: 'canManageUsers',
         items: [
-          { key: 'users', label: 'إدارة المستخدمين' },
-          { key: 'audit-log', label: 'سجل العمليات (Audit)' },
+          { key: 'users', label: t('إدارة المستخدمين', 'Users Management') },
+          { key: 'audit-log', label: t('سجل العمليات (Audit)', 'Audit Log') },
         ],
       },
       {
         id: 'settings',
-        title: 'الإعدادات والنسخ الاحتياطي',
+        title: t('الإعدادات والنسخ الاحتياطي', 'Settings & Backup'),
         icon: SettingsTwinGearsIcon,
         headerGradient: 'bg-[var(--awlad-blue-tint-50)] dark:bg-[#132544] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] border-[var(--awlad-blue-tint-100)] dark:border-[#21375C]',
         iconAccent: 'bg-white dark:bg-[#172E56] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E]',
         permission: 'canManageSettings',
         items: [
-          { key: 'system-settings', label: 'إعدادات النظام والحساب', allowAllStaff: true },
-          { key: 'branches-settings', label: 'إدارة الفروع' },
-          { key: 'barcode-settings', label: 'إعدادات الباركود' },
-          { key: 'printers-settings', label: 'الطابعات المتعددة' },
-          { key: 'invoice-settings', label: 'تصميم وإعدادات الفاتورة' },
-          { key: 'storefront-manager', label: 'إدارة واجهة المتجر والعروض' },
-          { key: 'mobile-settings', label: 'إعدادات تطبيق الهاتف' },
-          { key: 'online-sync-settings', label: 'مزامنة أونلاين' },
-          { key: 'services-settings', label: 'الخدمات والتنبيهات' },
-          { key: 'server-settings', label: 'إعدادات السيرفر والاتصال' },
-          { key: 'diagnostics-settings', label: 'سجل التشخيص والأخطاء' },
-          { key: 'backup', label: 'النسخ الاحتياطي والاستعادة' },
-          { key: 'migration', label: 'سجل الترحيل و PostgreSQL' },
-          { key: 'shortcuts-settings', label: 'اختصارات لوحة المفاتيح', allowAllStaff: true },
+          { key: 'system-settings', label: t('إعدادات النظام والحساب', 'System & Account Settings'), allowAllStaff: true },
+          { key: 'branches-settings', label: t('إدارة الفروع', 'Branches Management') },
+          { key: 'barcode-settings', label: t('إعدادات الباركود', 'Barcode Settings') },
+          { key: 'printers-settings', label: t('الطابعات المتعددة', 'Multiple Printers') },
+          { key: 'invoice-settings', label: t('تصميم وإعدادات الفاتورة', 'Invoice Design & Settings') },
+          { key: 'storefront-manager', label: t('إدارة واجهة المتجر والعروض', 'Storefront & Offers Manager') },
+          { key: 'mobile-settings', label: t('إعدادات تطبيق الهاتف', 'Mobile App Settings') },
+          { key: 'online-sync-settings', label: t('مزامنة أونلاين', 'Online Sync') },
+          { key: 'services-settings', label: t('الخدمات والتنبيهات', 'Services & Alerts') },
+          { key: 'server-settings', label: t('إعدادات السيرفر والاتصال', 'Server & Connection') },
+          { key: 'diagnostics-settings', label: t('سجل التشخيص والأخطاء', 'Diagnostic & Error Logs') },
+          { key: 'backup', label: t('النسخ الاحتياطي والاستعادة', 'Backup & Restore') },
+          { key: 'migration', label: t('سجل الترحيل و PostgreSQL', 'Migration & PostgreSQL') },
+          { key: 'shortcuts-settings', label: t('اختصارات لوحة المفاتيح', 'Keyboard Shortcuts'), allowAllStaff: true },
         ],
       },
     ],
-    [pendingOrdersCount, incomingDispatchCount]
+    [pendingOrdersCount, incomingDispatchCount, language]
   );
 
   // Auto-open the section owning the current page
@@ -431,7 +431,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Vertical Sidebar: Docked push sibling on Desktop/Tablet (>=768px), Responsive sliding drawer on Mobile */}
       <aside
         id="system-sections-drawer"
-        aria-label="قائمة الأقسام الجانبية"
+        aria-label={t('قائمة الأقسام الجانبية', 'Sidebar Sections Menu')}
         aria-hidden={!isOpen}
         className={`${
           mobileDrawer
@@ -452,12 +452,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="flex items-center gap-1 sm:gap-1.5 min-w-0">
             <img
               src="/awlad-selim-logo.png"
-              alt="أولاد سليم"
+              alt={t('أولاد سليم', 'Awlad Selim')}
               className="h-6 w-6 object-contain bg-white no-dark-surface rounded-md p-0.5 shrink-0"
             />
-            <div className="text-right min-w-0">
+            <div className="text-start min-w-0">
               <span className="block font-black text-[11px] sm:text-xs text-white tracking-wide truncate">
-                أقسام النظام
+                {t('أقسام النظام', 'System Sections')}
               </span>
             </div>
           </div>
@@ -467,11 +467,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
             data-testid="sidebar-close-btn"
             onClick={onClose}
             className="h-7 px-1.5 sm:px-2 flex items-center justify-center gap-1 rounded-md bg-white/15 hover:bg-white/25 text-white text-[10.5px] sm:text-[11px] font-bold transition-colors cursor-pointer shrink-0"
-            aria-label="إغلاق قائمة الأقسام"
-            title="إغلاق القائمة الجانبية"
+            aria-label={t('إغلاق قائمة الأقسام', 'Close Sections Menu')}
+            title={t('إغلاق القائمة الجانبية', 'Close Sidebar')}
           >
             <X className="w-3.5 h-3.5 shrink-0" />
-            <span className="hidden sm:inline">إغلاق</span>
+            <span className="hidden sm:inline">{t('إغلاق', 'Close')}</span>
           </button>
         </div>
 
@@ -481,7 +481,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               type="button"
               onClick={() => handleItemClick('dashboard')}
-              title="لوحة التحكم الرئيسية"
+              title={t('لوحة التحكم الرئيسية', 'Main Dashboard')}
               className={`w-9 h-9 rounded-md flex items-center justify-center border transition-colors cursor-pointer ${
                 currentPage === 'dashboard'
                   ? 'bg-[var(--awlad-royal-700)] dark:bg-[#1659C8] text-white border-[var(--awlad-royal-700)] dark:border-[#60A5FA]/40'
@@ -517,7 +517,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Expanded Sections Container */}
         <div className={`flex-1 overflow-y-auto overscroll-contain p-1 space-y-1 ${isCollapsed ? 'lg:hidden' : ''}`}>
-          {/* Quick Link: الرئيسية */}
+          {/* Quick Link: Dashboard */}
           <button
             type="button"
             onClick={() => handleItemClick('dashboard')}
@@ -531,7 +531,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <span className="w-5 h-5 rounded bg-white dark:bg-[#172E56] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E] flex items-center justify-center shrink-0">
                 <DashboardHomeIcon className="w-3.5 h-3.5" />
               </span>
-              <span className="truncate">لوحة التحكم الرئيسية</span>
+              <span className="truncate">{t('لوحة التحكم الرئيسية', 'Main Dashboard')}</span>
             </div>
             {isLtr ? (
               <ChevronRight
@@ -553,7 +553,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="rounded-lg bg-[var(--awlad-blue-tint-50)]/70 dark:bg-[#132544] border border-[var(--awlad-blue-tint-100)] dark:border-[#21375C] p-1 space-y-1">
               <p className="text-[11px] font-black text-[var(--awlad-navy-900)] dark:text-[#F3F7FC] flex items-center gap-1">
                 <Wallet className="w-3.5 h-3.5 text-[var(--awlad-royal-700)] dark:text-[#60A5FA]" />
-                <span>العمليات النقدية السريعة</span>
+                <span>{t('العمليات النقدية السريعة', 'Quick Cash Operations')}</span>
               </p>
               <div className="grid grid-cols-2 gap-1 text-[11px] font-bold">
                 <button
@@ -565,7 +565,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   className="h-6.5 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#2A436E] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] hover:border-[var(--awlad-royal-700)] dark:hover:border-[#3B82F6] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
                 >
                   <ArrowDownCircle className="w-3 h-3 text-emerald-700 dark:text-emerald-400 shrink-0" />
-                  <span>إيداع نقدي</span>
+                  <span>{t('إيداع نقدي', 'Cash Deposit')}</span>
                 </button>
                 <button
                   type="button"
@@ -576,7 +576,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   className="h-6.5 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#2A436E] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] hover:border-[var(--awlad-royal-700)] dark:hover:border-[#3B82F6] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
                 >
                   <ArrowUpCircle className="w-3 h-3 text-red-700 dark:text-red-400 shrink-0" />
-                  <span>سحب نقدي</span>
+                  <span>{t('سحب نقدي', 'Cash Withdrawal')}</span>
                 </button>
                 <button
                   type="button"
@@ -587,7 +587,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   className="h-6.5 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#2A436E] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] hover:border-[var(--awlad-royal-700)] dark:hover:border-[#3B82F6] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
                 >
                   <TrendingDown className="w-3 h-3 text-amber-700 dark:text-amber-400 shrink-0" />
-                  <span>مصروف</span>
+                  <span>{t('مصروف', 'Expense')}</span>
                 </button>
                 <button
                   type="button"
@@ -598,7 +598,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   className="h-6.5 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#2A436E] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] hover:border-[var(--awlad-royal-700)] dark:hover:border-[#3B82F6] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
                 >
                   <TrendingUp className="w-3 h-3 text-[var(--awlad-royal-700)] dark:text-[#60A5FA] shrink-0" />
-                  <span>إيداع ربحي</span>
+                  <span>{t('إيداع ربحي', 'Profit Deposit')}</span>
                 </button>
                 <button
                   type="button"
@@ -609,7 +609,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   className="col-span-2 h-6.5 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E] text-[var(--awlad-royal-700)] dark:text-[#85B8FF] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
                 >
                   <ArrowLeftRight className="w-3 h-3 shrink-0" />
-                  <span>ترحيل فوري بين الخزائن</span>
+                  <span>{t('ترحيل فوري بين الخزائن', 'Instant Cashbox Transfer')}</span>
                 </button>
               </div>
             </div>
@@ -695,7 +695,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Clean Drawer Footer */}
         <div className={`p-1.5 border-t border-slate-200 dark:border-[#21375C] bg-slate-50 dark:bg-[#0A162B] text-center shrink-0 ${isCollapsed ? 'lg:hidden' : ''}`}>
           <div className="text-[10px] text-[var(--awlad-brand-silver)] dark:text-[#849BBF] font-semibold">
-            <span>أولاد سليم للمحاسبة • v3.0.0</span>
+            <span>{t('أولاد سليم للمحاسبة • v3.0.0', 'AWLAD SELIM Accounting • v3.0.0')}</span>
           </div>
         </div>
       </aside>

@@ -25,11 +25,13 @@ import {
   Barcode,
   LayoutGrid,
   ArrowRight,
+  ArrowLeft,
   X,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
 import { usePreferences } from '../../../context/PreferencesContext';
+import { formatLocaleDate, formatLocaleDateTime, formatLocaleNumber } from '../../../i18n/translator';
 import { CustomerPriceHistoryEntry, Invoice, Product } from '../../../types';
 import { getCurrentLocationSafe, isNativeCapacitor } from '../../../services/native';
 import { resolveActiveStorefrontOffer, isZeroZeroLocation } from '../../../utils/storefront';
@@ -79,16 +81,32 @@ const CUSTOMER_ORDER_STATUS_LABELS: Record<string, string> = {
   cancelled: 'ملغى',
 };
 
-const NINE_STAGE_TIMELINE: Array<{ key: string; label: string }> = [
-  { key: 'pending', label: 'جديد' },
-  { key: 'under_review', label: 'مراجعة' },
-  { key: 'approved', label: 'معتمد' },
-  { key: 'invoiced', label: 'فوترة' },
-  { key: 'preparing', label: 'تجهيز' },
-  { key: 'out_for_delivery', label: 'توصيل' },
-  { key: 'delivered', label: 'تسليم' },
-  { key: 'collected', label: 'تحصيل' },
-  { key: 'closed', label: 'إغلاق' },
+const CUSTOMER_ORDER_STATUS_LABELS_EN: Record<string, string> = {
+  pending: 'New Order',
+  under_review: 'Under Review',
+  approved: 'Approved',
+  invoiced: 'Converted to Invoice',
+  preparing: 'Preparing',
+  rep_assigned: 'Rep Assigned',
+  out_for_delivery: 'Out for Delivery',
+  delivered: 'Delivered',
+  collected: 'Collected',
+  closed: 'Closed',
+  needs_review: 'Needs Review',
+  rejected: 'Rejected',
+  cancelled: 'Cancelled',
+};
+
+const NINE_STAGE_TIMELINE: Array<{ key: string; label: string; labelEn: string }> = [
+  { key: 'pending', label: 'جديد', labelEn: 'New' },
+  { key: 'under_review', label: 'مراجعة', labelEn: 'Review' },
+  { key: 'approved', label: 'معتمد', labelEn: 'Approved' },
+  { key: 'invoiced', label: 'فوترة', labelEn: 'Invoiced' },
+  { key: 'preparing', label: 'تجهيز', labelEn: 'Preparing' },
+  { key: 'out_for_delivery', label: 'توصيل', labelEn: 'Delivery' },
+  { key: 'delivered', label: 'تسليم', labelEn: 'Delivered' },
+  { key: 'collected', label: 'تحصيل', labelEn: 'Collected' },
+  { key: 'closed', label: 'إغلاق', labelEn: 'Closed' },
 ];
 
 const createClientIdempotencyKey = () =>
@@ -105,7 +123,8 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
 }) => {
   const { currentUser, customerProfile, mobileConfig, logout } = useAuth();
   const data = useData();
-  const { t } = usePreferences();
+  const { t, dir, isRtl } = usePreferences();
+  const BackArrow = isRtl ? ArrowRight : ArrowLeft;
   const customer = data.customers[0] || customerProfile || null;
   const allowPriceView = mobileConfig.allowCustomerPriceView !== false;
   const isNative = isNativeCapacitor();
@@ -293,7 +312,10 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
     originRect?: DOMRect | null
   ) => {
     if (!isProductAvailable(prod)) {
-      setFeedback({ type: 'error', text: `الصنف (${prod.name}) غير متوفر بالمخزون حالياً.` });
+      setFeedback({
+        type: 'error',
+        text: t(`الصنف (${prod.name}) غير متوفر بالمخزون حالياً.`, `Product (${prod.name}) is currently out of stock.`),
+      });
       return;
     }
     const unitName = forcedUnitName || selectedUnitsByProd[prod.id] || prod.baseUnit;
@@ -329,7 +351,13 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
       ];
     });
     triggerFlyDot(originRect);
-    setFeedback({ type: 'success', text: `تمت إضافة (${prod.name} — ${safeQty} ${unitMeta.name}) إلى السلة` });
+    setFeedback({
+      type: 'success',
+      text: t(
+        `تمت إضافة (${prod.name} — ${safeQty} ${unitMeta.name}) إلى السلة`,
+        `Added (${prod.name} — ${safeQty} ${unitMeta.name}) to cart`
+      ),
+    });
     window.setTimeout(() => setFeedback(null), 2000);
   };
 
@@ -425,9 +453,9 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
         setCheckoutLat(res.latitude);
         setCheckoutLng(res.longitude);
       }
-      setFeedback({ type: 'success', text: 'تم تحديد الموقع الجغرافي (GPS) بنجاح' });
+      setFeedback({ type: 'success', text: t('تم تحديد الموقع الجغرافي (GPS) بنجاح', 'GPS location captured successfully') });
     } else {
-      setFeedback({ type: 'error', text: res.error || 'تعذر تحديد الموقع الجغرافي' });
+      setFeedback({ type: 'error', text: res.error || t('تعذر تحديد الموقع الجغرافي', 'Failed to capture GPS location') });
     }
   };
 
@@ -439,7 +467,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
     setFeedback(null);
     const res = await data.createCustomerItemOrder({
       customerId: customer?.id || '',
-      customerName: customer?.name || currentUser?.fullName || 'عميل',
+      customerName: customer?.name || currentUser?.fullName || t('عميل', 'Customer'),
       customerPhone: checkoutPhone.trim() || customer?.phone,
       shopName: checkoutShopName.trim() || customer?.shopName || customer?.name,
       deliveryAddress: checkoutAddress.trim() || customer?.address,
@@ -453,7 +481,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
         unitPrice: it.unitPrice ?? undefined,
         quantity: it.quantity,
       })),
-      notes: orderNotes.trim() || 'طلب أصناف من تطبيق الموبايل',
+      notes: orderNotes.trim() || t('طلب أصناف من تطبيق الموبايل', 'Item order from mobile app'),
       idempotencyKey: idempotencyKeyRef.current,
     });
     setIsSubmitting(false);
@@ -464,7 +492,10 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
       rotateIdempotencyKey();
       setFeedback({
         type: 'warning',
-        text: `تم حفظ الطلب محلياً في طابور المزامنة (${res.order?.requestNumber || ''}) وسيتم إرساله تلقائياً فور عودة الاتصال.`,
+        text: t(
+          `تم حفظ الطلب محلياً في طابور المزامنة (${res.order?.requestNumber || ''}) وسيتم إرساله تلقائياً فور عودة الاتصال.`,
+          `Order saved locally in sync queue (${res.order?.requestNumber || ''}) and will be sent automatically once online.`
+        ),
       });
       onTabChange('orders');
     } else if (res.success) {
@@ -473,11 +504,14 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
       rotateIdempotencyKey();
       setFeedback({
         type: 'success',
-        text: `تم إرسال الطلب رقم ${res.order?.requestNumber || ''} بنجاح وسيتم مراجعته من الإدارة.`,
+        text: t(
+          `تم إرسال الطلب رقم ${res.order?.requestNumber || ''} بنجاح وسيتم مراجعته من الإدارة.`,
+          `Order #${res.order?.requestNumber || ''} sent successfully and will be reviewed by management.`
+        ),
       });
       onTabChange('orders');
     } else {
-      setFeedback({ type: 'error', text: res.error || 'تعذر إرسال الطلب حالياً' });
+      setFeedback({ type: 'error', text: res.error || t('تعذر إرسال الطلب حالياً', 'Unable to submit order right now') });
     }
   };
 
@@ -502,12 +536,15 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
       .filter(Boolean) as CustomerCartItem[];
 
     if (!mapped.length) {
-      setFeedback({ type: 'error', text: 'الأصناف في هذا الطلب لم تعد متاحة حالياً.' });
+      setFeedback({ type: 'error', text: t('الأصناف في هذا الطلب لم تعد متاحة حالياً.', 'Items in this order are no longer available.') });
       return;
     }
     rotateIdempotencyKey();
     setCartItems(mapped);
-    setFeedback({ type: 'success', text: 'تم نسخ أصناف الطلب إلى السلة — يمكنك تعديل الكميات والإرسال.' });
+    setFeedback({
+      type: 'success',
+      text: t('تم نسخ أصناف الطلب إلى السلة — يمكنك تعديل الكميات والإرسال.', 'Order items copied to cart — you can adjust quantities and submit.'),
+    });
     onTabChange('cart');
   };
 
@@ -540,7 +577,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
       : undefined;
 
     exportHtmlToPdf({
-      title: 'فاتورة مبيعات',
+      title: t('فاتورة مبيعات', 'Sales Invoice'),
       companyName: data.settings.companyName,
       companySubtitle: data.settings.companySubtitle,
       address: data.settings.address,
@@ -553,12 +590,20 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
       docNumber: inv.invoiceNumber,
       dateRangeText: inv.date,
       meta: [
-        { label: 'العميل', value: customer?.name || inv.customerName || '-' },
-        { label: 'طريقة السداد', value: inv.paymentType === 'cash' ? 'نقدي' : inv.paymentType === 'credit' ? 'آجل' : 'سداد جزئي' },
+        { label: t('العميل', 'Customer'), value: customer?.name || inv.customerName || '-' },
+        {
+          label: t('طريقة السداد', 'Payment Method'),
+          value:
+            inv.paymentType === 'cash'
+              ? t('نقدي', 'Cash')
+              : inv.paymentType === 'credit'
+              ? t('آجل', 'Credit')
+              : t('سداد جزئي', 'Partial Payment'),
+        },
       ],
       tableHeaders: allowPriceView
-        ? ['م', 'الصنف', 'الوحدة', 'الكمية', 'السعر', 'الإجمالي']
-        : ['م', 'الصنف', 'الوحدة', 'الكمية'],
+        ? [t('م', '#'), t('الصنف', 'Product'), t('الوحدة', 'Unit'), t('الكمية', 'Qty'), t('السعر', 'Price'), t('الإجمالي', 'Total')]
+        : [t('م', '#'), t('الصنف', 'Product'), t('الوحدة', 'Unit'), t('الكمية', 'Qty')],
       tableRows: (inv.items || []).map((it, idx) =>
         allowPriceView
           ? [idx + 1, it.productName, it.unit, it.quantity, it.unitPrice.toFixed(2), it.total.toFixed(2)]
@@ -566,9 +611,9 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
       ),
       summaryPairs: allowPriceView
         ? [
-            { label: 'الصافي الإجمالي', value: `${inv.grandTotal.toFixed(2)} ${data.settings.currency}`, highlight: true },
-            { label: 'المدفوع', value: `${inv.paidAmount.toFixed(2)} ${data.settings.currency}` },
-            { label: 'المتبقي', value: `${inv.remainingAmount.toFixed(2)} ${data.settings.currency}` },
+            { label: t('الصافي الإجمالي', 'Net Total'), value: `${inv.grandTotal.toFixed(2)} ${data.settings.currency}`, highlight: true },
+            { label: t('المدفوع', 'Paid'), value: `${inv.paidAmount.toFixed(2)} ${data.settings.currency}` },
+            { label: t('المتبقي', 'Remaining'), value: `${inv.remainingAmount.toFixed(2)} ${data.settings.currency}` },
           ]
         : [],
       notes: inv.notes,
@@ -578,10 +623,10 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
   const exportStatementExcel = () => {
     const entries = data.customerStatement?.entries || [];
     exportToExcel(
-      `كشف_حساب_${customer?.name || 'العميل'}`,
+      `${t('كشف_حساب', 'Account_Statement')}_${customer?.name || t('العميل', 'Customer')}`,
       allowPriceView
-        ? ['التاريخ', 'رقم المستند', 'البيان', 'مدين', 'دائن', 'الرصيد']
-        : ['التاريخ', 'رقم المستند', 'البيان'],
+        ? [t('التاريخ', 'Date'), t('رقم المستند', 'Doc #'), t('البيان', 'Description'), t('مدين', 'Debit'), t('دائن', 'Credit'), t('الرصيد', 'Balance')]
+        : [t('التاريخ', 'Date'), t('رقم المستند', 'Doc #'), t('البيان', 'Description')],
       entries.map((row) =>
         allowPriceView
           ? [row.date, row.docNumber, row.description, row.debit ?? 0, row.credit ?? 0, row.runningBalance ?? 0]
@@ -592,11 +637,14 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
 
   if (mobileConfig.enableCustomerApp === false) {
     return (
-      <div className="bg-white dark:bg-[#0E1C36] rounded-lg border border-amber-200 dark:border-amber-800/60 p-3.5 text-center space-y-2">
+      <div dir={dir} className="bg-white dark:bg-[#0E1C36] rounded-lg border border-amber-200 dark:border-amber-800/60 p-3.5 text-center space-y-2">
         <ShieldAlert className="w-10 h-10 text-amber-600 dark:text-amber-400 mx-auto" />
-        <h3 className="text-sm font-black text-slate-900 dark:text-[#F3F7FC]">بوابة العملاء متوقفة مؤقتاً</h3>
+        <h3 className="text-sm font-black text-slate-900 dark:text-[#F3F7FC]">{t('بوابة العملاء متوقفة مؤقتاً', 'Customer Portal Temporarily Paused')}</h3>
         <p className="text-xs text-slate-600 dark:text-[#A9BCD9] leading-relaxed">
-          تم إيقاف استقبال طلبات العملاء عبر تطبيق الموبايل مؤقتاً من إعدادات الإدارة. يرجى التواصل مع مؤسسة أولاد سليم.
+          {t(
+            'تم إيقاف استقبال طلبات العملاء عبر تطبيق الموبايل مؤقتاً من إعدادات الإدارة. يرجى التواصل مع مؤسسة أولاد سليم.',
+            'Customer mobile app orders are temporarily paused by management settings. Please contact AWLAD SELIM.'
+          )}
         </p>
         <button
           type="button"
@@ -604,7 +652,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
           className="h-8 px-3.5 rounded-md bg-[#003589] hover:bg-[#011E58] dark:bg-[#1659C8] dark:hover:bg-[#1F6BE6] text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
         >
           <RefreshCw className="w-3.5 h-3.5" />
-          <span>إعادة التحقق</span>
+          <span>{t('إعادة التحقق', 'Recheck')}</span>
         </button>
       </div>
     );
@@ -625,16 +673,16 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
         className="relative bg-white dark:bg-[#0E1C36] rounded-lg border border-slate-200 dark:border-[#21375C] p-1.5 flex flex-col justify-between gap-1"
       >
         {promo.hasPromo && (
-          <div className="absolute top-1.5 right-1.5 z-10 bg-[#C81E1E] text-white text-[10px] font-black px-1.5 py-0.5 rounded">
-            {promo.badgeText || 'عرض عشانك'}
+          <div className="absolute top-1.5 start-1.5 z-10 bg-[#C81E1E] text-white text-[10px] font-black px-1.5 py-0.5 rounded">
+            {promo.badgeText || t('عرض عشانك', 'Special Offer')}
           </div>
         )}
 
         <button
           type="button"
           onClick={() => data.toggleCustomerFavorite(prod.id)}
-          aria-label={isFav ? 'إزالة من المفضلة' : 'إضافة للمفضلة'}
-          className={`absolute top-1.5 left-1.5 z-10 w-7 h-7 rounded-md flex items-center justify-center border cursor-pointer ${
+          aria-label={isFav ? t('إزالة من المفضلة', 'Remove from favorites') : t('إضافة للمفضلة', 'Add to favorites')}
+          className={`absolute top-1.5 end-1.5 z-10 w-7 h-7 rounded-md flex items-center justify-center border cursor-pointer ${
             isFav
               ? 'bg-red-50 dark:bg-red-950/60 border-red-200 dark:border-red-800 text-[#C81E1E]'
               : 'bg-white/90 dark:bg-[#132544]/95 border-slate-200 dark:border-[#2A436E] text-slate-400'
@@ -672,23 +720,23 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                   {activeUnit}
                 </span>
               )}
-              {!available && <span className="text-[10px] font-bold text-red-600 dark:text-red-400">غير متاح</span>}
+              {!available && <span className="text-[10px] font-bold text-red-600 dark:text-red-400">{t('غير متاح', 'Unavailable')}</span>}
             </div>
           </div>
 
           {allowPriceView ? (
             <div className="pt-0.5 flex items-baseline flex-wrap gap-1 awlad-tabular">
               <strong className="text-xs sm:text-sm font-black text-[#011E58] dark:text-[#85B8FF]">
-                {effectivePrice !== null ? `${effectivePrice.toLocaleString()} ${data.settings.currency}` : 'حسب التسعير'}
+                {effectivePrice !== null ? `${formatLocaleNumber(effectivePrice)} ${data.settings.currency}` : t('حسب التسعير', 'Per pricing')}
               </strong>
               {promo.hasPromo && (
                 <span className="text-[10px] font-bold text-slate-400 line-through">
-                  {promo.regularPrice.toLocaleString()}
+                  {formatLocaleNumber(promo.regularPrice)}
                 </span>
               )}
             </div>
           ) : (
-            <p className="text-[10px] text-slate-400 pt-0.5">السعر عند الاعتماد</p>
+            <p className="text-[10px] text-slate-400 pt-0.5">{t('السعر عند الاعتماد', 'Price upon approval')}</p>
           )}
 
           {cartEntry ? (
@@ -697,18 +745,18 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                 type="button"
                 onClick={() => handleUpdateCartByKey(prod.id, activeUnit, 1)}
                 className="w-7 h-7 rounded-md bg-[#003589] dark:bg-[#1659C8] dark:hover:bg-[#1F6BE6] text-white flex items-center justify-center cursor-pointer"
-                aria-label="زيادة الكمية"
+                aria-label={t('زيادة الكمية', 'Increase quantity')}
               >
                 <Plus className="w-3.5 h-3.5" />
               </button>
               <span className="text-xs font-black text-[#011E58] dark:text-[#85B8FF] awlad-tabular">
-                {cartEntry.quantity}
+                {formatLocaleNumber(cartEntry.quantity)}
               </span>
               <button
                 type="button"
                 onClick={() => handleUpdateCartByKey(prod.id, activeUnit, -1)}
                 className="w-7 h-7 rounded-md bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#2A436E] text-slate-700 dark:text-[#DCE6F5] flex items-center justify-center cursor-pointer"
-                aria-label="تقليل الكمية"
+                aria-label={t('تقليل الكمية', 'Decrease quantity')}
               >
                 <Minus className="w-3.5 h-3.5" />
               </button>
@@ -735,7 +783,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
   const showStoreSearchBar = ['home', 'categories', 'offers', 'favorites'].includes(activeTab);
 
   return (
-    <div className="space-y-2">
+    <div dir={dir} className="space-y-2">
       {/* Reduced-motion-safe fly-to-cart visual dot */}
       {flyDot && (
         <div
@@ -750,20 +798,20 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
       {showStoreSearchBar && (
         <div className="flex items-center gap-1.5 bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#21375C] rounded-lg p-1">
           <div className="relative flex-1">
-            <Search className="w-3.5 h-3.5 text-slate-400 dark:text-[#849BBF] absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <Search className="w-3.5 h-3.5 text-slate-400 dark:text-[#849BBF] absolute start-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t('بتدور علي منتج معين؟', 'Looking for a product?')}
-              className="w-full h-8 pr-8 pl-7 rounded-md bg-slate-50 dark:bg-[#10203D] border border-transparent dark:border-[#2A436E] text-xs font-bold text-slate-900 dark:text-[#EEF4FC] outline-none focus:ring-2 focus:ring-[#003589]/30 dark:focus:ring-[#3B82F6]/30"
+              className="w-full h-8 ps-8 pe-7 rounded-md bg-slate-50 dark:bg-[#10203D] border border-transparent dark:border-[#2A436E] text-xs font-bold text-slate-900 dark:text-[#EEF4FC] outline-none focus:ring-2 focus:ring-[#003589]/30 dark:focus:ring-[#3B82F6]/30"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute left-1.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 dark:hover:text-[#DCE6F5] cursor-pointer"
-                aria-label="مسح البحث"
+                className="absolute end-1.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-700 dark:hover:text-[#DCE6F5] cursor-pointer"
+                aria-label={t('مسح البحث', 'Clear search')}
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -773,8 +821,8 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
             type="button"
             onClick={() => setIsBarcodeScannerOpen(true)}
             className="h-8 min-w-[34px] px-2 rounded-md bg-[#EEF3FA] dark:bg-[#132544] border border-[#DCE6F5] dark:border-[#2A436E] text-[#003589] dark:text-[#85B8FF] flex items-center justify-center cursor-pointer shrink-0"
-            title="بحث بالباركود"
-            aria-label="بحث بالباركود"
+            title={t('بحث بالباركود', 'Search by barcode')}
+            aria-label={t('بحث بالباركود', 'Search by barcode')}
           >
             <Barcode className="w-4 h-4" />
           </button>
@@ -805,19 +853,19 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
         <div className="space-y-2">
           <div className="flex items-center justify-between px-0.5 text-xs">
             <h2 className="font-black text-slate-900 dark:text-[#F3F7FC]">
-              نتائج البحث ({filteredProducts.length})
+              {t('نتائج البحث', 'Search Results')} ({formatLocaleNumber(filteredProducts.length)})
             </h2>
             <button
               type="button"
               onClick={() => setSearchQuery('')}
               className="font-bold text-[#003589] dark:text-[#85B8FF] cursor-pointer"
             >
-              إلغاء البحث
+              {t('إلغاء البحث', 'Clear Search')}
             </button>
           </div>
           {filteredProducts.length === 0 ? (
             <div className="bg-white dark:bg-[#0E1C36] rounded-lg border border-slate-200 dark:border-[#21375C] p-3 text-center text-xs text-slate-500 dark:text-[#97AECE]">
-              لا توجد أصناف مطابقة لبحثك "{searchQuery}".
+              {t(`لا توجد أصناف مطابقة لبحثك "${searchQuery}".`, `No products match "${searchQuery}".`)}
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
@@ -869,9 +917,9 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                       setSelectedCategory('all');
                       setSelectedDisplayProductIds(null);
                     }}
-                    className="text-xs font-black text-[#003589] dark:text-[#85B8FF] cursor-pointer"
+                      className="text-xs font-black text-[#003589] dark:text-[#85B8FF] cursor-pointer"
                   >
-                    عرض جميع الأصناف
+                    {t('عرض جميع الأصناف', 'Show All Products')}
                   </button>
                 )}
               </div>
@@ -890,7 +938,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                   }`}
                 >
                   <LayoutGrid className="w-5 h-5" />
-                  <span className="text-[10px] font-black">الكل ({activeProducts.length})</span>
+                  <span className="text-[10px] font-black">{t('الكل', 'All')} ({formatLocaleNumber(activeProducts.length)})</span>
                 </button>
 
                 {imageCategoryTiles.map((tile) => {
@@ -935,11 +983,11 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
 
           <div className="space-y-1.5">
             <h3 className="text-xs font-black text-slate-600 dark:text-[#A9BCD9] px-0.5">
-              {selectedCategory === 'all' ? 'جميع المنتجات' : selectedCategory} ({filteredProducts.length})
+              {selectedCategory === 'all' ? t('جميع المنتجات', 'All Products') : selectedCategory} ({formatLocaleNumber(filteredProducts.length)})
             </h3>
             {filteredProducts.length === 0 ? (
               <div className="bg-white dark:bg-[#0E1C36] rounded-lg border border-slate-200 dark:border-[#21375C] p-3 text-center text-xs text-slate-500 dark:text-[#97AECE]">
-                لا توجد أصناف مطابقة في هذا القسم.
+                {t('لا توجد أصناف مطابقة في هذا القسم.', 'No matching products in this category.')}
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
@@ -966,13 +1014,13 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
           }).length === 0 ? (
             <div className="bg-white dark:bg-[#0E1C36] rounded-lg border border-slate-200 dark:border-[#21375C] p-3 text-center space-y-2 text-xs text-slate-500 dark:text-[#97AECE]">
               <Tag className="w-7 h-7 text-slate-300 dark:text-[#6E89B2] mx-auto" />
-              <p className="font-bold">لا توجد عروض نشطة حالياً — يمكنك تصفح الأقسام والمنتجات.</p>
+              <p className="font-bold">{t('لا توجد عروض نشطة حالياً — يمكنك تصفح الأقسام والمنتجات.', 'No active offers right now — browse categories and products.')}</p>
               <button
                 type="button"
                 onClick={() => onTabChange('categories')}
                 className="h-8 px-3 rounded-md bg-[#003589] dark:bg-[#1659C8] dark:hover:bg-[#1F6BE6] text-white font-bold cursor-pointer"
               >
-                تصفح الأقسام
+                {t('تصفح الأقسام', 'Browse Categories')}
               </button>
             </div>
           ) : (
@@ -1001,13 +1049,13 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
           {favoriteProducts.length === 0 ? (
             <div className="bg-white dark:bg-[#0E1C36] rounded-lg border border-slate-200 dark:border-[#21375C] p-3 text-center space-y-2 text-xs text-slate-500 dark:text-[#97AECE]">
               <Heart className="w-7 h-7 text-slate-300 dark:text-[#6E89B2] mx-auto" />
-              <p className="font-bold">لم تضف أي أصناف إلى المفضلة بعد.</p>
+              <p className="font-bold">{t('لم تضف أي أصناف إلى المفضلة بعد.', 'You have not added any products to favorites yet.')}</p>
               <button
                 type="button"
                 onClick={() => onTabChange('home')}
                 className="h-8 px-3 rounded-md bg-[#003589] dark:bg-[#1659C8] dark:hover:bg-[#1F6BE6] text-white font-bold cursor-pointer"
               >
-                استكشاف المنتجات
+                {t('استكشاف المنتجات', 'Explore Products')}
               </button>
             </div>
           ) : (
@@ -1064,20 +1112,22 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
               onClick={() => onTabChange('home')}
               className="text-xs font-black text-[#003589] dark:text-[#85B8FF] flex items-center gap-1 cursor-pointer"
             >
-              <ArrowRight className="w-3.5 h-3.5" />
-              <span>متابعة التسوق</span>
+              <BackArrow className="w-3.5 h-3.5" />
+              <span>{t('متابعة التسوق', 'Continue Shopping')}</span>
             </button>
-            <span className="text-xs font-bold text-slate-600 dark:text-[#A9BCD9] awlad-tabular">{cartTotalQty} وحدة · {cartItems.length} صنف</span>
+            <span className="text-xs font-bold text-slate-600 dark:text-[#A9BCD9] awlad-tabular">
+              {formatLocaleNumber(cartTotalQty)} {t('وحدة', 'unit')} · {formatLocaleNumber(cartItems.length)} {t('صنف', 'item')}
+            </span>
           </div>
 
           <div className="bg-white dark:bg-[#0E1C36] rounded-lg border border-slate-200 dark:border-[#21375C] overflow-hidden">
             <div className="px-2.5 py-1.5 border-b border-slate-100 dark:border-[#1B2F52] flex items-center justify-between">
               <h3 className="text-xs font-black text-slate-900 dark:text-[#F3F7FC]">
-                محتويات سلة الطلب ({cartItems.length} صنف)
+                {t('محتويات سلة الطلب', 'Cart Contents')} ({formatLocaleNumber(cartItems.length)} {t('صنف', 'items')})
               </h3>
               {allowPriceView && cartEstimatedTotal > 0 && (
                 <span className="text-xs font-mono font-black text-[#011E58] dark:text-[#85B8FF] awlad-tabular">
-                  {cartEstimatedTotal.toLocaleString()} {data.settings.currency}
+                  {formatLocaleNumber(cartEstimatedTotal)} {data.settings.currency}
                 </span>
               )}
             </div>
@@ -1085,25 +1135,25 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
             {cartItems.length === 0 ? (
               <div className="py-5 text-center space-y-2 text-xs text-slate-500 dark:text-[#97AECE]">
                 <ShoppingCart className="w-7 h-7 text-slate-300 dark:text-[#6E89B2] mx-auto" />
-                <p>السلة فارغة حالياً.</p>
+                <p>{t('السلة فارغة حالياً.', 'Your cart is currently empty.')}</p>
                 <button
                   type="button"
                   onClick={() => onTabChange('categories')}
                   className="h-8 px-3.5 rounded-md bg-[#003589] dark:bg-[#1659C8] dark:hover:bg-[#1F6BE6] text-white font-bold cursor-pointer"
                 >
-                  اختر الأصناف من المتجر
+                  {t('اختر الأصناف من المتجر', 'Browse Store Products')}
                 </button>
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-right text-xs border-collapse">
+                <table className="w-full text-start text-xs border-collapse">
                   <thead className="bg-slate-50 dark:bg-[#172E56] text-[11px] font-black text-slate-600 dark:text-[#DCE6F5] border-b border-slate-200 dark:border-[#2A436E]">
                     <tr>
-                      <th className="px-2 py-1.5">الصنف</th>
-                      <th className="px-2 py-1.5">الوحدة</th>
-                      <th className="px-2 py-1.5 text-center">الكمية</th>
-                      {allowPriceView && <th className="px-2 py-1.5 text-center">الإجمالي</th>}
-                      <th className="px-2 py-1.5 text-center">حذف</th>
+                      <th className="px-2 py-1.5">{t('الصنف', 'Product')}</th>
+                      <th className="px-2 py-1.5">{t('الوحدة', 'Unit')}</th>
+                      <th className="px-2 py-1.5 text-center">{t('الكمية', 'Qty')}</th>
+                      {allowPriceView && <th className="px-2 py-1.5 text-center">{t('الإجمالي', 'Total')}</th>}
+                      <th className="px-2 py-1.5 text-center">{t('حذف', 'Remove')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-[#1B2F52]">
@@ -1113,7 +1163,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                           <span className="font-black text-slate-900 dark:text-[#F3F7FC] block">{it.product.name}</span>
                           {allowPriceView && it.unitPrice ? (
                             <span className="text-[10px] font-mono text-slate-500 dark:text-[#97AECE] awlad-tabular">
-                              {it.unitPrice.toLocaleString()} {data.settings.currency}
+                              {formatLocaleNumber(it.unitPrice)} {data.settings.currency}
                             </span>
                           ) : null}
                         </td>
@@ -1138,12 +1188,12 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                             value={it.quantity}
                             onChange={(q) => setCartQuantity(idx, q)}
                             onRemoveWhenZero={() => updateCartQuantity(idx, -it.quantity)}
-                            ariaLabel={`كمية ${it.product.name}`}
+                            ariaLabel={`${t('كمية', 'Quantity')} ${it.product.name}`}
                           />
                         </td>
                         {allowPriceView && (
                           <td className="px-2 py-1 text-center font-mono font-black text-[#011E58] dark:text-[#85B8FF] awlad-tabular whitespace-nowrap">
-                            {it.unitPrice ? `${(it.unitPrice * it.quantity).toLocaleString()}` : '-'}
+                            {it.unitPrice ? `${formatLocaleNumber(it.unitPrice * it.quantity)}` : '-'}
                           </td>
                         )}
                         <td className="px-2 py-1 text-center">
@@ -1151,7 +1201,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                             type="button"
                             onClick={() => updateCartQuantity(idx, -it.quantity)}
                             className="p-1 inline-flex items-center justify-center rounded-md text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/50 cursor-pointer"
-                            title="إزالة"
+                            title={t('إزالة', 'Remove')}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -1166,10 +1216,10 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
 
           {cartItems.length > 0 && (
             <div className="bg-white dark:bg-[#0E1C36] rounded-lg border border-slate-200 dark:border-[#21375C] p-2.5 space-y-1.5 text-xs">
-              <h4 className="font-black text-slate-900 dark:text-[#F3F7FC]">بيانات الاستلام والتوصيل</h4>
+              <h4 className="font-black text-slate-900 dark:text-[#F3F7FC]">{t('بيانات الاستلام والتوصيل', 'Delivery & Contact Details')}</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">اسم المحل / المستلم</label>
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">{t('اسم المحل / المستلم', 'Shop / Recipient Name')}</label>
                   <input
                     type="text"
                     value={checkoutShopName}
@@ -1178,18 +1228,19 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">رقم الهاتف للتواصل</label>
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">{t('رقم الهاتف للتواصل', 'Contact Phone')}</label>
                   <input
                     type="tel"
+                    dir="ltr"
                     value={checkoutPhone}
                     onChange={(e) => setCheckoutPhone(e.target.value)}
-                    className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] px-2 font-mono"
+                    className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] px-2 font-mono text-start"
                   />
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">عنوان التوصيل</label>
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">{t('عنوان التوصيل', 'Delivery Address')}</label>
                   <input
                     type="text"
                     value={checkoutAddress}
@@ -1198,12 +1249,12 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">ملاحظات للطلب</label>
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">{t('ملاحظات للطلب', 'Order Notes')}</label>
                   <input
                     type="text"
                     value={orderNotes}
                     onChange={(e) => setOrderNotes(e.target.value)}
-                    placeholder="مواعيد استلام مفضلة أو ملاحظات..."
+                    placeholder={t('مواعيد استلام مفضلة أو ملاحظات...', 'Preferred delivery times or notes...')}
                     className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] px-2"
                   />
                 </div>
@@ -1211,10 +1262,11 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
               <div className="flex flex-wrap items-center gap-1.5">
                 <input
                   type="text"
+                  dir="ltr"
                   value={checkoutGeo}
                   onChange={(e) => setCheckoutGeo(e.target.value)}
-                  placeholder="إحداثيات الموقع (اختياري)"
-                  className="flex-1 min-w-[140px] h-8 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] px-2 font-mono"
+                  placeholder={t('إحداثيات الموقع (اختياري)', 'Location coordinates (optional)')}
+                  className="flex-1 min-w-[140px] h-8 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] px-2 font-mono text-start"
                 />
                 <button
                   type="button"
@@ -1222,7 +1274,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                   className="h-8 px-2.5 rounded-md bg-[#EEF3FA] dark:bg-[#132544] text-[#003589] dark:text-[#85B8FF] border border-[#DCE6F5] dark:border-[#2A436E] font-bold flex items-center gap-1 shrink-0 cursor-pointer"
                 >
                   <MapPin className="w-3.5 h-3.5" />
-                  <span>الخريطة</span>
+                  <span>{t('الخريطة', 'Map')}</span>
                 </button>
                 <button
                   type="button"
@@ -1231,15 +1283,15 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                   className="h-8 px-2.5 rounded-md bg-slate-100 dark:bg-[#132544] text-slate-800 dark:text-[#DCE6F5] border border-slate-200 dark:border-[#21375C] font-bold flex items-center gap-1 shrink-0 cursor-pointer"
                 >
                   <MapPin className="w-3.5 h-3.5" />
-                  <span>{isLocating ? 'تحديد...' : 'GPS'}</span>
+                  <span>{isLocating ? t('تحديد...', 'Locating...') : 'GPS'}</span>
                 </button>
               </div>
 
               {allowPriceView && cartEstimatedTotal > 0 && (
                 <div className="px-2.5 py-1.5 rounded-md bg-[#EEF3FA] dark:bg-[#132544] border border-[#DCE6F5] dark:border-[#2A436E] flex items-center justify-between font-black text-[#011E58] dark:text-[#85B8FF] awlad-tabular">
-                  <span>الإجمالي التقديري:</span>
+                  <span>{t('الإجمالي التقديري:', 'Estimated Total:')}</span>
                   <span className="font-mono text-sm">
-                    {cartEstimatedTotal.toLocaleString()} {data.settings.currency}
+                    {formatLocaleNumber(cartEstimatedTotal)} {data.settings.currency}
                   </span>
                 </div>
               )}
@@ -1249,7 +1301,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                 disabled={isSubmitting}
                 className="w-full h-9 rounded-lg bg-[#003589] hover:bg-[#011E58] dark:bg-[#1659C8] dark:hover:bg-[#1F6BE6] text-white text-xs font-black disabled:opacity-50 cursor-pointer"
               >
-                {isSubmitting ? 'جاري إرسال الطلب...' : 'تأكيد وإرسال الطلب للإدارة'}
+                {isSubmitting ? t('جاري إرسال الطلب...', 'Submitting order...') : t('تأكيد وإرسال الطلب للإدارة', 'Confirm & Send Order')}
               </button>
             </div>
           )}
@@ -1265,28 +1317,28 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
               onClick={() => onTabChange('more')}
               className="text-xs font-black text-[#003589] dark:text-[#85B8FF] flex items-center gap-1 cursor-pointer"
             >
-              <ArrowRight className="w-3.5 h-3.5" />
-              <span>رجوع إلى المزيد</span>
+              <BackArrow className="w-3.5 h-3.5" />
+              <span>{t('رجوع إلى المزيد', 'Back to More')}</span>
             </button>
-            <span className="text-xs font-black text-slate-900 dark:text-[#F3F7FC]">طلباتي ({myOrders.length})</span>
+            <span className="text-xs font-black text-slate-900 dark:text-[#F3F7FC]">{t('طلباتي', 'My Orders')} ({formatLocaleNumber(myOrders.length)})</span>
           </div>
 
           {myOrders.length === 0 ? (
             <div className="bg-white dark:bg-[#0E1C36] rounded-lg border border-slate-200 dark:border-[#21375C] p-3 text-center text-xs text-slate-500 dark:text-[#97AECE]">
-              لا توجد طلبات مسجلة حتى الآن.
+              {t('لا توجد طلبات مسجلة حتى الآن.', 'No orders recorded yet.')}
             </div>
           ) : (
             <div className="bg-white dark:bg-[#0E1C36] rounded-lg border border-slate-200 dark:border-[#21375C] overflow-x-auto">
-              <table className="w-full text-right text-xs border-collapse">
+              <table className="w-full text-start text-xs border-collapse">
                 <thead className="bg-slate-50 dark:bg-[#172E56] text-[11px] font-black text-slate-600 dark:text-[#DCE6F5] border-b border-slate-200 dark:border-[#2A436E]">
                   <tr>
-                    <th className="px-2 py-1.5">رقم الطلب</th>
-                    <th className="px-2 py-1.5">التاريخ</th>
-                    <th className="px-2 py-1.5 text-center">الأصناف</th>
-                    {allowPriceView && <th className="px-2 py-1.5 text-center">الإجمالي</th>}
-                    <th className="px-2 py-1.5 text-center">الحالة</th>
-                    <th className="px-2 py-1.5 text-center">المندوب / المزامنة</th>
-                    <th className="px-2 py-1.5 text-center">إجراءات</th>
+                    <th className="px-2 py-1.5">{t('رقم الطلب', 'Order #')}</th>
+                    <th className="px-2 py-1.5">{t('التاريخ', 'Date')}</th>
+                    <th className="px-2 py-1.5 text-center">{t('الأصناف', 'Items')}</th>
+                    {allowPriceView && <th className="px-2 py-1.5 text-center">{t('الإجمالي', 'Total')}</th>}
+                    <th className="px-2 py-1.5 text-center">{t('الحالة', 'Status')}</th>
+                    <th className="px-2 py-1.5 text-center">{t('المندوب / المزامنة', 'Rep / Sync')}</th>
+                    <th className="px-2 py-1.5 text-center">{t('إجراءات', 'Actions')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-[#1B2F52]">
@@ -1300,14 +1352,14 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                             {ord.requestNumber}
                           </td>
                           <td className="px-2 py-1 font-mono text-[11px] text-slate-500 dark:text-[#97AECE] whitespace-nowrap">
-                            {new Date(ord.createdAt).toLocaleDateString('ar-EG')}
+                            {formatLocaleDate(ord.createdAt)}
                           </td>
                           <td className="px-2 py-1 text-center font-mono awlad-tabular whitespace-nowrap">
-                            {ord.items?.length || 0}
+                            {formatLocaleNumber(ord.items?.length || 0)}
                           </td>
                           {allowPriceView && (
                             <td className="px-2 py-1 text-center font-mono font-bold text-slate-900 dark:text-[#F3F7FC] awlad-tabular whitespace-nowrap">
-                              {orderTotal > 0 ? `${orderTotal.toLocaleString()} ${data.settings.currency}` : '—'}
+                              {orderTotal > 0 ? `${formatLocaleNumber(orderTotal)} ${data.settings.currency}` : '—'}
                             </td>
                           )}
                           <td className="px-2 py-1 text-center whitespace-nowrap">
@@ -1321,8 +1373,8 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                               }`}
                             >
                               {ord.status === 'invoiced'
-                                ? `تم التحويل لفاتورة (${ord.invoiceNumber || ''})`
-                                : CUSTOMER_ORDER_STATUS_LABELS[ord.status] || ord.status}
+                                ? t(`تم التحويل لفاتورة (${ord.invoiceNumber || ''})`, `Converted to Invoice (${ord.invoiceNumber || ''})`)
+                                : t(CUSTOMER_ORDER_STATUS_LABELS[ord.status] || ord.status, CUSTOMER_ORDER_STATUS_LABELS_EN[ord.status] || ord.status)}
                             </span>
                           </td>
                           <td className="px-2 py-1 text-center whitespace-nowrap">
@@ -1336,12 +1388,12 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                               {ord.syncStatus && ord.syncStatus !== 'synced' ? (
                                 <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50">
                                   <CloudOff className="w-2.5 h-2.5" />
-                                  <span>محلي</span>
+                                  <span>{t('محلي', 'Local')}</span>
                                 </span>
                               ) : (
                                 <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50">
                                   <CloudCheck className="w-2.5 h-2.5" />
-                                  <span>معتمد</span>
+                                  <span>{t('معتمد', 'Synced')}</span>
                                 </span>
                               )}
                             </div>
@@ -1354,7 +1406,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                                 className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-[#132544] border border-transparent dark:border-[#21375C] text-slate-700 dark:text-[#DCE6F5] font-bold inline-flex items-center gap-1 cursor-pointer text-[11px]"
                               >
                                 <History className="w-3 h-3" />
-                                <span>{isExpanded ? 'إخفاء' : 'التفاصيل'}</span>
+                                <span>{isExpanded ? t('إخفاء', 'Hide') : t('التفاصيل', 'Details')}</span>
                                 {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                               </button>
                               <button
@@ -1362,7 +1414,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                                 onClick={() => handleReorder(ord)}
                                 className="px-2 py-0.5 rounded-md bg-[#003589] dark:bg-[#1659C8] dark:hover:bg-[#1F6BE6] text-white font-bold cursor-pointer text-[11px]"
                               >
-                                إعادة الطلب
+                                {t('إعادة الطلب', 'Reorder')}
                               </button>
                             </div>
                           </td>
@@ -1373,13 +1425,13 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                             <td colSpan={allowPriceView ? 7 : 6} className="p-2.5 space-y-2">
                               {ord.rejectionReason && (
                                 <div className="p-2 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/50 text-red-700 dark:text-red-300 font-bold text-[11px]">
-                                  سبب الرفض: {ord.rejectionReason}
+                                  {t('سبب الرفض:', 'Rejection reason:')} {ord.rejectionReason}
                                 </div>
                               )}
 
                               {ord.status !== 'rejected' && ord.status !== 'cancelled' && (
                                 <div className="bg-white dark:bg-[#0E1C36] rounded-lg p-2 border border-slate-200 dark:border-[#21375C]">
-                                  <p className="text-[10px] font-bold text-slate-500 dark:text-[#97AECE] mb-1.5">مسار الطلب (9 مراحل):</p>
+                                  <p className="text-[10px] font-bold text-slate-500 dark:text-[#97AECE] mb-1.5">{t('مسار الطلب (9 مراحل):', 'Order Timeline (9 Stages):')}</p>
                                   <div className="grid grid-cols-9 gap-1 text-center">
                                     {NINE_STAGE_TIMELINE.map((st, idx) => {
                                       const effectiveStatus = ord.status === 'rep_assigned' ? 'preparing' : ord.status;
@@ -1389,7 +1441,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                                         <div key={st.key} className="flex flex-col items-center gap-0.5">
                                           <div className={`w-full h-1.5 rounded ${reached ? 'bg-[#003589] dark:bg-[#1659C8]' : 'bg-slate-200 dark:bg-[#2A436E]'}`} />
                                           <span className={`text-[9px] leading-tight truncate max-w-full ${reached ? 'font-black text-[#011E58] dark:text-[#85B8FF]' : 'text-slate-400 dark:text-[#849BBF]'}`}>
-                                            {st.label}
+                                            {t(st.label, st.labelEn)}
                                           </span>
                                         </div>
                                       );
@@ -1399,25 +1451,25 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                               )}
 
                               <div className="bg-white dark:bg-[#0E1C36] rounded-lg border border-slate-200 dark:border-[#21375C] overflow-hidden">
-                                <table className="w-full text-right text-[11px]">
+                                <table className="w-full text-start text-[11px]">
                                   <thead className="bg-slate-50 dark:bg-[#172E56] text-slate-500 dark:text-[#DCE6F5] font-bold border-b border-slate-200 dark:border-[#2A436E]">
                                     <tr>
-                                      <th className="px-2 py-1">الصنف</th>
-                                      <th className="px-2 py-1 text-center">الكمية</th>
+                                      <th className="px-2 py-1">{t('الصنف', 'Product')}</th>
+                                      <th className="px-2 py-1 text-center">{t('الكمية', 'Qty')}</th>
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-slate-100 dark:divide-[#1B2F52]">
                                     {(ord.items || []).map((it, i) => (
-                                        <tr key={i}>
-                                          <td className="px-2 py-1">
-                                            <div className="flex items-center gap-1.5">
-                                              <span className="font-bold text-slate-800 dark:text-[#DCE6F5]">{it.productName}</span>
-                                            </div>
-                                          </td>
-                                          <td className="px-2 py-1 text-center font-mono text-slate-600 dark:text-[#A9BCD9] whitespace-nowrap">
-                                            {it.quantity} {it.unit}
-                                          </td>
-                                        </tr>
+                                      <tr key={i}>
+                                        <td className="px-2 py-1">
+                                          <div className="flex items-center gap-1.5">
+                                            <span className="font-bold text-slate-800 dark:text-[#DCE6F5]">{it.productName}</span>
+                                          </div>
+                                        </td>
+                                        <td className="px-2 py-1 text-center font-mono text-slate-600 dark:text-[#A9BCD9] whitespace-nowrap">
+                                          {formatLocaleNumber(it.quantity)} {it.unit}
+                                        </td>
+                                      </tr>
                                     ))}
                                   </tbody>
                                 </table>
@@ -1425,9 +1477,9 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
 
                               {allowPriceView && Number(ord.advancePaidAmount || 0) > 0 && (
                                 <div className="flex items-center justify-between text-[11px] text-emerald-700 dark:text-emerald-400 font-bold px-1">
-                                  <span className="inline-flex items-center gap-1"><Wallet className="w-3 h-3" /> دفعة مقدمة مسددة:</span>
+                                  <span className="inline-flex items-center gap-1"><Wallet className="w-3 h-3" /> {t('دفعة مقدمة مسددة:', 'Advance payment paid:')}</span>
                                   <span className="font-mono awlad-tabular">
-                                    {Number(ord.advancePaidAmount).toLocaleString()} {data.settings.currency}
+                                    {formatLocaleNumber(Number(ord.advancePaidAmount))} {data.settings.currency}
                                   </span>
                                 </div>
                               )}
@@ -1437,11 +1489,11 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                                   {ord.statusHistory.map((h) => (
                                     <div key={h.id} className="flex items-center justify-between">
                                       <span>
-                                        {CUSTOMER_ORDER_STATUS_LABELS[h.toStatus] || h.toStatus}
+                                        {t(CUSTOMER_ORDER_STATUS_LABELS[h.toStatus] || h.toStatus, CUSTOMER_ORDER_STATUS_LABELS_EN[h.toStatus] || h.toStatus)}
                                         {h.reason ? ` — ${h.reason}` : ''}
                                       </span>
                                       <span className="font-mono text-slate-400 dark:text-[#849BBF]">
-                                        {new Date(h.changedAt).toLocaleString('ar-EG')}
+                                        {formatLocaleDateTime(h.changedAt)}
                                       </span>
                                     </div>
                                   ))}
@@ -1469,10 +1521,10 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
               onClick={() => onTabChange('more')}
               className="text-xs font-black text-[#003589] dark:text-[#85B8FF] flex items-center gap-1 cursor-pointer"
             >
-              <ArrowRight className="w-3.5 h-3.5" />
-              <span>رجوع إلى المزيد</span>
+              <BackArrow className="w-3.5 h-3.5" />
+              <span>{t('رجوع إلى المزيد', 'Back to More')}</span>
             </button>
-            <span className="text-xs font-black text-slate-900 dark:text-[#F3F7FC]">الفواتير وكشف الحساب</span>
+            <span className="text-xs font-black text-slate-900 dark:text-[#F3F7FC]">{t('الفواتير وكشف الحساب', 'Invoices & Statement')}</span>
           </div>
 
           <div className="grid grid-cols-2 gap-1.5 bg-white dark:bg-[#0E1C36] p-1 rounded-lg border border-slate-200 dark:border-[#21375C]">
@@ -1483,7 +1535,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                 accountSubTab === 'invoices' ? 'bg-[#003589] dark:bg-[#1659C8] text-white' : 'text-slate-600 dark:text-[#A9BCD9]'
               }`}
             >
-              فواتيري ({myInvoices.length})
+              {t('فواتيري', 'My Invoices')} ({formatLocaleNumber(myInvoices.length)})
             </button>
             <button
               type="button"
@@ -1495,13 +1547,16 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                 accountSubTab === 'statement' ? 'bg-[#003589] dark:bg-[#1659C8] text-white' : 'text-slate-600 dark:text-[#A9BCD9]'
               }`}
             >
-              كشف الحساب التفصيلي
+              {t('كشف الحساب التفصيلي', 'Detailed Account Statement')}
             </button>
           </div>
 
           {!allowPriceView && (
             <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 text-xs font-bold text-amber-900 dark:text-amber-300">
-              عرض المبالغ والأسعار مخفي وفق إعدادات الإدارة — يتم عرض أرقام المستندات والكميات فقط.
+              {t(
+                'عرض المبالغ والأسعار مخفي وفق إعدادات الإدارة — يتم عرض أرقام المستندات والكميات فقط.',
+                'Amounts and prices are hidden per management settings — only document numbers and quantities are shown.'
+              )}
             </div>
           )}
 
@@ -1509,23 +1564,23 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
             <div>
               {myInvoices.length === 0 ? (
                 <div className="bg-white dark:bg-[#0E1C36] rounded-lg border border-slate-200 dark:border-[#21375C] p-3 text-center text-xs text-slate-500 dark:text-[#97AECE]">
-                  لا توجد فواتير مبيعات معتمدة حتى الآن.
+                  {t('لا توجد فواتير مبيعات معتمدة حتى الآن.', 'No approved sales invoices yet.')}
                 </div>
               ) : (
                 <div className="bg-white dark:bg-[#0E1C36] rounded-lg border border-slate-200 dark:border-[#21375C] overflow-x-auto">
-                  <table className="w-full text-right text-xs border-collapse">
+                  <table className="w-full text-start text-xs border-collapse">
                     <thead className="bg-slate-50 dark:bg-[#172E56] text-[11px] font-black text-slate-600 dark:text-[#DCE6F5] border-b border-slate-200 dark:border-[#2A436E]">
                       <tr>
-                        <th className="px-2 py-1.5">رقم الفاتورة</th>
-                        <th className="px-2 py-1.5">التاريخ</th>
+                        <th className="px-2 py-1.5">{t('رقم الفاتورة', 'Invoice #')}</th>
+                        <th className="px-2 py-1.5">{t('التاريخ', 'Date')}</th>
                         {allowPriceView && (
                           <>
-                            <th className="px-2 py-1.5 text-center">الإجمالي</th>
-                            <th className="px-2 py-1.5 text-center">المدفوع</th>
-                            <th className="px-2 py-1.5 text-center">المتبقي</th>
+                            <th className="px-2 py-1.5 text-center">{t('الإجمالي', 'Total')}</th>
+                            <th className="px-2 py-1.5 text-center">{t('المدفوع', 'Paid')}</th>
+                            <th className="px-2 py-1.5 text-center">{t('المتبقي', 'Remaining')}</th>
                           </>
                         )}
-                        <th className="px-2 py-1.5 text-center">الإجراءات</th>
+                        <th className="px-2 py-1.5 text-center">{t('الإجراءات', 'Actions')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-[#1B2F52]">
@@ -1540,13 +1595,13 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                           {allowPriceView && (
                             <>
                               <td className="px-2 py-1 text-center font-mono font-bold text-slate-900 dark:text-[#F3F7FC] awlad-tabular whitespace-nowrap">
-                                {inv.grandTotal.toLocaleString()} {data.settings.currency}
+                                {formatLocaleNumber(inv.grandTotal)} {data.settings.currency}
                               </td>
                               <td className="px-2 py-1 text-center font-mono text-slate-600 dark:text-[#A9BCD9] awlad-tabular whitespace-nowrap">
-                                {inv.paidAmount.toLocaleString()}
+                                {formatLocaleNumber(inv.paidAmount)}
                               </td>
                               <td className={`px-2 py-1 text-center font-mono font-bold awlad-tabular whitespace-nowrap ${inv.remainingAmount > 0 ? 'text-red-700 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400'}`}>
-                                {inv.remainingAmount.toLocaleString()}
+                                {formatLocaleNumber(inv.remainingAmount)}
                               </td>
                             </>
                           )}
@@ -1557,7 +1612,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                                 onClick={() => setSelectedInvoice(inv)}
                                 className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-[#132544] hover:bg-slate-200 dark:hover:bg-[#1A3461] text-slate-800 dark:text-[#DCE6F5] font-bold cursor-pointer text-[11px]"
                               >
-                                الأصناف
+                                {t('الأصناف', 'Items')}
                               </button>
                               <button
                                 type="button"
@@ -1565,7 +1620,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                                 className="px-2 py-0.5 rounded-md bg-[#003589] dark:bg-[#1659C8] dark:hover:bg-[#1F6BE6] text-white font-bold inline-flex items-center gap-1 cursor-pointer text-[11px]"
                               >
                                 {isNative ? <Share2 className="w-3 h-3" /> : <FileDown className="w-3 h-3" />}
-                                <span>{isNative ? 'مشاركة' : 'PDF'}</span>
+                                <span>{isNative ? t('مشاركة', 'Share') : 'PDF'}</span>
                               </button>
                             </div>
                           </td>
@@ -1581,54 +1636,54 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
           {accountSubTab === 'statement' && (
             <div className="bg-white dark:bg-[#0E1C36] rounded-lg border border-slate-200 dark:border-[#21375C] p-2.5 space-y-2 text-xs">
               <div className="flex items-center justify-between gap-2">
-                <h4 className="font-black text-slate-900 dark:text-[#F3F7FC]">حركة الحساب</h4>
+                <h4 className="font-black text-slate-900 dark:text-[#F3F7FC]">{t('حركة الحساب', 'Account Statement')}</h4>
                 <button
                   type="button"
                   onClick={exportStatementExcel}
                   className="h-8 px-2.5 rounded-md bg-[#003589] dark:bg-[#1659C8] dark:hover:bg-[#1F6BE6] text-white font-bold flex items-center gap-1.5 cursor-pointer text-[11px]"
                 >
                   <FileDown className="w-3.5 h-3.5" />
-                  <span>{isNative ? 'مشاركة CSV' : 'تصدير Excel'}</span>
+                  <span>{isNative ? t('مشاركة CSV', 'Share CSV') : t('تصدير Excel', 'Export Excel')}</span>
                 </button>
               </div>
 
               {allowPriceView && data.customerStatement?.summary && (
                 <div className="grid grid-cols-3 gap-px bg-slate-200 dark:bg-[#21375C] border border-slate-200 dark:border-[#21375C] rounded-md overflow-hidden text-center">
                   <div className="bg-white dark:bg-[#132544] px-2 py-1.5">
-                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">إجمالي مدين</span>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('إجمالي مدين', 'Total Debit')}</span>
                     <strong className="font-mono text-xs text-red-700 dark:text-red-400 awlad-tabular">
-                      {(data.customerStatement.summary.totalDebit || 0).toLocaleString()}
+                      {formatLocaleNumber(data.customerStatement.summary.totalDebit || 0)}
                     </strong>
                   </div>
                   <div className="bg-white dark:bg-[#132544] px-2 py-1.5">
-                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">إجمالي دائن</span>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('إجمالي دائن', 'Total Credit')}</span>
                     <strong className="font-mono text-xs text-emerald-700 dark:text-emerald-400 awlad-tabular">
-                      {(data.customerStatement.summary.totalCredit || 0).toLocaleString()}
+                      {formatLocaleNumber(data.customerStatement.summary.totalCredit || 0)}
                     </strong>
                   </div>
                   <div className="bg-white dark:bg-[#132544] px-2 py-1.5">
-                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الصافي الحالي</span>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('الصافي الحالي', 'Current Balance')}</span>
                     <strong className="font-mono text-xs text-[#011E58] dark:text-[#85B8FF] awlad-tabular">
-                      {(data.customerStatement.summary.currentBalance || 0).toLocaleString()}
+                      {formatLocaleNumber(data.customerStatement.summary.currentBalance || 0)}
                     </strong>
                   </div>
                 </div>
               )}
 
               {(data.customerStatement?.entries || []).length === 0 ? (
-                <p className="text-center text-slate-400 dark:text-[#849BBF] py-4">لا توجد حركات مسجلة في كشف الحساب.</p>
+                <p className="text-center text-slate-400 dark:text-[#849BBF] py-4">{t('لا توجد حركات مسجلة في كشف الحساب.', 'No transactions recorded in account statement.')}</p>
               ) : (
                 <div className="overflow-x-auto border border-slate-200 dark:border-[#21375C] rounded-md">
-                  <table className="w-full text-right text-xs border-collapse">
+                  <table className="w-full text-start text-xs border-collapse">
                     <thead className="bg-slate-50 dark:bg-[#172E56] text-[11px] font-black text-slate-600 dark:text-[#DCE6F5] border-b border-slate-200 dark:border-[#2A436E]">
                       <tr>
-                        <th className="px-2 py-1.5">التاريخ / المستند</th>
-                        <th className="px-2 py-1.5">البيان</th>
+                        <th className="px-2 py-1.5">{t('التاريخ / المستند', 'Date / Doc')}</th>
+                        <th className="px-2 py-1.5">{t('البيان', 'Description')}</th>
                         {allowPriceView && (
                           <>
-                            <th className="px-2 py-1.5 text-center">مدين</th>
-                            <th className="px-2 py-1.5 text-center">دائن</th>
-                            <th className="px-2 py-1.5 text-center">الرصيد</th>
+                            <th className="px-2 py-1.5 text-center">{t('مدين', 'Debit')}</th>
+                            <th className="px-2 py-1.5 text-center">{t('دائن', 'Credit')}</th>
+                            <th className="px-2 py-1.5 text-center">{t('الرصيد', 'Balance')}</th>
                           </>
                         )}
                       </tr>
@@ -1646,13 +1701,13 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                           {allowPriceView && (
                             <>
                               <td className="px-2 py-1 text-center font-mono text-red-700 dark:text-red-400 awlad-tabular whitespace-nowrap">
-                                {entry.debit ? entry.debit.toLocaleString() : '—'}
+                                {entry.debit ? formatLocaleNumber(entry.debit) : '—'}
                               </td>
                               <td className="px-2 py-1 text-center font-mono text-emerald-700 dark:text-emerald-400 awlad-tabular whitespace-nowrap">
-                                {entry.credit ? entry.credit.toLocaleString() : '—'}
+                                {entry.credit ? formatLocaleNumber(entry.credit) : '—'}
                               </td>
                               <td className="px-2 py-1 text-center font-mono font-black text-[#011E58] dark:text-[#85B8FF] awlad-tabular whitespace-nowrap">
-                                {(entry.runningBalance ?? 0).toLocaleString()}
+                                {formatLocaleNumber(entry.runningBalance ?? 0)}
                               </td>
                             </>
                           )}
@@ -1672,22 +1727,22 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
         <button
           type="button"
           onClick={() => onTabChange('cart')}
-          className="fixed bottom-16 left-3 z-30 min-h-[38px] px-3 rounded-lg bg-[#003589] hover:bg-[#011E58] dark:bg-[#1659C8] dark:hover:bg-[#1F6BE6] text-white shadow-lg border border-white/20 dark:border-[#60A5FA]/40 flex items-center gap-2 cursor-pointer transition-transform active:scale-95"
-          aria-label="سلة التسوق"
+          className="fixed bottom-16 end-3 z-30 min-h-[38px] px-3 rounded-lg bg-[#003589] hover:bg-[#011E58] dark:bg-[#1659C8] dark:hover:bg-[#1F6BE6] text-white shadow-lg border border-white/20 dark:border-[#60A5FA]/40 flex items-center gap-2 cursor-pointer transition-transform active:scale-95"
+          aria-label={t('سلة التسوق', 'Shopping Cart')}
         >
           <div className="relative">
             <ShoppingCart className="w-4 h-4" />
             {cartItems.length > 0 && (
-              <span className="absolute -top-1.5 -right-2 min-w-[15px] h-[15px] px-1 rounded bg-[#C81E1E] text-white text-[9px] font-black flex items-center justify-center awlad-tabular">
-                {cartItems.length}
+              <span className="absolute -top-1.5 -end-2 min-w-[15px] h-[15px] px-1 rounded bg-[#C81E1E] text-white text-[9px] font-black flex items-center justify-center awlad-tabular">
+                {formatLocaleNumber(cartItems.length)}
               </span>
             )}
           </div>
-          <div className="text-right">
+          <div className="text-start">
             <span className="block text-[11px] font-black leading-none">{t('السلة', 'Cart')}</span>
             {allowPriceView && cartEstimatedTotal > 0 && (
               <span className="block text-[10px] text-[#DCE6F5] awlad-tabular mt-0.5">
-                {cartEstimatedTotal.toLocaleString()} {data.settings.currency}
+                {formatLocaleNumber(cartEstimatedTotal)} {data.settings.currency}
               </span>
             )}
           </div>
@@ -1701,7 +1756,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-[#1B2F52] pb-1.5">
               <div>
                 <h4 className="font-black text-xs sm:text-sm text-slate-900 dark:text-[#F3F7FC]">
-                  تفاصيل الفاتورة {selectedInvoice.invoiceNumber}
+                  {t('تفاصيل الفاتورة', 'Invoice Details')} {selectedInvoice.invoiceNumber}
                 </h4>
                 <p className="text-[11px] text-slate-500 dark:text-[#97AECE] font-mono">{selectedInvoice.date}</p>
               </div>
@@ -1710,19 +1765,19 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                 onClick={() => setSelectedInvoice(null)}
                 className="h-8 px-2.5 rounded-md bg-slate-100 dark:bg-[#132544] font-bold text-slate-700 dark:text-[#DCE6F5] cursor-pointer"
               >
-                إغلاق
+                {t('إغلاق', 'Close')}
               </button>
             </div>
             <div className="flex-1 overflow-y-auto border border-slate-200 dark:border-[#21375C] rounded-md">
-              <table className="w-full text-right text-xs border-collapse">
+              <table className="w-full text-start text-xs border-collapse">
                 <thead className="bg-slate-50 dark:bg-[#172E56] text-[11px] font-black text-slate-600 dark:text-[#DCE6F5] border-b border-slate-200 dark:border-[#2A436E]">
                   <tr>
-                    <th className="px-2 py-1.5">الصنف</th>
-                    <th className="px-2 py-1.5 text-center">الكمية</th>
+                    <th className="px-2 py-1.5">{t('الصنف', 'Product')}</th>
+                    <th className="px-2 py-1.5 text-center">{t('الكمية', 'Qty')}</th>
                     {allowPriceView && (
                       <>
-                        <th className="px-2 py-1.5 text-center">السعر</th>
-                        <th className="px-2 py-1.5 text-center">الإجمالي</th>
+                        <th className="px-2 py-1.5 text-center">{t('السعر', 'Price')}</th>
+                        <th className="px-2 py-1.5 text-center">{t('الإجمالي', 'Total')}</th>
                       </>
                     )}
                   </tr>
@@ -1732,15 +1787,15 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                     <tr key={idx}>
                       <td className="px-2 py-1 font-bold text-slate-900 dark:text-[#F3F7FC]">{it.productName}</td>
                       <td className="px-2 py-1 text-center font-mono text-slate-600 dark:text-[#A9BCD9] whitespace-nowrap">
-                        {it.quantity} {it.unit}
+                        {formatLocaleNumber(it.quantity)} {it.unit}
                       </td>
                       {allowPriceView && (
                         <>
                           <td className="px-2 py-1 text-center font-mono text-slate-600 dark:text-[#A9BCD9] awlad-tabular whitespace-nowrap">
-                            {it.unitPrice.toLocaleString()}
+                            {formatLocaleNumber(it.unitPrice)}
                           </td>
                           <td className="px-2 py-1 text-center font-mono font-black text-[#011E58] dark:text-[#85B8FF] awlad-tabular whitespace-nowrap">
-                            {it.total.toLocaleString()} {data.settings.currency}
+                            {formatLocaleNumber(it.total)} {data.settings.currency}
                           </td>
                         </>
                       )}
@@ -1755,7 +1810,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
               className="h-9 rounded-lg bg-[#003589] hover:bg-[#011E58] dark:bg-[#1659C8] dark:hover:bg-[#1F6BE6] text-white font-black flex items-center justify-center gap-2 cursor-pointer"
             >
               {isNative ? <Share2 className="w-4 h-4" /> : <FileDown className="w-4 h-4" />}
-              <span>{isNative ? 'مشاركة / حفظ الفاتورة' : 'طباعة / PDF'}</span>
+              <span>{isNative ? t('مشاركة / حفظ الفاتورة', 'Share / Save Invoice') : t('طباعة / PDF', 'Print / PDF')}</span>
             </button>
           </div>
         </div>
@@ -1779,13 +1834,13 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
           setCheckoutLng(loc.longitude);
           setCheckoutGeo(loc.geoCoordinates);
           if (loc.address) setCheckoutAddress(loc.address);
-          setFeedback({ type: 'success', text: 'تم تحديد موقع التوصيل على الخريطة.' });
+          setFeedback({ type: 'success', text: t('تم تحديد موقع التوصيل على الخريطة.', 'Delivery location selected on map.') });
         }}
         initialLat={checkoutLat}
         initialLng={checkoutLng}
         initialGeoCoordinates={checkoutGeo}
         initialAddress={checkoutAddress}
-        title="تحديد موقع التوصيل على الخريطة"
+        title={t('تحديد موقع التوصيل على الخريطة', 'Select Delivery Location on Map')}
       />
     </div>
   );

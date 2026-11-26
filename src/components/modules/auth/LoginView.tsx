@@ -1,8 +1,9 @@
 import React, { useRef, useState } from 'react';
 import {
-  Lock, User, Eye, EyeOff, ShieldCheck, AlertCircle, Server, UserPlus, QrCode, Search, CheckCircle2, Loader2, Users, Trash2, ArrowRightCircle
+  Lock, User, Eye, EyeOff, ShieldCheck, AlertCircle, Server, UserPlus, QrCode, Search, CheckCircle2, Loader2, Users, Trash2, ArrowRightCircle, Globe
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
+import { usePreferences } from '../../../context/PreferencesContext';
 import {
   detectModeFromUrl,
   getConfiguredApiBaseUrl,
@@ -23,24 +24,24 @@ import { SavedDeviceAccount } from '../../../services/accountVault';
 import { MapPin } from 'lucide-react';
 import { isZeroZeroLocation } from '../../../utils/storefront';
 
-function getRoleBadgeText(role: string): string {
+function getRoleBadgeText(role: string, t: (ar: string, en?: string) => string): string {
   switch (role) {
     case 'admin':
-      return 'مدير عام';
+      return t('مدير عام', 'General Manager');
     case 'manager':
-      return 'مدير فرع';
+      return t('مدير فرع', 'Branch Manager');
     case 'accountant':
-      return 'محاسب مالي';
+      return t('محاسب مالي', 'Financial Accountant');
     case 'warehouse':
-      return 'أمين مستودع';
+      return t('أمين مستودع', 'Warehouse Keeper');
     case 'sales':
-      return 'مبيعات';
+      return t('مبيعات', 'Sales');
     case 'purchases':
-      return 'مشتريات';
+      return t('مشتريات', 'Purchases');
     case 'representative':
-      return 'مندوب';
+      return t('مندوب', 'Sales Rep');
     case 'customer':
-      return 'عميل';
+      return t('عميل', 'Customer');
     default:
       return role;
   }
@@ -64,6 +65,7 @@ export const LoginView: React.FC = () => {
     resumeSavedAccount,
     removeSavedAccountFromDevice,
   } = useAuth();
+  const { language, dir, setLanguage, t } = usePreferences();
   const [authMode, setAuthMode] = useState<'login' | 'register_customer' | 'register_rep'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -107,8 +109,11 @@ export const LoginView: React.FC = () => {
         setPassword('');
         setInfoNotice(
           res.needsPassword
-            ? `أدخل كلمة مرور الحساب (${acc.fullName}) لإعادة التفعيل بأمان.`
-            : res.error || 'يرجى تسجيل الدخول بكلمة المرور.'
+            ? t(
+                `أدخل كلمة مرور الحساب (${acc.fullName}) لإعادة التفعيل بأمان.`,
+                `Enter password for (${acc.fullName}) to re-activate securely.`
+              )
+            : res.error ? t(res.error) : t('يرجى تسجيل الدخول بكلمة المرور.', 'Please sign in with your password.')
         );
         window.setTimeout(() => {
           passwordInputRef.current?.focus();
@@ -123,8 +128,8 @@ export const LoginView: React.FC = () => {
   const serverMissing = nativeApp && !hasConfiguredServerUrl();
   const currentApiUrl = getConfiguredApiBaseUrl();
   const activeModeLabel = currentApiUrl
-    ? getConnectionModeLabel(detectModeFromUrl(currentApiUrl, getStoredConnectionProfiles()))
-    : 'الاتصال المباشر بالسيرفر';
+    ? t(getConnectionModeLabel(detectModeFromUrl(currentApiUrl, getStoredConnectionProfiles())))
+    : t('الاتصال المباشر بالسيرفر', 'Direct Server Connection');
 
   const handleQuickDiscover = async () => {
     setError(null);
@@ -139,13 +144,21 @@ export const LoginView: React.FC = () => {
         setConfiguredApiBaseUrl(srv.url);
         setPairingBanner({
           type: 'success',
-          message: `تم اكتشاف السيرفر المركزي تلقائياً (${srv.url}). يرجى تسجيل الدخول بحسابك.`,
+          message: t(
+            `تم اكتشاف السيرفر المركزي تلقائياً (${srv.url}). يرجى تسجيل الدخول بحسابك.`,
+            `Central server discovered automatically (${srv.url}). Please sign in with your account.`
+          ),
         });
         await refreshAuthContext();
       } else if (results.length > 1) {
         setShowServerModal(true);
       } else {
-        setError('لم يتم العثور على سيرفر على الشبكة المحلية. تأكد من الاتصال بالـ Wi-Fi أو استخدم رمز QR / رابط الدعوة.');
+        setError(
+          t(
+            'لم يتم العثور على سيرفر على الشبكة المحلية. تأكد من الاتصال بالـ Wi-Fi أو استخدم رمز QR / رابط الدعوة.',
+            'No server found on the local network. Ensure Wi-Fi connection or use QR code / invite link.'
+          )
+        );
       }
     } finally {
       setIsDiscovering(false);
@@ -160,14 +173,20 @@ export const LoginView: React.FC = () => {
     const res = await claimPairingInvitation(rawText);
     setIsClaimingQr(false);
     if (!res.ok) {
-      setError(res.error || 'تعذر ربط الجهاز عبر الرمز أو الرابط.');
+      setError(res.error ? t(res.error) : t('تعذر ربط الجهاز عبر الرمز أو الرابط.', 'Could not pair device via code or link.'));
       return;
     }
     setPairingBanner({
       type: res.requiresAdminApproval ? 'warning' : 'success',
       message: res.requiresAdminApproval
-        ? `تم إعداد السيرفر (${res.companyName || ''}). هذا الجهاز بانتظار موافقة مدير النظام، وبعدها يمكنك تسجيل الدخول بحسابك.`
-        : `تم ربط الجهاز بسيرفر (${res.companyName || ''}) بنجاح (${res.endpointUrl}). أدخل اسم المستخدم وكلمة المرور للدخول.`,
+        ? t(
+            `تم إعداد السيرفر (${res.companyName || ''}). هذا الجهاز بانتظار موافقة مدير النظام، وبعدها يمكنك تسجيل الدخول بحسابك.`,
+            `Server configured (${res.companyName || ''}). This device is awaiting admin approval before you can sign in.`
+          )
+        : t(
+            `تم ربط الجهاز بسيرفر (${res.companyName || ''}) بنجاح (${res.endpointUrl}). أدخل اسم المستخدم وكلمة المرور للدخول.`,
+            `Device paired with server (${res.companyName || ''}) successfully (${res.endpointUrl}). Enter your username and password to sign in.`
+          ),
     });
     await refreshAuthContext();
   };
@@ -178,18 +197,23 @@ export const LoginView: React.FC = () => {
     clearSessionExpiredMessage();
 
     if (nativeApp && !hasConfiguredServerUrl()) {
-      setError('يرجى ضبط عنوان السيرفر المركزي (لابتوب المحل) أولاً من زر "إعداد السيرفر" بالأعلى.');
+      setError(
+        t(
+          'يرجى ضبط عنوان السيرفر المركزي (لابتوب المحل) أولاً من زر "إعداد السيرفر" بالأعلى.',
+          'Please configure the central server address first using the "Server Setup" button above.'
+        )
+      );
       setShowServerModal(true);
       return;
     }
 
     if (needsAdminSetup) {
       if (password.length < 6) {
-        setError('كلمة المرور يجب أن لا تقل عن 6 أحرف أو أرقام');
+        setError(t('كلمة المرور يجب أن لا تقل عن 6 أحرف أو أرقام', 'Password must be at least 6 characters'));
         return;
       }
       if (password !== confirmPassword) {
-        setError('كلمتا المرور غير متطابقتين');
+        setError(t('كلمتا المرور غير متطابقتين', 'Passwords do not match'));
         return;
       }
       setIsLoading(true);
@@ -202,30 +226,30 @@ export const LoginView: React.FC = () => {
       });
       setIsLoading(false);
       if (!res.success) {
-        setError(res.error || 'تعذر تهيئة حساب المدير العام');
+        setError(res.error ? t(res.error) : t('تعذر تهيئة حساب المدير العام', 'Could not initialize General Manager account'));
       }
       return;
     }
 
     if (!needsAdminSetup && (authMode === 'register_customer' || authMode === 'register_rep')) {
       if (fullName.trim().length < 2) {
-        setError('يرجى إدخال الاسم الكامل (حرفين على الأقل)');
+        setError(t('يرجى إدخال الاسم الكامل (حرفين على الأقل)', 'Please enter full name (at least 2 characters)'));
         return;
       }
       if (!phone.trim()) {
-        setError('يرجى إدخال رقم الهاتف للتسجيل');
+        setError(t('يرجى إدخال رقم الهاتف للتسجيل', 'Please enter phone number to register'));
         return;
       }
       if (username.trim().length < 3) {
-        setError('اسم المستخدم يجب أن لا يقل عن 3 أحرف');
+        setError(t('اسم المستخدم يجب أن لا يقل عن 3 أحرف', 'Username must be at least 3 characters'));
         return;
       }
       if (password.length < 6) {
-        setError('كلمة المرور يجب أن لا تقل عن 6 أحرف أو أرقام');
+        setError(t('كلمة المرور يجب أن لا تقل عن 6 أحرف أو أرقام', 'Password must be at least 6 characters'));
         return;
       }
       if (password !== confirmPassword) {
-        setError('كلمتا المرور غير متطابقتين');
+        setError(t('كلمتا المرور غير متطابقتين', 'Passwords do not match'));
         return;
       }
       if (
@@ -234,7 +258,7 @@ export const LoginView: React.FC = () => {
         longitude !== undefined &&
         isZeroZeroLocation(latitude, longitude)
       ) {
-        setError('إحداثيات الموقع (0, 0) غير صالحة — يرجى تحديد موقع حقيقي على الخريطة.');
+        setError(t('إحداثيات الموقع (0, 0) غير صالحة — يرجى تحديد موقع حقيقي على الخريطة.', 'Location coordinates (0, 0) are invalid — please pick a real location on the map.'));
         return;
       }
       setIsLoading(true);
@@ -256,7 +280,7 @@ export const LoginView: React.FC = () => {
       });
       setIsLoading(false);
       if (!res.success) {
-        setError(res.error || 'تعذر إنشاء الحساب الجديد');
+        setError(res.error ? t(res.error) : t('تعذر إنشاء الحساب الجديد', 'Could not create new account'));
       }
       return;
     }
@@ -266,42 +290,54 @@ export const LoginView: React.FC = () => {
     setIsLoading(false);
 
     if (!result.success) {
-      setError(result.error || 'فشل تسجيل الدخول، يرجى المحاولة مرة أخرى');
+      setError(result.error ? t(result.error) : t('فشل تسجيل الدخول، يرجى المحاولة مرة أخرى', 'Login failed, please try again'));
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 dark:bg-[#081326] flex items-center justify-center p-2.5 sm:p-4 relative overflow-hidden font-sans pt-safe pb-safe">
+    <div dir={dir} className="min-h-screen bg-slate-900 dark:bg-[#081326] flex items-center justify-center p-2.5 sm:p-4 relative overflow-hidden font-sans pt-safe pb-safe">
       <div className="absolute top-0 right-0 -mr-20 -mt-20 w-96 h-96 rounded-full bg-blue-600/10 dark:bg-[#1659C8]/15 blur-3xl pointer-events-none"></div>
       <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-96 h-96 rounded-full bg-[#003589]/15 dark:bg-[#1D63D8]/12 blur-3xl pointer-events-none"></div>
 
-      <div className="w-full max-w-lg bg-white dark:bg-[#0E1C36] rounded-xl shadow-2xl border border-slate-200 dark:border-[#21375C] overflow-hidden relative z-10 text-right animate-in fade-in duration-300">
+      <div className="w-full max-w-lg bg-white dark:bg-[#0E1C36] rounded-xl shadow-2xl border border-slate-200 dark:border-[#21375C] overflow-hidden relative z-10 text-start animate-in fade-in duration-300">
         {/* Header / Logo banner */}
         <div className="awlad-brand-gradient p-3.5 text-center text-white relative">
           <button
             type="button"
             onClick={() => setShowServerModal(true)}
-            className="absolute top-2.5 left-2.5 px-2 py-1 rounded-md bg-white/15 hover:bg-white/25 text-white text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+            className="absolute top-2.5 end-2.5 px-2 py-1 rounded-md bg-white/15 hover:bg-white/25 text-white text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
             title={activeModeLabel}
           >
             <Server className="w-3.5 h-3.5" />
-            <span>{serverMissing ? 'إعداد السيرفر' : 'أوضاع الاتصال'}</span>
+            <span>{serverMissing ? t('إعداد السيرفر', 'Server Setup') : t('أوضاع الاتصال', 'Connection Modes')}</span>
+          </button>
+
+          <button
+            type="button"
+            data-testid="login-language-toggle"
+            onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
+            className="absolute top-2.5 start-2.5 px-2 py-1 rounded-md bg-white/15 hover:bg-white/25 text-white text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+            title={language === 'ar' ? 'Switch interface to English' : 'تغيير الواجهة إلى العربية'}
+            aria-label={language === 'ar' ? 'Switch to English' : 'التبديل إلى العربية'}
+          >
+            <Globe className="w-3.5 h-3.5" />
+            <span>{language === 'ar' ? 'English' : 'العربية'}</span>
           </button>
 
           <div className="bg-white dark:bg-white no-dark-surface rounded-lg px-3 py-1.5 inline-flex items-center justify-center border border-white/80 mb-1.5">
             <img
               src="/awlad-selim-logo.png"
-              alt="أولاد سليم AWLAD SELIM"
+              alt="AWLAD SELIM"
               className="max-h-11 mx-auto object-contain"
             />
           </div>
           <h2 className="text-base font-black tracking-tight text-white">
-            نظام أولاد سليم للمحاسبة وإدارة الأعمال
+            {t('نظام أولاد سليم للمحاسبة وإدارة الأعمال', 'AWLAD SELIM Accounting & Business Management')}
           </h2>
           <p className="text-[11px] text-blue-100 mt-0.5 font-medium">
             {needsAdminSetup
-              ? 'الإعداد الأولي: إنشاء حساب المالك والمدير العام للنظام'
-              : 'بوابة تسجيل الدخول الآمن لتجارة المواد الغذائية بالجملة'}
+              ? t('الإعداد الأولي: إنشاء حساب المالك والمدير العام للنظام', 'Initial Setup: Create System Owner & General Manager Account')
+              : t('بوابة تسجيل الدخول الآمن لتجارة المواد الغذائية بالجملة', 'Secure Sign-In Portal for Wholesale Food Trading')}
           </p>
         </div>
 
@@ -322,7 +358,7 @@ export const LoginView: React.FC = () => {
               ) : (
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
               )}
-              <span className="leading-relaxed">{pairingBanner.message}</span>
+              <span className="leading-relaxed">{t(pairingBanner.message)}</span>
             </div>
           )}
 
@@ -330,10 +366,13 @@ export const LoginView: React.FC = () => {
             <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-300 text-xs text-amber-900 space-y-2">
               <div className="font-black flex items-center gap-1.5">
                 <Server className="w-4 h-4 text-amber-700 shrink-0" />
-                <span>الخطوة الأولى: ربط التطبيق بالسيرفر المركزي</span>
+                <span>{t('الخطوة الأولى: ربط التطبيق بالسيرفر المركزي', 'Step 1: Pair App with Central Server')}</span>
               </div>
               <p className="leading-relaxed text-[11px]">
-                امسح رمز <span className="font-mono font-bold">QR Code</span> من لوحة الإدارة أو اضغط بحث تلقائي داخل الشبكة دون كتابة IP يدوياً.
+                {t(
+                  'امسح رمز QR Code من لوحة الإدارة أو اضغط بحث تلقائي داخل الشبكة دون كتابة IP يدوياً.',
+                  'Scan the QR Code from the Admin panel or click Auto-Discover on the local network without typing an IP manually.'
+                )}
               </p>
               <div className="flex flex-wrap gap-1.5">
                 <button
@@ -343,7 +382,7 @@ export const LoginView: React.FC = () => {
                   className="px-2.5 py-1.5 rounded-lg bg-[var(--awlad-royal-700)] hover:bg-[var(--awlad-royal-600)] text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer"
                 >
                   <QrCode className="w-3.5 h-3.5" />
-                  <span>{isClaimingQr ? 'جاري الربط...' : 'مسح QR أو لصق رابط دعوة'}</span>
+                  <span>{isClaimingQr ? t('جاري الربط...', 'Pairing...') : t('مسح QR أو لصق رابط دعوة', 'Scan QR or Paste Invite Link')}</span>
                 </button>
                 <button
                   type="button"
@@ -352,14 +391,14 @@ export const LoginView: React.FC = () => {
                   className="px-2.5 py-1.5 rounded-lg bg-[var(--awlad-navy-900)] hover:bg-[var(--awlad-navy-950)] text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer"
                 >
                   {isDiscovering ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
-                  <span>{isDiscovering ? 'جاري الاكتشاف...' : 'اكتشاف السيرفر تلقائياً'}</span>
+                  <span>{isDiscovering ? t('جاري الاكتشاف...', 'Discovering...') : t('اكتشاف السيرفر تلقائياً', 'Auto-Discover Server')}</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowServerModal(true)}
                   className="px-2.5 py-1.5 rounded-lg bg-white border border-amber-300 text-amber-900 font-bold text-xs cursor-pointer"
                 >
-                  إعداد يدوي
+                  {t('إعداد يدوي', 'Manual Setup')}
                 </button>
               </div>
             </div>
@@ -377,7 +416,7 @@ export const LoginView: React.FC = () => {
                   className="px-2 py-1 rounded bg-white dark:bg-[#0E1C36] hover:bg-[#DCE6F5] dark:hover:bg-[#1A3461] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] border border-slate-300 dark:border-[#2A436E] font-bold flex items-center gap-1 cursor-pointer"
                 >
                   <QrCode className="w-3 h-3 text-[var(--awlad-royal-700)] dark:text-[#85B8FF]" />
-                  <span>ربط بـ QR / رابط</span>
+                  <span>{t('ربط بـ QR / رابط', 'Pair via QR / Link')}</span>
                 </button>
                 <button
                   type="button"
@@ -386,7 +425,7 @@ export const LoginView: React.FC = () => {
                   className="px-2 py-1 rounded bg-white dark:bg-[#0E1C36] hover:bg-slate-100 dark:hover:bg-[#1A3461] text-slate-700 dark:text-[#A9BCD9] border border-slate-300 dark:border-[#2A436E] font-bold flex items-center gap-1 cursor-pointer"
                 >
                   {isDiscovering ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
-                  <span>بحث تلقائي</span>
+                  <span>{t('بحث تلقائي', 'Auto Search')}</span>
                 </button>
               </div>
             </div>
@@ -395,20 +434,23 @@ export const LoginView: React.FC = () => {
           {isDatabaseUnavailable && databaseUnavailableMessage && (
             <div className="flex items-center gap-2 p-2.5 rounded-lg bg-red-50 border border-red-200 text-xs font-bold text-red-800">
               <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
-              <span>{databaseUnavailableMessage}</span>
+              <span>{t(databaseUnavailableMessage)}</span>
             </div>
           )}
 
           {sessionExpiredMessage && (
             <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-xs font-bold text-amber-800">
               <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{sessionExpiredMessage}</span>
+              <span>{t(sessionExpiredMessage)}</span>
             </div>
           )}
 
           {needsAdminSetup && (
             <div className="p-2.5 rounded-lg bg-blue-50 border border-blue-200 text-xs font-bold text-blue-900">
-              لم يتم إعداد حساب مدير عام على هذا الخادم بعد. يرجى إنشاء حساب المالك الخاص بك الآن للبدء بأمان.
+              {t(
+                'لم يتم إعداد حساب مدير عام على هذا الخادم بعد. يرجى إنشاء حساب المالك الخاص بك الآن للبدء بأمان.',
+                'No General Manager account is set up on this server yet. Please create your owner account now to start securely.'
+              )}
             </div>
           )}
 
@@ -416,7 +458,10 @@ export const LoginView: React.FC = () => {
             <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-300 text-xs font-bold text-amber-900 flex items-start gap-2">
               <AlertCircle className="w-4 h-4 shrink-0 text-amber-700 mt-0.5" />
               <span className="leading-relaxed">
-                أنت الآن في وضع العمل دون إنترنت: يُسمح بتسجيل الدخول محلياً فقط للحسابات التي سبق التحقق منها بنجاح على هذا الجهاز، وسيتم إعادة التحقق من الصلاحيات فور عودة الاتصال بالسيرفر المركزي.
+                {t(
+                  'أنت الآن في وضع العمل دون إنترنت: يُسمح بتسجيل الدخول محلياً فقط للحسابات التي سبق التحقق منها بنجاح على هذا الجهاز، وسيتم إعادة التحقق من الصلاحيات فور عودة الاتصال بالسيرفر المركزي.',
+                  'You are currently offline: local sign-in is only allowed for accounts previously verified on this device. Permissions will be re-verified once connection to the central server is restored.'
+                )}
               </span>
             </div>
           )}
@@ -424,14 +469,14 @@ export const LoginView: React.FC = () => {
           {infoNotice && (
             <div className="flex items-center gap-2 p-2.5 rounded-lg bg-blue-50 border border-blue-200 text-xs font-bold text-blue-900">
               <CheckCircle2 className="w-4 h-4 shrink-0 text-blue-700" />
-              <span>{infoNotice}</span>
+              <span>{t(infoNotice)}</span>
             </div>
           )}
 
           {error && (
             <div className="flex items-center gap-2 p-2.5 rounded-lg bg-red-50 border border-red-200 text-xs font-bold text-red-700 animate-shake">
               <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{error}</span>
+              <span>{t(error)}</span>
             </div>
           )}
 
@@ -440,9 +485,11 @@ export const LoginView: React.FC = () => {
               <div className="flex items-center justify-between">
                 <span className="text-xs font-black text-slate-900 dark:text-[#F3F7FC] flex items-center gap-1.5">
                   <Users className="w-3.5 h-3.5 text-blue-800 dark:text-[#85B8FF]" />
-                  <span>الحسابات المحفوظة على الجهاز ({savedAccounts.length})</span>
+                  <span>{t(`الحسابات المحفوظة على الجهاز (${savedAccounts.length})`, `Saved Accounts on Device (${savedAccounts.length})`)}</span>
                 </span>
-                <span className="text-[10px] font-bold text-slate-500 dark:text-[#97AECE]">تبديل ودخول سريع آمن</span>
+                <span className="text-[10px] font-bold text-slate-500 dark:text-[#97AECE]">
+                  {t('تبديل ودخول سريع آمن', 'Fast & Secure Switch')}
+                </span>
               </div>
               <div className="divide-y divide-slate-200 dark:divide-[#1B2F52] border border-slate-200 dark:border-[#21375C] rounded-md bg-white dark:bg-[#0E1C36] max-h-40 overflow-y-auto">
                 {savedAccounts.map((acc) => {
@@ -462,21 +509,21 @@ export const LoginView: React.FC = () => {
                           />
                         ) : (
                           <div className="w-8 h-8 rounded-lg bg-blue-900 text-white font-black text-xs flex items-center justify-center shrink-0">
-                            {(acc.fullName || acc.username || '؟').trim().charAt(0)}
+                            {(acc.fullName || acc.username || '?').trim().charAt(0)}
                           </div>
                         )}
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5 text-xs truncate">
-                            <span className="font-black text-slate-900 truncate">{acc.fullName}</span>
+                            <span className="font-black text-slate-900 dark:text-[#F3F7FC] truncate">{acc.fullName}</span>
                             <span className="text-slate-300">·</span>
-                            <span className="text-[10px] font-bold text-blue-800 shrink-0">
-                              {getRoleBadgeText(acc.role)}
+                            <span className="text-[10px] font-bold text-blue-800 dark:text-[#85B8FF] shrink-0">
+                              {getRoleBadgeText(acc.role, t)}
                             </span>
                           </div>
-                          <p className="text-[10px] text-slate-500 font-mono truncate">
+                          <p className="text-[10px] text-slate-500 dark:text-[#97AECE] font-mono truncate">
                             @{acc.username}
                             {acc.shopName ? ` · ${acc.shopName}` : ''}
-                            {quickReady ? ' · جلسة جاهزة' : ' · يتطلب كلمة المرور'}
+                            {quickReady ? ` · ${t('جلسة جاهزة', 'Session Ready')}` : ` · ${t('يتطلب كلمة المرور', 'Password Required')}`}
                           </p>
                         </div>
                       </div>
@@ -497,14 +544,14 @@ export const LoginView: React.FC = () => {
                           ) : (
                             <ArrowRightCircle className="w-3.5 h-3.5" />
                           )}
-                          <span>{isResuming ? 'جاري...' : quickReady ? 'دخول' : 'تحديد'}</span>
+                          <span>{isResuming ? t('جاري...', 'Loading...') : quickReady ? t('دخول', 'Enter') : t('تحديد', 'Select')}</span>
                         </button>
                         <button
                           type="button"
                           disabled={Boolean(resumingUserId)}
                           onClick={() => setAccountToForget(acc)}
                           className="min-h-[32px] min-w-[32px] rounded-lg bg-red-50 hover:bg-red-100 text-red-700 flex items-center justify-center cursor-pointer"
-                          title="إزالة الحساب من الجهاز"
+                          title={t('إزالة الحساب من الجهاز', 'Remove account from device')}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -531,7 +578,7 @@ export const LoginView: React.FC = () => {
                     : 'text-slate-700 dark:text-[#A9BCD9] hover:bg-white dark:hover:bg-[#1A3461]'
                 }`}
               >
-                تسجيل الدخول
+                {t('تسجيل الدخول', 'Sign In')}
               </button>
               <button
                 type="button"
@@ -548,7 +595,7 @@ export const LoginView: React.FC = () => {
                     : 'text-slate-700 dark:text-[#A9BCD9] hover:bg-white dark:hover:bg-[#1A3461]'
                 }`}
               >
-                تسجيل عميل جديد
+                {t('تسجيل عميل جديد', 'New Customer')}
               </button>
               <button
                 type="button"
@@ -565,7 +612,7 @@ export const LoginView: React.FC = () => {
                     : 'text-slate-700 dark:text-[#A9BCD9] hover:bg-white dark:hover:bg-[#1A3461]'
                 }`}
               >
-                تسجيل مندوب جديد
+                {t('تسجيل مندوب جديد', 'New Representative')}
               </button>
             </div>
           )}
@@ -574,129 +621,129 @@ export const LoginView: React.FC = () => {
             {needsAdminSetup && (
               <>
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
-                    اسم الشركة / النشاط (اختياري):
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">
+                    {t('اسم الشركة / النشاط (اختياري):', 'Company / Business Name (Optional):')}
                   </label>
                   <input
                     type="text"
                     value={companyName}
                     onChange={(e) => setCompanyName(e.target.value)}
-                    placeholder="أدخل اسم الشركة أو المؤسسة"
-                    className="w-full h-8 sm:h-9 rounded-md border border-slate-300 px-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
+                    placeholder={t('أدخل اسم الشركة أو المؤسسة', 'Enter company or business name')}
+                    className="w-full h-8 sm:h-9 rounded-md border border-slate-300 dark:border-[#2A436E] dark:bg-[#10203D] dark:text-[#F3F7FC] px-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-start"
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
-                    الاسم الكامل للمالك / المدير:
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">
+                    {t('الاسم الكامل للمالك / المدير:', 'Owner / Manager Full Name:')}
                   </label>
                   <input
                     type="text"
                     required
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    placeholder="أدخل الاسم الكامل للمالك أو المدير العام"
-                    className="w-full h-8 sm:h-9 rounded-md border border-slate-300 px-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
+                    placeholder={t('أدخل الاسم الكامل للمالك أو المدير العام', 'Enter owner or general manager full name')}
+                    className="w-full h-8 sm:h-9 rounded-md border border-slate-300 dark:border-[#2A436E] dark:bg-[#10203D] dark:text-[#F3F7FC] px-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-start"
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
-                    رقم الهاتف (اختياري):
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">
+                    {t('رقم الهاتف (اختياري):', 'Phone Number (Optional):')}
                   </label>
                   <input
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="01xxxxxxxxx"
-                    className="w-full h-8 sm:h-9 rounded-md border border-slate-300 px-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
+                    className="w-full h-8 sm:h-9 rounded-md border border-slate-300 dark:border-[#2A436E] dark:bg-[#10203D] dark:text-[#F3F7FC] px-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-start"
                   />
                 </div>
               </>
             )}
 
             {!needsAdminSetup && (authMode === 'register_customer' || authMode === 'register_rep') && (
-              <div className="space-y-1.5 p-2.5 rounded-lg bg-blue-50/60 border border-blue-200/80">
-                <p className="text-xs font-black text-blue-950">
+              <div className="space-y-1.5 p-2.5 rounded-lg bg-blue-50/60 dark:bg-[#132544] border border-blue-200/80 dark:border-[#21375C]">
+                <p className="text-xs font-black text-blue-950 dark:text-[#85B8FF]">
                   {authMode === 'register_customer'
-                    ? 'بيانات العميل الجديد (تُفعّل مباشرة للدخول والطلب)'
-                    : 'بيانات المندوب الجديد (تُفعّل مباشرة مع مخزن سيارة خاص)'}
+                    ? t('بيانات العميل الجديد (تُفعّل مباشرة للدخول والطلب)', 'New Customer Details (Activated immediately for ordering)')
+                    : t('بيانات المندوب الجديد (تُفعّل مباشرة مع مخزن سيارة خاص)', 'New Representative Details (Activated with dedicated van warehouse)')}
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">الاسم الكامل *</label>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">{t('الاسم الكامل *', 'Full Name *')}</label>
                     <input
                       type="text"
                       required
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
-                      placeholder={authMode === 'register_customer' ? 'اسم العميل أو المسؤول' : 'اسم المندوب الثلاثي'}
-                      className="w-full h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                      placeholder={authMode === 'register_customer' ? t('اسم العميل أو المسؤول', 'Customer or contact name') : t('اسم المندوب الثلاثي', 'Representative full name')}
+                      className="w-full h-8 rounded-md border border-slate-300 bg-white dark:bg-[#10203D] dark:border-[#2A436E] dark:text-[#F3F7FC] px-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-start"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">رقم الهاتف *</label>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">{t('رقم الهاتف *', 'Phone Number *')}</label>
                     <input
                       type="tel"
                       required
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       placeholder="01xxxxxxxxx"
-                      className="w-full h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                      className="w-full h-8 rounded-md border border-slate-300 bg-white dark:bg-[#10203D] dark:border-[#2A436E] dark:text-[#F3F7FC] px-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-start"
                     />
                   </div>
                   {authMode === 'register_customer' ? (
                     <>
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-0.5">اسم المحل / النشاط</label>
+                        <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">{t('اسم المحل / النشاط', 'Shop / Business Name')}</label>
                         <input
                           type="text"
                           value={shopName}
                           onChange={(e) => setShopName(e.target.value)}
-                          placeholder="مثال: سوبر ماركت النور"
-                          className="w-full h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                          placeholder={t('مثال: سوبر ماركت النور', 'e.g., Al-Noor Supermarket')}
+                          className="w-full h-8 rounded-md border border-slate-300 bg-white dark:bg-[#10203D] dark:border-[#2A436E] dark:text-[#F3F7FC] px-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-start"
                         />
                       </div>
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-0.5">المحافظة</label>
+                        <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">{t('المحافظة', 'Governorate')}</label>
                         <input
                           type="text"
                           value={governorate}
                           onChange={(e) => setGovernorate(e.target.value)}
-                          placeholder="مثال: القاهرة / الجيزة"
-                          className="w-full h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                          placeholder={t('مثال: القاهرة / الجيزة', 'e.g., Cairo / Giza')}
+                          className="w-full h-8 rounded-md border border-slate-300 bg-white dark:bg-[#10203D] dark:border-[#2A436E] dark:text-[#F3F7FC] px-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-start"
                         />
                       </div>
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-0.5">المنطقة</label>
+                        <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">{t('المنطقة', 'Area / District')}</label>
                         <input
                           type="text"
                           value={area}
                           onChange={(e) => setArea(e.target.value)}
-                          placeholder="مثال: شبرا / المعادي"
-                          className="w-full h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                          placeholder={t('مثال: شبرا / المعادي', 'e.g., Shubra / Maadi')}
+                          className="w-full h-8 rounded-md border border-slate-300 bg-white dark:bg-[#10203D] dark:border-[#2A436E] dark:text-[#F3F7FC] px-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-start"
                         />
                       </div>
                     </>
                   ) : (
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-0.5">رقم السيارة / الخط</label>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">{t('رقم السيارة / الخط', 'Vehicle / Route No.')}</label>
                       <input
                         type="text"
                         value={vehicleNumber}
                         onChange={(e) => setVehicleNumber(e.target.value)}
-                        placeholder="مثال: أ ب ج 1234"
-                        className="w-full h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-right"
+                        placeholder={t('مثال: أ ب ج 1234', 'e.g., ABC 1234')}
+                        className="w-full h-8 rounded-md border border-slate-300 bg-white dark:bg-[#10203D] dark:border-[#2A436E] dark:text-[#F3F7FC] px-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-start"
                       />
                     </div>
                   )}
                   <div className={authMode === 'register_customer' ? 'sm:col-span-2' : ''}>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">العنوان</label>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">{t('العنوان', 'Address')}</label>
                     <div className="flex flex-wrap gap-1.5">
                       <input
                         type="text"
                         value={address}
                         onChange={(e) => setAddress(e.target.value)}
-                        placeholder="العنوان التفصيلي"
-                        className="flex-1 min-w-[160px] h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-[var(--awlad-royal-700)] outline-hidden text-right"
+                        placeholder={t('العنوان التفصيلي', 'Detailed Address')}
+                        className="flex-1 min-w-[160px] h-8 rounded-md border border-slate-300 bg-white dark:bg-[#10203D] dark:border-[#2A436E] dark:text-[#F3F7FC] px-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-[var(--awlad-royal-700)] outline-hidden text-start"
                       />
                       {authMode === 'register_customer' && (
                         <button
@@ -705,13 +752,13 @@ export const LoginView: React.FC = () => {
                           className="h-8 px-2.5 rounded-md bg-[var(--awlad-royal-700)] hover:bg-[var(--awlad-royal-600)] text-white text-xs font-black flex items-center gap-1 cursor-pointer shrink-0"
                         >
                           <MapPin className="w-3.5 h-3.5" />
-                          <span>{latitude !== undefined ? 'تعديل الموقع على الخريطة' : 'تحديد الموقع على الخريطة'}</span>
+                          <span>{latitude !== undefined ? t('تعديل الموقع على الخريطة', 'Edit Map Location') : t('تحديد الموقع على الخريطة', 'Pin Location on Map')}</span>
                         </button>
                       )}
                     </div>
                     {authMode === 'register_customer' && latitude !== undefined && longitude !== undefined && (
                       <p className="text-[11px] font-bold text-emerald-700 mt-1" dir="ltr">
-                        تم تحديد الموقع: {latitude.toFixed(5)}, {longitude.toFixed(5)}
+                        {t('تم تحديد الموقع:', 'Location set:')} {latitude.toFixed(5)}, {longitude.toFixed(5)}
                       </p>
                     )}
                   </div>
@@ -720,8 +767,8 @@ export const LoginView: React.FC = () => {
             )}
 
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
-                اسم المستخدم (أو رقم الهاتف):
+              <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">
+                {t('اسم المستخدم (أو رقم الهاتف):', 'Username (or Phone Number):')}
               </label>
               <div className="relative">
                 <input
@@ -729,25 +776,25 @@ export const LoginView: React.FC = () => {
                   required
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="أدخل اسم المستخدم"
-                  className="w-full h-8 sm:h-9 rounded-md border border-slate-300 pr-8 pl-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
+                  placeholder={t('أدخل اسم المستخدم', 'Enter username')}
+                  className="w-full h-8 sm:h-9 rounded-md border border-slate-300 dark:border-[#2A436E] dark:bg-[#10203D] dark:text-[#F3F7FC] ps-8 pe-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-start"
                 />
-                <User className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2.5 pointer-events-none" />
+                <User className="w-3.5 h-3.5 text-slate-400 absolute start-2.5 top-2.5 pointer-events-none" />
               </div>
             </div>
 
             <div>
               <div className="flex justify-between items-center mb-0.5">
-                <label className="block text-[11px] font-bold text-slate-700">
-                  كلمة المرور:
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9]">
+                  {t('كلمة المرور:', 'Password:')}
                 </label>
                 {!needsAdminSetup && (
                   <button
                     type="button"
                     onClick={() => setShowForgotModal(true)}
-                    className="text-[11px] font-semibold text-blue-700 hover:text-blue-900 transition-colors"
+                    className="text-[11px] font-semibold text-blue-700 dark:text-[#85B8FF] hover:text-blue-900 transition-colors cursor-pointer"
                   >
-                    نسيت كلمة المرور؟
+                    {t('نسيت كلمة المرور؟', 'Forgot password?')}
                   </button>
                 )}
               </div>
@@ -759,15 +806,15 @@ export const LoginView: React.FC = () => {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="أدخل كلمة المرور"
-                  className="w-full h-8 sm:h-9 rounded-md border border-slate-300 pr-8 pl-8 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
+                  placeholder={t('أدخل كلمة المرور', 'Enter password')}
+                  className="w-full h-8 sm:h-9 rounded-md border border-slate-300 dark:border-[#2A436E] dark:bg-[#10203D] dark:text-[#F3F7FC] ps-8 pe-8 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-start"
                 />
-                <Lock className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2.5 pointer-events-none" />
+                <Lock className="w-3.5 h-3.5 text-slate-400 absolute start-2.5 top-2.5 pointer-events-none" />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute left-2.5 top-2 text-slate-400 hover:text-slate-600 focus:outline-hidden"
-                  title={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
+                  className="absolute end-2.5 top-2 text-slate-400 hover:text-slate-600 focus:outline-hidden cursor-pointer"
+                  title={showPassword ? t('إخفاء كلمة المرور', 'Hide password') : t('إظهار كلمة المرور', 'Show password')}
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -776,16 +823,16 @@ export const LoginView: React.FC = () => {
 
             {(needsAdminSetup || authMode === 'register_customer' || authMode === 'register_rep') && (
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
-                  تأكيد كلمة المرور:
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">
+                  {t('تأكيد كلمة المرور:', 'Confirm Password:')}
                 </label>
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="أعد إدخال كلمة المرور"
-                  className="w-full h-8 sm:h-9 rounded-md border border-slate-300 px-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-right"
+                  placeholder={t('أعد إدخال كلمة المرور', 'Re-enter password')}
+                  className="w-full h-8 sm:h-9 rounded-md border border-slate-300 dark:border-[#2A436E] dark:bg-[#10203D] dark:text-[#F3F7FC] px-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-start"
                 />
               </div>
             )}
@@ -802,37 +849,40 @@ export const LoginView: React.FC = () => {
               )}
               <span>
                 {isLoading
-                  ? 'جاري التحقق والمصادقة...'
+                  ? t('جاري التحقق والمصادقة...', 'Authenticating...')
                   : needsAdminSetup
-                  ? 'إنشاء حساب المدير العام والدخول'
+                  ? t('إنشاء حساب المدير العام والدخول', 'Create Admin Account & Sign In')
                   : authMode === 'register_customer'
-                  ? 'إنشاء حساب العميل والدخول'
+                  ? t('إنشاء حساب العميل والدخول', 'Create Customer Account & Sign In')
                   : authMode === 'register_rep'
-                  ? 'إنشاء حساب المندوب والدخول'
-                  : 'دخول النظام'}
+                  ? t('إنشاء حساب المندوب والدخول', 'Create Rep Account & Sign In')
+                  : t('دخول النظام', 'Sign In')}
               </span>
             </button>
           </form>
         </div>
 
         <div className="bg-slate-50 dark:bg-[#0A162B] border-t border-slate-100 dark:border-[#21375C] px-3 py-2 text-center text-[11px] text-slate-500 dark:text-[#97AECE] font-medium">
-          مؤسسة أولاد سليم لتجارة المواد الغذائية بالجملة • جميع الحقوق محفوظة 2026
+          {t('مؤسسة أولاد سليم لتجارة المواد الغذائية بالجملة • جميع الحقوق محفوظة 2026', 'Awlad Selim Wholesale Food Trading • All Rights Reserved 2026')}
         </div>
       </div>
 
       {/* Forgot Password Modal */}
       {showForgotModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-950/70 dark:bg-[#040B17]/80 backdrop-blur-xs">
-          <div className="w-full max-w-sm bg-white dark:bg-[#0E1C36] rounded-lg p-3.5 text-right shadow-2xl border border-slate-200 dark:border-[#21375C]">
-            <h4 className="text-sm font-bold text-slate-900 dark:text-[#F3F7FC] mb-1">استعادة كلمة المرور</h4>
+          <div dir={dir} className="w-full max-w-sm bg-white dark:bg-[#0E1C36] rounded-lg p-3.5 text-start shadow-2xl border border-slate-200 dark:border-[#21375C]">
+            <h4 className="text-sm font-bold text-slate-900 dark:text-[#F3F7FC] mb-1">{t('استعادة كلمة المرور', 'Password Recovery')}</h4>
             <p className="text-xs text-slate-600 dark:text-[#A9BCD9] leading-relaxed mb-2.5">
-              لأسباب أمنية، يتم إعادة ضبط كلمات المرور حصرياً من خلال مسؤول النظام داخل إدارة المستخدمين.
+              {t(
+                'لأسباب أمنية، يتم إعادة ضبط كلمات المرور حصرياً من خلال مسؤول النظام داخل إدارة المستخدمين.',
+                'For security reasons, passwords can only be reset by a system administrator in User Management.'
+              )}
             </p>
             <button
               onClick={() => setShowForgotModal(false)}
               className="w-full h-8 bg-[var(--awlad-navy-900)] dark:bg-[#1659C8] text-white text-xs font-bold rounded-md hover:bg-[var(--awlad-navy-950)] dark:hover:bg-[#1F6BE6] cursor-pointer"
             >
-              حسناً، فهمت
+              {t('حسناً، فهمت', 'Got it')}
             </button>
           </div>
         </div>
@@ -863,7 +913,7 @@ export const LoginView: React.FC = () => {
         initialCity={city}
         initialArea={area}
         initialGovernorate={governorate}
-        title="تحديد موقع المحل على الخريطة"
+        title={t('تحديد موقع المحل على الخريطة', 'Pin Shop Location on Map')}
         onConfirm={(picked: PickedCustomerLocation) => {
           setLatitude(picked.latitude);
           setLongitude(picked.longitude);
@@ -884,18 +934,24 @@ export const LoginView: React.FC = () => {
           setAccountToForget(null);
           setInfoNotice(
             !res.serverRevoked && res.warning
-              ? res.warning
-              : 'تمت إزالة الحساب من هذا الجهاز فقط دون التأثير على حساباتك الأخرى أو بيانات السيرفر.'
+              ? t(res.warning)
+              : t(
+                  'تمت إزالة الحساب من هذا الجهاز فقط دون التأثير على حساباتك الأخرى أو بيانات السيرفر.',
+                  'Account removed from this device only without affecting other accounts or server data.'
+                )
           );
         }}
         variant="danger"
-        title="إزالة الحساب من الجهاز؟"
+        title={t('إزالة الحساب من الجهاز؟', 'Remove account from device?')}
         message={
           accountToForget
-            ? `هل تريد إزالة الحساب (${accountToForget.fullName} - @${accountToForget.username}) من قائمة الحسابات المحفوظة على هذا الجهاز؟`
+            ? t(
+                `هل تريد إزالة الحساب (${accountToForget.fullName} - @${accountToForget.username}) من قائمة الحسابات المحفوظة على هذا الجهاز؟`,
+                `Remove account (${accountToForget.fullName} - @${accountToForget.username}) from saved accounts on this device?`
+              )
             : ''
         }
-        confirmLabel="نعم، إزالة من الجهاز"
+        confirmLabel={t('نعم، إزالة من الجهاز', 'Yes, Remove from Device')}
       />
     </div>
   );

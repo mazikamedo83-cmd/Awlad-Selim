@@ -15,6 +15,8 @@ import {
   ArrowUpRight,
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
+import { usePreferences } from '../../../context/PreferencesContext';
+import { formatLocaleNumber } from '../../../i18n/translator';
 import { ItemMovementReportResponse, ItemMovementRow } from '../../../types';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { exportToExcel } from '../../common/ExcelExporter';
@@ -32,70 +34,90 @@ type SectionKey = keyof ItemMovementReportResponse['sections'];
 const SECTION_META: Array<{
   key: SectionKey;
   title: string;
+  titleEn: string;
   subtitle: string;
+  subtitleEn: string;
   bannerCls: string;
   badgeCls: string;
 }> = [
   {
     key: 'sales',
     title: '1. فواتير المبيعات المعتمدة',
+    titleEn: '1. Approved Sales Invoices',
     subtitle: 'المبيعات الفعلية واحتساب الربحية بناءً على التكلفة',
+    subtitleEn: 'Actual sales and cost-based profitability calculation',
     bannerCls: 'bg-[#011E58] text-white border-[#002160]',
     badgeCls: 'bg-[#003589] text-[#DCE6F5]',
   },
   {
     key: 'purchases',
     title: '2. فواتير المشتريات والتوريدات',
+    titleEn: '2. Purchase Invoices & Supplies',
     subtitle: 'الكميات المضافة للمخزون من الموردين وتكلفة الشراء',
+    subtitleEn: 'Quantities added to stock from suppliers and purchase cost',
     bannerCls: 'bg-[#002160] text-white border-[#011E58]',
     badgeCls: 'bg-[#003589] text-[#DCE6F5]',
   },
   {
     key: 'sales_returns',
     title: '3. مرتجعات المبيعات',
+    titleEn: '3. Sales Returns',
     subtitle: 'الكميات المرتجعة من العملاء وإضافتها للمخزن',
+    subtitleEn: 'Quantities returned from customers and restored to warehouse',
     bannerCls: 'bg-amber-800 text-white border-amber-700',
     badgeCls: 'bg-amber-700 text-amber-100',
   },
   {
     key: 'purchase_returns',
     title: '4. مرتجعات المشتريات',
+    titleEn: '4. Purchase Returns',
     subtitle: 'الكميات المرتجعة للموردين وخصمها من المخزن',
+    subtitleEn: 'Quantities returned to suppliers and deducted from warehouse',
     bannerCls: 'bg-amber-900 text-white border-amber-800',
     badgeCls: 'bg-amber-800 text-amber-100',
   },
   {
     key: 'transfers',
     title: '5. التحويلات المخزنية بين المستودعات',
+    titleEn: '5. Inter-Warehouse Stock Transfers',
     subtitle: 'حركات نقل داخلي مستبعدة من إجمالي المبيعات',
+    subtitleEn: 'Internal stock movements excluded from total sales',
     bannerCls: 'bg-[#003589] text-white border-[#002160]',
     badgeCls: 'bg-[#011E58] text-[#DCE6F5]',
   },
   {
     key: 'custody_sent',
     title: '6. صرف عهدة البضاعة من المخزن للمندوب',
+    titleEn: '6. Custody Dispatch from Warehouse to Rep',
     subtitle: 'أذونات الصرف الصادرة من المستودع الرئيسي للمناديب',
+    subtitleEn: 'Dispatch notes issued from main warehouse to representatives',
     bannerCls: 'bg-[#0049B0] text-white border-[#003589]',
     badgeCls: 'bg-[#011E58] text-[#DCE6F5]',
   },
   {
     key: 'custody_received',
     title: '7. استلام العهدة في سيارات المناديب',
+    titleEn: '7. Custody Receipt in Rep Vehicles',
     subtitle: 'الأذونات المؤكد استلامها فعلياً في عهدة سيارة المندوب',
+    subtitleEn: 'Notes confirmed as physically received in rep vehicle custody',
     bannerCls: 'bg-[#011E58] text-white border-[#003589]',
     badgeCls: 'bg-[#0049B0] text-white',
   },
   {
     key: 'custody_deliveries',
     title: '8. تسليمات وإرجاعات عهدة المناديب',
+    titleEn: '8. Rep Custody Deliveries & Returns',
     subtitle: 'التسليم الجزئي للعملاء أو الإرجاع من السيارة للمخزن',
+    subtitleEn: 'Partial delivery to customers or return from vehicle to warehouse',
     bannerCls: 'bg-slate-800 text-white border-slate-700',
     badgeCls: 'bg-slate-700 text-slate-100',
   },
   {
     key: 'adjustments',
     title: '9. تسويات الجرد والتالف والعجز',
+    titleEn: '9. Stock Count Adjustments, Damages & Shortages',
     subtitle: 'الرصيد الافتتاحي، تسويات الجرد، التوالف، وتسويات العهد',
+    subtitleEn: 'Opening balance, count adjustments, damages, and custody settlements',
     bannerCls: 'bg-rose-900 text-white border-rose-800',
     badgeCls: 'bg-rose-800 text-rose-100',
   },
@@ -114,6 +136,10 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
     settings,
     getItemMovementReport,
   } = useData();
+
+  const { t, isRtl } = usePreferences();
+  const arrow = isRtl ? '⬅' : '→';
+  const currency = t(settings.currency);
 
   const [productId, setProductId] = useState<string>(initialProductId || 'all');
   const [warehouseId, setWarehouseId] = useState<string>('all');
@@ -141,12 +167,12 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
         return {
           value: p.id,
           label: p.name,
-          subtitle: `${p.code}${p.barcode ? ` • ${p.barcode}` : ''} • الرصيد: ${stockQty} ${p.baseUnit}`,
+          subtitle: `${p.code}${p.barcode ? ` • ${p.barcode}` : ''} • ${t('الرصيد:', 'Balance:')} ${formatLocaleNumber(stockQty)} ${t(p.baseUnit)}`,
           badge: p.code,
           searchText: `${p.code} ${p.barcode || ''} ${p.category || ''}`,
         };
       }),
-    [products, warehouseId]
+    [products, warehouseId, t]
   );
 
   const warehouseFilterOptions = useMemo<SearchableFilterOption[]>(
@@ -175,10 +201,10 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
     () =>
       SECTION_META.map((sec) => ({
         value: sec.key,
-        label: sec.title,
-        subtitle: sec.subtitle,
+        label: t(sec.title, sec.titleEn),
+        subtitle: t(sec.subtitle, sec.subtitleEn),
       })),
-    []
+    [t]
   );
 
   useEffect(() => {
@@ -201,11 +227,11 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
     });
     setIsLoading(false);
     if (!res.success || !res.report) {
-      setError(res.error || 'تعذر تحميل تقرير حركة الصنف');
+      setError(res.error ? t(res.error) : t('تعذر تحميل تقرير حركة الصنف', 'Unable to load item movement report'));
     } else {
       setReport(res.report);
     }
-  }, [productId, warehouseId, representativeId, movementType, dateFrom, dateTo, search, getItemMovementReport]);
+  }, [productId, warehouseId, representativeId, movementType, dateFrom, dateTo, search, getItemMovementReport, t]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -234,35 +260,35 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
 
   const buildGroupedExportRows = (): { headers: string[]; rows: Array<Array<string | number>> } => {
     const headers = [
-      'القسم / نوع الحركة',
-      'التاريخ',
-      'رقم المستند',
-      'الصنف',
-      'المستودع / المسار',
-      'الطرف / المندوب',
-      'الوحدة',
-      'الكمية',
-      'سعر الوحدة',
-      'سعر التكلفة',
-      'الإجمالي',
-      'الربح (على التكلفة)',
-      'ملاحظات',
+      t('القسم / نوع الحركة', 'Section / Movement Type'),
+      t('التاريخ', 'Date'),
+      t('رقم المستند', 'Document #'),
+      t('الصنف', 'Item'),
+      t('المستودع / المسار', 'Warehouse / Route'),
+      t('الطرف / المندوب', 'Party / Rep'),
+      t('الوحدة', 'Unit'),
+      t('الكمية', 'Quantity'),
+      t('سعر الوحدة', 'Unit Price'),
+      t('سعر التكلفة', 'Cost Price'),
+      t('الإجمالي', 'Total'),
+      t('الربح (على التكلفة)', 'Profit (on Cost)'),
+      t('ملاحظات', 'Notes'),
     ];
     const rows: Array<Array<string | number>> = [];
     if (!report) return { headers, rows };
 
     visibleSections.forEach((sec) => {
       const list = report.sections[sec.key] || [];
-      rows.push([`=== ${sec.title} (${list.length}) ===`, '', '', '', '', '', '', '', '', '', '', '', '']);
+      rows.push([`=== ${t(sec.title, sec.titleEn)} (${list.length}) ===`, '', '', '', '', '', '', '', '', '', '', '', '']);
       list.forEach((r) => {
         rows.push([
-          r.docType,
+          t(r.docType),
           r.date,
           r.docNumber,
           r.productName,
-          r.targetWarehouseName ? `${r.warehouseName || ''} ⬅ ${r.targetWarehouseName}` : r.warehouseName || '-',
+          r.targetWarehouseName ? `${r.warehouseName || ''} ${arrow} ${r.targetWarehouseName}` : r.warehouseName || '-',
           r.partyName || r.representativeName || '-',
-          r.unit,
+          t(r.unit),
           r.quantity,
           r.unitPrice,
           r.costPrice,
@@ -278,26 +304,26 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
 
   const handleExportExcel = () => {
     const { headers, rows } = buildGroupedExportRows();
-    const label = report?.product ? report.product.name : 'كل_الأصناف';
-    exportToExcel(`تقرير_حركة_الصنف_${label}_${new Date().toISOString().split('T')[0]}`, headers, rows);
+    const label = report?.product ? report.product.name : t('كل_الأصناف', 'All_Items');
+    exportToExcel(`${t('تقرير_حركة_الصنف', 'Item_Movement_Report')}_${label}_${new Date().toISOString().split('T')[0]}`, headers, rows);
   };
 
   const handleExportPdf = () => {
     if (!report) return;
     const { headers, rows } = buildGroupedExportRows();
     exportTableToPdf(
-      `تقرير حركة الصنف المفصل${report.product ? ` — ${report.product.name}` : ''}`,
+      `${t('تقرير حركة الصنف المفصل', 'Detailed Item Movement Report')}${report.product ? ` — ${report.product.name}` : ''}`,
       headers,
       rows,
       {
         companyName: settings.companyName,
         companySubtitle: settings.companySubtitle,
-        dateRangeText: `${dateFrom || 'البداية'} إلى ${dateTo || 'اليوم'}`,
+        dateRangeText: `${dateFrom || t('البداية', 'Start')} ${t('إلى', 'to')} ${dateTo || t('اليوم', 'Today')}`,
         summaryPairs: [
-          { label: 'إجمالي المبيعات', value: `${report.totals.totalSalesValue.toLocaleString()} ${settings.currency}` },
-          { label: 'إجمالي المشتريات', value: `${report.totals.totalPurchaseValue.toLocaleString()} ${settings.currency}` },
-          { label: 'الربح المبني على التكلفة', value: `${report.totals.totalProfit.toLocaleString()} ${settings.currency}`, highlight: true },
-          { label: 'الرصيد الحالي وتقييم المخزون', value: `${report.totals.currentBalance} (${report.totals.inventoryValuation.toLocaleString()} ${settings.currency})` },
+          { label: t('إجمالي المبيعات', 'Total Sales'), value: `${formatLocaleNumber(report.totals.totalSalesValue)} ${currency}` },
+          { label: t('إجمالي المشتريات', 'Total Purchases'), value: `${formatLocaleNumber(report.totals.totalPurchaseValue)} ${currency}` },
+          { label: t('الربح المبني على التكلفة', 'Cost-Based Profit'), value: `${formatLocaleNumber(report.totals.totalProfit)} ${currency}`, highlight: true },
+          { label: t('الرصيد الحالي وتقييم المخزون', 'Current Balance & Stock Valuation'), value: `${formatLocaleNumber(report.totals.currentBalance)} (${formatLocaleNumber(report.totals.inventoryValuation)} ${currency})` },
         ],
       }
     );
@@ -309,7 +335,7 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
     visibleSections.forEach((sec) => {
       const list = report.sections[sec.key] || [];
       items.push({
-        name: `--- ${sec.title} ---`,
+        name: `--- ${t(sec.title, sec.titleEn)} ---`,
         unit: '-',
         quantity: list.length,
         price: 0,
@@ -318,7 +344,7 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
       list.forEach((r) => {
         items.push({
           name: `${r.date} | ${r.docNumber} | ${r.productName}${r.partyName ? ` (${r.partyName})` : ''}`,
-          unit: r.unit,
+          unit: t(r.unit),
           quantity: r.quantity,
           price: r.unitPrice,
           discount: r.profitValue,
@@ -328,19 +354,19 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
     });
 
     setPrintData({
-      title: `تقرير حركة الصنف المفصل${report.product ? ` — ${report.product.name}` : ''}`,
+      title: `${t('تقرير حركة الصنف المفصل', 'Detailed Item Movement Report')}${report.product ? ` — ${report.product.name}` : ''}`,
       docNumber: report.product?.code || 'ALL-ITEMS',
       docType: 'كشف حساب',
-      date: `${dateFrom || 'بداية النشاط'} إلى ${dateTo || 'اليوم'}`,
-      partyName: report.product ? `${report.product.name} (${report.product.code})` : 'جميع الأصناف',
-      warehouseName: warehouseId === 'all' ? 'جميع المستودعات' : warehouses.find((w) => w.id === warehouseId)?.name,
-      representativeName: representativeId === 'all' ? 'جميع المناديب' : representatives.find((r) => r.id === representativeId)?.name,
-      tableHeaders: ['م', 'القسم / المستند والصنف', 'الوحدة', 'الكمية', 'السعر', 'الربح', 'الإجمالي'],
+      date: `${dateFrom || t('بداية النشاط', 'Inception')} ${t('إلى', 'to')} ${dateTo || t('اليوم', 'Today')}`,
+      partyName: report.product ? `${report.product.name} (${report.product.code})` : t('جميع الأصناف', 'All Items'),
+      warehouseName: warehouseId === 'all' ? t('جميع المستودعات', 'All Warehouses') : warehouses.find((w) => w.id === warehouseId)?.name,
+      representativeName: representativeId === 'all' ? t('جميع المناديب', 'All Representatives') : representatives.find((r) => r.id === representativeId)?.name,
+      tableHeaders: [t('م', '#'), t('القسم / المستند والصنف', 'Section / Doc & Item'), t('الوحدة', 'Unit'), t('الكمية', 'Qty'), t('السعر', 'Price'), t('الربح', 'Profit'), t('الإجمالي', 'Total')],
       items,
       grandTotal: report.totals.totalSalesValue,
       paidAmount: report.totals.totalPurchaseValue,
       remainingAmount: report.totals.totalProfit,
-      notes: `إجمالي الوارد: ${report.totals.totalQtyIn} | إجمالي المنصرف: ${report.totals.totalQtyOut} | الرصيد الحالي: ${report.totals.currentBalance} | تقييم المخزون بالتكلفة: ${report.totals.inventoryValuation.toLocaleString()} ${settings.currency}`,
+      notes: `${t('إجمالي الوارد:', 'Total In:')} ${formatLocaleNumber(report.totals.totalQtyIn)} | ${t('إجمالي المنصرف:', 'Total Out:')} ${formatLocaleNumber(report.totals.totalQtyOut)} | ${t('الرصيد الحالي:', 'Current Balance:')} ${formatLocaleNumber(report.totals.currentBalance)} | ${t('تقييم المخزون بالتكلفة:', 'Stock Valuation at Cost:')} ${formatLocaleNumber(report.totals.inventoryValuation)} ${currency}`,
     });
     setIsPrintOpen(true);
   };
@@ -352,9 +378,9 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
     if (inv) return { kind: 'invoice' as const, data: inv };
     const ret = invoiceReturns.find((r) => r.id === selectedRow.docId);
     if (ret) return { kind: 'return' as const, data: ret };
-    const repReq = repItemTransfers.find((t) => t.id === selectedRow.docId);
+    const repReq = repItemTransfers.find((tr) => tr.id === selectedRow.docId);
     if (repReq) return { kind: 'rep_transfer' as const, data: repReq };
-    const stReq = stockTransferRequests.find((t) => t.id === selectedRow.docId);
+    const stReq = stockTransferRequests.find((tr) => tr.id === selectedRow.docId);
     if (stReq) return { kind: 'stock_transfer' as const, data: stReq };
     const custodyOp = repCustodyOperations.find((op) => op.id === selectedRow.docId);
     if (custodyOp) return { kind: 'rep_custody' as const, data: custodyOp };
@@ -363,20 +389,21 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
 
   const handlePrintSelectedSourceDoc = () => {
     if (!selectedRow) return;
+    const defaultHeaders = [t('م', '#'), t('الصنف', 'Item'), t('الوحدة', 'Unit'), t('الكمية', 'Qty'), t('السعر', 'Price'), t('الخصم', 'Discount'), t('الإجمالي', 'Total')];
     if (sourceDocDetails?.kind === 'invoice') {
       const inv = sourceDocDetails.data;
       setPrintData({
-        title: inv.type === 'purchase' ? 'فاتورة مشتريات' : inv.type === 'quote' ? 'عرض سعر' : 'فاتورة مبيعات',
+        title: inv.type === 'purchase' ? t('فاتورة مشتريات', 'Purchase Invoice') : inv.type === 'quote' ? t('عرض سعر', 'Quotation') : t('فاتورة مبيعات', 'Sales Invoice'),
         docNumber: inv.invoiceNumber,
         docType: inv.type === 'purchase' ? 'فاتورة مشتريات' : inv.type === 'quote' ? 'عرض سعر' : 'فاتورة مبيعات',
         date: inv.date,
         partyName: inv.supplierName || inv.customerName || '-',
         warehouseName: inv.warehouseName,
         representativeName: inv.representativeName,
-        tableHeaders: ['م', 'الصنف', 'الوحدة', 'الكمية', 'السعر', 'الخصم', 'الإجمالي'],
+        tableHeaders: defaultHeaders,
         items: (inv.items || []).map((it) => ({
           name: it.productName,
-          unit: it.unit,
+          unit: t(it.unit),
           quantity: it.quantity,
           price: it.unitPrice,
           discount: it.discount,
@@ -390,16 +417,16 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
     } else if (sourceDocDetails?.kind === 'return') {
       const ret = sourceDocDetails.data;
       setPrintData({
-        title: ret.type === 'purchase_return' ? 'إشعار مرتجع مشتريات' : 'إشعار مرتجع مبيعات',
+        title: ret.type === 'purchase_return' ? t('إشعار مرتجع مشتريات', 'Purchase Return Notice') : t('إشعار مرتجع مبيعات', 'Sales Return Notice'),
         docNumber: ret.returnNumber,
         docType: ret.type === 'purchase_return' ? 'مرتجع مشتريات' : 'مرتجع مبيعات',
         date: ret.date,
         partyName: ret.partyName,
         warehouseName: ret.warehouseName,
-        tableHeaders: ['م', 'الصنف', 'الوحدة', 'الكمية', 'السعر', 'الخصم', 'الإجمالي'],
+        tableHeaders: defaultHeaders,
         items: (ret.items || []).map((it) => ({
           name: it.productName,
-          unit: it.unit,
+          unit: t(it.unit),
           quantity: it.quantity,
           price: it.unitPrice,
           total: it.total,
@@ -408,38 +435,38 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
         notes: ret.reason,
       });
     } else if (sourceDocDetails?.kind === 'rep_transfer') {
-      const tr = sourceDocDetails.data;
+      const repTr = sourceDocDetails.data;
       setPrintData({
-        title: 'إذن صرف / تحويل عهدة مندوب',
-        docNumber: tr.requestNumber,
-        docType: tr.status === 'received' ? 'إيصال استلام' : 'سند صرف',
-        date: tr.date,
-        partyName: tr.representativeName,
-        warehouseName: `${tr.sourceWarehouseName} ⬅ ${tr.targetWarehouseName}`,
-        representativeName: tr.representativeName,
-        tableHeaders: ['م', 'الصنف', 'الوحدة', 'الكمية المنفذة', 'السعر', 'الخصم', 'الإجمالي'],
-        items: (tr.items || []).map((it) => ({
+        title: t('إذن صرف / تحويل عهدة مندوب', 'Rep Custody Dispatch / Transfer Note'),
+        docNumber: repTr.requestNumber,
+        docType: repTr.status === 'received' ? 'إيصال استلام' : 'سند صرف',
+        date: repTr.date,
+        partyName: repTr.representativeName,
+        warehouseName: `${repTr.sourceWarehouseName} ${arrow} ${repTr.targetWarehouseName}`,
+        representativeName: repTr.representativeName,
+        tableHeaders: [t('م', '#'), t('الصنف', 'Item'), t('الوحدة', 'Unit'), t('الكمية المنفذة', 'Executed Qty'), t('السعر', 'Price'), t('الخصم', 'Discount'), t('الإجمالي', 'Total')],
+        items: (repTr.items || []).map((it) => ({
           name: it.productName,
-          unit: it.unit,
+          unit: t(it.unit),
           quantity: it.executedQty ?? it.approvedQty ?? it.requestedQty,
           price: 0,
           total: 0,
         })),
         grandTotal: selectedRow.totalValue,
-        notes: tr.notes,
+        notes: repTr.notes,
       });
     } else if (sourceDocDetails?.kind === 'stock_transfer') {
       const st = sourceDocDetails.data;
       setPrintData({
-        title: 'مستند تحويل مخزني',
+        title: t('مستند تحويل مخزني', 'Stock Transfer Document'),
         docNumber: st.transferNumber,
         docType: 'سند صرف',
         date: st.date,
-        warehouseName: `${st.sourceWarehouseName} ⬅ ${st.targetWarehouseName}`,
-        tableHeaders: ['م', 'الصنف', 'الوحدة', 'الكمية', 'السعر', 'الخصم', 'الإجمالي'],
+        warehouseName: `${st.sourceWarehouseName} ${arrow} ${st.targetWarehouseName}`,
+        tableHeaders: defaultHeaders,
         items: (st.items || []).map((it) => ({
           name: it.productName,
-          unit: it.unit,
+          unit: t(it.unit),
           quantity: it.executedQty ?? it.requestedQty,
           price: 0,
           total: 0,
@@ -451,20 +478,20 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
       const fallbackDocType: PrintData['docType'] =
         selectedRow.direction === 'in' ? 'إيصال استلام' : selectedRow.direction === 'out' ? 'سند صرف' : 'كشف حساب';
       setPrintData({
-        title: `تفاصيل مستند حركة الصنف (${selectedRow.docType})`,
+        title: `${t('تفاصيل مستند حركة الصنف', 'Item Movement Document Details')} (${t(selectedRow.docType)})`,
         docNumber: selectedRow.docNumber,
         docType: fallbackDocType,
         date: selectedRow.date,
         partyName: selectedRow.partyName || selectedRow.representativeName || '-',
         warehouseName: selectedRow.targetWarehouseName
-          ? `${selectedRow.warehouseName || ''} ⬅ ${selectedRow.targetWarehouseName}`
+          ? `${selectedRow.warehouseName || ''} ${arrow} ${selectedRow.targetWarehouseName}`
           : selectedRow.warehouseName,
         representativeName: selectedRow.representativeName,
-        tableHeaders: ['م', 'الصنف', 'الوحدة', 'الكمية', 'السعر', 'الخصم', 'الإجمالي'],
+        tableHeaders: defaultHeaders,
         items: [
           {
             name: selectedRow.productName,
-            unit: selectedRow.unit,
+            unit: t(selectedRow.unit),
             quantity: selectedRow.quantity,
             price: selectedRow.unitPrice,
             total: selectedRow.totalValue,
@@ -482,9 +509,12 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
       {/* Header & Exports */}
       <div className="bg-white px-2.5 py-2 rounded-lg border border-slate-200 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="text-sm font-black text-slate-900">تقرير حركة الصنف المفصل والشامل</h3>
+          <h3 className="text-sm font-black text-slate-900">{t('تقرير حركة الصنف المفصل والشامل', 'Comprehensive Item Movement Report')}</h3>
           <p className="text-[11px] text-slate-500">
-            متابعة المبيعات والمشتريات والمرتجعات والتحويلات وعهد المناديب والتسويات مع احتساب الأرباح على التكلفة وتقييم المخزون
+            {t(
+              'متابعة المبيعات والمشتريات والمرتجعات والتحويلات وعهد المناديب والتسويات مع احتساب الأرباح على التكلفة وتقييم المخزون',
+              'Track sales, purchases, returns, transfers, rep custody, and adjustments with cost-based profit and inventory valuation'
+            )}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5 text-xs">
@@ -513,7 +543,7 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
             className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#003589] hover:bg-[#011E58] text-white font-black cursor-pointer disabled:opacity-50"
           >
             <Printer className="w-3.5 h-3.5" />
-            <span>طباعة التقرير</span>
+            <span>{t('طباعة التقرير', 'Print Report')}</span>
           </button>
         </div>
       </div>
@@ -522,27 +552,27 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
       <div className="bg-white dark:bg-[#0E1C36] p-2 rounded-lg border border-slate-200 dark:border-[#21375C] text-xs">
         <div className="awlad-filter-row pb-0.5" data-testid="imr-single-filter-row">
           <div className="relative w-[170px] shrink-0">
-            <Search className="w-3.5 h-3.5 text-slate-400 dark:text-[#8CA3C7] absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <Search className="w-3.5 h-3.5 text-slate-400 dark:text-[#8CA3C7] absolute start-2 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
-              aria-label="بحث في المستندات أو الأطراف"
+              aria-label={t('بحث في المستندات أو الأطراف', 'Search documents or parties')}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="بحث (فاتورة / طرف / ملاحظات)..."
-              className="w-full h-8 pr-7 pl-2 rounded-md border border-slate-300 dark:border-[#2A436E] text-xs bg-slate-50 dark:bg-[#10203D] focus:bg-white focus:outline-none"
+              placeholder={t('بحث (فاتورة / طرف / ملاحظات)...', 'Search (invoice / party / notes)...')}
+              className="w-full h-8 ps-7 pe-2 rounded-md border border-slate-300 dark:border-[#2A436E] text-xs bg-slate-50 dark:bg-[#10203D] focus:bg-white focus:outline-none"
             />
           </div>
 
           <div className="w-[155px] shrink-0">
             <SearchableFilterSelect
               id="imr-filter-product"
-              inlinePrefix="الصنف"
+              inlinePrefix={t('الصنف', 'Item')}
               value={productId}
               onChange={setProductId}
               options={productFilterOptions}
-              allOptionLabel="جميع الأصناف"
+              allOptionLabel={t('جميع الأصناف', 'All Items')}
               allOptionValue="all"
-              searchPlaceholder="ابحث باسم الصنف أو الكود أو الباركود..."
+              searchPlaceholder={t('ابحث باسم الصنف أو الكود أو الباركود...', 'Search by item name, code, or barcode...')}
               allowClear
               minPanelWidth={280}
               buttonClassName="rounded-md h-8"
@@ -552,11 +582,11 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
           <div className="w-[135px] shrink-0">
             <SearchableFilterSelect
               id="imr-filter-warehouse"
-              inlinePrefix="المستودع"
+              inlinePrefix={t('المستودع', 'Warehouse')}
               value={warehouseId}
               onChange={setWarehouseId}
               options={warehouseFilterOptions}
-              allOptionLabel="جميع المستودعات"
+              allOptionLabel={t('جميع المستودعات', 'All Warehouses')}
               allOptionValue="all"
               allowClear
               buttonClassName="rounded-md h-8"
@@ -566,11 +596,11 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
           <div className="w-[135px] shrink-0">
             <SearchableFilterSelect
               id="imr-filter-rep"
-              inlinePrefix="المندوب"
+              inlinePrefix={t('المندوب', 'Rep')}
               value={representativeId}
               onChange={setRepresentativeId}
               options={representativeFilterOptions}
-              allOptionLabel="جميع المناديب"
+              allOptionLabel={t('جميع المناديب', 'All Reps')}
               allOptionValue="all"
               allowClear
               buttonClassName="rounded-md h-8"
@@ -580,11 +610,11 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
           <div className="w-[145px] shrink-0">
             <SearchableFilterSelect
               id="imr-filter-movement-type"
-              inlinePrefix="الحركة"
+              inlinePrefix={t('الحركة', 'Movement')}
               value={movementType}
               onChange={setMovementType}
               options={movementSectionFilterOptions}
-              allOptionLabel="كافة أقسام الحركة"
+              allOptionLabel={t('كافة أقسام الحركة', 'All Movement Sections')}
               allOptionValue="all"
               allowClear
               minPanelWidth={270}
@@ -593,10 +623,10 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
           </div>
 
           <div className="h-8 flex items-center gap-1 bg-slate-50 dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-1.5 shrink-0">
-            <span className="text-[10.5px] font-bold text-slate-500 dark:text-[#8CA3C7] whitespace-nowrap">من</span>
+            <span className="text-[10.5px] font-bold text-slate-500 dark:text-[#8CA3C7] whitespace-nowrap">{t('من', 'From')}</span>
             <input
               type="date"
-              aria-label="من تاريخ"
+              aria-label={t('من تاريخ', 'From Date')}
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
               className="h-6 w-[112px] bg-transparent border-0 font-mono text-[11px] focus:outline-none"
@@ -604,10 +634,10 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
           </div>
 
           <div className="h-8 flex items-center gap-1 bg-slate-50 dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-1.5 shrink-0">
-            <span className="text-[10.5px] font-bold text-slate-500 dark:text-[#8CA3C7] whitespace-nowrap">إلى</span>
+            <span className="text-[10.5px] font-bold text-slate-500 dark:text-[#8CA3C7] whitespace-nowrap">{t('إلى', 'To')}</span>
             <input
               type="date"
-              aria-label="إلى تاريخ"
+              aria-label={t('إلى تاريخ', 'To Date')}
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
               className="h-6 w-[112px] bg-transparent border-0 font-mono text-[11px] focus:outline-none"
@@ -621,17 +651,17 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
             className="flex items-center justify-center gap-1 h-8 px-3 rounded-md bg-[#003589] hover:bg-[#011E58] text-white font-bold whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-            <span>تحديث</span>
+            <span>{t('تحديث', 'Refresh')}</span>
           </button>
 
           <button
             type="button"
             onClick={handleResetFilters}
             className="flex items-center justify-center gap-1 h-8 px-2.5 rounded-md border border-slate-300 dark:border-[#2A436E] bg-slate-100 dark:bg-[#132544] hover:bg-slate-200 text-slate-700 dark:text-[#EEF4FC] font-bold whitespace-nowrap shrink-0 cursor-pointer"
-            title="إعادة ضبط الفلاتر"
+            title={t('إعادة ضبط الفلاتر', 'Reset Filters')}
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            <span>إعادة ضبط</span>
+            <span>{t('إعادة ضبط', 'Reset')}</span>
           </button>
         </div>
       </div>
@@ -654,22 +684,22 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
                 <div>
                   <h4 className="font-black text-xs sm:text-sm">{report.product.name}</h4>
                   <p className="text-slate-300 font-mono text-[10px]">
-                    كود: {report.product.code} {report.product.barcode ? `| باركود: ${report.product.barcode}` : ''} | الوحدة الأساسية: {report.product.baseUnit}
+                    {t('كود:', 'Code:')} {report.product.code} {report.product.barcode ? `| ${t('باركود:', 'Barcode:')} ${report.product.barcode}` : ''} | {t('الوحدة الأساسية:', 'Base Unit:')} {t(report.product.baseUnit)}
                   </p>
                 </div>
               </div>
               <div className="flex flex-wrap gap-3 tabular-nums">
                 <div>
-                  <span className="text-slate-400 block text-[10px]">سعر الشراء</span>
-                  <strong className="font-mono text-xs">{report.product.purchasePrice.toLocaleString()} {settings.currency}</strong>
+                  <span className="text-slate-400 block text-[10px]">{t('سعر الشراء', 'Purchase Price')}</span>
+                  <strong className="font-mono text-xs">{formatLocaleNumber(report.product.purchasePrice)} {currency}</strong>
                 </div>
                 <div>
-                  <span className="text-slate-400 block text-[10px]">سعر البيع</span>
-                  <strong className="font-mono text-xs text-emerald-300">{report.product.sellingPrice.toLocaleString()} {settings.currency}</strong>
+                  <span className="text-slate-400 block text-[10px]">{t('سعر البيع', 'Selling Price')}</span>
+                  <strong className="font-mono text-xs text-emerald-300">{formatLocaleNumber(report.product.sellingPrice)} {currency}</strong>
                 </div>
                 <div>
-                  <span className="text-slate-400 block text-[10px]">الرصيد الإجمالي</span>
-                  <strong className="font-mono text-xs text-blue-300">{report.totals.currentBalance}</strong>
+                  <span className="text-slate-400 block text-[10px]">{t('الرصيد الإجمالي', 'Total Balance')}</span>
+                  <strong className="font-mono text-xs text-blue-300">{formatLocaleNumber(report.totals.currentBalance)}</strong>
                 </div>
               </div>
             </div>
@@ -682,14 +712,14 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
                 <div className="bg-white p-2 rounded-lg border border-slate-200">
                   <h4 className="font-black text-slate-900 mb-1 flex items-center gap-1.5">
                     <WarehouseIcon className="w-3.5 h-3.5 text-blue-800" />
-                    <span>توزيع الأرصدة بالمستودعات ({report.warehouseBreakdown.length})</span>
+                    <span>{t('توزيع الأرصدة بالمستودعات', 'Warehouse Stock Breakdown')} ({formatLocaleNumber(report.warehouseBreakdown.length)})</span>
                   </h4>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-px bg-slate-200 border border-slate-200 rounded-md overflow-hidden tabular-nums">
                     {report.warehouseBreakdown.map((wh) => (
                       <div key={wh.warehouseId} className="px-2 py-1.5 bg-slate-50">
                         <div className="font-bold text-slate-800 whitespace-normal break-words">{wh.warehouseName}</div>
-                        <div className="font-mono font-black text-blue-950 text-xs">{wh.quantity}</div>
-                        <div className="text-[10px] text-slate-500 font-mono">تكلفة: {wh.costValue.toLocaleString()} {settings.currency}</div>
+                        <div className="font-mono font-black text-blue-950 text-xs">{formatLocaleNumber(wh.quantity)}</div>
+                        <div className="text-[10px] text-slate-500 font-mono">{t('تكلفة:', 'Cost:')} {formatLocaleNumber(wh.costValue)} {currency}</div>
                       </div>
                     ))}
                   </div>
@@ -700,14 +730,14 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
                 <div className="bg-white p-2 rounded-lg border border-slate-200">
                   <h4 className="font-black text-slate-900 mb-1 flex items-center gap-1.5">
                     <Truck className="w-3.5 h-3.5 text-[#003589]" />
-                    <span>أرصدة عهد سيارات المناديب ({report.repCustodyBreakdown.length})</span>
+                    <span>{t('أرصدة عهد سيارات المناديب', 'Rep Vehicle Custody Balances')} ({formatLocaleNumber(report.repCustodyBreakdown.length)})</span>
                   </h4>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-px bg-[#DCE6F5] border border-[#DCE6F5] rounded-md overflow-hidden tabular-nums">
                     {report.repCustodyBreakdown.map((rep) => (
                       <div key={rep.representativeId} className="px-2 py-1.5 bg-[#EEF3FA]/70">
                         <div className="font-bold text-slate-900 whitespace-normal break-words">{rep.representativeName}</div>
-                        <div className="font-mono font-black text-[#011E58] text-xs">{rep.quantity}</div>
-                        <div className="text-[10px] text-slate-600 font-mono">تكلفة: {rep.costValue.toLocaleString()} {settings.currency}</div>
+                        <div className="font-mono font-black text-[#011E58] text-xs">{formatLocaleNumber(rep.quantity)}</div>
+                        <div className="text-[10px] text-slate-600 font-mono">{t('تكلفة:', 'Cost:')} {formatLocaleNumber(rep.costValue)} {currency}</div>
                       </div>
                     ))}
                   </div>
@@ -719,7 +749,7 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
           {/* Grouped Movement Sections */}
           {visibleSections.length === 0 ? (
             <div className="bg-white p-2.5 rounded-lg border border-slate-200 text-center text-xs text-slate-500 font-bold">
-              لا توجد حركات مسجلة تطابق الفلاتر الحالية.
+              {t('لا توجد حركات مسجلة تطابق الفلاتر الحالية.', 'No recorded movements match the current filters.')}
             </div>
           ) : (
             <div className="space-y-2">
@@ -732,7 +762,7 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
                 const secColumns: UnifiedColumn<ItemMovementRow>[] = [
                   {
                     key: 'date',
-                    header: 'التاريخ',
+                    header: t('التاريخ', 'Date'),
                     sortable: true,
                     sortValue: (r) => r.date,
                     exportValue: (r) => r.date,
@@ -741,14 +771,14 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
                   },
                   {
                     key: 'docNumber',
-                    header: 'المستند',
+                    header: t('المستند', 'Document'),
                     sortable: true,
                     sortValue: (r) => r.docNumber,
-                    exportValue: (r) => `${r.docNumber} (${r.docType})`,
+                    exportValue: (r) => `${r.docNumber} (${t(r.docType)})`,
                     render: (r) => (
                       <div>
                         <div className="font-mono font-bold text-blue-900">{r.docNumber}</div>
-                        <div className="text-[10px] text-slate-500">{r.docType}</div>
+                        <div className="text-[10px] text-slate-500">{t(r.docType)}</div>
                       </div>
                     ),
                   },
@@ -757,15 +787,15 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
                 if (sec.key === 'custody_deliveries' || sec.key === 'adjustments') {
                   secColumns.push({
                     key: 'docType',
-                    header: 'نوع الحركة',
-                    exportValue: (r) => r.docType,
-                    render: (r) => <span className="font-bold text-slate-700 whitespace-nowrap">{r.docType}</span>,
+                    header: t('نوع الحركة', 'Movement Type'),
+                    exportValue: (r) => t(r.docType),
+                    render: (r) => <span className="font-bold text-slate-700 whitespace-nowrap">{t(r.docType)}</span>,
                   });
                 }
 
                 secColumns.push({
                   key: 'productName',
-                  header: 'الصنف',
+                  header: t('الصنف', 'Item'),
                   sortable: true,
                   sortValue: (r) => r.productName,
                   exportValue: (r) => r.productName,
@@ -774,80 +804,80 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
 
                 if (sec.key === 'sales' || sec.key === 'sales_returns') {
                   secColumns.push(
-                    { key: 'partyName', header: 'العميل', exportValue: (r) => r.partyName || '-', render: (r) => r.partyName || '-' },
-                    { key: 'representativeName', header: 'المندوب', exportValue: (r) => r.representativeName || '-', render: (r) => r.representativeName || '-' },
-                    { key: 'warehouseName', header: 'المستودع', exportValue: (r) => r.warehouseName || '-', render: (r) => r.warehouseName || '-' }
+                    { key: 'partyName', header: t('العميل', 'Customer'), exportValue: (r) => r.partyName || '-', render: (r) => r.partyName || '-' },
+                    { key: 'representativeName', header: t('المندوب', 'Rep'), exportValue: (r) => r.representativeName || '-', render: (r) => r.representativeName || '-' },
+                    { key: 'warehouseName', header: t('المستودع', 'Warehouse'), exportValue: (r) => r.warehouseName || '-', render: (r) => r.warehouseName || '-' }
                   );
                 } else if (sec.key === 'purchases' || sec.key === 'purchase_returns') {
                   secColumns.push(
-                    { key: 'partyName', header: 'المورد', exportValue: (r) => r.partyName || '-', render: (r) => r.partyName || '-' },
-                    { key: 'warehouseName', header: 'المستودع', exportValue: (r) => r.warehouseName || '-', render: (r) => r.warehouseName || '-' }
+                    { key: 'partyName', header: t('المورد', 'Supplier'), exportValue: (r) => r.partyName || '-', render: (r) => r.partyName || '-' },
+                    { key: 'warehouseName', header: t('المستودع', 'Warehouse'), exportValue: (r) => r.warehouseName || '-', render: (r) => r.warehouseName || '-' }
                   );
                 } else if (sec.key === 'transfers') {
                   secColumns.push({
                     key: 'path',
-                    header: 'المسار (من ⬅ إلى)',
+                    header: `${t('المسار', 'Route')} (${t('من', 'From')} ${arrow} ${t('إلى', 'To')})`,
                     exportValue: (r) => (r.targetWarehouseName ? `${r.warehouseName || ''} -> ${r.targetWarehouseName}` : r.warehouseName || '-'),
-                    render: (r) => (r.targetWarehouseName ? `${r.warehouseName || ''} ⬅ ${r.targetWarehouseName}` : r.warehouseName || '-'),
+                    render: (r) => (r.targetWarehouseName ? `${r.warehouseName || ''} ${arrow} ${r.targetWarehouseName}` : r.warehouseName || '-'),
                   });
                 } else if (sec.key === 'custody_sent' || sec.key === 'custody_received') {
                   secColumns.push(
-                    { key: 'representativeName', header: 'المندوب', exportValue: (r) => r.representativeName || '-', render: (r) => r.representativeName || '-' },
+                    { key: 'representativeName', header: t('المندوب', 'Rep'), exportValue: (r) => r.representativeName || '-', render: (r) => r.representativeName || '-' },
                     {
                       key: 'path',
-                      header: 'المسار (من ⬅ إلى)',
+                      header: `${t('المسار', 'Route')} (${t('من', 'From')} ${arrow} ${t('إلى', 'To')})`,
                       exportValue: (r) => (r.targetWarehouseName ? `${r.warehouseName || ''} -> ${r.targetWarehouseName}` : r.warehouseName || '-'),
-                      render: (r) => (r.targetWarehouseName ? `${r.warehouseName || ''} ⬅ ${r.targetWarehouseName}` : r.warehouseName || '-'),
+                      render: (r) => (r.targetWarehouseName ? `${r.warehouseName || ''} ${arrow} ${r.targetWarehouseName}` : r.warehouseName || '-'),
                     }
                   );
                 } else if (sec.key === 'custody_deliveries') {
                   secColumns.push(
-                    { key: 'representativeName', header: 'المندوب', exportValue: (r) => r.representativeName || '-', render: (r) => r.representativeName || '-' },
-                    { key: 'dest', header: 'العميل / المخزن الوجهة', exportValue: (r) => r.partyName || r.targetWarehouseName || r.warehouseName || '-', render: (r) => r.partyName || r.targetWarehouseName || r.warehouseName || '-' }
+                    { key: 'representativeName', header: t('المندوب', 'Rep'), exportValue: (r) => r.representativeName || '-', render: (r) => r.representativeName || '-' },
+                    { key: 'dest', header: t('العميل / المخزن الوجهة', 'Customer / Target Warehouse'), exportValue: (r) => r.partyName || r.targetWarehouseName || r.warehouseName || '-', render: (r) => r.partyName || r.targetWarehouseName || r.warehouseName || '-' }
                   );
                 } else if (sec.key === 'adjustments') {
-                  secColumns.push({ key: 'warehouseName', header: 'المستودع', exportValue: (r) => r.warehouseName || '-', render: (r) => r.warehouseName || '-' });
+                  secColumns.push({ key: 'warehouseName', header: t('المستودع', 'Warehouse'), exportValue: (r) => r.warehouseName || '-', render: (r) => r.warehouseName || '-' });
                 }
 
                 secColumns.push({
                   key: 'quantity',
-                  header: 'الكمية والوحدة',
+                  header: t('الكمية والوحدة', 'Qty & Unit'),
                   align: 'center',
                   sortable: true,
                   sortValue: (r) => r.quantity,
-                  exportValue: (r) => `${r.direction === 'in' ? '+' : r.direction === 'out' ? '-' : ''}${r.quantity} ${r.unit}`,
+                  exportValue: (r) => `${r.direction === 'in' ? '+' : r.direction === 'out' ? '-' : ''}${r.quantity} ${t(r.unit)}`,
                   render: (r) => (
                     <span className="font-mono font-bold whitespace-nowrap tabular-nums">
                       <span className={r.direction === 'in' ? 'text-emerald-700' : r.direction === 'out' ? 'text-rose-700' : 'text-[#003589]'}>
                         {r.direction === 'in' ? '+' : r.direction === 'out' ? '-' : ''}
-                        {r.quantity}
+                        {formatLocaleNumber(r.quantity)}
                       </span>{' '}
-                      <span className="text-[10px] font-sans text-slate-500">{r.unit}</span>
+                      <span className="text-[10px] font-sans text-slate-500">{t(r.unit)}</span>
                     </span>
                   ),
                 });
 
                 if (sec.key === 'sales' || sec.key === 'sales_returns') {
                   secColumns.push(
-                    { key: 'unitPrice', header: 'السعر', align: 'center', sortable: true, sortValue: (r) => r.unitPrice, exportValue: (r) => r.unitPrice, render: (r) => <span className="font-mono tabular-nums">{r.unitPrice.toLocaleString()}</span> },
-                    { key: 'costPrice', header: 'التكلفة', align: 'center', exportValue: (r) => r.costPrice, render: (r) => <span className="font-mono text-slate-500 tabular-nums">{r.costPrice.toLocaleString()}</span> }
+                    { key: 'unitPrice', header: t('السعر', 'Price'), align: 'center', sortable: true, sortValue: (r) => r.unitPrice, exportValue: (r) => r.unitPrice, render: (r) => <span className="font-mono tabular-nums">{formatLocaleNumber(r.unitPrice)}</span> },
+                    { key: 'costPrice', header: t('التكلفة', 'Cost'), align: 'center', exportValue: (r) => r.costPrice, render: (r) => <span className="font-mono text-slate-500 tabular-nums">{formatLocaleNumber(r.costPrice)}</span> }
                   );
                 } else if (sec.key === 'purchases' || sec.key === 'purchase_returns') {
-                  secColumns.push({ key: 'unitPrice', header: 'تكلفة الوحدة', align: 'center', exportValue: (r) => r.unitPrice, render: (r) => <span className="font-mono text-slate-600 tabular-nums">{r.unitPrice.toLocaleString()}</span> });
+                  secColumns.push({ key: 'unitPrice', header: t('تكلفة الوحدة', 'Unit Cost'), align: 'center', exportValue: (r) => r.unitPrice, render: (r) => <span className="font-mono text-slate-600 tabular-nums">{formatLocaleNumber(r.unitPrice)}</span> });
                 } else if (sec.key === 'transfers') {
-                  secColumns.push({ key: 'costPrice', header: 'التكلفة', align: 'center', exportValue: (r) => r.costPrice, render: (r) => <span className="font-mono text-slate-500 tabular-nums">{r.costPrice.toLocaleString()}</span> });
+                  secColumns.push({ key: 'costPrice', header: t('التكلفة', 'Cost'), align: 'center', exportValue: (r) => r.costPrice, render: (r) => <span className="font-mono text-slate-500 tabular-nums">{formatLocaleNumber(r.costPrice)}</span> });
                 }
 
                 secColumns.push({
                   key: 'totalValue',
-                  header: sec.key === 'custody_sent' || sec.key === 'custody_received' || sec.key === 'custody_deliveries' ? 'القيمة بالتكلفة' : 'الإجمالي',
+                  header: sec.key === 'custody_sent' || sec.key === 'custody_received' || sec.key === 'custody_deliveries' ? t('القيمة بالتكلفة', 'Value at Cost') : t('الإجمالي', 'Total'),
                   align: 'center',
                   sortable: true,
                   sortValue: (r) => r.totalValue,
                   exportValue: (r) => r.totalValue,
                   render: (r) => (
                     <span className="font-mono font-black text-slate-900 whitespace-nowrap tabular-nums">
-                      {r.totalValue.toLocaleString()} {settings.currency}
+                      {formatLocaleNumber(r.totalValue)} {currency}
                     </span>
                   ),
                 });
@@ -855,30 +885,30 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
                 if (sec.key === 'sales' || sec.key === 'sales_returns') {
                   secColumns.push({
                     key: 'profitValue',
-                    header: 'الربح',
+                    header: t('الربح', 'Profit'),
                     align: 'center',
                     sortable: true,
                     sortValue: (r) => r.profitValue,
                     exportValue: (r) => r.profitValue,
                     render: (r) => (
                       <span className={`font-mono font-bold whitespace-nowrap tabular-nums ${r.profitValue > 0 ? 'text-emerald-700' : r.profitValue < 0 ? 'text-red-700' : 'text-slate-400'}`}>
-                        {r.profitValue !== 0 ? r.profitValue.toLocaleString() : '-'}
+                        {r.profitValue !== 0 ? formatLocaleNumber(r.profitValue) : '-'}
                       </span>
                     ),
                   });
                 }
 
                 if (sec.key === 'transfers' || sec.key === 'custody_sent' || sec.key === 'custody_received') {
-                  secColumns.push({ key: 'createdBy', header: 'المنفذ', exportValue: (r) => r.createdBy || '-', render: (r) => <span className="text-slate-600">{r.createdBy || '-'}</span> });
+                  secColumns.push({ key: 'createdBy', header: t('المنفذ', 'Executed By'), exportValue: (r) => r.createdBy || '-', render: (r) => <span className="text-slate-600">{r.createdBy || '-'}</span> });
                 }
 
                 if (sec.key === 'adjustments') {
-                  secColumns.push({ key: 'notes', header: 'السبب / الملاحظات', exportValue: (r) => r.notes || '-', render: (r) => <span className="text-slate-600 max-w-[260px] whitespace-normal break-words block">{r.notes || '-'}</span> });
+                  secColumns.push({ key: 'notes', header: t('السبب / الملاحظات', 'Reason / Notes'), exportValue: (r) => r.notes || '-', render: (r) => <span className="text-slate-600 max-w-[260px] whitespace-normal break-words block">{r.notes || '-'}</span> });
                 }
 
                 secColumns.push({
                   key: 'actions',
-                  header: 'التفاصيل',
+                  header: t('التفاصيل', 'Details'),
                   align: 'center',
                   render: (r) => (
                     <button
@@ -888,7 +918,7 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
                         setSelectedRow(r);
                       }}
                       className="p-1 rounded-lg bg-slate-100 hover:bg-blue-100 text-blue-900 cursor-pointer"
-                      title="عرض تفاصيل المستند"
+                      title={t('عرض تفاصيل المستند', 'View document details')}
                     >
                       <Eye className="w-3.5 h-3.5" />
                     </button>
@@ -899,19 +929,19 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
                   <div key={sec.key} className="space-y-1.5">
                     <div className={`px-2.5 py-1.5 rounded-lg border flex flex-wrap items-center justify-between gap-2 ${sec.bannerCls}`}>
                       <div>
-                        <h4 className="font-black text-xs sm:text-sm">{sec.title}</h4>
-                        <p className="text-[11px] opacity-85">{sec.subtitle}</p>
+                        <h4 className="font-black text-xs sm:text-sm">{t(sec.title, sec.titleEn)}</h4>
+                        <p className="text-[11px] opacity-85">{t(sec.subtitle, sec.subtitleEn)}</p>
                       </div>
                       <div className="flex items-center gap-2 text-[11px] font-mono tabular-nums">
                         <span className={`px-2 py-0.5 rounded font-bold ${sec.badgeCls}`}>
-                          {rows.length} حركة | كمية: {secTotalQty}
+                          {formatLocaleNumber(rows.length)} {t('حركة', 'mov.')} | {t('كمية:', 'Qty:')} {formatLocaleNumber(secTotalQty)}
                         </span>
                         <span className="font-black">
-                          القيمة: {secTotalVal.toLocaleString()} {settings.currency}
+                          {t('القيمة:', 'Value:')} {formatLocaleNumber(secTotalVal)} {currency}
                         </span>
                         {sec.key === 'sales' && (
                           <span className="font-black text-emerald-300">
-                            الربح: {secTotalProfit.toLocaleString()} {settings.currency}
+                            {t('الربح:', 'Profit:')} {formatLocaleNumber(secTotalProfit)} {currency}
                           </span>
                         )}
                       </div>
@@ -924,8 +954,8 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
                       rowKey={(r) => r.id}
                       onRowClick={(r) => setSelectedRow(r)}
                       defaultPageSize={25}
-                      exportFilename={`حركة_الصنف_${sec.key}`}
-                      pdfTitle={sec.title}
+                      exportFilename={`Item_Movement_${sec.key}`}
+                      pdfTitle={t(sec.title, sec.titleEn)}
                       columns={secColumns}
                     />
                   </div>
@@ -937,48 +967,48 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
           {/* Fixed Bottom Summary Bar */}
           <div className="sticky bottom-0 z-20 bg-[#001A49] text-white px-2.5 py-1.5 rounded-lg border border-[#002160] grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-xs tabular-nums">
             <div>
-              <span className="text-slate-300 text-[10px] block">إجمالي المبيعات (كمية: {report.totals.totalSalesQty})</span>
+              <span className="text-slate-300 text-[10px] block">{t('إجمالي المبيعات', 'Total Sales')} ({t('كمية:', 'Qty:')} {formatLocaleNumber(report.totals.totalSalesQty)})</span>
               <strong className="text-xs font-mono font-black text-[#DCE6F5]">
-                {report.totals.totalSalesValue.toLocaleString()} {settings.currency}
+                {formatLocaleNumber(report.totals.totalSalesValue)} {currency}
               </strong>
             </div>
             <div>
-              <span className="text-slate-300 text-[10px] block">إجمالي المشتريات (كمية: {report.totals.totalPurchaseQty})</span>
+              <span className="text-slate-300 text-[10px] block">{t('إجمالي المشتريات', 'Total Purchases')} ({t('كمية:', 'Qty:')} {formatLocaleNumber(report.totals.totalPurchaseQty)})</span>
               <strong className="text-xs font-mono font-black text-[#DCE6F5]">
-                {report.totals.totalPurchaseValue.toLocaleString()} {settings.currency}
+                {formatLocaleNumber(report.totals.totalPurchaseValue)} {currency}
               </strong>
             </div>
             <div>
               <span className="text-slate-400 text-[10px] flex items-center gap-1">
-                <TrendingUp className="w-3 h-3 text-emerald-400" /> الربح (على التكلفة)
+                <TrendingUp className="w-3 h-3 text-emerald-400" /> {t('الربح (على التكلفة)', 'Profit (on Cost)')}
               </span>
               <strong className={`text-xs font-mono font-black ${report.totals.totalProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                {report.totals.totalProfit.toLocaleString()} {settings.currency}
+                {formatLocaleNumber(report.totals.totalProfit)} {currency}
               </strong>
               <span className="block text-[10px] text-slate-400 font-mono">
-                تكلفة المباع: {report.totals.totalCostOfGoodsSold.toLocaleString()}
+                {t('تكلفة المباع:', 'COGS:')} {formatLocaleNumber(report.totals.totalCostOfGoodsSold)}
               </span>
             </div>
             <div>
               <span className="text-slate-400 text-[10px] flex items-center gap-1">
-                <ArrowDownLeft className="w-3 h-3 text-emerald-400" /> إجمالي الوارد (+)
+                <ArrowDownLeft className="w-3 h-3 text-emerald-400" /> {t('إجمالي الوارد (+)', 'Total In (+)')}
               </span>
               <strong className="text-xs font-mono font-black text-emerald-300">
-                +{report.totals.totalQtyIn}
+                +{formatLocaleNumber(report.totals.totalQtyIn)}
               </strong>
             </div>
             <div>
               <span className="text-slate-400 text-[10px] flex items-center gap-1">
-                <ArrowUpRight className="w-3 h-3 text-rose-400" /> إجمالي المنصرف (-)
+                <ArrowUpRight className="w-3 h-3 text-rose-400" /> {t('إجمالي المنصرف (-)', 'Total Out (-)')}
               </span>
               <strong className="text-xs font-mono font-black text-rose-300">
-                -{report.totals.totalQtyOut}
+                -{formatLocaleNumber(report.totals.totalQtyOut)}
               </strong>
             </div>
             <div>
-              <span className="text-slate-400 text-[10px] block">الرصيد الحالي / التقييم</span>
+              <span className="text-slate-400 text-[10px] block">{t('الرصيد الحالي / التقييم', 'Current Balance / Valuation')}</span>
               <strong className="text-xs font-mono font-black text-white">
-                {report.totals.currentBalance} ({report.totals.inventoryValuation.toLocaleString()} {settings.currency})
+                {formatLocaleNumber(report.totals.currentBalance)} ({formatLocaleNumber(report.totals.inventoryValuation)} {currency})
               </strong>
             </div>
           </div>
@@ -989,42 +1019,42 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
       <Modal
         isOpen={Boolean(selectedRow)}
         onClose={() => setSelectedRow(null)}
-        title={selectedRow ? `تفاصيل المستند: ${selectedRow.docNumber}` : ''}
-        subtitle={selectedRow ? `${selectedRow.docType} · ${selectedRow.date}` : ''}
+        title={selectedRow ? `${t('تفاصيل المستند:', 'Document Details:')} ${selectedRow.docNumber}` : ''}
+        subtitle={selectedRow ? `${t(selectedRow.docType)} · ${selectedRow.date}` : ''}
         maxWidth="2xl"
       >
         {selectedRow && (
           <div className="space-y-2 text-xs">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-2 bg-slate-50 rounded-lg border border-slate-200 tabular-nums">
               <div>
-                <span className="text-slate-500 block">الصنف:</span>
+                <span className="text-slate-500 block">{t('الصنف:', 'Item:')}</span>
                 <strong className="text-slate-900">{selectedRow.productName}</strong>
               </div>
               <div>
-                <span className="text-slate-500 block">الكمية والوحدة:</span>
-                <strong className="font-mono text-blue-950">{selectedRow.quantity} {selectedRow.unit}</strong>
+                <span className="text-slate-500 block">{t('الكمية والوحدة:', 'Qty & Unit:')}</span>
+                <strong className="font-mono text-blue-950">{formatLocaleNumber(selectedRow.quantity)} {t(selectedRow.unit)}</strong>
               </div>
               <div>
-                <span className="text-slate-500 block">القيمة / التكلفة:</span>
-                <strong className="font-mono">{selectedRow.totalValue.toLocaleString()} / {selectedRow.costPrice.toLocaleString()} {settings.currency}</strong>
+                <span className="text-slate-500 block">{t('القيمة / التكلفة:', 'Value / Cost:')}</span>
+                <strong className="font-mono">{formatLocaleNumber(selectedRow.totalValue)} / {formatLocaleNumber(selectedRow.costPrice)} {currency}</strong>
               </div>
               <div>
-                <span className="text-slate-500 block">المستودع:</span>
-                <strong>{selectedRow.targetWarehouseName ? `${selectedRow.warehouseName || ''} ⬅ ${selectedRow.targetWarehouseName}` : selectedRow.warehouseName || '-'}</strong>
+                <span className="text-slate-500 block">{t('المستودع:', 'Warehouse:')}</span>
+                <strong>{selectedRow.targetWarehouseName ? `${selectedRow.warehouseName || ''} ${arrow} ${selectedRow.targetWarehouseName}` : selectedRow.warehouseName || '-'}</strong>
               </div>
               <div>
-                <span className="text-slate-500 block">الطرف / المندوب:</span>
+                <span className="text-slate-500 block">{t('الطرف / المندوب:', 'Party / Rep:')}</span>
                 <strong>{selectedRow.partyName || selectedRow.representativeName || '-'}</strong>
               </div>
               <div>
-                <span className="text-slate-500 block">بواسطة:</span>
+                <span className="text-slate-500 block">{t('بواسطة:', 'Created By:')}</span>
                 <strong>{selectedRow.createdBy || '-'}</strong>
               </div>
             </div>
 
             {selectedRow.notes && (
               <div className="p-2 rounded-md bg-amber-50 border border-amber-200 text-amber-950">
-                <strong>ملاحظات:</strong> {selectedRow.notes}
+                <strong>{t('ملاحظات:', 'Notes:')}</strong> {selectedRow.notes}
               </div>
             )}
 
@@ -1033,15 +1063,15 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
                 compact
                 searchable={false}
                 paginated={false}
-                title={`بنود الفاتورة (${sourceDocDetails.data.invoiceNumber}) — الإجمالي: ${sourceDocDetails.data.grandTotal.toLocaleString()} ${settings.currency}`}
+                title={`${t('بنود الفاتورة', 'Invoice Items')} (${sourceDocDetails.data.invoiceNumber}) — ${t('الإجمالي:', 'Total:')} ${formatLocaleNumber(sourceDocDetails.data.grandTotal)} ${currency}`}
                 data={sourceDocDetails.data.items.map((it, idx) => ({ ...it, _idx: idx }))}
                 rowKey={(it) => `${it.productId}-${it._idx}`}
                 columns={[
-                  { key: 'productName', header: 'الصنف', render: (it) => <span className="font-bold">{it.productName}</span> },
-                  { key: 'unit', header: 'الوحدة', align: 'center', render: (it) => it.unit },
-                  { key: 'quantity', header: 'الكمية', align: 'center', render: (it) => <span className="font-mono tabular-nums">{it.quantity}</span> },
-                  { key: 'unitPrice', header: 'السعر', align: 'center', render: (it) => <span className="font-mono tabular-nums">{it.unitPrice.toLocaleString()}</span> },
-                  { key: 'total', header: 'الإجمالي', align: 'center', render: (it) => <span className="font-mono font-bold text-blue-900 tabular-nums">{it.total.toLocaleString()}</span> },
+                  { key: 'productName', header: t('الصنف', 'Item'), render: (it) => <span className="font-bold">{it.productName}</span> },
+                  { key: 'unit', header: t('الوحدة', 'Unit'), align: 'center', render: (it) => t(it.unit) },
+                  { key: 'quantity', header: t('الكمية', 'Quantity'), align: 'center', render: (it) => <span className="font-mono tabular-nums">{formatLocaleNumber(it.quantity)}</span> },
+                  { key: 'unitPrice', header: t('السعر', 'Price'), align: 'center', render: (it) => <span className="font-mono tabular-nums">{formatLocaleNumber(it.unitPrice)}</span> },
+                  { key: 'total', header: t('الإجمالي', 'Total'), align: 'center', render: (it) => <span className="font-mono font-bold text-blue-900 tabular-nums">{formatLocaleNumber(it.total)}</span> },
                 ]}
               />
             )}
@@ -1051,14 +1081,14 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
                 compact
                 searchable={false}
                 paginated={false}
-                title={`بنود المرتجع (${sourceDocDetails.data.returnNumber}) — الإجمالي: ${sourceDocDetails.data.grandTotal.toLocaleString()} ${settings.currency}`}
+                title={`${t('بنود المرتجع', 'Return Items')} (${sourceDocDetails.data.returnNumber}) — ${t('الإجمالي:', 'Total:')} ${formatLocaleNumber(sourceDocDetails.data.grandTotal)} ${currency}`}
                 data={sourceDocDetails.data.items.map((it, idx) => ({ ...it, _idx: idx }))}
                 rowKey={(it) => `${it.productId}-${it._idx}`}
                 columns={[
-                  { key: 'productName', header: 'الصنف', render: (it) => <span className="font-bold">{it.productName}</span> },
-                  { key: 'unit', header: 'الوحدة', align: 'center', render: (it) => it.unit },
-                  { key: 'quantity', header: 'الكمية', align: 'center', render: (it) => <span className="font-mono tabular-nums">{it.quantity}</span> },
-                  { key: 'total', header: 'الإجمالي', align: 'center', render: (it) => <span className="font-mono font-bold tabular-nums">{it.total.toLocaleString()}</span> },
+                  { key: 'productName', header: t('الصنف', 'Item'), render: (it) => <span className="font-bold">{it.productName}</span> },
+                  { key: 'unit', header: t('الوحدة', 'Unit'), align: 'center', render: (it) => t(it.unit) },
+                  { key: 'quantity', header: t('الكمية', 'Quantity'), align: 'center', render: (it) => <span className="font-mono tabular-nums">{formatLocaleNumber(it.quantity)}</span> },
+                  { key: 'total', header: t('الإجمالي', 'Total'), align: 'center', render: (it) => <span className="font-mono font-bold tabular-nums">{formatLocaleNumber(it.total)}</span> },
                 ]}
               />
             )}
@@ -1068,14 +1098,14 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
                 compact
                 searchable={false}
                 paginated={false}
-                title={`أصناف إذن عهدة المندوب (${sourceDocDetails.data.requestNumber}) — الحالة: ${sourceDocDetails.data.status}`}
+                title={`${t('أصناف إذن عهدة المندوب', 'Rep Custody Note Items')} (${sourceDocDetails.data.requestNumber}) — ${t('الحالة:', 'Status:')} ${t(sourceDocDetails.data.status)}`}
                 data={sourceDocDetails.data.items.map((it, idx) => ({ ...it, _idx: idx }))}
                 rowKey={(it) => `${it.productId}-${it._idx}`}
                 columns={[
-                  { key: 'productName', header: 'الصنف', render: (it) => <span className="font-bold">{it.productName}</span> },
-                  { key: 'unit', header: 'الوحدة', align: 'center', render: (it) => it.unit },
-                  { key: 'requestedQty', header: 'الكمية المطلوبة', align: 'center', render: (it) => <span className="font-mono tabular-nums">{it.requestedQty}</span> },
-                  { key: 'executedQty', header: 'المصروفة', align: 'center', render: (it) => <span className="font-mono font-bold tabular-nums">{it.executedQty ?? it.approvedQty ?? it.requestedQty}</span> },
+                  { key: 'productName', header: t('الصنف', 'Item'), render: (it) => <span className="font-bold">{it.productName}</span> },
+                  { key: 'unit', header: t('الوحدة', 'Unit'), align: 'center', render: (it) => t(it.unit) },
+                  { key: 'requestedQty', header: t('الكمية المطلوبة', 'Requested Qty'), align: 'center', render: (it) => <span className="font-mono tabular-nums">{formatLocaleNumber(it.requestedQty)}</span> },
+                  { key: 'executedQty', header: t('المصروفة', 'Dispatched'), align: 'center', render: (it) => <span className="font-mono font-bold tabular-nums">{formatLocaleNumber(it.executedQty ?? it.approvedQty ?? it.requestedQty)}</span> },
                 ]}
               />
             )}
@@ -1085,13 +1115,13 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
                 compact
                 searchable={false}
                 paginated={false}
-                title={`أصناف التحويل المخزني (${sourceDocDetails.data.transferNumber})`}
+                title={`${t('أصناف التحويل المخزني', 'Stock Transfer Items')} (${sourceDocDetails.data.transferNumber})`}
                 data={sourceDocDetails.data.items.map((it, idx) => ({ ...it, _idx: idx }))}
                 rowKey={(it) => `${it.productId}-${it._idx}`}
                 columns={[
-                  { key: 'productName', header: 'الصنف', render: (it) => <span className="font-bold">{it.productName}</span> },
-                  { key: 'unit', header: 'الوحدة', align: 'center', render: (it) => it.unit },
-                  { key: 'qty', header: 'الكمية', align: 'center', render: (it) => <span className="font-mono font-bold tabular-nums">{it.executedQty ?? it.requestedQty}</span> },
+                  { key: 'productName', header: t('الصنف', 'Item'), render: (it) => <span className="font-bold">{it.productName}</span> },
+                  { key: 'unit', header: t('الوحدة', 'Unit'), align: 'center', render: (it) => t(it.unit) },
+                  { key: 'qty', header: t('الكمية', 'Quantity'), align: 'center', render: (it) => <span className="font-mono font-bold tabular-nums">{formatLocaleNumber(it.executedQty ?? it.requestedQty)}</span> },
                 ]}
               />
             )}
@@ -1099,19 +1129,19 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
             {sourceDocDetails?.kind === 'rep_custody' && (
               <div className="border border-[#DCE6F5] rounded-lg overflow-hidden bg-[#EEF3FA] p-2.5 space-y-1.5">
                 <div className="font-bold text-[#011E58]">
-                  مستند عهدة المندوب ({sourceDocDetails.data.operationNumber}) — {sourceDocDetails.data.operationType}
+                  {t('مستند عهدة المندوب', 'Rep Custody Document')} ({sourceDocDetails.data.operationNumber}) — {t(sourceDocDetails.data.operationType)}
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
-                  <div>المندوب: <strong>{sourceDocDetails.data.representativeName}</strong></div>
-                  <div>الكمية: <strong className="font-mono">{sourceDocDetails.data.quantity} {sourceDocDetails.data.unit}</strong></div>
-                  <div>الأساس: <strong className="font-mono">{sourceDocDetails.data.baseQuantity}</strong></div>
+                  <div>{t('المندوب:', 'Rep:')} <strong>{sourceDocDetails.data.representativeName}</strong></div>
+                  <div>{t('الكمية:', 'Qty:')} <strong className="font-mono">{formatLocaleNumber(sourceDocDetails.data.quantity)} {t(sourceDocDetails.data.unit)}</strong></div>
+                  <div>{t('الأساس:', 'Base:')} <strong className="font-mono">{formatLocaleNumber(sourceDocDetails.data.baseQuantity)}</strong></div>
                   {sourceDocDetails.data.customerName && (
-                    <div>العميل: <strong>{sourceDocDetails.data.customerName}</strong></div>
+                    <div>{t('العميل:', 'Customer:')} <strong>{sourceDocDetails.data.customerName}</strong></div>
                   )}
                   {sourceDocDetails.data.targetWarehouseName && (
-                    <div>المخزن الوجهة: <strong>{sourceDocDetails.data.targetWarehouseName}</strong></div>
+                    <div>{t('المخزن الوجهة:', 'Target Warehouse:')} <strong>{sourceDocDetails.data.targetWarehouseName}</strong></div>
                   )}
-                  <div>الحالة: <strong>{sourceDocDetails.data.status}</strong></div>
+                  <div>{t('الحالة:', 'Status:')} <strong>{t(sourceDocDetails.data.status)}</strong></div>
                 </div>
               </div>
             )}
@@ -1123,14 +1153,14 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
                 className="flex items-center gap-1 h-8 px-2.5 rounded-md bg-[#003589] hover:bg-[#011E58] text-white font-bold cursor-pointer"
               >
                 <Printer className="w-3.5 h-3.5" />
-                <span>طباعة المستند</span>
+                <span>{t('طباعة المستند', 'Print Document')}</span>
               </button>
               <button
                 type="button"
                 onClick={() => setSelectedRow(null)}
                 className="h-8 px-2.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
               >
-                إغلاق
+                {t('إغلاق', 'Close')}
               </button>
             </div>
           </div>

@@ -5,6 +5,8 @@ import {
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
+import { usePreferences } from '../../../context/PreferencesContext';
+import { formatLocaleNumber } from '../../../i18n/translator';
 import { StockCountSession } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
@@ -12,11 +14,11 @@ import { exportToExcel } from '../../common/ExcelExporter';
 import { exportTableToPdf } from '../../common/PdfExporter';
 import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 
-const STATUS_BADGE: Record<StockCountSession['status'], { label: string; cls: string }> = {
-  draft: { label: 'مسودة (لا يؤثر على الرصيد)', cls: 'bg-slate-100 text-slate-700 border-slate-300' },
-  submitted: { label: 'مرسل للاعتماد', cls: 'bg-amber-100 text-amber-800 border-amber-300' },
-  approved: { label: 'معتمد (تمت التسوية)', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
-  rejected: { label: 'مرفوض', cls: 'bg-red-100 text-red-800 border-red-300' },
+const STATUS_BADGE: Record<StockCountSession['status'], { labelAr: string; labelEn: string; cls: string }> = {
+  draft: { labelAr: 'مسودة (لا يؤثر على الرصيد)', labelEn: 'Draft (No stock impact)', cls: 'bg-slate-100 text-slate-700 border-slate-300' },
+  submitted: { labelAr: 'مرسل للاعتماد', labelEn: 'Submitted for Approval', cls: 'bg-amber-100 text-amber-800 border-amber-300' },
+  approved: { labelAr: 'معتمد (تمت التسوية)', labelEn: 'Approved (Reconciled)', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+  rejected: { labelAr: 'مرفوض', labelEn: 'Rejected', cls: 'bg-red-100 text-red-800 border-red-300' },
 };
 
 export const StockCountView: React.FC = () => {
@@ -32,6 +34,12 @@ export const StockCountView: React.FC = () => {
     rejectStockCount,
   } = useData();
   const { currentUser, hasPermission } = useAuth();
+  const { t, isLtr, locale } = usePreferences();
+  const fmt = (n: number) => formatLocaleNumber(n);
+  const getStatusLabel = (status: StockCountSession['status']) => {
+    const meta = STATUS_BADGE[status];
+    return meta ? (isLtr ? meta.labelEn : meta.labelAr) : status;
+  };
 
   const canCreate = currentUser?.role === 'admin' || hasPermission('canCreateStockCount');
   const canApprove = currentUser?.role === 'admin' || hasPermission('canApproveStockCount');
@@ -155,7 +163,7 @@ export const StockCountView: React.FC = () => {
   const handleSaveDraft = async (andSubmit: boolean) => {
     setModalError(null);
     if (!selectedWhId || draftLines.length === 0) {
-      setModalError('يجب اختيار المستودع وتوفر صنف واحد على الأقل.');
+      setModalError(t('يجب اختيار المستودع وتوفر صنف واحد على الأقل.', 'Please select a warehouse and ensure at least one product exists.'));
       return;
     }
     setIsSaving(true);
@@ -176,7 +184,7 @@ export const StockCountView: React.FC = () => {
 
     if (!res.success || !res.count) {
       setIsSaving(false);
-      setModalError(res.error || 'تعذر حفظ جلسة الجرد');
+      setModalError(res.error ? t(res.error) : t('تعذر حفظ جلسة الجرد', 'Unable to save stock count session'));
       return;
     }
 
@@ -184,15 +192,25 @@ export const StockCountView: React.FC = () => {
       const subRes = await submitStockCount(res.count.id);
       setIsSaving(false);
       if (!subRes.success) {
-        setModalError(subRes.error || 'تم حفظ المسودة ولكن تعذر إرسالها للاعتماد');
+        setModalError(subRes.error ? t(subRes.error) : t('تم حفظ المسودة ولكن تعذر إرسالها للاعتماد', 'Draft saved but failed to submit for approval'));
         return;
       }
       setIsCountModalOpen(false);
-      setBanner({ type: 'success', text: `تم حفظ وإرسال الجرد (${res.count.countNumber}) للمراجعة والاعتماد.` });
+      setBanner({
+        type: 'success',
+        text: isLtr
+          ? `Stock count (${res.count.countNumber}) saved and submitted for review and approval.`
+          : `تم حفظ وإرسال الجرد (${res.count.countNumber}) للمراجعة والاعتماد.`,
+      });
     } else {
       setIsSaving(false);
       setIsCountModalOpen(false);
-      setBanner({ type: 'success', text: `تم حفظ مسودة الجرد (${res.count.countNumber}) دون تعديل أرصدة المخزن.` });
+      setBanner({
+        type: 'success',
+        text: isLtr
+          ? `Stock count draft (${res.count.countNumber}) saved without modifying warehouse balances.`
+          : `تم حفظ مسودة الجرد (${res.count.countNumber}) دون تعديل أرصدة المخزن.`,
+      });
     }
   };
 
@@ -211,11 +229,14 @@ export const StockCountView: React.FC = () => {
     const res = await submitStockCount(id);
     setIsProcessingReview(false);
     if (!res.success) {
-      setReviewError(res.error || 'تعذر إرسال الجرد');
+      setReviewError(res.error ? t(res.error) : t('تعذر إرسال الجرد', 'Unable to submit stock count'));
       return;
     }
     setReviewCount(res.count || null);
-    setBanner({ type: 'success', text: `تم إرسال الجرد (${res.count?.countNumber}) للاعتماد.` });
+    setBanner({
+      type: 'success',
+      text: isLtr ? `Stock count (${res.count?.countNumber}) submitted for approval.` : `تم إرسال الجرد (${res.count?.countNumber}) للاعتماد.`,
+    });
   };
 
   const handleApproveReview = async (forceReconcile = false) => {
@@ -231,9 +252,9 @@ export const StockCountView: React.FC = () => {
     if (!res.success) {
       if (res.code === 'COUNT_STOCK_CHANGED_DURING_COUNT') {
         setDivergenceList(res.diverged || []);
-        setReviewError(res.error || 'تغير رصيد بعض الأصناف أثناء الجرد. اختر طريقة التسوية للمتابعة.');
+        setReviewError(res.error ? t(res.error) : t('تغير رصيد بعض الأصناف أثناء الجرد. اختر طريقة التسوية للمتابعة.', 'Some item balances changed during the count. Select a reconciliation method to proceed.'));
       } else {
-        setReviewError(res.error || 'تعذر اعتماد الجرد');
+        setReviewError(res.error ? t(res.error) : t('تعذر اعتماد الجرد', 'Unable to approve stock count'));
       }
       return;
     }
@@ -241,14 +262,16 @@ export const StockCountView: React.FC = () => {
     setDivergenceList(null);
     setBanner({
       type: 'success',
-      text: `تم اعتماد جرد (${res.count?.countNumber}) وتسوية فروقات المخزون في السجل المركزي.`,
+      text: isLtr
+        ? `Stock count (${res.count?.countNumber}) approved and inventory variances reconciled in central ledger.`
+        : `تم اعتماد جرد (${res.count?.countNumber}) وتسوية فروقات المخزون في السجل المركزي.`,
     });
   };
 
   const handleRejectReview = async () => {
     if (!reviewCount) return;
     if (!rejectReason.trim()) {
-      setReviewError('يرجى إدخال سبب رفض الجرد.');
+      setReviewError(t('يرجى إدخال سبب رفض الجرد.', 'Please enter a rejection reason.'));
       return;
     }
     setReviewError(null);
@@ -256,40 +279,54 @@ export const StockCountView: React.FC = () => {
     const res = await rejectStockCount(reviewCount.id, rejectReason.trim());
     setIsProcessingReview(false);
     if (!res.success) {
-      setReviewError(res.error || 'تعذر رفض الجرد');
+      setReviewError(res.error ? t(res.error) : t('تعذر رفض الجرد', 'Unable to reject stock count'));
       return;
     }
     setReviewCount(null);
-    setBanner({ type: 'success', text: `تم رفض جلسة الجرد (${res.count?.countNumber}) دون تغيير أرصدة المخزون.` });
+    setBanner({
+      type: 'success',
+      text: isLtr
+        ? `Stock count session (${res.count?.countNumber}) rejected without changing inventory balances.`
+        : `تم رفض جلسة الجرد (${res.count?.countNumber}) دون تغيير أرصدة المخزون.`,
+    });
   };
 
   const handleExportSessionExcel = (c: StockCountSession) => {
-    const headers = ['كود الصنف', 'اسم الصنف', 'الوحدة', 'الرصيد الدفتري', 'الجرد الفعلي', 'الفرق', 'التصنيف', 'السبب'];
+    const headers = [
+      t('كود الصنف', 'Product Code'),
+      t('اسم الصنف', 'Product Name'),
+      t('الوحدة', 'Unit'),
+      t('الرصيد الدفتري', 'Book Stock'),
+      t('الجرد الفعلي', 'Actual Count'),
+      t('الفرق', 'Variance'),
+      t('التصنيف', 'Status'),
+      t('السبب', 'Reason'),
+    ];
     const rows = c.items.map((it) => [
       it.productCode || '',
       it.productName,
-      it.unit,
+      t(it.unit),
       it.systemQty,
       it.actualQty,
       it.varianceQty,
-      it.varianceType === 'matched' ? 'مطابق' : it.varianceType === 'shortage' ? 'عجز' : 'زيادة',
+      it.varianceType === 'matched' ? t('مطابق', 'Matched') : it.varianceType === 'shortage' ? t('عجز', 'Shortage') : t('زيادة', 'Surplus'),
       it.reason || '-',
     ]);
-    exportToExcel(`جرد_مخزن_${c.countNumber}`, headers, rows);
+    exportToExcel(`${isLtr ? 'StockCount' : 'جرد_مخزن'}_${c.countNumber}`, headers, rows);
   };
 
   const handleExportSessionPdf = (c: StockCountSession) => {
     exportTableToPdf(
-      `محضر جرد مخزن (${c.countNumber})`,
-      ['م', 'الصنف', 'الوحدة', 'الدفتري', 'الفعلي', 'الفرق', 'الحالة', 'السبب'],
+      `${t('محضر جرد مخزن', 'Warehouse Stock Count Sheet')} (${c.countNumber})`,
+      [t('م', '#'), t('الصنف', 'Product'), t('الوحدة', 'Unit'), t('الدفتري', 'Book'), t('الفعلي', 'Actual'), t('الفرق', 'Variance'), t('الحالة', 'Status'), t('السبب', 'Reason')],
       c.items.map((it, idx) => [
         idx + 1,
         it.productName,
-        it.unit,
+        t(it.unit),
         it.systemQty,
         it.actualQty,
         it.varianceQty,
-        it.varianceType === 'matched' ? 'مطابق' : it.varianceType === 'shortage' ? 'عجز' : 'زيادة',
+        it.varianceType === 'matched' ? t('مطابق', 'Matched') : it.varianceType === 'shortage' ? t('عجز', 'Shortage') : t('زيادة', 'Surplus'),
         it.reason || '-',
       ]),
       {
@@ -297,10 +334,10 @@ export const StockCountView: React.FC = () => {
         docNumber: c.countNumber,
         dateRangeText: c.date,
         meta: [
-          { label: 'المستودع', value: c.warehouseName },
-          { label: 'القائم بالجرد', value: c.counterName },
-          { label: 'الحالة', value: STATUS_BADGE[c.status]?.label || c.status },
-          ...(c.approvedByName ? [{ label: 'المعتمد بواسطة', value: c.approvedByName }] : []),
+          { label: t('المستودع', 'Warehouse'), value: t(c.warehouseName) },
+          { label: t('القائم بالجرد', 'Counted By'), value: c.counterName },
+          { label: t('الحالة', 'Status'), value: getStatusLabel(c.status) },
+          ...(c.approvedByName ? [{ label: t('المعتمد بواسطة', 'Approved By'), value: c.approvedByName }] : []),
         ],
         notes: c.notes,
       }
@@ -308,22 +345,23 @@ export const StockCountView: React.FC = () => {
   };
 
   const handlePrintSession = (c: StockCountSession) => {
+    const varianceItemsCount = c.items.filter((i) => i.varianceQty !== 0).length;
     setPrintData({
-      title: `محضر جرد وتسوية مخزن (${c.countNumber})`,
+      title: `${t('محضر جرد وتسوية مخزن', 'Stock Count & Reconciliation Sheet')} (${c.countNumber})`,
       docNumber: c.countNumber,
-      docType: 'كشف حساب',
+      docType: t('كشف حساب', 'Stock Count Sheet'),
       date: c.date,
-      partyName: `القائم بالجرد: ${c.counterName}`,
-      warehouseName: c.warehouseName,
+      partyName: `${t('القائم بالجرد:', 'Counted by:')} ${c.counterName}`,
+      warehouseName: t(c.warehouseName),
       items: c.items.map((it) => ({
-        name: `${it.productName} (دفتري: ${it.systemQty} / فعلي: ${it.actualQty})`,
-        unit: it.unit,
+        name: `${it.productName} (${t('دفتري:', 'Book:')} ${fmt(it.systemQty)} / ${t('فعلي:', 'Actual:')} ${fmt(it.actualQty)})`,
+        unit: t(it.unit),
         quantity: it.actualQty,
         price: 0,
         total: it.varianceQty,
       })),
-      grandTotal: c.items.filter((i) => i.varianceQty !== 0).length,
-      notes: `حالة الجرد: ${STATUS_BADGE[c.status]?.label || c.status} | عدد البنود ذات الفارق: ${c.items.filter((i) => i.varianceQty !== 0).length}`,
+      grandTotal: varianceItemsCount,
+      notes: `${t('حالة الجرد:', 'Count Status:')} ${getStatusLabel(c.status)} | ${t('عدد البنود ذات الفارق:', 'Items with variance:')} ${fmt(varianceItemsCount)}`,
     });
   };
 
@@ -351,10 +389,13 @@ export const StockCountView: React.FC = () => {
         <div>
           <h2 className="text-xs sm:text-sm font-black text-[#011E58] tracking-tight flex items-center gap-1.5">
             <ClipboardCheck className="w-4 h-4 text-[#003589]" />
-            <span>جرد المخزن ومطابقة الأرصدة الفعلية</span>
+            <span>{t('جرد المخزن ومطابقة الأرصدة الفعلية', 'Warehouse Stock Count & Physical Reconciliation')}</span>
           </h2>
           <p className="text-[11px] text-slate-500">
-            إنشاء مسودة جرد ومقارنة الكميات الفعلية بالدفتري (عجز / زيادة) مع دورة اعتماد آمنة دون تأثير على المخزن قبل الموافقة
+            {t(
+              'إنشاء مسودة جرد ومقارنة الكميات الفعلية بالدفتري (عجز / زيادة) مع دورة اعتماد آمنة دون تأثير على المخزن قبل الموافقة',
+              'Create draft counts, compare physical vs book stock (shortage/surplus), with safe approval workflow before modifying inventory'
+            )}
           </p>
         </div>
 
@@ -366,7 +407,7 @@ export const StockCountView: React.FC = () => {
               className="flex items-center gap-1 h-8 px-2.5 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md text-xs font-black cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>جلسة جرد مخزن جديدة</span>
+              <span>{t('جلسة جرد مخزن جديدة', 'New Stock Count Session')}</span>
             </button>
           )}
         </div>
@@ -385,25 +426,25 @@ export const StockCountView: React.FC = () => {
             <span>{banner.text}</span>
           </div>
           <button type="button" onClick={() => setBanner(null)} className="underline text-[11px] cursor-pointer">
-            إغلاق
+            {t('إغلاق', 'Close')}
           </button>
         </div>
       )}
 
       {/* Sessions Table */}
       <UnifiedDataTable<StockCountSession>
-        title="جلسات جرد المخزن"
-        subtitle={`إجمالي الجلسات: ${filteredCounts.length}`}
+        title={t('جلسات جرد المخزن', 'Stock Count Sessions')}
+        subtitle={`${t('إجمالي الجلسات:', 'Total sessions:')} ${fmt(filteredCounts.length)}`}
         data={filteredCounts}
         rowKey={(c) => c.id}
         compact
         searchValue={searchTerm}
         onSearchChange={setSearchTerm}
-        searchPlaceholder="بحث برقم الجرد أو المستودع أو اسم الجارد..."
+        searchPlaceholder={t('بحث برقم الجرد أو المستودع أو اسم الجارد...', 'Search by count #, warehouse, or counter name...')}
         exportFilename="AWLAD_SELIM_StockCounts"
-        pdfTitle="سجل جلسات جرد المخزن"
+        pdfTitle={t('سجل جلسات جرد المخزن', 'Stock Count Sessions Log')}
         defaultPageSize={25}
-        emptyTitle="لا توجد جلسات جرد مخزن مسجلة حتى الآن"
+        emptyTitle={t('لا توجد جلسات جرد مخزن مسجلة حتى الآن', 'No stock count sessions recorded yet')}
         toolbarFilters={
           <div className="flex flex-nowrap items-center gap-1.5 shrink-0">
             <select
@@ -411,9 +452,9 @@ export const StockCountView: React.FC = () => {
               onChange={(e) => setWarehouseFilter(e.target.value)}
               className="h-8 shrink-0 bg-slate-50 border border-slate-300 rounded-md px-2 text-xs font-bold"
             >
-              <option value="all">كل المستودعات</option>
+              <option value="all">{t('كل المستودعات', 'All Warehouses')}</option>
               {warehouses.map((w) => (
-                <option key={w.id} value={w.id}>{w.name}</option>
+                <option key={w.id} value={w.id}>{t(w.name)}</option>
               ))}
             </select>
             <select
@@ -421,18 +462,18 @@ export const StockCountView: React.FC = () => {
               onChange={(e) => setStatusFilter(e.target.value)}
               className="h-8 shrink-0 bg-slate-50 border border-slate-300 rounded-md px-2 text-xs font-bold"
             >
-              <option value="all">كل حالات الجرد</option>
-              <option value="draft">مسودة</option>
-              <option value="submitted">مرسل للاعتماد</option>
-              <option value="approved">معتمد</option>
-              <option value="rejected">مرفوض</option>
+              <option value="all">{t('كل حالات الجرد', 'All Count Statuses')}</option>
+              <option value="draft">{t('مسودة', 'Draft')}</option>
+              <option value="submitted">{t('مرسل للاعتماد', 'Submitted')}</option>
+              <option value="approved">{t('معتمد', 'Approved')}</option>
+              <option value="rejected">{t('مرفوض', 'Rejected')}</option>
             </select>
           </div>
         }
         columns={[
           {
             key: 'countNumber',
-            header: 'رقم الجرد',
+            header: t('رقم الجرد', 'Count No.'),
             sortable: true,
             sortValue: (c) => c.countNumber,
             exportValue: (c) => c.countNumber,
@@ -440,7 +481,7 @@ export const StockCountView: React.FC = () => {
           },
           {
             key: 'date',
-            header: 'التاريخ',
+            header: t('التاريخ', 'Date'),
             sortable: true,
             sortValue: (c) => c.date,
             exportValue: (c) => c.date,
@@ -448,44 +489,44 @@ export const StockCountView: React.FC = () => {
           },
           {
             key: 'warehouseName',
-            header: 'المستودع',
+            header: t('المستودع', 'Warehouse'),
             sortable: true,
             sortValue: (c) => c.warehouseName,
-            exportValue: (c) => c.warehouseName,
-            render: (c) => <span className="font-bold text-slate-900">{c.warehouseName}</span>,
+            exportValue: (c) => t(c.warehouseName),
+            render: (c) => <span className="font-bold text-slate-900">{t(c.warehouseName)}</span>,
           },
           {
             key: 'itemsCount',
-            header: 'الأصناف',
+            header: t('الأصناف', 'Items'),
             align: 'center',
             sortable: true,
             sortValue: (c) => c.items.length,
             exportValue: (c) => c.items.length,
-            render: (c) => <span className="font-mono font-bold tabular-nums">{c.items.length}</span>,
+            render: (c) => <span className="font-mono font-bold tabular-nums">{fmt(c.items.length)}</span>,
           },
           {
             key: 'variances',
-            header: 'عجز / زيادة',
+            header: t('عجز / زيادة', 'Shortage / Surplus'),
             align: 'center',
             exportValue: (c) => {
               const s = c.items.filter((i) => i.varianceType === 'shortage').length;
               const p = c.items.filter((i) => i.varianceType === 'surplus').length;
-              return `عجز:${s} زيادة:${p}`;
+              return `${t('عجز:', 'Shortage:')}${s} ${t('زيادة:', 'Surplus:')}${p}`;
             },
             render: (c) => {
               const shortageCount = c.items.filter((i) => i.varianceType === 'shortage').length;
               const surplusCount = c.items.filter((i) => i.varianceType === 'surplus').length;
               return (
                 <div className="flex items-center justify-center gap-1.5 text-[10px] font-bold">
-                  <span className="px-2 py-0.5 rounded bg-red-50 text-red-700 tabular-nums">عجز: {shortageCount}</span>
-                  <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 tabular-nums">زيادة: {surplusCount}</span>
+                  <span className="px-2 py-0.5 rounded bg-red-50 text-red-700 tabular-nums">{t('عجز:', 'Shortage:')} {fmt(shortageCount)}</span>
+                  <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 tabular-nums">{t('زيادة:', 'Surplus:')} {fmt(surplusCount)}</span>
                 </div>
               );
             },
           },
           {
             key: 'counterName',
-            header: 'القائم بالجرد',
+            header: t('القائم بالجرد', 'Counted By'),
             sortable: true,
             sortValue: (c) => c.counterName,
             exportValue: (c) => c.counterName,
@@ -493,23 +534,23 @@ export const StockCountView: React.FC = () => {
           },
           {
             key: 'status',
-            header: 'الحالة',
+            header: t('الحالة', 'Status'),
             align: 'center',
             sortable: true,
             sortValue: (c) => c.status,
-            exportValue: (c) => STATUS_BADGE[c.status]?.label || c.status,
+            exportValue: (c) => getStatusLabel(c.status),
             render: (c) => {
               const badge = STATUS_BADGE[c.status] || STATUS_BADGE.draft;
               return (
                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${badge.cls}`}>
-                  {badge.label}
+                  {getStatusLabel(c.status)}
                 </span>
               );
             },
           },
           {
             key: 'actions',
-            header: 'الإجراءات',
+            header: t('الإجراءات', 'Actions'),
             align: 'center',
             exportValue: () => '',
             render: (c) => (
@@ -518,7 +559,7 @@ export const StockCountView: React.FC = () => {
                   type="button"
                   onClick={() => openReview(c)}
                   className="p-1.5 rounded-lg text-[#011E58] hover:bg-[#EEF3FA] cursor-pointer"
-                  title="عرض ومراجعة / اعتماد"
+                  title={t('عرض ومراجعة / اعتماد', 'View, Review & Approve')}
                 >
                   <Eye className="w-4 h-4" />
                 </button>
@@ -527,7 +568,7 @@ export const StockCountView: React.FC = () => {
                     type="button"
                     onClick={() => openEditDraftModal(c)}
                     className="p-1.5 rounded-lg text-amber-700 hover:bg-amber-50 cursor-pointer"
-                    title="تعديل مسودة الجرد"
+                    title={t('تعديل مسودة الجرد', 'Edit Count Draft')}
                   >
                     <Edit className="w-4 h-4" />
                   </button>
@@ -536,7 +577,7 @@ export const StockCountView: React.FC = () => {
                   type="button"
                   onClick={() => handleExportSessionExcel(c)}
                   className="p-1.5 rounded-lg text-[#003589] hover:bg-[#EEF3FA] cursor-pointer"
-                  title="تصدير Excel"
+                  title={t('تصدير Excel', 'Export Excel')}
                 >
                   <Download className="w-4 h-4" />
                 </button>
@@ -544,7 +585,7 @@ export const StockCountView: React.FC = () => {
                   type="button"
                   onClick={() => handleExportSessionPdf(c)}
                   className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer"
-                  title="تصدير PDF"
+                  title={t('تصدير PDF', 'Export PDF')}
                 >
                   <FileDown className="w-4 h-4" />
                 </button>
@@ -558,8 +599,8 @@ export const StockCountView: React.FC = () => {
       <Modal
         isOpen={isCountModalOpen}
         onClose={() => setIsCountModalOpen(false)}
-        title={editingCount ? `تعديل مسودة جرد (${editingCount.countNumber})` : 'جلسة جرد مخزن جديدة'}
-        subtitle="الكمية المحفوظة في المسودة لا تعدل رصيد المخزون إلا بعد الاعتماد النهائي"
+        title={editingCount ? `${t('تعديل مسودة جرد', 'Edit Count Draft')} (${editingCount.countNumber})` : t('جلسة جرد مخزن جديدة', 'New Stock Count Session')}
+        subtitle={t('الكمية المحفوظة في المسودة لا تعدل رصيد المخزون إلا بعد الاعتماد النهائي', 'Saved draft quantities do not modify stock until final approval')}
         maxWidth="4xl"
       >
         <div className="space-y-2 text-xs">
@@ -569,7 +610,7 @@ export const StockCountView: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 bg-slate-50 p-2 rounded-lg border border-slate-200">
             <div>
-              <label className="block text-[11px] font-bold mb-0.5">المستودع:</label>
+              <label className="block text-[11px] font-bold mb-0.5">{t('المستودع:', 'Warehouse:')}</label>
               <select
                 value={selectedWhId}
                 disabled={!!editingCount}
@@ -577,12 +618,12 @@ export const StockCountView: React.FC = () => {
                 className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 font-bold disabled:bg-slate-100"
               >
                 {warehouses.map((w) => (
-                  <option key={w.id} value={w.id}>{w.name}</option>
+                  <option key={w.id} value={w.id}>{t(w.name)}</option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="block text-[11px] font-bold mb-0.5">تاريخ الجرد:</label>
+              <label className="block text-[11px] font-bold mb-0.5">{t('تاريخ الجرد:', 'Count Date:')}</label>
               <input
                 type="date"
                 value={countDate}
@@ -591,12 +632,12 @@ export const StockCountView: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block text-[11px] font-bold mb-0.5">ملاحظات عامة:</label>
+              <label className="block text-[11px] font-bold mb-0.5">{t('ملاحظات عامة:', 'General Notes:')}</label>
               <input
                 type="text"
                 value={countNotes}
                 onChange={(e) => setCountNotes(e.target.value)}
-                placeholder="جرد ربع سنوي / جرد دوري..."
+                placeholder={t('جرد ربع سنوي / جرد دوري...', 'Quarterly count / periodic count...')}
                 className="w-full h-8 bg-white border border-slate-300 rounded-md px-2"
               />
             </div>
@@ -606,12 +647,12 @@ export const StockCountView: React.FC = () => {
             <div className="relative flex-1 min-w-[180px] shrink-0">
               <input
                 type="text"
-                placeholder="تصفية الأصناف بالاسم أو الكود أو الباركود..."
+                placeholder={t('تصفية الأصناف بالاسم أو الكود أو الباركود...', 'Filter items by name, code, or barcode...')}
                 value={itemSearch}
                 onChange={(e) => setItemSearch(e.target.value)}
-                className="w-full h-8 border border-slate-300 rounded-md pr-7 pl-2 text-xs"
+                className="w-full h-8 border border-slate-300 rounded-md ps-7 pe-2 text-xs"
               />
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2 top-2" />
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute start-2 top-2" />
             </div>
             <label className="flex items-center gap-1.5 h-8 px-2.5 bg-slate-50 border border-slate-200 rounded-md cursor-pointer font-bold text-xs whitespace-nowrap shrink-0">
               <input
@@ -620,20 +661,20 @@ export const StockCountView: React.FC = () => {
                 onChange={(e) => setOnlyVarianceFilter(e.target.checked)}
                 className="w-3.5 h-3.5 rounded text-blue-900"
               />
-              <span>إظهار الأصناف ذات الفروقات فقط</span>
+              <span>{t('إظهار الأصناف ذات الفروقات فقط', 'Show variance items only')}</span>
             </label>
           </div>
 
           <div className="border border-slate-200 rounded-lg awlad-table-scroll max-h-80 overflow-y-auto">
-            <table className="w-full text-right text-[11px]">
+            <table className="w-full text-start text-[11px]">
               <thead className="bg-slate-100 text-slate-700 sticky top-0 border-b">
                 <tr>
-                  <th className="p-2">الكود</th>
-                  <th className="p-2">الصنف</th>
-                  <th className="p-2 text-center">الدفتري</th>
-                  <th className="p-2 text-center w-28">الكمية الفعلية</th>
-                  <th className="p-2 text-center">الفرق</th>
-                  <th className="p-2">سبب الفارق (اختياري)</th>
+                  <th className="p-2">{t('الكود', 'Code')}</th>
+                  <th className="p-2">{t('الصنف', 'Product')}</th>
+                  <th className="p-2 text-center">{t('الدفتري', 'Book')}</th>
+                  <th className="p-2 text-center w-28">{t('الكمية الفعلية', 'Actual Qty')}</th>
+                  <th className="p-2 text-center">{t('الفرق', 'Variance')}</th>
+                  <th className="p-2">{t('سبب الفارق (اختياري)', 'Variance Reason (Optional)')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -643,9 +684,9 @@ export const StockCountView: React.FC = () => {
                     <tr key={line.productId} className={diff !== 0 ? 'bg-amber-50/40' : ''}>
                       <td className="p-1.5 font-mono font-bold text-blue-900">{line.productCode}</td>
                       <td className="p-1.5 font-bold text-slate-900">
-                        {line.productName} <span className="text-[10px] text-slate-400">({line.unit})</span>
+                        {line.productName} <span className="text-[10px] text-slate-400">({t(line.unit)})</span>
                       </td>
-                      <td className="p-1.5 text-center font-mono font-bold text-slate-700">{line.systemQty}</td>
+                      <td className="p-1.5 text-center font-mono font-bold text-slate-700">{fmt(line.systemQty)}</td>
                       <td className="p-1.5 text-center">
                         <input
                           type="number"
@@ -663,11 +704,11 @@ export const StockCountView: React.FC = () => {
                       </td>
                       <td className="p-1.5 text-center font-mono font-black">
                         {diff === 0 ? (
-                          <span className="text-slate-400">مطابق (0)</span>
+                          <span className="text-slate-400">{t('مطابق (0)', 'Matched (0)')}</span>
                         ) : diff < 0 ? (
-                          <span className="text-red-700">عجز ({diff})</span>
+                          <span className="text-red-700">{t('عجز', 'Shortage')} ({fmt(diff)})</span>
                         ) : (
-                          <span className="text-emerald-700">زيادة (+{diff})</span>
+                          <span className="text-emerald-700">{t('زيادة', 'Surplus')} (+{fmt(diff)})</span>
                         )}
                       </td>
                       <td className="p-1.5">
@@ -680,7 +721,7 @@ export const StockCountView: React.FC = () => {
                               prev.map((row, i) => (i === line.originalIndex ? { ...row, reason: val } : row))
                             );
                           }}
-                          placeholder="ملاحظة الفارق..."
+                          placeholder={t('ملاحظة الفارق...', 'Variance note...')}
                           className="w-full border border-slate-300 rounded-md p-1"
                         />
                       </td>
@@ -697,7 +738,7 @@ export const StockCountView: React.FC = () => {
               onClick={() => setIsCountModalOpen(false)}
               className="h-8 px-2.5 border border-slate-300 rounded-md font-bold cursor-pointer"
             >
-              إلغاء
+              {t('إلغاء', 'Cancel')}
             </button>
             <button
               type="button"
@@ -705,7 +746,7 @@ export const StockCountView: React.FC = () => {
               onClick={() => handleSaveDraft(false)}
               className="h-8 px-3 bg-slate-700 hover:bg-slate-800 text-white rounded-md font-bold cursor-pointer"
             >
-              حفظ كمسودة
+              {t('حفظ كمسودة', 'Save as Draft')}
             </button>
             <button
               type="button"
@@ -714,7 +755,7 @@ export const StockCountView: React.FC = () => {
               className="flex items-center gap-1 h-8 px-3 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-black cursor-pointer"
             >
               <Send className="w-3.5 h-3.5" />
-              <span>حفظ وإرسال للاعتماد</span>
+              <span>{t('حفظ وإرسال للاعتماد', 'Save & Submit for Approval')}</span>
             </button>
           </div>
         </div>
@@ -725,17 +766,17 @@ export const StockCountView: React.FC = () => {
         <Modal
           isOpen={!!reviewCount}
           onClose={() => setReviewCount(null)}
-          title={`تفاصيل جرد المخزن (${reviewCount.countNumber})`}
-          subtitle={`${reviewCount.warehouseName} · ${reviewCount.date}`}
+          title={`${t('تفاصيل جرد المخزن', 'Stock Count Details')} (${reviewCount.countNumber})`}
+          subtitle={`${t(reviewCount.warehouseName)} · ${reviewCount.date}`}
           maxWidth="4xl"
         >
           <div className="space-y-2 text-xs">
             <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 p-2 rounded-lg border border-slate-200">
               <div className="flex flex-wrap items-center gap-2">
-                <span>الحالة: <strong>{STATUS_BADGE[reviewCount.status]?.label}</strong></span>
-                <span>• القائم بالجرد: <strong>{reviewCount.counterName}</strong></span>
+                <span>{t('الحالة:', 'Status:')} <strong>{getStatusLabel(reviewCount.status)}</strong></span>
+                <span>• {t('القائم بالجرد:', 'Counted by:')} <strong>{reviewCount.counterName}</strong></span>
                 {reviewCount.approvedByName && (
-                  <span>• المراجع: <strong>{reviewCount.approvedByName}</strong></span>
+                  <span>• {t('المراجع:', 'Reviewed by:')} <strong>{reviewCount.approvedByName}</strong></span>
                 )}
               </div>
               <div className="flex items-center gap-1">
@@ -744,7 +785,7 @@ export const StockCountView: React.FC = () => {
                   onClick={() => handlePrintSession(reviewCount)}
                   className="h-7 px-2 bg-white border border-slate-300 rounded-md text-[11px] font-bold flex items-center gap-1 cursor-pointer"
                 >
-                  <Printer className="w-3 h-3" /> طباعة
+                  <Printer className="w-3 h-3" /> {t('طباعة', 'Print')}
                 </button>
                 <button
                   type="button"
@@ -766,11 +807,11 @@ export const StockCountView: React.FC = () => {
             {/* Divergence reconciliation picker when stock changed mid-count */}
             {divergenceList && divergenceList.length > 0 && (
               <div className="p-3 rounded-lg bg-amber-50 border border-amber-300 space-y-2">
-                <h4 className="font-black text-amber-950">تنبيه: حدثت حركات مخزنية بعد إنشاء المسودة للأصناف التالية:</h4>
-                <ul className="list-disc mr-4 space-y-0.5 text-amber-900">
+                <h4 className="font-black text-amber-950">{t('تنبيه: حدثت حركات مخزنية بعد إنشاء المسودة للأصناف التالية:', 'Warning: Stock movements occurred after draft creation for the following items:')}</h4>
+                <ul className="list-disc ms-4 space-y-0.5 text-amber-900">
                   {divergenceList.map((d, idx) => (
                     <li key={idx}>
-                      {d.productName}: الدفتري وقت الجرد ({d.snapshotQty}) ← الحالي ({d.liveQty}) | الجرد الفعلي ({d.actualQty})
+                      {d.productName}: {t('الدفتري وقت الجرد', 'Book at count')} ({fmt(d.snapshotQty)}) {isLtr ? '→' : '←'} {t('الحالي', 'Current')} ({fmt(d.liveQty)}) | {t('الجرد الفعلي', 'Actual')} ({fmt(d.actualQty)})
                     </li>
                   ))}
                 </ul>
@@ -781,10 +822,10 @@ export const StockCountView: React.FC = () => {
                       name="reconcileMode"
                       checked={reconcileMode === 'apply_delta'}
                       onChange={() => setReconcileMode('apply_delta')}
-                      className="ml-2"
+                      className="me-2"
                     />
-                    <strong>تطبيق فارق الجرد على الرصيد الحالي</strong>
-                    <span className="block text-[10px] text-slate-600 mr-5">يحافظ على حركات البيع والشراء التي تمت أثناء الجرد</span>
+                    <strong>{t('تطبيق فارق الجرد على الرصيد الحالي', 'Apply count variance to current balance')}</strong>
+                    <span className="block text-[10px] text-slate-600 ms-5">{t('يحافظ على حركات البيع والشراء التي تمت أثناء الجرد', 'Preserves sales/purchase movements made during the count')}</span>
                   </label>
                   <label className={`p-2 rounded-lg border cursor-pointer ${reconcileMode === 'set_actual' ? 'bg-white border-[#003589]' : 'bg-amber-100/40 border-amber-300'}`}>
                     <input
@@ -792,10 +833,10 @@ export const StockCountView: React.FC = () => {
                       name="reconcileMode"
                       checked={reconcileMode === 'set_actual'}
                       onChange={() => setReconcileMode('set_actual')}
-                      className="ml-2"
+                      className="me-2"
                     />
-                    <strong>تثبيت الكمية الفعلية للجرد كما هي</strong>
-                    <span className="block text-[10px] text-slate-600 mr-5">يضبط المخزون ليكون مطابقاً لرقم الجرد الفعلي</span>
+                    <strong>{t('تثبيت الكمية الفعلية للجرد كما هي', 'Force actual counted quantity as-is')}</strong>
+                    <span className="block text-[10px] text-slate-600 ms-5">{t('يضبط المخزون ليكون مطابقاً لرقم الجرد الفعلي', 'Sets inventory directly to match the actual counted quantity')}</span>
                   </label>
                 </div>
                 <button
@@ -804,7 +845,7 @@ export const StockCountView: React.FC = () => {
                   onClick={() => handleApproveReview(true)}
                   className="h-8 px-3.5 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-black cursor-pointer"
                 >
-                  تأكيد الاعتماد بهذه الطريقة
+                  {t('تأكيد الاعتماد بهذه الطريقة', 'Confirm Approval with This Method')}
                 </button>
               </div>
             )}
@@ -820,7 +861,7 @@ export const StockCountView: React.FC = () => {
               columns={[
                 {
                   key: 'productName',
-                  header: 'الصنف',
+                  header: t('الصنف', 'Product'),
                   sortable: true,
                   sortValue: (it) => it.productName,
                   exportValue: (it) => it.productName,
@@ -828,54 +869,54 @@ export const StockCountView: React.FC = () => {
                 },
                 {
                   key: 'systemQty',
-                  header: 'الدفتري',
+                  header: t('الدفتري', 'Book'),
                   align: 'center',
                   sortable: true,
                   sortValue: (it) => it.systemQty,
                   exportValue: (it) => it.systemQty,
-                  render: (it) => <span className="font-mono tabular-nums">{it.systemQty}</span>,
+                  render: (it) => <span className="font-mono tabular-nums">{fmt(it.systemQty)}</span>,
                 },
                 {
                   key: 'actualQty',
-                  header: 'الفعلي',
+                  header: t('الفعلي', 'Actual'),
                   align: 'center',
                   sortable: true,
                   sortValue: (it) => it.actualQty,
                   exportValue: (it) => it.actualQty,
-                  render: (it) => <span className="font-mono font-black tabular-nums">{it.actualQty}</span>,
+                  render: (it) => <span className="font-mono font-black tabular-nums">{fmt(it.actualQty)}</span>,
                 },
                 {
                   key: 'varianceQty',
-                  header: 'الفارق',
+                  header: t('الفارق', 'Variance'),
                   align: 'center',
                   sortable: true,
                   sortValue: (it) => it.varianceQty,
                   exportValue: (it) => it.varianceQty,
                   render: (it) => (
                     <span className="font-mono font-bold tabular-nums">
-                      {it.varianceQty > 0 ? `+${it.varianceQty}` : it.varianceQty}
+                      {it.varianceQty > 0 ? `+${fmt(it.varianceQty)}` : fmt(it.varianceQty)}
                     </span>
                   ),
                 },
                 {
                   key: 'varianceType',
-                  header: 'الحالة',
+                  header: t('الحالة', 'Status'),
                   align: 'center',
                   sortable: true,
                   sortValue: (it) => it.varianceType,
-                  exportValue: (it) => (it.varianceType === 'matched' ? 'مطابق' : it.varianceType === 'shortage' ? 'عجز' : 'زيادة'),
+                  exportValue: (it) => (it.varianceType === 'matched' ? t('مطابق', 'Matched') : it.varianceType === 'shortage' ? t('عجز', 'Shortage') : t('زيادة', 'Surplus')),
                   render: (it) =>
                     it.varianceType === 'matched' ? (
-                      <span className="text-slate-500">مطابق</span>
+                      <span className="text-slate-500">{t('مطابق', 'Matched')}</span>
                     ) : it.varianceType === 'shortage' ? (
-                      <span className="text-red-700 font-bold">عجز</span>
+                      <span className="text-red-700 font-bold">{t('عجز', 'Shortage')}</span>
                     ) : (
-                      <span className="text-emerald-700 font-bold">زيادة</span>
+                      <span className="text-emerald-700 font-bold">{t('زيادة', 'Surplus')}</span>
                     ),
                 },
                 {
                   key: 'reason',
-                  header: 'السبب',
+                  header: t('السبب', 'Reason'),
                   exportValue: (it) => it.reason || '-',
                   render: (it) => <span className="text-slate-600">{it.reason || '-'}</span>,
                 },
@@ -884,26 +925,26 @@ export const StockCountView: React.FC = () => {
 
             {reviewCount.rejectionReason && (
               <div className="p-2 rounded-md bg-red-50 border border-red-200 text-red-900">
-                <strong>سبب الرفض:</strong> {reviewCount.rejectionReason}
+                <strong>{t('سبب الرفض:', 'Rejection Reason:')}</strong> {reviewCount.rejectionReason}
               </div>
             )}
 
             {showRejectBox && (
               <div className="p-2 rounded-md bg-red-50 border border-red-200 space-y-1.5">
-                <label className="block font-bold text-red-900">سبب رفض جلسة الجرد:</label>
+                <label className="block font-bold text-red-900">{t('سبب رفض جلسة الجرد:', 'Stock count rejection reason:')}</label>
                 <input
                   type="text"
                   value={rejectReason}
                   onChange={(e) => setRejectReason(e.target.value)}
-                  placeholder="يرجى كتابة سبب الرفض..."
+                  placeholder={t('يرجى كتابة سبب الرفض...', 'Please write rejection reason...')}
                   className="w-full h-8 border border-red-300 bg-white rounded-md px-2"
                 />
                 <div className="flex justify-end gap-1.5">
                   <button type="button" onClick={() => setShowRejectBox(false)} className="h-7 px-2.5 border border-slate-300 rounded-md cursor-pointer">
-                    تراجع
+                    {t('تراجع', 'Back')}
                   </button>
                   <button type="button" onClick={handleRejectReview} disabled={isProcessingReview} className="h-7 px-2.5 bg-red-700 text-white rounded-md font-bold cursor-pointer">
-                    تأكيد الرفض
+                    {t('تأكيد الرفض', 'Confirm Rejection')}
                   </button>
                 </div>
               </div>
@@ -916,7 +957,7 @@ export const StockCountView: React.FC = () => {
                     type="text"
                     value={approveNotes}
                     onChange={(e) => setApproveNotes(e.target.value)}
-                    placeholder="ملاحظة الاعتماد (اختياري)..."
+                    placeholder={t('ملاحظة الاعتماد (اختياري)...', 'Approval note (optional)...')}
                     className="h-8 border border-slate-300 rounded-md px-2 text-xs w-64"
                   />
                 )}
@@ -929,7 +970,7 @@ export const StockCountView: React.FC = () => {
                     onClick={() => handleSubmitDraftFromReview(reviewCount.id)}
                     className="h-8 px-2.5 bg-[#011E58] text-white rounded-md font-bold cursor-pointer"
                   >
-                    إرسال للاعتماد
+                    {t('إرسال للاعتماد', 'Submit for Approval')}
                   </button>
                 )}
                 {(reviewCount.status === 'submitted' || reviewCount.status === 'draft') && canApprove && !divergenceList && (
@@ -941,7 +982,7 @@ export const StockCountView: React.FC = () => {
                       className="flex items-center gap-1 h-8 px-2.5 bg-red-50 text-red-700 border border-red-200 rounded-md font-bold cursor-pointer"
                     >
                       <XCircle className="w-3.5 h-3.5" />
-                      <span>رفض</span>
+                      <span>{t('رفض', 'Reject')}</span>
                     </button>
                     <button
                       type="button"
@@ -950,7 +991,7 @@ export const StockCountView: React.FC = () => {
                       className="flex items-center gap-1 h-8 px-3 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-black cursor-pointer"
                     >
                       <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>اعتماد وتعديل أرصدة المخزن</span>
+                      <span>{t('اعتماد وتعديل أرصدة المخزن', 'Approve & Reconcile Stock')}</span>
                     </button>
                   </>
                 )}
@@ -959,7 +1000,7 @@ export const StockCountView: React.FC = () => {
                   onClick={() => setReviewCount(null)}
                   className="h-8 px-2.5 border border-slate-300 rounded-md font-bold cursor-pointer"
                 >
-                  إغلاق
+                  {t('إغلاق', 'Close')}
                 </button>
               </div>
             </div>

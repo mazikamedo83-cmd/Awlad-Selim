@@ -6,6 +6,7 @@ import { Share } from '@capacitor/share';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Network } from '@capacitor/network';
 import { App as CapacitorApp } from '@capacitor/app';
+import { getActiveLanguage, tr } from '../i18n/translator';
 
 export function isNativeCapacitor(): boolean {
   try {
@@ -87,22 +88,33 @@ export function syncNativeStatusBarStyle(appearance: 'light-header' | 'dark-head
 }
 
 export async function getPref(key: string): Promise<string | null> {
-  if (!isNativeCapacitor()) {
+  if (isNativeCapacitor()) {
     try {
-      return localStorage.getItem(key);
+      const res = await Preferences.get({ key });
+      if (res.value !== null && res.value !== undefined) return res.value;
     } catch {
-      return null;
+      // fallback to localStorage
+    }
+  }
+  if (isElectronDesktop() && typeof window !== 'undefined' && window.awladDesktop?.offlineDb) {
+    try {
+      const res = await window.awladDesktop.offlineDb.get('prefs', key);
+      if (res?.ok && typeof res.value === 'string') {
+        try {
+          localStorage.setItem(key, res.value);
+        } catch {
+          // ignore
+        }
+        return res.value;
+      }
+    } catch {
+      // fallback to localStorage
     }
   }
   try {
-    const res = await Preferences.get({ key });
-    return res.value ?? null;
+    return localStorage.getItem(key);
   } catch {
-    try {
-      return localStorage.getItem(key);
-    } catch {
-      return null;
-    }
+    return null;
   }
 }
 
@@ -111,6 +123,13 @@ export async function setPref(key: string, value: string): Promise<void> {
     localStorage.setItem(key, value);
   } catch {
     // ignore localStorage errors
+  }
+  if (isElectronDesktop() && typeof window !== 'undefined' && window.awladDesktop?.offlineDb) {
+    try {
+      await window.awladDesktop.offlineDb.set('prefs', key, value);
+    } catch {
+      // ignore offlineDb errors
+    }
   }
   if (!isNativeCapacitor()) return;
   try {
@@ -125,6 +144,13 @@ export async function removePref(key: string): Promise<void> {
     localStorage.removeItem(key);
   } catch {
     // ignore
+  }
+  if (isElectronDesktop() && typeof window !== 'undefined' && window.awladDesktop?.offlineDb) {
+    try {
+      await window.awladDesktop.offlineDb.remove('prefs', key);
+    } catch {
+      // ignore
+    }
   }
   if (!isNativeCapacitor()) return;
   try {
@@ -163,7 +189,7 @@ export async function getCurrentLocationSafe(): Promise<{
       if (perm.location !== 'granted' && perm.coarseLocation !== 'granted') {
         const req = await Geolocation.requestPermissions();
         if (req.location !== 'granted' && req.coarseLocation !== 'granted') {
-          return { ok: false, error: 'تم رفض صلاحية تحديد الموقع الجغرافي (GPS).' };
+          return { ok: false, error: tr('تم رفض صلاحية تحديد الموقع الجغرافي (GPS).') };
         }
       }
       const pos = await Geolocation.getCurrentPosition({
@@ -173,14 +199,14 @@ export async function getCurrentLocationSafe(): Promise<{
       const lat = Number(pos.coords.latitude.toFixed(6));
       const lng = Number(pos.coords.longitude.toFixed(6));
       if (Math.abs(lat) < 0.0001 && Math.abs(lng) < 0.0001) {
-        return { ok: false, error: 'تمت قراءة إحداثيات غير صالحة (0, 0). يرجى المحاولة في مكان مفتوح أو اختيار الموقع على الخريطة.' };
+        return { ok: false, error: tr('تمت قراءة إحداثيات غير صالحة (0, 0). يرجى المحاولة في مكان مفتوح أو اختيار الموقع على الخريطة.') };
       }
       const coords = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
       return { ok: true, coords, latitude: lat, longitude: lng };
     } catch (err: any) {
       return {
         ok: false,
-        error: err?.message || 'تعذر الحصول على الإحداثيات الحالية من GPS الهاتف.',
+        error: err?.message || tr('تعذر الحصول على الإحداثيات الحالية من GPS الهاتف.'),
       };
     }
   }
@@ -194,7 +220,7 @@ export async function getCurrentLocationSafe(): Promise<{
           if (Math.abs(lat) < 0.0001 && Math.abs(lng) < 0.0001) {
             resolve({
               ok: false,
-              error: 'تمت قراءة إحداثيات غير صالحة (0, 0). يرجى اختيار الموقع يدوياً على الخريطة.',
+              error: tr('تمت قراءة إحداثيات غير صالحة (0, 0). يرجى اختيار الموقع يدوياً على الخريطة.'),
             });
             return;
           }
@@ -208,7 +234,7 @@ export async function getCurrentLocationSafe(): Promise<{
         (err) => {
           resolve({
             ok: false,
-            error: err?.message || 'يرجى السماح للمتصفح بالوصول إلى الموقع الجغرافي.',
+            error: err?.message || tr('يرجى السماح للمتصفح بالوصول إلى الموقع الجغرافي.'),
           });
         },
         { enableHighAccuracy: true, timeout: 10000 }
@@ -216,7 +242,7 @@ export async function getCurrentLocationSafe(): Promise<{
     });
   }
 
-  return { ok: false, error: 'خدمة تحديد الموقع غير مدعومة على هذا الجهاز.' };
+  return { ok: false, error: tr('خدمة تحديد الموقع غير مدعومة على هذا الجهاز.') };
 }
 
 export function parseLatLngCoords(raw: string): { lat: number; lng: number } | null {
@@ -249,12 +275,12 @@ export async function reverseGeocodeCoords(
     lng > 180 ||
     (Math.abs(lat) < 0.0001 && Math.abs(lng) < 0.0001)
   ) {
-    return { ok: false, error: 'إحداثيات الموقع غير صالحة أو تساوي (0, 0). يرجى اختيار موقع حقيقي.' };
+    return { ok: false, error: tr('إحداثيات الموقع غير صالحة أو تساوي (0, 0). يرجى اختيار موقع حقيقي.') };
   }
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     return {
       ok: false,
-      error: 'الجهاز غير متصل بالإنترنت؛ تم حفظ الإحداثيات فقط ويمكنك كتابة العنوان يدوياً.',
+      error: tr('الجهاز غير متصل بالإنترنت؛ تم حفظ الإحداثيات فقط ويمكنك كتابة العنوان يدوياً.'),
     };
   }
 
@@ -287,14 +313,14 @@ export async function reverseGeocodeCoords(
         return {
           ok: false,
           quotaExceeded: true,
-          error: proxyJson.error || 'تم تجاوز حصة خدمة الخرائط المجانية.',
+          error: proxyJson.error || tr('تم تجاوز حصة خدمة الخرائط المجانية.'),
         };
       }
     }
 
     const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(
       String(lat)
-    )}&lon=${encodeURIComponent(String(lng))}&accept-language=ar`;
+    )}&lon=${encodeURIComponent(String(lng))}&accept-language=${getActiveLanguage()}`;
     const res = await fetch(url, {
       method: 'GET',
       headers: { Accept: 'application/json' },
@@ -303,7 +329,7 @@ export async function reverseGeocodeCoords(
     if (!res.ok) {
       return {
         ok: false,
-        error: 'تعذر تحويل الإحداثيات لعنوان تلقائياً الآن؛ تم حفظ الإحداثيات ويمكنك كتابة العنوان يدوياً.',
+        error: tr('تعذر تحويل الإحداثيات لعنوان تلقائياً الآن؛ تم حفظ الإحداثيات ويمكنك كتابة العنوان يدوياً.', 'Could not reverse-geocode coordinates right now; coordinates saved and you can enter address manually.'),
       };
     }
     const json: any = await res.json().catch(() => null);
@@ -347,7 +373,7 @@ export async function reverseGeocodeCoords(
   } catch {
     return {
       ok: false,
-      error: 'تعذر جلب العنوان من الخرائط (انتهت المهلة أو تعذر الاتصال)؛ تم الاحتفاظ بالإحداثيات فقط.',
+      error: tr('تعذر جلب العنوان من الخرائط (انتهت المهلة أو تعذر الاتصال)؛ تم الاحتفاظ بالإحداثيات فقط.', 'Could not fetch address from maps (timeout or network error); coordinates kept.'),
     };
   } finally {
     clearTimeout(timer);
@@ -379,7 +405,7 @@ export async function saveAndShareDocument(params: {
       URL.revokeObjectURL(url);
       return { ok: true };
     } catch (err: any) {
-      return { ok: false, error: err?.message || 'تعذر حفظ الملف' };
+      return { ok: false, error: err?.message || tr('تعذر حفظ الملف') };
     }
   }
 
@@ -400,7 +426,7 @@ export async function saveAndShareDocument(params: {
     });
     return { ok: true };
   } catch (err: any) {
-    return { ok: false, error: err?.message || 'تعذر مشاركة أو حفظ المستند على الهاتف' };
+    return { ok: false, error: err?.message || tr('تعذر مشاركة أو حفظ المستند على الهاتف') };
   }
 }
 
@@ -609,13 +635,13 @@ export function getClientDeviceDescriptor(): {
   else if (capPlatform === 'ios' || /iphone|ipad|ipod/i.test(ua)) deviceType = 'ios';
   else if (isElectronDesktop || /windows/i.test(ua)) deviceType = 'windows';
 
-  let deviceName = 'متصفح الويب';
+  let deviceName = tr('متصفح الويب');
   if (deviceType === 'windows') {
-    deviceName = isElectronDesktop ? 'كمبيوتر المحل (Windows Desktop)' : 'جهاز Windows';
+    deviceName = isElectronDesktop ? tr('كمبيوتر المحل (Windows Desktop)') : tr('جهاز Windows');
   } else if (deviceType === 'android') {
-    deviceName = isNativeCapacitor() ? 'تطبيق Android (AWLAD SELIM)' : 'هاتف Android';
+    deviceName = isNativeCapacitor() ? tr('تطبيق Android (AWLAD SELIM)') : tr('هاتف Android');
   } else if (deviceType === 'ios') {
-    deviceName = isNativeCapacitor() ? 'تطبيق iPhone (AWLAD SELIM)' : 'هاتف iPhone / iPad';
+    deviceName = isNativeCapacitor() ? tr('تطبيق iPhone (AWLAD SELIM)') : tr('هاتف iPhone / iPad');
   }
 
   return {
@@ -639,7 +665,7 @@ export async function requestCameraStreamForQr(): Promise<
     return {
       ok: false,
       reason: 'unsupported',
-      error: 'الكاميرا غير متاحة في هذا المتصفح/الجهاز. يمكنك رفع صورة QR أو لصق الرابط.',
+      error: tr('الكاميرا غير متاحة في هذا المتصفح/الجهاز. يمكنك رفع صورة QR أو لصق الرابط.'),
     };
   }
 
@@ -672,28 +698,39 @@ export async function requestCameraStreamForQr(): Promise<
       return {
         ok: false,
         reason: 'permission_denied',
-        error:
+        error: tr(
           'تم رفض إذن الكاميرا. اسمح للتطبيق باستخدام الكاميرا عند المطالبة (أو فعّل الإذن من إعدادات التطبيق في الهاتف إذا سبق الرفض نهائياً)، أو استخدم "رفع صورة QR" أو "لصق رابط الدعوة".',
+          'Camera permission was denied. Please allow camera access when prompted (or enable it in device settings), or use "Upload QR Image" or "Paste Invite Link".'
+        ),
       };
     }
     if (errName === 'NotFoundError' || errName === 'DevicesNotFoundError') {
       return {
         ok: false,
         reason: 'no_camera',
-        error: 'لم يتم العثور على كاميرا متاحة على هذا الجهاز. يمكنك رفع صورة رمز QR أو لصق رابط الدعوة.',
+        error: tr(
+          'لم يتم العثور على كاميرا متاحة على هذا الجهاز. يمكنك رفع صورة رمز QR أو لصق رابط الدعوة.',
+          'No camera found on this device. You can upload a QR image or paste the invite link.'
+        ),
       };
     }
     if (errName === 'NotReadableError' || errName === 'TrackStartError') {
       return {
         ok: false,
         reason: 'busy',
-        error: 'الكاميرا مستخدمة حالياً بواسطة تطبيق آخر. أغلقه وأعد المحاولة أو الصق رابط الدعوة.',
+        error: tr(
+          'الكاميرا مستخدمة حالياً بواسطة تطبيق آخر. أغلقه وأعد المحاولة أو الصق رابط الدعوة.',
+          'Camera is currently in use by another application. Close it and try again, or paste the invite link.'
+        ),
       };
     }
     return {
       ok: false,
       reason: 'unknown',
-      error: 'تعذر تشغيل الكاميرا على هذا الجهاز. يمكنك رفع صورة رمز QR أو لصق رابط الدعوة.',
+      error: tr(
+        'تعذر تشغيل الكاميرا على هذا الجهاز. يمكنك رفع صورة رمز QR أو لصق رابط الدعوة.',
+        'Could not start camera on this device. You can upload a QR image or paste the invite link.'
+      ),
     };
   }
 }

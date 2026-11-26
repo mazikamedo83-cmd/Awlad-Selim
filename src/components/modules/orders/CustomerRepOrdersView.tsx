@@ -8,31 +8,32 @@ import {
   FileText,
   MapPin,
   RefreshCw,
-  Search,
   Truck,
   UserCheck,
   XCircle,
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
+import { usePreferences } from '../../../context/PreferencesContext';
+import { formatLocaleDate, formatLocaleNumber } from '../../../i18n/translator';
 import { CustomerItemOrderRequest } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 
-const STATUS_META: Record<string, { label: string; cls: string }> = {
-  pending: { label: 'طلب جديد', cls: 'bg-amber-50 text-amber-800 border-amber-200' },
-  under_review: { label: 'قيد المراجعة', cls: 'bg-[#EEF3FA] text-[#011E58] border-[#DCE6F5]' },
-  approved: { label: 'معتمد', cls: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
-  invoiced: { label: 'تمت الفوترة', cls: 'bg-[#DCE6F5] text-[#011E58] border-[#B8CAE8]' },
-  preparing: { label: 'قيد التجهيز', cls: 'bg-[#EEF3FA] text-[#003589] border-[#B8CAE8]' },
-  rep_assigned: { label: 'مُسند لمندوب', cls: 'bg-[#DCE6F5] text-[#002160] border-[#B8CAE8]' },
-  out_for_delivery: { label: 'خرج للتوصيل', cls: 'bg-[#003589]/10 text-[#003589] border-[#003589]/30' },
-  delivered: { label: 'تم التسليم', cls: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
-  collected: { label: 'تم التحصيل', cls: 'bg-emerald-100 text-emerald-900 border-emerald-300' },
-  closed: { label: 'مغلق', cls: 'bg-slate-200 text-slate-900 border-slate-300' },
-  rejected: { label: 'مرفوض', cls: 'bg-red-50 text-red-700 border-red-200' },
-  cancelled: { label: 'ملغي', cls: 'bg-slate-100 text-slate-500 border-slate-200' },
-  needs_review: { label: 'يحتاج مراجعة', cls: 'bg-amber-50 text-amber-900 border-amber-300' },
+const STATUS_META: Record<string, { labelAr: string; labelEn: string; cls: string }> = {
+  pending: { labelAr: 'طلب جديد', labelEn: 'New Request', cls: 'bg-amber-50 text-amber-800 border-amber-200' },
+  under_review: { labelAr: 'قيد المراجعة', labelEn: 'Under Review', cls: 'bg-[#EEF3FA] text-[#011E58] border-[#DCE6F5]' },
+  approved: { labelAr: 'معتمد', labelEn: 'Approved', cls: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
+  invoiced: { labelAr: 'تمت الفوترة', labelEn: 'Invoiced', cls: 'bg-[#DCE6F5] text-[#011E58] border-[#B8CAE8]' },
+  preparing: { labelAr: 'قيد التجهيز', labelEn: 'Preparing', cls: 'bg-[#EEF3FA] text-[#003589] border-[#B8CAE8]' },
+  rep_assigned: { labelAr: 'مُسند لمندوب', labelEn: 'Assigned to Rep', cls: 'bg-[#DCE6F5] text-[#002160] border-[#B8CAE8]' },
+  out_for_delivery: { labelAr: 'خرج للتوصيل', labelEn: 'Out for Delivery', cls: 'bg-[#003589]/10 text-[#003589] border-[#003589]/30' },
+  delivered: { labelAr: 'تم التسليم', labelEn: 'Delivered', cls: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
+  collected: { labelAr: 'تم التحصيل', labelEn: 'Collected', cls: 'bg-emerald-100 text-emerald-900 border-emerald-300' },
+  closed: { labelAr: 'مغلق', labelEn: 'Closed', cls: 'bg-slate-200 text-slate-900 border-slate-300' },
+  rejected: { labelAr: 'مرفوض', labelEn: 'Rejected', cls: 'bg-red-50 text-red-700 border-red-200' },
+  cancelled: { labelAr: 'ملغي', labelEn: 'Cancelled', cls: 'bg-slate-100 text-slate-500 border-slate-200' },
+  needs_review: { labelAr: 'يحتاج مراجعة', labelEn: 'Needs Review', cls: 'bg-amber-50 text-amber-900 border-amber-300' },
 };
 
 export const CustomerRepOrdersView: React.FC = () => {
@@ -52,6 +53,7 @@ export const CustomerRepOrdersView: React.FC = () => {
     convertOrderToInvoice,
   } = useData();
   const { currentUser, hasPermission } = useAuth();
+  const { t, locale, isRtl } = usePreferences();
   const canManageSales = hasPermission('canManageSales');
   const hasTreasuryAccess =
     currentUser?.role === 'admin' ||
@@ -59,6 +61,16 @@ export const CustomerRepOrdersView: React.FC = () => {
     hasPermission('canManageAccounts');
 
   const defaultCashboxId = (cashboxes.find((cb) => cb.isDefault) || cashboxes[0])?.id || 'cb-main';
+
+  const getStatusLabel = (status: string) => {
+    const meta = STATUS_META[status];
+    if (!meta) return t(status);
+    return isRtl ? meta.labelAr : meta.labelEn;
+  };
+
+  const getStatusCls = (status: string) => {
+    return STATUS_META[status]?.cls || 'bg-slate-100 text-slate-700 border-slate-200';
+  };
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -142,7 +154,7 @@ export const CustomerRepOrdersView: React.FC = () => {
     if (res.success) {
       setFeedback({ type: 'ok', text: okText });
     } else {
-      setFeedback({ type: 'err', text: res.error || 'تعذر تنفيذ العملية' });
+      setFeedback({ type: 'err', text: res.error ? t(res.error) : t('تعذر تنفيذ العملية', 'Failed to execute action') });
     }
     return res.success;
   };
@@ -160,9 +172,12 @@ export const CustomerRepOrdersView: React.FC = () => {
     <div className="space-y-2">
       <div className="bg-white px-2.5 py-2 rounded-lg border border-slate-200 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h1 className="text-sm font-black text-slate-900">طلبات العملاء والمندوبين</h1>
+          <h1 className="text-sm font-black text-slate-900">{t('طلبات العملاء والمندوبين', 'Customer & Representative Orders')}</h1>
           <p className="text-[11px] text-slate-500">
-            مراجعة واعتماد طلبات الأصناف، إسناد مناديب التوصيل، الدفعات المقدمة، والتحويل لفواتير مبيعات
+            {t(
+              'مراجعة واعتماد طلبات الأصناف، إسناد مناديب التوصيل، الدفعات المقدمة، والتحويل لفواتير مبيعات',
+              'Review and approve item orders, assign delivery reps, record advance payments, and convert to sales invoices'
+            )}
           </p>
         </div>
         <button
@@ -171,7 +186,7 @@ export const CustomerRepOrdersView: React.FC = () => {
           className="px-2.5 py-1 rounded-md bg-white border border-slate-300 hover:bg-slate-50 text-xs font-bold text-slate-700 flex items-center gap-1.5 cursor-pointer"
         >
           <RefreshCw className="w-3.5 h-3.5" />
-          <span>تحديث الطلبات</span>
+          <span>{t('تحديث الطلبات', 'Refresh Orders')}</span>
         </button>
       </div>
 
@@ -191,25 +206,25 @@ export const CustomerRepOrdersView: React.FC = () => {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-slate-200 border border-slate-200 rounded-md overflow-hidden">
         <div className="bg-white px-2.5 py-1.5 flex items-center justify-between">
           <span className="text-[11px] text-amber-800 font-bold flex items-center gap-1">
-            <Clock className="w-3.5 h-3.5" /> طلبات جديدة
+            <Clock className="w-3.5 h-3.5" /> {t('طلبات جديدة', 'New Requests')}
           </span>
           <span className="text-sm font-black text-amber-950 font-mono tabular-nums">{stats.pending}</span>
         </div>
         <div className="bg-white px-2.5 py-1.5 flex items-center justify-between">
           <span className="text-[11px] text-blue-800 font-bold flex items-center gap-1">
-            <ClipboardList className="w-3.5 h-3.5" /> مراجعة واعتماد
+            <ClipboardList className="w-3.5 h-3.5" /> {t('مراجعة واعتماد', 'Review & Approval')}
           </span>
           <span className="text-sm font-black text-blue-950 font-mono tabular-nums">{stats.inProgress}</span>
         </div>
         <div className="bg-white px-2.5 py-1.5 flex items-center justify-between">
           <span className="text-[11px] text-[#003589] font-bold flex items-center gap-1">
-            <Truck className="w-3.5 h-3.5" /> قيد التوصيل
+            <Truck className="w-3.5 h-3.5" /> {t('قيد التوصيل', 'In Delivery')}
           </span>
           <span className="text-sm font-black text-[#011E58] font-mono tabular-nums">{stats.delivery}</span>
         </div>
         <div className="bg-white px-2.5 py-1.5 flex items-center justify-between">
           <span className="text-[11px] text-emerald-800 font-bold flex items-center gap-1">
-            <CheckCircle2 className="w-3.5 h-3.5" /> مسلمة / مفوترة
+            <CheckCircle2 className="w-3.5 h-3.5" /> {t('مسلمة / مفوترة', 'Delivered / Invoiced')}
           </span>
           <span className="text-sm font-black text-emerald-950 font-mono tabular-nums">{stats.done}</span>
         </div>
@@ -218,17 +233,17 @@ export const CustomerRepOrdersView: React.FC = () => {
       {/* Unified Orders Table */}
       <UnifiedDataTable<CustomerItemOrderRequest>
         compact
-        title={`سجل طلبات العملاء والمندوبين (${filteredOrders.length})`}
+        title={t(`سجل طلبات العملاء والمندوبين (${filteredOrders.length})`, `Customer & Rep Orders Log (${filteredOrders.length})`)}
         data={filteredOrders}
         rowKey={(ord) => ord.id}
         onRowClick={(ord) => setSelectedOrderId(ord.id)}
         searchValue={search}
         onSearchChange={setSearch}
-        searchPlaceholder="بحث برقم الطلب، العميل، المحل، أو المندوب..."
+        searchPlaceholder={t('بحث برقم الطلب، العميل، المحل، أو المندوب...', 'Search by order #, customer, shop, or rep...')}
         exportFilename="AWLAD_SELIM_Orders"
-        pdfTitle="طلبات العملاء والمندوبين"
-        emptyTitle="لا توجد طلبات مطابقة لخيارات البحث الحالية"
-        emptySubtitle="جرّب تغيير فلاتر الحالة أو المصدر."
+        pdfTitle={t('طلبات العملاء والمندوبين', 'Customer & Representative Orders')}
+        emptyTitle={t('لا توجد طلبات مطابقة لخيارات البحث الحالية', 'No orders match the current filters')}
+        emptySubtitle={t('جرّب تغيير فلاتر الحالة أو المصدر.', 'Try changing the status or source filters.')}
         toolbarFilters={
           <div className="flex flex-nowrap items-center gap-1.5 text-xs shrink-0">
             <select
@@ -236,10 +251,10 @@ export const CustomerRepOrdersView: React.FC = () => {
               onChange={(e) => setStatusFilter(e.target.value)}
               className="h-8 shrink-0 px-2 rounded-md border border-slate-300 font-bold bg-white text-xs"
             >
-              <option value="all">كل الحالات</option>
+              <option value="all">{t('كل الحالات', 'All Statuses')}</option>
               {Object.entries(STATUS_META).map(([key, meta]) => (
                 <option key={key} value={key}>
-                  {meta.label}
+                  {isRtl ? meta.labelAr : meta.labelEn}
                 </option>
               ))}
             </select>
@@ -248,30 +263,30 @@ export const CustomerRepOrdersView: React.FC = () => {
               onChange={(e) => setRequesterFilter(e.target.value as any)}
               className="h-8 shrink-0 px-2 rounded-md border border-slate-300 font-bold bg-white text-xs"
             >
-              <option value="all">كل المصادر</option>
-              <option value="customer">طلبات العملاء</option>
-              <option value="representative">طلبات المناديب</option>
+              <option value="all">{t('كل المصادر', 'All Sources')}</option>
+              <option value="customer">{t('طلبات العملاء', 'Customer Orders')}</option>
+              <option value="representative">{t('طلبات المناديب', 'Representative Orders')}</option>
             </select>
           </div>
         }
         columns={[
           {
             key: 'requestNumber',
-            header: 'رقم الطلب',
+            header: t('رقم الطلب', 'Order #'),
             sortValue: (o) => o.createdAt,
             exportValue: (o) => o.requestNumber,
             render: (ord) => (
               <div className="font-mono font-bold text-slate-900">
                 <div>{ord.requestNumber}</div>
                 <div className="text-[10px] text-slate-400 tabular-nums">
-                  {new Date(ord.createdAt).toLocaleDateString('ar-EG')}
+                  {formatLocaleDate(ord.createdAt)}
                 </div>
               </div>
             ),
           },
           {
             key: 'customerName',
-            header: 'العميل / المحل',
+            header: t('العميل / المحل', 'Customer / Shop'),
             sortValue: (o) => o.customerName,
             exportValue: (o) => o.customerName,
             render: (ord) => (
@@ -287,27 +302,29 @@ export const CustomerRepOrdersView: React.FC = () => {
           },
           {
             key: 'source',
-            header: 'المصدر',
+            header: t('المصدر', 'Source'),
             sortValue: (o) =>
               o.requesterType === 'representative' || Boolean(o.representativeId)
                 ? o.representativeName || o.submittedByName || ''
-                : 'تطبيق العميل',
+                : t('تطبيق العميل', 'Customer App'),
             exportValue: (o) =>
               o.requesterType === 'representative' || Boolean(o.representativeId)
-                ? `مندوب: ${o.representativeName || o.submittedByName || ''}`
-                : 'تطبيق العميل',
+                ? `${t('مندوب:', 'Rep:')} ${o.representativeName || o.submittedByName || ''}`
+                : t('تطبيق العميل', 'Customer App'),
             render: (ord) => {
               const isRepReq = ord.requesterType === 'representative' || Boolean(ord.representativeId);
               return (
                 <span className="text-[11px] font-bold text-slate-700">
-                  {isRepReq ? `مندوب: ${ord.representativeName || ord.submittedByName || ''}` : 'تطبيق العميل'}
+                  {isRepReq
+                    ? `${t('مندوب:', 'Rep:')} ${ord.representativeName || ord.submittedByName || ''}`
+                    : t('تطبيق العميل', 'Customer App')}
                 </span>
               );
             },
           },
           {
             key: 'itemsCount',
-            header: 'الأصناف',
+            header: t('الأصناف', 'Items'),
             align: 'center',
             sortValue: (o) => o.items?.length || 0,
             exportValue: (o) => o.items?.length || 0,
@@ -315,7 +332,7 @@ export const CustomerRepOrdersView: React.FC = () => {
           },
           {
             key: 'total',
-            header: 'الإجمالي',
+            header: t('الإجمالي', 'Total'),
             align: 'center',
             sortValue: (o) => o.invoiceTotal ?? getOrderTotal(o),
             exportValue: (o) => o.invoiceTotal ?? getOrderTotal(o),
@@ -324,10 +341,12 @@ export const CustomerRepOrdersView: React.FC = () => {
               return (
                 <div className="font-mono font-black text-blue-950 tabular-nums">
                   <div>
-                    {(ord.invoiceTotal ?? total).toLocaleString()} {settings.currency}
+                    {formatLocaleNumber(ord.invoiceTotal ?? total)} {t(settings.currency)}
                   </div>
                   {ord.invoiceNumber && (
-                    <div className="text-[10px] font-normal text-blue-700">فاتورة: {ord.invoiceNumber}</div>
+                    <div className="text-[10px] font-normal text-blue-700">
+                      {t('فاتورة:', 'Invoice:')} {ord.invoiceNumber}
+                    </div>
                   )}
                 </div>
               );
@@ -335,7 +354,7 @@ export const CustomerRepOrdersView: React.FC = () => {
           },
           {
             key: 'advance',
-            header: 'المدفوع مقدماً',
+            header: t('المدفوع مقدماً', 'Advance Paid'),
             align: 'center',
             sortValue: (o) => Number(o.invoicePaidAmount ?? o.advancePaidAmount ?? 0),
             exportValue: (o) => Number(o.invoicePaidAmount ?? o.advancePaidAmount ?? 0),
@@ -345,12 +364,12 @@ export const CustomerRepOrdersView: React.FC = () => {
                 <div className="font-mono font-bold text-emerald-700 tabular-nums">
                   <div>
                     {(ord.invoicePaidAmount ?? advance) > 0
-                      ? `${(ord.invoicePaidAmount ?? advance).toLocaleString()} ${settings.currency}`
+                      ? `${formatLocaleNumber(ord.invoicePaidAmount ?? advance)} ${t(settings.currency)}`
                       : '—'}
                   </div>
                   {typeof ord.invoiceRemainingAmount === 'number' && ord.invoiceRemainingAmount > 0 && (
                     <div className="text-[10px] text-red-600">
-                      متبقي: {ord.invoiceRemainingAmount.toLocaleString()}
+                      {t('متبقي:', 'Remaining:')} {formatLocaleNumber(ord.invoiceRemainingAmount)}
                     </div>
                   )}
                 </div>
@@ -359,25 +378,19 @@ export const CustomerRepOrdersView: React.FC = () => {
           },
           {
             key: 'status',
-            header: 'الحالة',
+            header: t('الحالة', 'Status'),
             align: 'center',
-            sortValue: (o) => STATUS_META[o.status]?.label || o.status,
-            exportValue: (o) => STATUS_META[o.status]?.label || o.status,
-            render: (ord) => {
-              const statusInfo = STATUS_META[ord.status] || {
-                label: ord.status,
-                cls: 'bg-slate-100 text-slate-700 border-slate-200',
-              };
-              return (
-                <span className={`inline-block px-2 py-0.5 rounded border text-[11px] font-bold ${statusInfo.cls}`}>
-                  {statusInfo.label}
-                </span>
-              );
-            },
+            sortValue: (o) => getStatusLabel(o.status),
+            exportValue: (o) => getStatusLabel(o.status),
+            render: (ord) => (
+              <span className={`inline-block px-2 py-0.5 rounded border text-[11px] font-bold ${getStatusCls(ord.status)}`}>
+                {getStatusLabel(ord.status)}
+              </span>
+            ),
           },
           {
             key: 'actions',
-            header: 'الإجراءات',
+            header: t('الإجراءات', 'Actions'),
             align: 'center',
             sortable: false,
             render: (ord) => (
@@ -386,7 +399,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                   type="button"
                   onClick={() => setSelectedOrderId(ord.id)}
                   className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer"
-                  title="عرض التفاصيل وسجل التحصيلات"
+                  title={t('عرض التفاصيل وسجل التحصيلات', 'View details & collection history')}
                 >
                   <Eye className="w-4 h-4" />
                 </button>
@@ -395,10 +408,10 @@ export const CustomerRepOrdersView: React.FC = () => {
                   <button
                     type="button"
                     disabled={busy}
-                    onClick={() => runAction(() => reviewCustomerItemOrder(ord.id), 'تم بدء مراجعة الطلب')}
+                    onClick={() => runAction(() => reviewCustomerItemOrder(ord.id), t('تم بدء مراجعة الطلب', 'Order review started'))}
                     className="px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold cursor-pointer"
                   >
-                    مراجعة
+                    {t('مراجعة', 'Review')}
                   </button>
                 )}
 
@@ -407,10 +420,10 @@ export const CustomerRepOrdersView: React.FC = () => {
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => runAction(() => approveCustomerItemOrder(ord.id), 'تم اعتماد الطلب')}
+                      onClick={() => runAction(() => approveCustomerItemOrder(ord.id), t('تم اعتماد الطلب', 'Order approved'))}
                       className="px-2 py-1 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
                     >
-                      اعتماد
+                      {t('اعتماد', 'Approve')}
                     </button>
                     <button
                       type="button"
@@ -421,7 +434,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                       }}
                       className="px-2 py-1 rounded-md bg-red-50 hover:bg-red-100 text-red-700 font-bold cursor-pointer"
                     >
-                      رفض
+                      {t('رفض', 'Reject')}
                     </button>
                   </>
                 )}
@@ -436,11 +449,11 @@ export const CustomerRepOrdersView: React.FC = () => {
                           type="button"
                           disabled={busy}
                           onClick={() =>
-                            runAction(() => advanceOrderStage(ord.id, { status: 'preparing' }), 'تم بدء تجهيز الطلب')
+                            runAction(() => advanceOrderStage(ord.id, { status: 'preparing' }), t('تم بدء تجهيز الطلب', 'Order preparation started'))
                           }
                           className="px-2 py-1 rounded-md bg-[#0049B0] hover:bg-[#003589] text-white font-bold cursor-pointer"
                         >
-                          بدء التجهيز
+                          {t('بدء التجهيز', 'Start Preparing')}
                         </button>
                       )}
                       {['preparing', 'rep_assigned'].includes(ord.status) && (
@@ -450,12 +463,12 @@ export const CustomerRepOrdersView: React.FC = () => {
                           onClick={() =>
                             runAction(
                               () => advanceOrderStage(ord.id, { status: 'out_for_delivery' }),
-                              'تم إخراج الطلب للتوصيل'
+                              t('تم إخراج الطلب للتوصيل', 'Order dispatched for delivery')
                             )
                           }
                           className="px-2 py-1 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
                         >
-                          خروج للتوصيل
+                          {t('خروج للتوصيل', 'Out for Delivery')}
                         </button>
                       )}
                       {ord.status === 'out_for_delivery' && (
@@ -463,11 +476,11 @@ export const CustomerRepOrdersView: React.FC = () => {
                           type="button"
                           disabled={busy}
                           onClick={() =>
-                            runAction(() => advanceOrderStage(ord.id, { status: 'delivered' }), 'تم تسليم الطلب بنجاح')
+                            runAction(() => advanceOrderStage(ord.id, { status: 'delivered' }), t('تم تسليم الطلب بنجاح', 'Order marked as delivered'))
                           }
                           className="px-2 py-1 rounded-md bg-[#011E58] hover:bg-[#003589] text-white font-bold cursor-pointer"
                         >
-                          تم التسليم
+                          {t('تم التسليم', 'Mark Delivered')}
                         </button>
                       )}
                       {ord.status === 'delivered' && (
@@ -482,7 +495,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                           }}
                           className="px-2 py-1 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
                         >
-                          تحصيل الدفعة
+                          {t('تحصيل الدفعة', 'Collect Payment')}
                         </button>
                       )}
                       {['delivered', 'collected'].includes(ord.status) && (
@@ -490,11 +503,11 @@ export const CustomerRepOrdersView: React.FC = () => {
                           type="button"
                           disabled={busy}
                           onClick={() =>
-                            runAction(() => advanceOrderStage(ord.id, { status: 'closed' }), 'تم إغلاق دورة الطلب بنجاح')
+                            runAction(() => advanceOrderStage(ord.id, { status: 'closed' }), t('تم إغلاق دورة الطلب بنجاح', 'Order cycle closed successfully'))
                           }
                           className="px-2 py-1 rounded-md bg-slate-800 hover:bg-slate-900 text-white font-bold cursor-pointer"
                         >
-                          إغلاق الطلب
+                          {t('إغلاق الطلب', 'Close Order')}
                         </button>
                       )}
                       {['approved', 'invoiced', 'preparing', 'rep_assigned', 'out_for_delivery'].includes(ord.status) && (
@@ -506,7 +519,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                             setAssignNotes('');
                           }}
                           className="p-1.5 rounded-md bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] cursor-pointer"
-                          title="تعيين مندوب توصيل"
+                          title={t('تعيين مندوب توصيل', 'Assign Delivery Rep')}
                         >
                           <UserCheck className="w-4 h-4" />
                         </button>
@@ -522,7 +535,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                               setAdvanceNotes('');
                             }}
                             className="p-1.5 rounded-md bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#003589] cursor-pointer"
-                            title="تسجيل دفعة مقدمة"
+                            title={t('تسجيل دفعة مقدمة', 'Record Advance Payment')}
                           >
                             <DollarSign className="w-4 h-4" />
                           </button>
@@ -540,7 +553,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                             className="px-2 py-1 rounded-md bg-[#011E58] hover:bg-[#003589] text-white font-bold flex items-center gap-1 cursor-pointer"
                           >
                             <FileText className="w-3.5 h-3.5" />
-                            <span>تحويل لفاتورة</span>
+                            <span>{t('تحويل لفاتورة', 'Convert to Invoice')}</span>
                           </button>
                         </>
                       )}
@@ -556,22 +569,22 @@ export const CustomerRepOrdersView: React.FC = () => {
       <Modal
         isOpen={Boolean(selectedOrder)}
         onClose={() => setSelectedOrderId(null)}
-        title={selectedOrder ? `تفاصيل الطلب ${selectedOrder.requestNumber}` : ''}
-        subtitle={selectedOrder ? `${selectedOrder.customerName} · ${STATUS_META[selectedOrder.status]?.label || selectedOrder.status}` : ''}
+        title={selectedOrder ? t(`تفاصيل الطلب ${selectedOrder.requestNumber}`, `Order Details ${selectedOrder.requestNumber}`) : ''}
+        subtitle={selectedOrder ? `${selectedOrder.customerName} · ${getStatusLabel(selectedOrder.status)}` : ''}
         maxWidth="4xl"
       >
         {selectedOrder && (
           <div className="space-y-2 text-xs">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2 rounded-md bg-slate-50 border border-slate-200">
               <div>
-                <p className="text-slate-500">العميل:</p>
+                <p className="text-slate-500">{t('العميل:', 'Customer:')}</p>
                 <p className="font-bold text-slate-900">{selectedOrder.customerName}</p>
                 {selectedOrder.shopName && <p className="text-slate-600">{selectedOrder.shopName}</p>}
-                {selectedOrder.customerPhone && <p className="font-mono text-slate-600">{selectedOrder.customerPhone}</p>}
+                {selectedOrder.customerPhone && <p className="font-mono text-slate-600" dir="ltr">{selectedOrder.customerPhone}</p>}
               </div>
               <div>
-                <p className="text-slate-500">التوصيل والملاحظات:</p>
-                <p className="font-bold text-slate-800">{selectedOrder.deliveryAddress || 'غير محدد'}</p>
+                <p className="text-slate-500">{t('التوصيل والملاحظات:', 'Delivery & Notes:')}</p>
+                <p className="font-bold text-slate-800">{selectedOrder.deliveryAddress || t('غير محدد', 'Not specified')}</p>
                 {selectedOrder.geoCoordinates && (
                   <a
                     href={`https://maps.google.com/?q=${encodeURIComponent(selectedOrder.geoCoordinates)}`}
@@ -579,11 +592,13 @@ export const CustomerRepOrdersView: React.FC = () => {
                     rel="noreferrer"
                     className="inline-flex items-center gap-1 text-[#003589] hover:text-[#0049B0] font-bold mt-1"
                   >
-                    <MapPin className="w-3.5 h-3.5" /> عرض الموقع الجغرافي
+                    <MapPin className="w-3.5 h-3.5" /> {t('عرض الموقع الجغرافي', 'View Location on Map')}
                   </a>
                 )}
                 {selectedOrder.deliveryRepName && (
-                  <p className="text-[#011E58] font-bold mt-1">مندوب التوصيل: {selectedOrder.deliveryRepName}</p>
+                  <p className="text-[#011E58] font-bold mt-1">
+                    {t('مندوب التوصيل:', 'Delivery Rep:')} {selectedOrder.deliveryRepName}
+                  </p>
                 )}
               </div>
             </div>
@@ -597,38 +612,38 @@ export const CustomerRepOrdersView: React.FC = () => {
               columns={[
                 {
                   key: 'productName',
-                  header: 'الصنف',
+                  header: t('الصنف', 'Item'),
                   render: (it) => <span className="font-bold text-slate-900">{it.productName}</span>,
                 },
                 {
                   key: 'unit',
-                  header: 'الوحدة',
+                  header: t('الوحدة', 'Unit'),
                   align: 'center',
-                  render: (it) => <span>{it.unit}</span>,
+                  render: (it) => <span>{t(it.unit)}</span>,
                 },
                 {
                   key: 'quantity',
-                  header: 'الكمية',
+                  header: t('الكمية', 'Qty'),
                   align: 'center',
                   render: (it) => <span className="font-mono tabular-nums font-bold">{it.quantity}</span>,
                 },
                 {
                   key: 'unitPrice',
-                  header: 'السعر المرجعي',
+                  header: t('السعر المرجعي', 'Ref. Price'),
                   align: 'center',
                   render: (it) => (
                     <span className="font-mono tabular-nums">
-                      {Number(it.unitPrice ?? 0).toLocaleString()} {settings.currency}
+                      {formatLocaleNumber(Number(it.unitPrice ?? 0))} {t(settings.currency)}
                     </span>
                   ),
                 },
                 {
                   key: 'total',
-                  header: 'الإجمالي',
+                  header: t('الإجمالي', 'Total'),
                   align: 'center',
                   render: (it) => (
                     <span className="font-mono tabular-nums font-black text-blue-950">
-                      {(Number(it.unitPrice ?? 0) * Number(it.quantity || 0)).toLocaleString()} {settings.currency}
+                      {formatLocaleNumber(Number(it.unitPrice ?? 0) * Number(it.quantity || 0))} {t(settings.currency)}
                     </span>
                   ),
                 },
@@ -637,7 +652,7 @@ export const CustomerRepOrdersView: React.FC = () => {
 
             {selectedOrder.notes && (
               <div className="px-2.5 py-1.5 rounded-md bg-amber-50 border border-amber-200 text-amber-900">
-                <strong>ملاحظات:</strong> {selectedOrder.notes}
+                <strong>{t('ملاحظات:', 'Notes:')}</strong> {selectedOrder.notes}
               </div>
             )}
 
@@ -646,7 +661,7 @@ export const CustomerRepOrdersView: React.FC = () => {
               <div className="p-2 rounded-md bg-slate-50 border border-slate-200 space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-black text-slate-900">
-                    ملخص سداد الفاتورة {selectedOrder.invoiceNumber ? `(${selectedOrder.invoiceNumber})` : ''}
+                    {t('ملخص سداد الفاتورة', 'Invoice Payment Summary')} {selectedOrder.invoiceNumber ? `(${selectedOrder.invoiceNumber})` : ''}
                   </span>
                   <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
                     selectedOrder.paymentStatus === 'paid'
@@ -655,21 +670,25 @@ export const CustomerRepOrdersView: React.FC = () => {
                       ? 'bg-blue-50 text-blue-800 border-blue-200'
                       : 'bg-amber-50 text-amber-800 border-amber-200'
                   }`}>
-                    {selectedOrder.paymentStatus === 'paid' ? 'مسدد بالكامل' : selectedOrder.paymentStatus === 'partial' ? 'مدفوع جزئياً' : 'غير مسدد'}
+                    {selectedOrder.paymentStatus === 'paid'
+                      ? t('مسدد بالكامل', 'Fully Paid')
+                      : selectedOrder.paymentStatus === 'partial'
+                      ? t('مدفوع جزئياً', 'Partially Paid')
+                      : t('غير مسدد', 'Unpaid')}
                   </span>
                 </div>
                 <div className="grid grid-cols-3 gap-px text-center bg-slate-200 rounded-md overflow-hidden border border-slate-200 tabular-nums">
                   <div className="bg-white px-2 py-1.5">
-                    <span className="block text-[10px] text-slate-500">إجمالي الفاتورة</span>
-                    <strong className="font-mono text-slate-900">{Number(selectedOrder.invoiceTotal ?? getOrderTotal(selectedOrder)).toLocaleString()} {settings.currency}</strong>
+                    <span className="block text-[10px] text-slate-500">{t('إجمالي الفاتورة', 'Invoice Total')}</span>
+                    <strong className="font-mono text-slate-900">{formatLocaleNumber(Number(selectedOrder.invoiceTotal ?? getOrderTotal(selectedOrder)))} {t(settings.currency)}</strong>
                   </div>
                   <div className="bg-white px-2 py-1.5">
-                    <span className="block text-[10px] text-slate-500">المدفوع</span>
-                    <strong className="font-mono text-emerald-700">{Number(selectedOrder.invoicePaidAmount ?? selectedOrder.advancePaidAmount ?? 0).toLocaleString()} {settings.currency}</strong>
+                    <span className="block text-[10px] text-slate-500">{t('المدفوع', 'Paid')}</span>
+                    <strong className="font-mono text-emerald-700">{formatLocaleNumber(Number(selectedOrder.invoicePaidAmount ?? selectedOrder.advancePaidAmount ?? 0))} {t(settings.currency)}</strong>
                   </div>
                   <div className="bg-white px-2 py-1.5">
-                    <span className="block text-[10px] text-slate-500">المتبقي</span>
-                    <strong className="font-mono text-red-600">{Number(selectedOrder.invoiceRemainingAmount ?? selectedOrder.remainingAmount ?? 0).toLocaleString()} {settings.currency}</strong>
+                    <span className="block text-[10px] text-slate-500">{t('المتبقي', 'Remaining')}</span>
+                    <strong className="font-mono text-red-600">{formatLocaleNumber(Number(selectedOrder.invoiceRemainingAmount ?? selectedOrder.remainingAmount ?? 0))} {t(settings.currency)}</strong>
                   </div>
                 </div>
                 {selectedOrder.paymentsHistory && selectedOrder.paymentsHistory.length > 0 && (
@@ -682,32 +701,32 @@ export const CustomerRepOrdersView: React.FC = () => {
                     columns={[
                       {
                         key: 'paymentNumber',
-                        header: 'رقم الدفعة',
+                        header: t('رقم الدفعة', 'Payment #'),
                         render: (ph) => <span className="font-mono">{ph.paymentNumber}</span>,
                       },
                       {
                         key: 'date',
-                        header: 'التاريخ',
+                        header: t('التاريخ', 'Date'),
                         render: (ph) => <span className="font-mono tabular-nums">{ph.date}</span>,
                       },
                       {
                         key: 'amount',
-                        header: 'المبلغ',
+                        header: t('المبلغ', 'Amount'),
                         align: 'center',
                         render: (ph) => (
                           <span className="font-mono font-bold text-emerald-700 tabular-nums">
-                            {ph.amount.toLocaleString()} {settings.currency}
+                            {formatLocaleNumber(ph.amount)} {t(settings.currency)}
                           </span>
                         ),
                       },
                       {
                         key: 'method',
-                        header: 'الخزينة / الطريقة',
-                        render: (ph) => <span>{ph.cashboxName || ph.paymentMethod}</span>,
+                        header: t('الخزينة / الطريقة', 'Cashbox / Method'),
+                        render: (ph) => <span>{ph.cashboxName || t(ph.paymentMethod)}</span>,
                       },
                       {
                         key: 'notes',
-                        header: 'ملاحظات',
+                        header: t('ملاحظات', 'Notes'),
                         render: (ph) => <span className="text-slate-500">{ph.notes || '—'}</span>,
                       },
                     ]}
@@ -726,12 +745,12 @@ export const CustomerRepOrdersView: React.FC = () => {
                       onClick={() =>
                         runAction(
                           () => advanceOrderStage(selectedOrder.id, { status: 'preparing' }),
-                          'تم تحديث الحالة إلى قيد التجهيز'
+                          t('تم تحديث الحالة إلى قيد التجهيز', 'Status updated to preparing')
                         )
                       }
                       className="h-8 px-2.5 rounded-md bg-[#0049B0] hover:bg-[#003589] text-white font-bold cursor-pointer"
                     >
-                      بدء التجهيز
+                      {t('بدء التجهيز', 'Start Preparing')}
                     </button>
                   )}
                   {['preparing', 'rep_assigned', 'approved'].includes(selectedOrder.status) && (
@@ -741,12 +760,12 @@ export const CustomerRepOrdersView: React.FC = () => {
                       onClick={() =>
                         runAction(
                           () => advanceOrderStage(selectedOrder.id, { status: 'out_for_delivery' }),
-                          'تم تحديث الحالة إلى خرج للتوصيل'
+                          t('تم تحديث الحالة إلى خرج للتوصيل', 'Status updated to out for delivery')
                         )
                       }
                       className="h-8 px-2.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
                     >
-                      خروج للتوصيل
+                      {t('خروج للتوصيل', 'Out for Delivery')}
                     </button>
                   )}
                   {['out_for_delivery', 'rep_assigned'].includes(selectedOrder.status) && (
@@ -756,12 +775,12 @@ export const CustomerRepOrdersView: React.FC = () => {
                       onClick={() =>
                         runAction(
                           () => advanceOrderStage(selectedOrder.id, { status: 'delivered' }),
-                          'تم تأكيد تسليم الطلب'
+                          t('تم تأكيد تسليم الطلب', 'Order delivery confirmed')
                         )
                       }
                       className="h-8 px-2.5 rounded-md bg-[#011E58] hover:bg-[#003589] text-white font-bold cursor-pointer"
                     >
-                      تم التسليم
+                      {t('تم التسليم', 'Mark Delivered')}
                     </button>
                   )}
                   {selectedOrder.status === 'delivered' && (
@@ -776,7 +795,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                       }}
                       className="h-8 px-2.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
                     >
-                      تحصيل الدفعة
+                      {t('تحصيل الدفعة', 'Collect Payment')}
                     </button>
                   )}
                   {['delivered', 'collected'].includes(selectedOrder.status) && (
@@ -786,12 +805,12 @@ export const CustomerRepOrdersView: React.FC = () => {
                       onClick={() =>
                         runAction(
                           () => advanceOrderStage(selectedOrder.id, { status: 'closed' }),
-                          'تم إغلاق الطلب'
+                          t('تم إغلاق الطلب', 'Order closed')
                         )
                       }
                       className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-black text-white font-bold cursor-pointer"
                     >
-                      إغلاق الطلب
+                      {t('إغلاق الطلب', 'Close Order')}
                     </button>
                   )}
                 </div>
@@ -804,7 +823,7 @@ export const CustomerRepOrdersView: React.FC = () => {
       <Modal
         isOpen={Boolean(collectStageOrder)}
         onClose={() => setCollectStageOrder(null)}
-        title={collectStageOrder ? `تحصيل دفعة للطلب ${collectStageOrder.requestNumber}` : ''}
+        title={collectStageOrder ? t(`تحصيل دفعة للطلب ${collectStageOrder.requestNumber}`, `Collect Payment for Order ${collectStageOrder.requestNumber}`) : ''}
         maxWidth="md"
       >
         <form
@@ -820,14 +839,14 @@ export const CustomerRepOrdersView: React.FC = () => {
                   paymentMethod: collectMethod,
                   notes: collectNotes,
                 }),
-              'تم تسجيل التحصيل وتحديث مرحلة الطلب'
+              t('تم تسجيل التحصيل وتحديث مرحلة الطلب', 'Collection recorded and order stage updated')
             );
             if (ok) setCollectStageOrder(null);
           }}
           className="space-y-2 text-xs"
         >
           <div>
-            <label className="block font-bold text-slate-700 mb-0.5">المبلغ المحصل ({settings.currency}):</label>
+            <label className="block font-bold text-slate-700 mb-0.5">{t(`المبلغ المحصل (${t(settings.currency)}):`, `Collected Amount (${t(settings.currency)}):`)}</label>
             <input
               type="number"
               min={0}
@@ -842,7 +861,7 @@ export const CustomerRepOrdersView: React.FC = () => {
           <div className={hasTreasuryAccess ? 'grid grid-cols-2 gap-2' : 'grid grid-cols-1 gap-2'}>
             {hasTreasuryAccess && (
               <div>
-                <label className="block font-bold text-slate-700 mb-0.5">الخزينة:</label>
+                <label className="block font-bold text-slate-700 mb-0.5">{t('الخزينة:', 'Cashbox:')}</label>
                 <select
                   value={collectCashboxId}
                   onChange={(e) => setCollectCashboxId(e.target.value)}
@@ -855,20 +874,20 @@ export const CustomerRepOrdersView: React.FC = () => {
               </div>
             )}
             <div>
-              <label className="block font-bold text-slate-700 mb-0.5">طريقة الدفع:</label>
+              <label className="block font-bold text-slate-700 mb-0.5">{t('طريقة الدفع:', 'Payment Method:')}</label>
               <select
                 value={collectMethod}
                 onChange={(e) => setCollectMethod(e.target.value as any)}
                 className="w-full h-8 py-1 px-2 rounded-md border border-slate-300 bg-white font-bold"
               >
-                <option value="cash">نقدي</option>
-                <option value="bank">تحويل بنكي</option>
-                <option value="cheque">شيك</option>
+                <option value="cash">{t('نقدي', 'Cash')}</option>
+                <option value="bank">{t('تحويل بنكي', 'Bank Transfer')}</option>
+                <option value="cheque">{t('شيك', 'Cheque')}</option>
               </select>
             </div>
           </div>
           <div>
-            <label className="block font-bold text-slate-700 mb-0.5">ملاحظات:</label>
+            <label className="block font-bold text-slate-700 mb-0.5">{t('ملاحظات:', 'Notes:')}</label>
             <input
               type="text"
               value={collectNotes}
@@ -878,10 +897,10 @@ export const CustomerRepOrdersView: React.FC = () => {
           </div>
           <div className="flex justify-end gap-2 pt-2 border-t">
             <button type="button" onClick={() => setCollectStageOrder(null)} className="px-2.5 py-1 rounded-md bg-slate-100 font-bold cursor-pointer">
-              إلغاء
+              {t('إلغاء', 'Cancel')}
             </button>
             <button type="submit" disabled={busy} className="h-8 px-3 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer">
-              تأكيد التحصيل
+              {t('تأكيد التحصيل', 'Confirm Collection')}
             </button>
           </div>
         </form>
@@ -891,7 +910,7 @@ export const CustomerRepOrdersView: React.FC = () => {
       <Modal
         isOpen={Boolean(rejectModalOrder)}
         onClose={() => setRejectModalOrder(null)}
-        title="رفض الطلب"
+        title={t('رفض الطلب', 'Reject Order')}
         maxWidth="md"
       >
         <form
@@ -899,21 +918,21 @@ export const CustomerRepOrdersView: React.FC = () => {
             e.preventDefault();
             if (!rejectModalOrder) return;
             const ok = await runAction(
-              () => rejectCustomerItemOrder(rejectModalOrder.id, rejectReason.trim() || 'مرفوض من الإدارة'),
-              'تم رفض الطلب'
+              () => rejectCustomerItemOrder(rejectModalOrder.id, rejectReason.trim() || t('مرفوض من الإدارة', 'Rejected by management')),
+              t('تم رفض الطلب', 'Order rejected')
             );
             if (ok) setRejectModalOrder(null);
           }}
           className="space-y-2 text-xs"
         >
-          <label className="block font-bold text-slate-700">سبب الرفض:</label>
+          <label className="block font-bold text-slate-700">{t('سبب الرفض:', 'Rejection Reason:')}</label>
           <textarea
             required
             rows={3}
             value={rejectReason}
             onChange={(e) => setRejectReason(e.target.value)}
             className="w-full py-1.5 px-2 rounded-md border border-slate-300"
-            placeholder="اكتب سبب الرفض ليظهر للعميل أو المندوب..."
+            placeholder={t('اكتب سبب الرفض ليظهر للعميل أو المندوب...', 'Enter the rejection reason to show to the customer or rep...')}
           />
           <div className="flex justify-end gap-2 pt-2 border-t">
             <button
@@ -921,14 +940,14 @@ export const CustomerRepOrdersView: React.FC = () => {
               onClick={() => setRejectModalOrder(null)}
               className="px-2.5 py-1 rounded-md bg-slate-100 font-bold cursor-pointer"
             >
-              إلغاء
+              {t('إلغاء', 'Cancel')}
             </button>
             <button
               type="submit"
               disabled={busy}
               className="px-3 py-1 rounded-md bg-red-600 text-white font-bold flex items-center gap-1 cursor-pointer"
             >
-              <XCircle className="w-3.5 h-3.5" /> تأكيد الرفض
+              <XCircle className="w-3.5 h-3.5" /> {t('تأكيد الرفض', 'Confirm Rejection')}
             </button>
           </div>
         </form>
@@ -938,7 +957,7 @@ export const CustomerRepOrdersView: React.FC = () => {
       <Modal
         isOpen={Boolean(assignModalOrder)}
         onClose={() => setAssignModalOrder(null)}
-        title="إسناد مندوب توصيل"
+        title={t('إسناد مندوب توصيل', 'Assign Delivery Representative')}
         maxWidth="md"
       >
         <form
@@ -947,21 +966,21 @@ export const CustomerRepOrdersView: React.FC = () => {
             if (!assignModalOrder || !assignRepId) return;
             const ok = await runAction(
               () => assignOrderDeliveryRep(assignModalOrder.id, assignRepId, assignNotes),
-              'تم إسناد المندوب للتوصيل بنجاح'
+              t('تم إسناد المندوب للتوصيل بنجاح', 'Delivery rep assigned successfully')
             );
             if (ok) setAssignModalOrder(null);
           }}
           className="space-y-2 text-xs"
         >
           <div>
-            <label className="block font-bold text-slate-700 mb-0.5">اختر المندوب:</label>
+            <label className="block font-bold text-slate-700 mb-0.5">{t('اختر المندوب:', 'Select Representative:')}</label>
             <select
               required
               value={assignRepId}
               onChange={(e) => setAssignRepId(e.target.value)}
               className="w-full h-8 py-1 px-2 rounded-md border border-slate-300 bg-white font-bold"
             >
-              <option value="">-- اختر مندوباً --</option>
+              <option value="">{t('-- اختر مندوباً --', '-- Select Representative --')}</option>
               {representatives.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.name}
@@ -970,7 +989,7 @@ export const CustomerRepOrdersView: React.FC = () => {
             </select>
           </div>
           <div>
-            <label className="block font-bold text-slate-700 mb-0.5">ملاحظات التوصيل:</label>
+            <label className="block font-bold text-slate-700 mb-0.5">{t('ملاحظات التوصيل:', 'Delivery Notes:')}</label>
             <input
               type="text"
               value={assignNotes}
@@ -984,14 +1003,14 @@ export const CustomerRepOrdersView: React.FC = () => {
               onClick={() => setAssignModalOrder(null)}
               className="px-2.5 py-1 rounded-md bg-slate-100 font-bold cursor-pointer"
             >
-              إلغاء
+              {t('إلغاء', 'Cancel')}
             </button>
             <button
               type="submit"
               disabled={busy || !assignRepId}
               className="h-8 px-3 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
             >
-              حفظ الإسناد
+              {t('حفظ الإسناد', 'Save Assignment')}
             </button>
           </div>
         </form>
@@ -1001,7 +1020,7 @@ export const CustomerRepOrdersView: React.FC = () => {
       <Modal
         isOpen={Boolean(advanceModalOrder)}
         onClose={() => setAdvanceModalOrder(null)}
-        title="تسجيل دفعة مقدمة على الطلب"
+        title={t('تسجيل دفعة مقدمة على الطلب', 'Record Advance Payment on Order')}
         maxWidth="md"
       >
         <form
@@ -1016,14 +1035,14 @@ export const CustomerRepOrdersView: React.FC = () => {
                   paymentMethod: advanceMethod,
                   notes: advanceNotes,
                 }),
-              'تم تسجيل الدفعة المقدمة بنجاح'
+              t('تم تسجيل الدفعة المقدمة بنجاح', 'Advance payment recorded successfully')
             );
             if (ok) setAdvanceModalOrder(null);
           }}
           className="space-y-2 text-xs"
         >
           <div>
-            <label className="block font-bold text-slate-700 mb-0.5">المبلغ ({settings.currency}):</label>
+            <label className="block font-bold text-slate-700 mb-0.5">{t(`المبلغ (${t(settings.currency)}):`, `Amount (${t(settings.currency)}):`)}</label>
             <input
               type="number"
               min={0.01}
@@ -1038,7 +1057,7 @@ export const CustomerRepOrdersView: React.FC = () => {
           <div className={hasTreasuryAccess ? 'grid grid-cols-2 gap-2' : 'grid grid-cols-1 gap-2'}>
             {hasTreasuryAccess && (
               <div>
-                <label className="block font-bold text-slate-700 mb-0.5">الخزينة:</label>
+                <label className="block font-bold text-slate-700 mb-0.5">{t('الخزينة:', 'Cashbox:')}</label>
                 <select
                   value={advanceCashboxId}
                   onChange={(e) => setAdvanceCashboxId(e.target.value)}
@@ -1053,20 +1072,20 @@ export const CustomerRepOrdersView: React.FC = () => {
               </div>
             )}
             <div>
-              <label className="block font-bold text-slate-700 mb-0.5">الطريقة:</label>
+              <label className="block font-bold text-slate-700 mb-0.5">{t('الطريقة:', 'Method:')}</label>
               <select
                 value={advanceMethod}
                 onChange={(e) => setAdvanceMethod(e.target.value as any)}
                 className="w-full h-8 py-1 px-2 rounded-md border border-slate-300 bg-white font-bold"
               >
-                <option value="cash">نقدي</option>
-                <option value="bank">تحويل بنكي</option>
-                <option value="cheque">شيك</option>
+                <option value="cash">{t('نقدي', 'Cash')}</option>
+                <option value="bank">{t('تحويل بنكي', 'Bank Transfer')}</option>
+                <option value="cheque">{t('شيك', 'Cheque')}</option>
               </select>
             </div>
           </div>
           <div>
-            <label className="block font-bold text-slate-700 mb-0.5">ملاحظات:</label>
+            <label className="block font-bold text-slate-700 mb-0.5">{t('ملاحظات:', 'Notes:')}</label>
             <input
               type="text"
               value={advanceNotes}
@@ -1080,14 +1099,14 @@ export const CustomerRepOrdersView: React.FC = () => {
               onClick={() => setAdvanceModalOrder(null)}
               className="px-2.5 py-1 rounded-md bg-slate-100 font-bold cursor-pointer"
             >
-              إلغاء
+              {t('إلغاء', 'Cancel')}
             </button>
             <button
               type="submit"
               disabled={busy || advanceAmount <= 0}
               className="h-8 px-3 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
             >
-              تسجيل الدفعة
+              {t('تسجيل الدفعة', 'Record Payment')}
             </button>
           </div>
         </form>
@@ -1097,7 +1116,7 @@ export const CustomerRepOrdersView: React.FC = () => {
       <Modal
         isOpen={Boolean(convertModalOrder)}
         onClose={() => setConvertModalOrder(null)}
-        title={convertModalOrder ? `تحويل الطلب ${convertModalOrder.requestNumber} إلى فاتورة` : ''}
+        title={convertModalOrder ? t(`تحويل الطلب ${convertModalOrder.requestNumber} إلى فاتورة`, `Convert Order ${convertModalOrder.requestNumber} to Invoice`) : ''}
         maxWidth="md"
       >
         <form
@@ -1121,7 +1140,7 @@ export const CustomerRepOrdersView: React.FC = () => {
                   discountTotal: convertDiscount,
                   notes: convertNotes,
                 }),
-              'تم تحويل الطلب إلى فاتورة مبيعات معتمدة بنجاح'
+              t('تم تحويل الطلب إلى فاتورة مبيعات معتمدة بنجاح', 'Order converted to confirmed sales invoice successfully')
             );
             if (ok) setConvertModalOrder(null);
           }}
@@ -1129,7 +1148,7 @@ export const CustomerRepOrdersView: React.FC = () => {
         >
           <div className={hasTreasuryAccess ? 'grid grid-cols-2 gap-2' : 'grid grid-cols-1 gap-2'}>
             <div>
-              <label className="block font-bold text-slate-700 mb-0.5">مستودع الصرف:</label>
+              <label className="block font-bold text-slate-700 mb-0.5">{t('مستودع الصرف:', 'Issue Warehouse:')}</label>
               <select
                 value={convertWarehouseId}
                 onChange={(e) => setConvertWarehouseId(e.target.value)}
@@ -1137,14 +1156,14 @@ export const CustomerRepOrdersView: React.FC = () => {
               >
                 {warehouses.map((w) => (
                   <option key={w.id} value={w.id}>
-                    {w.name}
+                    {t(w.name)}
                   </option>
                 ))}
               </select>
             </div>
             {hasTreasuryAccess && (
               <div>
-                <label className="block font-bold text-slate-700 mb-0.5">الخزينة:</label>
+                <label className="block font-bold text-slate-700 mb-0.5">{t('الخزينة:', 'Cashbox:')}</label>
                 <select
                   value={convertCashboxId}
                   onChange={(e) => setConvertCashboxId(e.target.value)}
@@ -1163,19 +1182,19 @@ export const CustomerRepOrdersView: React.FC = () => {
             {hasTreasuryAccess && (
               <>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-0.5">نوع الدفع:</label>
+                  <label className="block font-bold text-slate-700 mb-0.5">{t('نوع الدفع:', 'Payment Type:')}</label>
                   <select
                     value={convertPaymentType}
                     onChange={(e) => setConvertPaymentType(e.target.value as any)}
                     className="w-full h-8 py-1 px-2 rounded-md border border-slate-300 bg-white font-bold"
                   >
-                    <option value="cash">نقدي</option>
-                    <option value="partial">جزئي</option>
-                    <option value="credit">آجل</option>
+                    <option value="cash">{t('نقدي', 'Cash')}</option>
+                    <option value="partial">{t('جزئي', 'Partial')}</option>
+                    <option value="credit">{t('آجل', 'Credit')}</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-0.5">المدفوع عند الفاتورة:</label>
+                  <label className="block font-bold text-slate-700 mb-0.5">{t('المدفوع عند الفاتورة:', 'Paid at Invoice:')}</label>
                   <input
                     type="number"
                     min={0}
@@ -1189,7 +1208,7 @@ export const CustomerRepOrdersView: React.FC = () => {
               </>
             )}
             <div>
-              <label className="block font-bold text-slate-700 mb-0.5">الخصم:</label>
+              <label className="block font-bold text-slate-700 mb-0.5">{t('الخصم:', 'Discount:')}</label>
               <input
                 type="number"
                 min={0}
@@ -1202,7 +1221,7 @@ export const CustomerRepOrdersView: React.FC = () => {
             </div>
           </div>
           <div>
-            <label className="block font-bold text-slate-700 mb-0.5">ملاحظات الفاتورة:</label>
+            <label className="block font-bold text-slate-700 mb-0.5">{t('ملاحظات الفاتورة:', 'Invoice Notes:')}</label>
             <input
               type="text"
               value={convertNotes}
@@ -1216,14 +1235,14 @@ export const CustomerRepOrdersView: React.FC = () => {
               onClick={() => setConvertModalOrder(null)}
               className="px-2.5 py-1 rounded-md bg-slate-100 font-bold cursor-pointer"
             >
-              إلغاء
+              {t('إلغاء', 'Cancel')}
             </button>
             <button
               type="submit"
               disabled={busy}
               className="h-8 px-3 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
             >
-              اعتماد وتحويل لفاتورة
+              {t('اعتماد وتحويل لفاتورة', 'Approve & Convert to Invoice')}
             </button>
           </div>
         </form>
@@ -1231,3 +1250,4 @@ export const CustomerRepOrdersView: React.FC = () => {
     </div>
   );
 };
+

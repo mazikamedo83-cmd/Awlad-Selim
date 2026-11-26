@@ -12,11 +12,12 @@ import {
 } from 'lucide-react';
 import { exportToExcel } from './ExcelExporter';
 import { exportTableToPdf, PdfExportOptions } from './PdfExporter';
+import { usePreferences } from '../../context/PreferencesContext';
 
 export interface UnifiedColumn<T> {
   key: string;
   header: string;
-  align?: 'right' | 'center' | 'left';
+  align?: 'right' | 'center' | 'left' | 'start' | 'end';
   width?: string;
   minWidth?: string;
   sortable?: boolean;
@@ -67,7 +68,7 @@ export function UnifiedDataTable<T>({
   data,
   rowKey,
   searchable = true,
-  searchPlaceholder = 'بحث في الجدول...',
+  searchPlaceholder,
   searchFilter,
   searchValue,
   onSearchChange,
@@ -86,12 +87,16 @@ export function UnifiedDataTable<T>({
   exportFilename,
   pdfTitle,
   pdfExtra,
-  emptyTitle = 'لا توجد سجلات مطابقة',
-  emptySubtitle = 'جرّب تغيير الفلاتر أو إضافة سجل جديد',
+  emptyTitle,
+  emptySubtitle,
   compact = false,
   maxHeightClassName = 'max-h-[68vh]',
   paginated = true,
 }: UnifiedDataTableProps<T>) {
+  const { t, language, dir } = usePreferences();
+  const resolvedSearchPlaceholder = searchPlaceholder ?? t('بحث في الجدول...', 'Search table...');
+  const resolvedEmptyTitle = emptyTitle ?? t('لا توجد سجلات مطابقة', 'No matching records');
+  const resolvedEmptySubtitle = emptySubtitle ?? t('جرّب تغيير الفلاتر أو إضافة سجل جديد', 'Try changing filters or adding a new record');
   const [internalSearch, setInternalSearch] = useState('');
   const [sortKey, setSortKey] = useState<string>('');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -162,10 +167,10 @@ export function UnifiedDataTable<T>({
       }
       const sa = String(va ?? '');
       const sb = String(vb ?? '');
-      return sortDir === 'asc' ? sa.localeCompare(sb, 'ar') : sb.localeCompare(sa, 'ar');
+      return sortDir === 'asc' ? sa.localeCompare(sb, language) : sb.localeCompare(sa, language);
     });
     return copy;
-  }, [filteredData, sortKey, sortDir, columns]);
+  }, [filteredData, sortKey, sortDir, columns, language]);
 
   const totalRows = sortedData.length;
   const effectivePageSize = paginated ? pageSize : Math.max(1, totalRows);
@@ -219,7 +224,12 @@ export function UnifiedDataTable<T>({
   };
 
   const exportableColumns = useMemo(
-    () => columns.filter((c) => Boolean(c.exportValue) || (c.key !== 'actions' && c.header !== 'الإجراءات')),
+    () =>
+      columns.filter(
+        (c) =>
+          Boolean(c.exportValue) ||
+          (c.key !== 'actions' && c.header !== 'الإجراءات' && c.header !== 'Actions')
+      ),
     [columns]
   );
 
@@ -244,9 +254,11 @@ export function UnifiedDataTable<T>({
   const handlePdfExport = () => {
     const { headers, rows } = buildExportMatrix();
     exportTableToPdf(
-      pdfTitle || title || 'تقرير جدول نظام أولاد سليم',
+      pdfTitle || title || t('تقرير جدول نظام أولاد سليم', 'AWLAD SELIM Table Report'),
       headers,
-      rows.map((r) => r.map((cell) => (typeof cell === 'boolean' ? (cell ? 'نعم' : 'لا') : cell))),
+      rows.map((r) =>
+        r.map((cell) => (typeof cell === 'boolean' ? (cell ? t('نعم', 'Yes') : t('لا', 'No')) : cell))
+      ),
       pdfExtra
     );
   };
@@ -264,7 +276,7 @@ export function UnifiedDataTable<T>({
                 {subtitle && <p className="text-[11px] text-slate-500 dark:text-[#A9BCD9]">{subtitle}</p>}
               </div>
             )}
-            <div className="flex flex-wrap items-center gap-1.5 mr-auto">
+            <div className="flex flex-wrap items-center gap-1.5 ms-auto">
               {exportFilename && (
                 <button
                   type="button"
@@ -293,13 +305,13 @@ export function UnifiedDataTable<T>({
             <div className="awlad-filter-row pb-0.5" data-testid="unified-filter-row">
               {searchable && (
                 <div className="relative flex-1 min-w-[165px] shrink-0">
-                  <Search className="w-3.5 h-3.5 text-slate-500 dark:text-[#8CA3C7] absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <Search className="w-3.5 h-3.5 text-slate-500 dark:text-[#8CA3C7] absolute start-2 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="text"
                     value={effectiveSearch}
                     onChange={(e) => handleSearch(e.target.value)}
-                    placeholder={searchPlaceholder}
-                    className="w-full h-8 pr-7 pl-2 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-xs text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-500 dark:placeholder:text-[#8CA3C7] focus:outline-none focus:ring-1 focus:ring-[var(--awlad-royal-700)] focus:border-[var(--awlad-royal-700)] dark:focus:border-[#3B82F6] dark:focus:ring-[#3B82F6]/30"
+                    placeholder={resolvedSearchPlaceholder}
+                    className="w-full h-8 ps-7 pe-2 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-xs text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-500 dark:placeholder:text-[#8CA3C7] focus:outline-none focus:ring-1 focus:ring-[var(--awlad-royal-700)] focus:border-[var(--awlad-royal-700)] dark:focus:border-[#3B82F6] dark:focus:ring-[#3B82F6]/30"
                   />
                 </div>
               )}
@@ -316,7 +328,7 @@ export function UnifiedDataTable<T>({
       )}
 
       <div className={`overflow-x-auto overflow-y-auto ${maxHeightClassName}`}>
-        <table className="w-full text-xs text-right border-collapse awlad-tabular">
+        <table className="w-full text-xs text-start border-collapse awlad-tabular">
           <thead className="bg-[var(--awlad-navy-900)] dark:bg-[#172E56] text-white dark:text-[#F3F7FC] sticky top-0 z-10">
             <tr>
               {selectable && (
@@ -325,7 +337,7 @@ export function UnifiedDataTable<T>({
                     type="checkbox"
                     checked={allPageSelected}
                     onChange={toggleAllPage}
-                    aria-label="تحديد الكل"
+                    aria-label={t('تحديد الكل', 'Select All')}
                     className="w-4 h-4 rounded accent-[var(--awlad-royal-700)] dark:accent-[#1659C8] cursor-pointer"
                   />
                 </th>
@@ -333,7 +345,7 @@ export function UnifiedDataTable<T>({
               {columns.map((col) => {
                 const canSort = col.sortable !== false && (Boolean(col.sortValue) || Boolean(col.exportValue));
                 const alignCls =
-                  col.align === 'center' ? 'text-center' : col.align === 'left' ? 'text-left' : 'text-right';
+                  col.align === 'center' ? 'text-center' : col.align === 'left' || col.align === 'end' ? 'text-end' : 'text-start';
                 return (
                   <th
                     key={col.key}
@@ -385,7 +397,7 @@ export function UnifiedDataTable<T>({
                         triggerRowActivate(row, e);
                       }
                     }}
-                    title={onRowClick ? 'نقر مزدوج للتفاصيل (أو نقرة واحدة على الجوال)' : undefined}
+                    title={onRowClick ? t('نقر مزدوج للتفاصيل (أو نقرة واحدة على الجوال)', 'Double click for details (or single tap on mobile)') : undefined}
                     className={`transition-colors ${
                       onRowClick ? 'cursor-pointer' : ''
                     } ${
@@ -414,9 +426,9 @@ export function UnifiedDataTable<T>({
                       const alignCls =
                         col.align === 'center'
                           ? 'text-center'
-                          : col.align === 'left'
-                          ? 'text-left'
-                          : 'text-right';
+                          : col.align === 'left' || col.align === 'end'
+                          ? 'text-end'
+                          : 'text-start';
                       return (
                         <td
                           key={col.key}
@@ -443,8 +455,8 @@ export function UnifiedDataTable<T>({
       {paginatedRows.length === 0 && (
         <div className="px-3 py-6 text-center text-slate-500 dark:text-[#A9BCD9] bg-white dark:bg-[#0E1C36] flex flex-col items-center justify-center gap-1">
           <Inbox className="w-6 h-6 text-slate-300 dark:text-[#4F6B94]" />
-          <p className="text-xs font-bold text-slate-700 dark:text-[#DCE6F5]">{emptyTitle}</p>
-          <p className="text-[11px] text-slate-400 dark:text-[#849BBF] leading-relaxed">{emptySubtitle}</p>
+          <p className="text-xs font-bold text-slate-700 dark:text-[#DCE6F5]">{resolvedEmptyTitle}</p>
+          <p className="text-[11px] text-slate-400 dark:text-[#849BBF] leading-relaxed">{resolvedEmptySubtitle}</p>
         </div>
       )}
 
@@ -452,11 +464,13 @@ export function UnifiedDataTable<T>({
         <div className="px-2.5 sm:px-3 py-1.5 border-t border-slate-200 dark:border-[#21375C] bg-slate-50 dark:bg-[#132544] flex flex-wrap items-center justify-between gap-1.5 text-[11px] text-slate-600 dark:text-[#A9BCD9]">
           <div className="flex items-center gap-2">
             <span>
-              إجمالي السجلات: <strong className="font-mono tabular-nums text-slate-900 dark:text-[#F3F7FC]">{totalRows}</strong>
+              {t('إجمالي السجلات:', 'Total Records:')}{' '}
+              <strong className="font-mono tabular-nums text-slate-900 dark:text-[#F3F7FC]">{totalRows}</strong>
             </span>
             {selectable && selectedKeys.length > 0 && (
               <span className="px-2 py-0.5 rounded bg-[var(--awlad-blue-tint-100)] dark:bg-[#16366B] text-[var(--awlad-navy-900)] dark:text-[#85B8FF] font-bold">
-                المحدد: <span className="font-mono tabular-nums">{selectedKeys.length}</span>
+                {t('المحدد:', 'Selected:')}{' '}
+                <span className="font-mono tabular-nums">{selectedKeys.length}</span>
               </span>
             )}
           </div>
@@ -464,7 +478,7 @@ export function UnifiedDataTable<T>({
           {paginated && (
             <div className="flex items-center gap-2">
               <label className="flex items-center gap-1">
-                <span>عرض:</span>
+                <span>{t('عرض:', 'Show:')}</span>
                 <select
                   value={pageSize}
                   onChange={(e) => {
@@ -487,9 +501,9 @@ export function UnifiedDataTable<T>({
                   disabled={safePage <= 1}
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   className="p-1 rounded border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#0E1C36] text-slate-700 dark:text-[#DCE6F5] hover:bg-slate-100 dark:hover:bg-[#1A3461] disabled:opacity-40 cursor-pointer"
-                  aria-label="الصفحة السابقة"
+                  aria-label={t('الصفحة السابقة', 'Previous Page')}
                 >
-                  <ChevronRight className="w-4 h-4" />
+                  {dir === 'ltr' ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                 </button>
                 <span className="px-2 font-mono tabular-nums font-bold text-slate-800 dark:text-[#F3F7FC]">
                   {safePage} / {totalPages}
@@ -499,9 +513,9 @@ export function UnifiedDataTable<T>({
                   disabled={safePage >= totalPages}
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   className="p-1 rounded border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#0E1C36] text-slate-700 dark:text-[#DCE6F5] hover:bg-slate-100 dark:hover:bg-[#1A3461] disabled:opacity-40 cursor-pointer"
-                  aria-label="الصفحة التالية"
+                  aria-label={t('الصفحة التالية', 'Next Page')}
                 >
-                  <ChevronLeft className="w-4 h-4" />
+                  {dir === 'ltr' ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
                 </button>
               </div>
             </div>

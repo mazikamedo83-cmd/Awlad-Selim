@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
+import { usePreferences } from '../../../context/PreferencesContext';
+import { formatLocaleDateTime, formatLocaleNumber } from '../../../i18n/translator';
 import { RepTransfer, RepItemTransferRequest, Representative, RepCustodyStatementResponse, UserPermissions } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
@@ -64,6 +66,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
     getRepCustodyStatement, recordRepCustodyDelivery, recordRepCustodyReturn, recordRepCustodyAdjustment,
   } = useData();
   const { currentUser, hasPermission } = useAuth();
+  const { t, isRtl } = usePreferences();
 
   const [activeTab, setActiveTab] = useState<'cash-transfers' | 'item-transfers' | 'reps-list' | 'rep-custody-statement'>(initialTab);
   const [statusBanner, setStatusBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -202,11 +205,11 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
     });
     setIsCustodyLoading(false);
     if (!res.success || !res.statement) {
-      setCustodyError(res.error || 'تعذر تحميل كشف حساب وعهدة المندوب');
+      setCustodyError(t(res.error || 'تعذر تحميل كشف حساب وعهدة المندوب', res.error || 'Could not load representative custody statement'));
     } else {
       setCustodyStatement(res.statement);
     }
-  }, [custodyRepId, custodyDateFrom, custodyDateTo, getRepCustodyStatement]);
+  }, [custodyRepId, custodyDateFrom, custodyDateTo, getRepCustodyStatement, t]);
 
   useEffect(() => {
     if (activeTab === 'rep-custody-statement' && custodyRepId) {
@@ -240,19 +243,19 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
     setError(null);
     const numAmt = Number(amount || 0);
     if (numAmt <= 0) {
-      setError('يرجى تحديد مبلغ صالح أكبر من الصفر');
+      setError(t('يرجى تحديد مبلغ صالح أكبر من الصفر', 'Please enter a valid amount greater than zero'));
       return;
     }
 
     const rep = representatives.find(r => r.id === selectedRepId);
     if (!rep) {
-      setError('يرجى اختيار المندوب المعني');
+      setError(t('يرجى اختيار المندوب المعني', 'Please select the representative'));
       return;
     }
 
     const cb = cashboxes.find(c => c.id === selectedCashboxId);
     if (!cb) {
-      setError('يرجى تحديد الخزينة');
+      setError(t('يرجى تحديد الخزينة', 'Please select the cashbox'));
       return;
     }
 
@@ -296,64 +299,76 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
         handlePrintTransfer(res.transfer);
       }
     } else {
-      setError(res.error || 'تعذر إرسال طلب التحويل');
+      setError(t(res.error || 'تعذر إرسال طلب التحويل', res.error || 'Could not submit transfer request'));
     }
   };
 
-  const handleConfirmReceipt = (t: RepTransfer) => {
+  const handleConfirmReceipt = (tr: RepTransfer) => {
     setConfirmState({
       isOpen: true,
-      title: 'تأكيد استلام التحويل النقدي',
-      message: `هل أنت متأكد من تأكيد استلام مبلغ (${t.amount.toLocaleString()} ${settings.currency}) الخاص بالتحويل ${t.transferNumber}؟ سيتم تحديث أرصدة الخزينة وحساب المندوب فوراً.`,
-      confirmLabel: 'تأكيد الاستلام',
+      title: t('تأكيد استلام التحويل النقدي', 'Confirm Cash Transfer Receipt'),
+      message: t(
+        `هل أنت متأكد من تأكيد استلام مبلغ (${formatLocaleNumber(tr.amount)} ${t(settings.currency)}) الخاص بالتحويل ${tr.transferNumber}؟ سيتم تحديث أرصدة الخزينة وحساب المندوب فوراً.`,
+        `Confirm receipt of (${formatLocaleNumber(tr.amount)} ${t(settings.currency)}) for transfer ${tr.transferNumber}? Cashbox and representative balances will be updated immediately.`
+      ),
+      confirmLabel: t('تأكيد الاستلام', 'Confirm Receipt'),
       variant: 'success',
       onConfirm: async () => {
         setConfirmState(null);
-        const res = await confirmRepTransferReceipt(t.id, 'تم التأكيد والاستلام الفعلي');
+        const res = await confirmRepTransferReceipt(tr.id, 'تم التأكيد والاستلام الفعلي');
         if (!res.success) {
-          setStatusBanner({ type: 'error', text: res.error || 'فشل تأكيد الاستلام' });
+          setStatusBanner({ type: 'error', text: t(res.error || 'فشل تأكيد الاستلام', res.error || 'Failed to confirm receipt') });
         } else {
-          setStatusBanner({ type: 'success', text: `تم تأكيد استلام التحويل (${t.transferNumber}) وتحديث الأرصدة.` });
+          setStatusBanner({
+            type: 'success',
+            text: t(`تم تأكيد استلام التحويل (${tr.transferNumber}) وتحديث الأرصدة.`, `Transfer (${tr.transferNumber}) receipt confirmed and balances updated.`),
+          });
         }
       },
     });
   };
 
-  const handleRejectTransfer = (t: RepTransfer) => {
+  const handleRejectTransfer = (tr: RepTransfer) => {
     setConfirmState({
       isOpen: true,
-      title: 'رفض التحويل النقدي',
-      message: `رفض التحويل رقم (${t.transferNumber}) بمبلغ (${t.amount.toLocaleString()} ${settings.currency}).`,
-      confirmLabel: 'تأكيد الرفض',
+      title: t('رفض التحويل النقدي', 'Reject Cash Transfer'),
+      message: t(
+        `رفض التحويل رقم (${tr.transferNumber}) بمبلغ (${formatLocaleNumber(tr.amount)} ${t(settings.currency)}).`,
+        `Reject transfer #(${tr.transferNumber}) for (${formatLocaleNumber(tr.amount)} ${t(settings.currency)}).`
+      ),
+      confirmLabel: t('تأكيد الرفض', 'Confirm Rejection'),
       variant: 'danger',
       requireInput: true,
-      inputLabel: 'سبب رفض التحويل:',
-      inputPlaceholder: 'اكتب سبب رفض التحويل...',
+      inputLabel: t('سبب رفض التحويل:', 'Rejection Reason:'),
+      inputPlaceholder: t('اكتب سبب رفض التحويل...', 'Enter transfer rejection reason...'),
       onConfirm: async (reason) => {
         setConfirmState(null);
         if (!reason) return;
-        const res = await rejectRepTransfer(t.id, reason);
+        const res = await rejectRepTransfer(tr.id, reason);
         if (!res.success) {
-          setStatusBanner({ type: 'error', text: res.error || 'فشل رفض التحويل' });
+          setStatusBanner({ type: 'error', text: t(res.error || 'فشل رفض التحويل', res.error || 'Failed to reject transfer') });
         } else {
-          setStatusBanner({ type: 'success', text: `تم رفض التحويل (${t.transferNumber}).` });
+          setStatusBanner({ type: 'success', text: t(`تم رفض التحويل (${tr.transferNumber}).`, `Transfer (${tr.transferNumber}) rejected.`) });
         }
       },
     });
   };
 
-  const handlePrintTransfer = (t: RepTransfer) => {
+  const handlePrintTransfer = (tr: RepTransfer) => {
     setPrintData({
-      title: 'إيصال طلب تحويل بالنصف (إشعار تحويل مالي بين المندوب والفرع)',
-      docNumber: t.transferNumber,
-      docType: 'إيصال استلام',
-      date: t.date,
-      partyName: t.direction === 'rep_to_owner' ? t.senderName : t.receiverName,
-      representativeName: t.direction === 'rep_to_owner' ? t.senderName : t.receiverName,
-      grandTotal: t.amount,
-      paidAmount: t.amount,
-      paymentType: 'تحويل نقدي بالنصف',
-      notes: `حالة التحويل: ${t.status === 'received' ? 'تم الاستلام والتأكيد' : 'قيد الاستلام'} | الخزينة: ${t.cashboxName} | ملاحظات: ${t.notes || 'لا يوجد'}`,
+      title: t('إيصال طلب تحويل بالنصف (إشعار تحويل مالي بين المندوب والفرع)', 'Two-Way Cash Transfer Receipt (Representative / Branch Notice)'),
+      docNumber: tr.transferNumber,
+      docType: t('إيصال استلام', 'Receipt Voucher'),
+      date: tr.date,
+      partyName: tr.direction === 'rep_to_owner' ? tr.senderName : tr.receiverName,
+      representativeName: tr.direction === 'rep_to_owner' ? tr.senderName : tr.receiverName,
+      grandTotal: tr.amount,
+      paidAmount: tr.amount,
+      paymentType: t('تحويل نقدي بالنصف', 'Two-Way Cash Transfer'),
+      notes: t(
+        `حالة التحويل: ${tr.status === 'received' ? 'تم الاستلام والتأكيد' : 'قيد الاستلام'} | الخزينة: ${t(tr.cashboxName)} | ملاحظات: ${tr.notes || 'لا يوجد'}`,
+        `Transfer Status: ${tr.status === 'received' ? 'Received & Confirmed' : 'Awaiting Receipt'} | Cashbox: ${t(tr.cashboxName)} | Notes: ${tr.notes || 'None'}`
+      ),
     });
     setIsPrintModalOpen(true);
   };
@@ -407,13 +422,13 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
     e.preventDefault();
     setItemReqError(null);
     if (selectedItemsForReq.length === 0) {
-      setItemReqError('يرجى إضافة صنف واحد على الأقل للتحويل');
+      setItemReqError(t('يرجى إضافة صنف واحد على الأقل للتحويل', 'Please add at least one item to transfer'));
       return;
     }
 
     const rep = representatives.find(r => r.id === itemReqRepId);
     if (!rep) {
-      setItemReqError('يرجى اختيار المندوب');
+      setItemReqError(t('يرجى اختيار المندوب', 'Please select a representative'));
       return;
     }
 
@@ -451,28 +466,34 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
         type: 'success',
         text:
           itemReqTransferMode === 'custody_dispatch'
-            ? 'تم صرف العهدة من المخزن الرئيسي — بانتظار تأكيد استلام المندوب.'
-            : 'تم إرسال طلب تحويل الأصناف للمراجعة بنجاح.',
+            ? t('تم صرف العهدة من المخزن الرئيسي — بانتظار تأكيد استلام المندوب.', 'Custody dispatched from main warehouse — awaiting representative confirmation.')
+            : t('تم إرسال طلب تحويل الأصناف للمراجعة بنجاح.', 'Item transfer request submitted for review.'),
       });
     } else {
-      setItemReqError(res.error || 'فشل إرسال طلب التحويل');
+      setItemReqError(t(res.error || 'فشل إرسال طلب التحويل', res.error || 'Failed to submit transfer request'));
     }
   };
 
   const handleConfirmCustodyReceipt = (req: RepItemTransferRequest) => {
     setConfirmState({
       isOpen: true,
-      title: 'تأكيد استلام العهدة في سيارة المندوب',
-      message: `هل تؤكد استلام الأصناف الفعلية الخاصة بالإذن (${req.requestNumber})؟ لن تُضاف الأصناف لعهدة السيارة إلا بعد تأكيد الاستلام.`,
-      confirmLabel: 'تأكيد الاستلام الفعلي',
+      title: t('تأكيد استلام العهدة في سيارة المندوب', 'Confirm Custody Receipt in Representative Van'),
+      message: t(
+        `هل تؤكد استلام الأصناف الفعلية الخاصة بالإذن (${req.requestNumber})؟ لن تُضاف الأصناف لعهدة السيارة إلا بعد تأكيد الاستلام.`,
+        `Confirm physical receipt of items for permit (${req.requestNumber})? Items are only added to van custody after confirmation.`
+      ),
+      confirmLabel: t('تأكيد الاستلام الفعلي', 'Confirm Physical Receipt'),
       variant: 'success',
       onConfirm: async () => {
         setConfirmState(null);
         const res = await updateRepItemTransferStatus(req.id, 'received');
         if (!res.success) {
-          setStatusBanner({ type: 'error', text: res.error || 'فشل تأكيد استلام العهدة' });
+          setStatusBanner({ type: 'error', text: t(res.error || 'فشل تأكيد استلام العهدة', res.error || 'Failed to confirm custody receipt') });
         } else {
-          setStatusBanner({ type: 'success', text: `تم تأكيد استلام العهدة (${req.requestNumber}) وإضافتها لسيارة المندوب.` });
+          setStatusBanner({
+            type: 'success',
+            text: t(`تم تأكيد استلام العهدة (${req.requestNumber}) وإضافتها لسيارة المندوب.`, `Custody (${req.requestNumber}) received and added to representative van.`),
+          });
           setActiveItemReqDetail(null);
         }
       },
@@ -517,13 +538,16 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
     }
     setIsSubmittingCustodyOp(false);
     if (!res.success) {
-      setStatusBanner({ type: 'error', text: res.error || 'تعذر تنفيذ عملية العهدة' });
+      setStatusBanner({ type: 'error', text: t(res.error || 'تعذر تنفيذ عملية العهدة', res.error || 'Could not execute custody operation') });
     } else {
       setCustodyActionModal(null);
       setCustodyOpQty('');
       setCustodyOpNotes('');
       setCustodyOpCustomerName('');
-      setStatusBanner({ type: 'success', text: 'تم تسجيل حركة العهدة وتحديث رصيد المندوب بنجاح.' });
+      setStatusBanner({
+        type: 'success',
+        text: t('تم تسجيل حركة العهدة وتحديث رصيد المندوب بنجاح.', 'Custody movement recorded and representative balance updated.'),
+      });
       await loadCustodyStatement(custodyRepId);
     }
   };
@@ -531,22 +555,22 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
   const handleExportCustodyExcel = () => {
     if (!custodyStatement) return;
     const headers = [
-      'كود الصنف',
-      'اسم الصنف',
-      'الوحدة',
-      'المستلم فعلياً',
-      'قيد الاستلام',
-      'مسلم للعملاء',
-      'مرتجع للمخزن',
-      'تسويات/تالف',
-      'المتبقي بالعهدة',
-      'رصيد السيارة الفعلي',
-      'القيمة بالتكلفة',
+      t('كود الصنف', 'Item Code'),
+      t('اسم الصنف', 'Item Name'),
+      t('الوحدة', 'Unit'),
+      t('المستلم فعلياً', 'Received'),
+      t('قيد الاستلام', 'Pending Receipt'),
+      t('مسلم للعملاء', 'Delivered to Customers'),
+      t('مرتجع للمخزن', 'Returned to Warehouse'),
+      t('تسويات/تالف', 'Adjustments/Damaged'),
+      t('المتبقي بالعهدة', 'Remaining Custody'),
+      t('رصيد السيارة الفعلي', 'Van Physical Stock'),
+      t('القيمة بالتكلفة', 'Value at Cost'),
     ];
     const rows = custodyStatement.itemsSummary.map((it) => [
       it.productCode,
       it.productName,
-      it.baseUnit,
+      t(it.baseUnit),
       it.receivedQty,
       it.pendingReceiveQty,
       it.deliveredToCustomersQty,
@@ -556,23 +580,31 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
       it.vanPhysicalStockQty,
       it.custodyValueAtCost,
     ]);
-    exportToExcel(`كشف_عهدة_${custodyStatement.representative.name}_${new Date().toISOString().split('T')[0]}`, headers, rows);
+    exportToExcel(`Custody_${custodyStatement.representative.name}_${new Date().toISOString().split('T')[0]}`, headers, rows);
   };
 
   const handlePrintCustodyStatement = () => {
     if (!custodyStatement) return;
     setPrintData({
-      title: `كشف حساب وعهدة المندوب — ${custodyStatement.representative.name}`,
+      title: t(`كشف حساب وعهدة المندوب — ${custodyStatement.representative.name}`, `Representative Account & Custody Statement — ${custodyStatement.representative.name}`),
       docNumber: custodyStatement.representative.id,
-      docType: 'كشف حساب',
+      docType: t('كشف حساب', 'Account Statement'),
       date: new Date().toISOString().split('T')[0],
       partyName: custodyStatement.representative.name,
       partyPhone: custodyStatement.representative.phone,
       representativeName: custodyStatement.representative.name,
-      tableHeaders: ['م', 'الصنف', 'الوحدة', 'مستلم', 'مسلم للعملاء', 'مرتجع', 'المتبقي بالعهدة'],
+      tableHeaders: [
+        t('م', '#'),
+        t('الصنف', 'Item'),
+        t('الوحدة', 'Unit'),
+        t('مستلم', 'Received'),
+        t('مسلم للعملاء', 'Delivered'),
+        t('مرتجع', 'Returned'),
+        t('المتبقي بالعهدة', 'Remaining'),
+      ],
       items: custodyStatement.itemsSummary.map((it) => ({
         name: it.productName,
-        unit: it.baseUnit,
+        unit: t(it.baseUnit),
         quantity: it.receivedQty,
         price: it.deliveredToCustomersQty,
         discount: it.returnedToWarehouseQty,
@@ -581,7 +613,10 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
       grandTotal: custodyStatement.totals.totalCustodyCostValue,
       paidAmount: custodyStatement.financialSummary.totalSalesPaidAmount,
       remainingAmount: custodyStatement.financialSummary.currentCashCustodyBalance,
-      notes: `إجمالي المبيعات: ${custodyStatement.financialSummary.totalSalesAmount.toLocaleString()} ${settings.currency} | إجمالي المسلم للعملاء: ${custodyStatement.totals.totalDeliveredQty} | المتبقي بالعهدة: ${custodyStatement.totals.totalRemainingCustodyQty}`,
+      notes: t(
+        `إجمالي المبيعات: ${formatLocaleNumber(custodyStatement.financialSummary.totalSalesAmount)} ${t(settings.currency)} | إجمالي المسلم للعملاء: ${formatLocaleNumber(custodyStatement.totals.totalDeliveredQty)} | المتبقي بالعهدة: ${formatLocaleNumber(custodyStatement.totals.totalRemainingCustodyQty)}`,
+        `Total Sales: ${formatLocaleNumber(custodyStatement.financialSummary.totalSalesAmount)} ${t(settings.currency)} | Delivered: ${formatLocaleNumber(custodyStatement.totals.totalDeliveredQty)} | Remaining Custody: ${formatLocaleNumber(custodyStatement.totals.totalRemainingCustodyQty)}`
+      ),
     });
     setIsPrintModalOpen(true);
   };
@@ -589,17 +624,26 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
   const handleExecuteItemTransfer = (req: RepItemTransferRequest) => {
     setConfirmState({
       isOpen: true,
-      title: 'اعتماد وتنفيذ صرف العهدة من المخزن الرئيسي',
-      message: `سيتم خصم البضاعة من (${req.sourceWarehouseName}) للطلب (${req.requestNumber}). لن تُضاف الكمية إلى سيارة المندوب إلا بعد تأكيد استلام المندوب لها.`,
-      confirmLabel: 'اعتماد وصرف من المخزن',
+      title: t('اعتماد وتنفيذ صرف العهدة من المخزن الرئيسي', 'Approve & Dispatch Custody from Main Warehouse'),
+      message: t(
+        `سيتم خصم البضاعة من (${t(req.sourceWarehouseName)}) للطلب (${req.requestNumber}). لن تُضاف الكمية إلى سيارة المندوب إلا بعد تأكيد استلام المندوب لها.`,
+        `Stock will be deducted from (${t(req.sourceWarehouseName)}) for request (${req.requestNumber}). Quantities will only be added to the van after the representative confirms receipt.`
+      ),
+      confirmLabel: t('اعتماد وصرف من المخزن', 'Approve & Dispatch'),
       variant: 'success',
       onConfirm: async () => {
         setConfirmState(null);
         const res = await updateRepItemTransferStatus(req.id, 'executed');
         if (!res.success) {
-          setStatusBanner({ type: 'error', text: res.error || 'فشل تنفيذ تحويل الأصناف' });
+          setStatusBanner({ type: 'error', text: t(res.error || 'فشل تنفيذ تحويل الأصناف', res.error || 'Failed to execute item transfer') });
         } else {
-          setStatusBanner({ type: 'success', text: 'تم الصرف من المخزن الرئيسي — بانتظار تأكيد استلام المندوب لإضافتها لعهدة السيارة.' });
+          setStatusBanner({
+            type: 'success',
+            text: t(
+              'تم الصرف من المخزن الرئيسي — بانتظار تأكيد استلام المندوب لإضافتها لعهدة السيارة.',
+              'Dispatched from main warehouse — awaiting representative receipt confirmation.'
+            ),
+          });
           setActiveItemReqDetail(null);
         }
       },
@@ -609,21 +653,24 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
   const handleRejectItemTransfer = (req: RepItemTransferRequest) => {
     setConfirmState({
       isOpen: true,
-      title: 'رفض طلب تحويل الأصناف',
-      message: `رفض طلب تحويل العهدة رقم (${req.requestNumber}) للمندوب ${req.representativeName}.`,
-      confirmLabel: 'تأكيد الرفض',
+      title: t('رفض طلب تحويل الأصناف', 'Reject Item Transfer Request'),
+      message: t(
+        `رفض طلب تحويل العهدة رقم (${req.requestNumber}) للمندوب ${req.representativeName}.`,
+        `Reject custody transfer request #(${req.requestNumber}) for representative ${req.representativeName}.`
+      ),
+      confirmLabel: t('تأكيد الرفض', 'Confirm Rejection'),
       variant: 'danger',
       requireInput: true,
-      inputLabel: 'سبب رفض طلب تحويل الأصناف:',
-      inputPlaceholder: 'اكتب سبب الرفض...',
+      inputLabel: t('سبب رفض طلب تحويل الأصناف:', 'Rejection Reason:'),
+      inputPlaceholder: t('اكتب سبب الرفض...', 'Enter rejection reason...'),
       onConfirm: async (reason) => {
         setConfirmState(null);
         if (!reason) return;
         const res = await updateRepItemTransferStatus(req.id, 'rejected', undefined, reason);
         if (!res.success) {
-          setStatusBanner({ type: 'error', text: res.error || 'فشل رفض الطلب' });
+          setStatusBanner({ type: 'error', text: t(res.error || 'فشل رفض الطلب', res.error || 'Failed to reject request') });
         } else {
-          setStatusBanner({ type: 'success', text: `تم رفض الطلب (${req.requestNumber}).` });
+          setStatusBanner({ type: 'success', text: t(`تم رفض الطلب (${req.requestNumber}).`, `Request (${req.requestNumber}) rejected.`) });
           setActiveItemReqDetail(null);
         }
       },
@@ -636,16 +683,16 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
     if (isSavingRep) return;
     setRepFormError(null);
     if (!repName.trim()) {
-      setRepFormError('يرجى إدخال اسم المندوب.');
+      setRepFormError(t('يرجى إدخال اسم المندوب.', 'Please enter the representative name.'));
       return;
     }
     if (!editingRep && createRepAccount) {
       if (repUsername.trim().length < 3) {
-        setRepFormError('يرجى إدخال اسم مستخدم للمندوب (3 أحرف على الأقل).');
+        setRepFormError(t('يرجى إدخال اسم مستخدم للمندوب (3 أحرف على الأقل).', 'Please enter a username (at least 3 characters).'));
         return;
       }
       if (repPassword.length < 4) {
-        setRepFormError('كلمة مرور حساب المندوب يجب أن لا تقل عن 4 أحرف.');
+        setRepFormError(t('كلمة مرور حساب المندوب يجب أن لا تقل عن 4 أحرف.', 'Password must be at least 4 characters.'));
         return;
       }
     }
@@ -657,7 +704,10 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
           phone: repPhone.trim(),
           vehicleNumber: repVehicle.trim(),
         });
-        setStatusBanner({ type: 'success', text: `تم تحديث بيانات المندوب (${repName.trim()}) بنجاح.` });
+        setStatusBanner({
+          type: 'success',
+          text: t(`تم تحديث بيانات المندوب (${repName.trim()}) بنجاح.`, `Representative (${repName.trim()}) updated successfully.`),
+        });
       } else if (createRepAccount) {
         const userRes = await addUser({
           fullName: repName.trim(),
@@ -672,7 +722,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
           autoCreateRepProfile: true,
         } as any);
         if (!userRes.success || !userRes.user) {
-          setRepFormError(userRes.error || 'تعذر إنشاء حساب الدخول التلقائي للمندوب');
+          setRepFormError(t(userRes.error || 'تعذر إنشاء حساب الدخول التلقائي للمندوب', userRes.error || 'Could not create automatic login account'));
           return;
         }
         if (Number(repOpening) !== 0 || repVehicle.trim()) {
@@ -687,7 +737,10 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
         }
         setStatusBanner({
           type: 'success',
-          text: `تم إنشاء ملف المندوب (${repName.trim()}) وحساب الدخول (${repUsername.trim()}) بصلاحيات المندوب الافتراضية تلقائياً.`,
+          text: t(
+            `تم إنشاء ملف المندوب (${repName.trim()}) وحساب الدخول (${repUsername.trim()}) بصلاحيات المندوب الافتراضية تلقائياً.`,
+            `Representative (${repName.trim()}) and login account (${repUsername.trim()}) created automatically with default permissions.`
+          ),
         });
       } else {
         await addRepresentative({
@@ -697,7 +750,10 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
           openingBalance: Number(repOpening) || 0,
           status: 'active',
         });
-        setStatusBanner({ type: 'success', text: `تمت إضافة المندوب (${repName.trim()}) بنجاح.` });
+        setStatusBanner({
+          type: 'success',
+          text: t(`تمت إضافة المندوب (${repName.trim()}) بنجاح.`, `Representative (${repName.trim()}) added successfully.`),
+        });
       }
       setIsAddRepModalOpen(false);
       setEditingRep(null);
@@ -708,7 +764,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
       setRepUsername('');
       setRepPassword('');
     } catch (err: any) {
-      setRepFormError(err?.message || 'تعذر حفظ بيانات المندوب');
+      setRepFormError(t(err?.message || 'تعذر حفظ بيانات المندوب', err?.message || 'Could not save representative details'));
     } finally {
       setIsSavingRep(false);
     }
@@ -720,31 +776,31 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold">
             <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>تم الاستلام وتعديل الأرصدة</span>
+            <span>{t('تم الاستلام وتعديل الأرصدة', 'Received & Balances Updated')}</span>
           </span>
         );
       case 'awaiting_receipt':
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-300 text-xs font-bold">
             <Clock className="w-3.5 h-3.5" />
-            <span>في انتظار تأكيد الاستلام</span>
+            <span>{t('في انتظار تأكيد الاستلام', 'Awaiting Receipt')}</span>
           </span>
         );
       case 'rejected':
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-red-50 text-red-700 border border-red-200 text-xs font-bold">
             <XCircle className="w-3.5 h-3.5" />
-            <span>مرفوض</span>
+            <span>{t('مرفوض', 'Rejected')}</span>
           </span>
         );
       case 'cancelled':
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-slate-200 bg-slate-100 text-slate-700 text-xs font-bold">
-            ملغى
+            {t('ملغى', 'Cancelled')}
           </span>
         );
       default:
-        return <span className="text-xs font-bold text-slate-500">جديد</span>;
+        return <span className="text-xs font-bold text-slate-500">{t('جديد', 'New')}</span>;
     }
   };
 
@@ -754,28 +810,28 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-300 text-[10px] font-bold">
             <CheckCircle2 className="w-3 h-3" />
-            <span>تم الاستلام الفعلي في سيارة المندوب</span>
+            <span>{t('تم الاستلام الفعلي في سيارة المندوب', 'Received in Representative Van')}</span>
           </span>
         );
       case 'executed':
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#EEF3FA] text-[#003589] border border-[#DCE6F5] text-[10px] font-bold">
             <Check className="w-3 h-3" />
-            <span>تم الصرف من المخزن — بانتظار تأكيد استلام المندوب</span>
+            <span>{t('تم الصرف من المخزن — بانتظار تأكيد استلام المندوب', 'Dispatched — Awaiting Rep Receipt')}</span>
           </span>
         );
       case 'approved':
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold">
             <CheckCircle2 className="w-3 h-3" />
-            <span>معتمد (بانتظار الصرف)</span>
+            <span>{t('معتمد (بانتظار الصرف)', 'Approved (Awaiting Dispatch)')}</span>
           </span>
         );
       case 'rejected':
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-red-50 text-red-700 border border-red-200 text-[10px] font-bold">
             <XCircle className="w-3 h-3" />
-            <span>مرفوض من الإدارة</span>
+            <span>{t('مرفوض من الإدارة', 'Rejected by Management')}</span>
           </span>
         );
       case 'pending':
@@ -783,7 +839,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-300 text-[10px] font-bold">
             <Clock className="w-3 h-3" />
-            <span>قيد المراجعة الإدارية</span>
+            <span>{t('قيد المراجعة الإدارية', 'Pending Review')}</span>
           </span>
         );
     }
@@ -795,13 +851,18 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-white dark:bg-[#0E1C36] px-2.5 py-2 rounded-lg border border-slate-200 dark:border-[#21375C]">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-sm font-black text-slate-900 dark:text-[#F3F7FC] tracking-tight">إدارة المندوبين والتحويلات والعهد</h2>
+            <h2 className="text-sm font-black text-slate-900 dark:text-[#F3F7FC] tracking-tight">
+              {t('إدارة المندوبين والتحويلات والعهد', 'Representatives, Transfers & Custody Management')}
+            </h2>
             <span className="bg-blue-50 dark:bg-[#16366B] text-blue-800 dark:text-[#85B8FF] text-[10px] font-bold px-2 py-0.5 rounded border border-blue-200 dark:border-[#2A436E]">
-              ربط الفواتير والتحصيل
+              {t('ربط الفواتير والتحصيل', 'Invoice & Collection Link')}
             </span>
           </div>
           <p className="text-[11px] text-slate-500 dark:text-[#97AECE] mt-0.5">
-            متابعة عهدة البضاعة في سيارات المناديب، التحويلات النقدية بالنصف، وطلبات تحويل الأصناف المرتبطة بالفواتير
+            {t(
+              'متابعة عهدة البضاعة في سيارات المناديب، التحويلات النقدية بالنصف، وطلبات تحويل الأصناف المرتبطة بالفواتير',
+              'Track van inventory custody, two-way cash transfers, and invoice-linked stock transfer requests'
+            )}
           </p>
         </div>
 
@@ -812,7 +873,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               className="h-8 flex items-center gap-1.5 px-2.5 bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-black rounded-md transition-colors cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>طلب تحويل مالي جديد (نصف)</span>
+              <span>{t('طلب تحويل مالي جديد (نصف)', 'New Two-Way Cash Transfer')}</span>
             </button>
           )}
 
@@ -822,7 +883,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               className="h-8 flex items-center gap-1.5 px-2.5 bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-black rounded-md transition-colors cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>طلب تحويل أصناف وعهدة (+)</span>
+              <span>{t('طلب تحويل أصناف وعهدة (+)', 'New Item & Custody Transfer (+)')}</span>
             </button>
           )}
 
@@ -843,7 +904,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               className="h-8 flex items-center gap-1.5 px-2.5 bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-black rounded-md transition-colors cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>إضافة مندوب جديد</span>
+              <span>{t('إضافة مندوب جديد', 'Add New Representative')}</span>
             </button>
           )}
         </div>
@@ -859,7 +920,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
         >
           <span>{statusBanner.text}</span>
           <button type="button" onClick={() => setStatusBanner(null)} className="underline text-[11px] cursor-pointer">
-            إغلاق
+            {t('إغلاق', 'Close')}
           </button>
         </div>
       )}
@@ -875,7 +936,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
           }`}
         >
           <CashTransferIcon className="w-4 h-4 shrink-0" />
-          <span>التحويل المالي والنقدي (طلب تحويل بالنصف)</span>
+          <span>{t('التحويل المالي والنقدي (طلب تحويل بالنصف)', 'Cash Transfers (Two-Way)')}</span>
         </button>
 
         <button
@@ -885,10 +946,10 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
           }`}
         >
           <StockTransfersIcon className="w-4 h-4 shrink-0" />
-          <span>طلبات تحويل الأصناف والعهد (مرتبطة بالفاتورة)</span>
+          <span>{t('طلبات تحويل الأصناف والعهد (مرتبطة بالفاتورة)', 'Item & Custody Transfers (Invoice-Linked)')}</span>
           {repItemTransfers.filter(r => r.status === 'pending').length > 0 && (
             <span className="bg-amber-600 text-white px-1.5 py-0.5 rounded text-[10px] tabular-nums">
-              {repItemTransfers.filter(r => r.status === 'pending').length}
+              {formatLocaleNumber(repItemTransfers.filter(r => r.status === 'pending').length)}
             </span>
           )}
         </button>
@@ -900,7 +961,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
           }`}
         >
           <RepsFleetIcon className="w-4 h-4 shrink-0" />
-          <span>دليل المناديب ومتابعة العهد ({representatives.length})</span>
+          <span>{t(`دليل المناديب ومتابعة العهد (${formatLocaleNumber(representatives.length)})`, `Representatives & Custody (${formatLocaleNumber(representatives.length)})`)}</span>
         </button>
 
         <button
@@ -910,7 +971,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
           }`}
         >
           <AccountsLedgerIcon className="w-4 h-4 shrink-0" />
-          <span>كشف حساب وعهدة المندوب</span>
+          <span>{t('كشف حساب وعهدة المندوب', 'Rep Account & Custody Statement')}</span>
         </button>
       </div>
 
@@ -918,154 +979,159 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
       {activeTab === 'cash-transfers' && (
         <UnifiedDataTable<RepTransfer>
           compact
-          title="طلبات التحويل النقدية والعهد المالية"
-          subtitle="التحويلات المتبادلة بين المناديب والخزائن (توريد تحصيلات أو صرف عهدة)"
+          title={t('طلبات التحويل النقدية والعهد المالية', 'Cash Transfers & Rep Custody Requests')}
+          subtitle={t('التحويلات المتبادلة بين المناديب والخزائن (توريد تحصيلات أو صرف عهدة)', 'Two-way transfers between reps and cashboxes (collections deposit or custody issue)')}
           data={filteredTransfers}
-          rowKey={(t) => t.id}
-          onRowClick={(t) => setActiveTransferForAudit(t)}
+          rowKey={(tr) => tr.id}
+          onRowClick={(tr) => setActiveTransferForAudit(tr)}
           searchValue={searchTerm}
           onSearchChange={setSearchTerm}
-          searchPlaceholder="بحث برقم التحويل أو اسم المندوب أو الخزينة..."
-          searchFilter={(t, q) =>
-            t.transferNumber.toLowerCase().includes(q) ||
-            t.senderName.toLowerCase().includes(q) ||
-            t.receiverName.toLowerCase().includes(q) ||
-            t.cashboxName.toLowerCase().includes(q)
+          searchPlaceholder={t('بحث برقم التحويل أو اسم المندوب أو الخزينة...', 'Search by transfer #, rep name, or cashbox...')}
+          searchFilter={(tr, q) =>
+            tr.transferNumber.toLowerCase().includes(q) ||
+            tr.senderName.toLowerCase().includes(q) ||
+            tr.receiverName.toLowerCase().includes(q) ||
+            tr.cashboxName.toLowerCase().includes(q)
           }
           toolbarFilters={
             <label className="inline-flex items-center gap-1 h-8 px-2 border border-slate-300 rounded-md bg-white text-xs shrink-0">
-              <span className="text-[10.5px] text-slate-500 font-bold">الحالة:</span>
+              <span className="text-[10.5px] text-slate-500 font-bold">{t('الحالة:', 'Status:')}</span>
               <select
-                aria-label="حالة التحويل"
+                aria-label={t('حالة التحويل', 'Transfer status')}
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
                 className="bg-transparent font-bold text-xs outline-hidden"
               >
-                <option value="all">جميع الحالات</option>
-                <option value="awaiting_receipt">في انتظار تأكيد الاستلام</option>
-                <option value="received">تم الاستلام وتعديل الأرصدة</option>
-                <option value="rejected">مرفوض</option>
+                <option value="all">{t('جميع الحالات', 'All Statuses')}</option>
+                <option value="awaiting_receipt">{t('في انتظار تأكيد الاستلام', 'Awaiting Receipt Confirmation')}</option>
+                <option value="received">{t('تم الاستلام وتعديل الأرصدة', 'Received & Balances Updated')}</option>
+                <option value="rejected">{t('مرفوض', 'Rejected')}</option>
               </select>
             </label>
           }
-          exportFilename="التحويلات_النقدية_للمناديب"
-          pdfTitle="سجل التحويلات النقدية والعهد المالية للمناديب"
-          emptyTitle="لا توجد طلبات تحويل نقدية مسجلة"
-          emptySubtitle="يمكنك إنشاء طلب تحويل مالي جديد من الزر بالأعلى"
+          exportFilename={t('التحويلات_النقدية_للمناديب', 'Rep_Cash_Transfers')}
+          pdfTitle={t('سجل التحويلات النقدية والعهد المالية للمناديب', 'Rep Cash Transfers & Custody Log')}
+          emptyTitle={t('لا توجد طلبات تحويل نقدية مسجلة', 'No cash transfer requests recorded')}
+          emptySubtitle={t('يمكنك إنشاء طلب تحويل مالي جديد من الزر بالأعلى', 'You can create a new cash transfer request from the button above')}
           columns={[
             {
               key: 'transferNumber',
-              header: 'رقم التحويل',
+              header: t('رقم التحويل', 'Transfer #'),
               sortable: true,
-              sortValue: (t) => t.transferNumber,
-              exportValue: (t) => t.transferNumber,
-              render: (t) => <span className="font-bold font-mono text-blue-900">{t.transferNumber}</span>,
+              sortValue: (tr) => tr.transferNumber,
+              exportValue: (tr) => tr.transferNumber,
+              render: (tr) => <span className="font-bold font-mono text-blue-900">{tr.transferNumber}</span>,
             },
             {
               key: 'date',
-              header: 'التاريخ',
+              header: t('التاريخ', 'Date'),
               sortable: true,
-              sortValue: (t) => t.date,
-              exportValue: (t) => t.date,
-              render: (t) => <span className="font-mono text-slate-600">{t.date}</span>,
+              sortValue: (tr) => tr.date,
+              exportValue: (tr) => tr.date,
+              render: (tr) => <span className="font-mono text-slate-600">{tr.date}</span>,
             },
             {
               key: 'direction',
-              header: 'اتجاه التحويل',
+              header: t('اتجاه التحويل', 'Direction'),
               sortable: true,
-              sortValue: (t) => t.direction,
-              exportValue: (t) => (t.direction === 'rep_to_owner' ? 'توريد تحصيل (من مندوب لفرع)' : 'صرف عهدة (من فرع لمندوب)'),
-              render: (t) => (
+              sortValue: (tr) => tr.direction,
+              exportValue: (tr) =>
+                tr.direction === 'rep_to_owner'
+                  ? t('توريد تحصيل (من مندوب لفرع)', 'Collection Deposit (Rep to Branch)')
+                  : t('صرف عهدة (من فرع لمندوب)', 'Custody Issue (Branch to Rep)'),
+              render: (tr) => (
                 <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                  t.direction === 'rep_to_owner'
+                  tr.direction === 'rep_to_owner'
                     ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                     : 'bg-blue-50 text-blue-800 border border-blue-200'
                 }`}>
-                  {t.direction === 'rep_to_owner' ? 'توريد تحصيل (من مندوب لفرع)' : 'صرف عهدة (من فرع لمندوب)'}
+                  {tr.direction === 'rep_to_owner'
+                    ? t('توريد تحصيل (من مندوب لفرع)', 'Collection Deposit (Rep to Branch)')
+                    : t('صرف عهدة (من فرع لمندوب)', 'Custody Issue (Branch to Rep)')}
                 </span>
               ),
             },
             {
               key: 'senderName',
-              header: 'الطرف المرسل',
+              header: t('الطرف المرسل', 'Sender'),
               sortable: true,
-              sortValue: (t) => t.senderName,
-              exportValue: (t) => t.senderName,
-              render: (t) => <span className="font-bold text-slate-800">{t.senderName}</span>,
+              sortValue: (tr) => tr.senderName,
+              exportValue: (tr) => tr.senderName,
+              render: (tr) => <span className="font-bold text-slate-800">{tr.senderName}</span>,
             },
             {
               key: 'receiverName',
-              header: 'الطرف المستلم',
+              header: t('الطرف المستلم', 'Receiver'),
               sortable: true,
-              sortValue: (t) => t.receiverName,
-              exportValue: (t) => t.receiverName,
-              render: (t) => <span className="font-bold text-slate-800">{t.receiverName}</span>,
+              sortValue: (tr) => tr.receiverName,
+              exportValue: (tr) => tr.receiverName,
+              render: (tr) => <span className="font-bold text-slate-800">{tr.receiverName}</span>,
             },
             {
               key: 'amount',
-              header: 'المبلغ المحول',
+              header: t('المبلغ المحول', 'Transferred Amount'),
               align: 'center',
               sortable: true,
-              sortValue: (t) => t.amount,
-              exportValue: (t) => t.amount,
-              render: (t) => (
+              sortValue: (tr) => tr.amount,
+              exportValue: (tr) => tr.amount,
+              render: (tr) => (
                 <span className="font-black text-slate-900 font-mono tabular-nums">
-                  {t.amount.toLocaleString()} {settings.currency}
+                  {formatLocaleNumber(tr.amount)} {settings.currency}
                 </span>
               ),
             },
             {
               key: 'cashboxName',
-              header: 'الخزينة المتأثرة',
+              header: t('الخزينة المتأثرة', 'Affected Cashbox'),
               sortable: true,
-              sortValue: (t) => t.cashboxName,
-              exportValue: (t) => t.cashboxName,
-              render: (t) => <span className="text-slate-600">{t.cashboxName}</span>,
+              sortValue: (tr) => tr.cashboxName,
+              exportValue: (tr) => tr.cashboxName,
+              render: (tr) => <span className="text-slate-600">{tr.cashboxName}</span>,
             },
             {
               key: 'status',
-              header: 'الحالة',
+              header: t('الحالة', 'Status'),
               align: 'center',
               sortable: true,
-              sortValue: (t) => t.status,
-              exportValue: (t) => t.status,
-              render: (t) => getStatusBadge(t.status),
+              sortValue: (tr) => tr.status,
+              exportValue: (tr) => tr.status,
+              render: (tr) => getStatusBadge(tr.status),
             },
             {
               key: 'actions',
-              header: 'الإجراءات',
+              header: t('الإجراءات', 'Actions'),
               align: 'center',
-              render: (t) => (
+              render: (tr) => (
                 <div className="flex items-center justify-center gap-1.5">
-                  {t.status === 'awaiting_receipt' && (
+                  {tr.status === 'awaiting_receipt' && (
                     <>
                       <button
-                        onClick={() => handleConfirmReceipt(t)}
+                        onClick={() => handleConfirmReceipt(tr)}
                         className="px-2.5 py-1 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-bold text-[11px] cursor-pointer"
-                        title="تأكيد الاستلام الفعلي واعتماد القيد المحاسبي"
+                        title={t('تأكيد الاستلام الفعلي واعتماد القيد المحاسبي', 'Confirm physical receipt and post accounting entry')}
                       >
-                        تأكيد الاستلام
+                        {t('تأكيد الاستلام', 'Confirm Receipt')}
                       </button>
                       <button
-                        onClick={() => handleRejectTransfer(t)}
+                        onClick={() => handleRejectTransfer(tr)}
                         className="px-2.5 py-1 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg font-bold text-[11px] cursor-pointer"
-                        title="رفض استلام التحويل"
+                        title={t('رفض استلام التحويل', 'Reject transfer receipt')}
                       >
-                        رفض
+                        {t('رفض', 'Reject')}
                       </button>
                     </>
                   )}
                   <button
-                    onClick={() => handlePrintTransfer(t)}
+                    onClick={() => handlePrintTransfer(tr)}
                     className="p-1.5 rounded-lg text-slate-600 hover:text-blue-900 hover:bg-blue-50 cursor-pointer"
-                    title="طباعة إيصال التحويل"
+                    title={t('طباعة إيصال التحويل', 'Print transfer receipt')}
                   >
                     <Printer className="w-4 h-4" />
                   </button>
                   <button
-                    onClick={() => setActiveTransferForAudit(t)}
+                    onClick={() => setActiveTransferForAudit(tr)}
                     className="p-1.5 rounded-lg text-slate-600 hover:text-blue-900 hover:bg-blue-50 cursor-pointer"
-                    title="سجل التتبع والمراجعة (Audit Trail)"
+                    title={t('سجل التتبع والمراجعة (Audit Trail)', 'Audit Trail')}
                   >
                     <History className="w-4 h-4" />
                   </button>
@@ -1082,34 +1148,37 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
           <div className="bg-[#EEF3FA] border border-[#DCE6F5] px-3 py-2 rounded-lg text-xs text-[#011E58] flex items-start gap-2.5">
             <Truck className="w-4 h-4 text-[#003589] shrink-0 mt-0.5" />
             <div>
-              <h4 className="font-black text-xs">دورة عمل طلبات تحويل أصناف وعهدة المندوب المعتمدة:</h4>
+              <h4 className="font-black text-xs">{t('دورة عمل طلبات تحويل أصناف وعهدة المندوب المعتمدة:', 'Approved Rep Item Transfer & Custody Workflow:')}</h4>
               <p className="mt-0.5 leading-relaxed text-[#002160] text-[11px]">
-                عند إصدار المندوب فاتورة مبيعات لعميل جملة ويوجد عجز في كميات السيارة، يتم إنشاء طلب تحويل أصناف مرتبط برقم الفاتورة الأصلية.
-                <strong> لا يتم خصم المخزن الرئيسي إلا بعد مراجعة الإدارة والموافقة والتنفيذ الفعلي للتحويل.</strong>
+                {t(
+                  'عند إصدار المندوب فاتورة مبيعات لعميل جملة ويوجد عجز في كميات السيارة، يتم إنشاء طلب تحويل أصناف مرتبط برقم الفاتورة الأصلية.',
+                  'When a rep issues a wholesale invoice with insufficient van stock, an item transfer request linked to the original invoice is created.'
+                )}{' '}
+                <strong>{t('لا يتم خصم المخزن الرئيسي إلا بعد مراجعة الإدارة والموافقة والتنفيذ الفعلي للتحويل.', 'Main warehouse stock is only deducted after management review, approval, and actual execution.')}</strong>
               </p>
             </div>
           </div>
 
           <UnifiedDataTable<RepItemTransferRequest>
             compact
-            title="طلبات تحويل الأصناف وعهدة السيارات"
-            subtitle="طلبات سحب البضاعة من المخزن الرئيسي إلى سيارات المناديب وتأكيد الاستلام"
+            title={t('طلبات تحويل الأصناف وعهدة السيارات', 'Item Transfer & Van Custody Requests')}
+            subtitle={t('طلبات سحب البضاعة من المخزن الرئيسي إلى سيارات المناديب وتأكيد الاستلام', 'Requests to dispatch stock from main warehouse to rep vans and confirm receipt')}
             data={filteredItemTransfers}
             rowKey={(req) => req.id}
             onRowClick={(req) => setActiveItemReqDetail(req)}
-            searchPlaceholder="بحث برقم الطلب أو اسم المندوب أو رقم الفاتورة..."
+            searchPlaceholder={t('بحث برقم الطلب أو اسم المندوب أو رقم الفاتورة...', 'Search by request #, rep name, or invoice #...')}
             searchFilter={(r, q) =>
               r.requestNumber.toLowerCase().includes(q) ||
               r.representativeName.toLowerCase().includes(q) ||
               (r.invoiceNumber ? r.invoiceNumber.toLowerCase().includes(q) : false)
             }
-            exportFilename="طلبات_تحويل_أصناف_المناديب"
-            pdfTitle="سجل طلبات تحويل الأصناف وعهد سيارات المناديب"
-            emptyTitle="لا توجد طلبات تحويل أصناف أو عهدة مسجلة حتى الآن"
+            exportFilename={t('طلبات_تحويل_أصناف_المناديب', 'Rep_Item_Transfer_Requests')}
+            pdfTitle={t('سجل طلبات تحويل الأصناف وعهد سيارات المناديب', 'Rep Item Transfers & Van Custody Log')}
+            emptyTitle={t('لا توجد طلبات تحويل أصناف أو عهدة مسجلة حتى الآن', 'No item transfer or custody requests recorded yet')}
             columns={[
               {
                 key: 'requestNumber',
-                header: 'رقم الطلب',
+                header: t('رقم الطلب', 'Request #'),
                 sortable: true,
                 sortValue: (req) => req.requestNumber,
                 exportValue: (req) => req.requestNumber,
@@ -1118,7 +1187,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                     <div>{req.requestNumber}</div>
                     {req.transferMode === 'custody_dispatch' && (
                       <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-[#DCE6F5] text-[#002160] border border-[#B8CAE8] text-[9px] font-sans font-bold">
-                        صرف عهدة مباشر
+                        {t('صرف عهدة مباشر', 'Direct Custody Dispatch')}
                       </span>
                     )}
                   </div>
@@ -1126,7 +1195,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               },
               {
                 key: 'date',
-                header: 'التاريخ',
+                header: t('التاريخ', 'Date'),
                 sortable: true,
                 sortValue: (req) => req.date,
                 exportValue: (req) => req.date,
@@ -1134,7 +1203,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               },
               {
                 key: 'representativeName',
-                header: 'المندوب',
+                header: t('المندوب', 'Representative'),
                 sortable: true,
                 sortValue: (req) => req.representativeName,
                 exportValue: (req) => req.representativeName,
@@ -1142,40 +1211,40 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               },
               {
                 key: 'invoiceNumber',
-                header: 'الفاتورة المرتبطة',
+                header: t('الفاتورة المرتبطة', 'Linked Invoice'),
                 sortable: true,
                 sortValue: (req) => req.invoiceNumber || '',
-                exportValue: (req) => req.invoiceNumber || 'تحويل إداري مباشر',
+                exportValue: (req) => req.invoiceNumber || t('تحويل إداري مباشر', 'Direct Admin Transfer'),
                 render: (req) => (
                   <span className="font-mono font-bold text-blue-800">
-                    {req.invoiceNumber ? `فاتورة: ${req.invoiceNumber}` : 'تحويل إداري مباشر'}
+                    {req.invoiceNumber ? `${t('فاتورة:', 'Invoice:')} ${req.invoiceNumber}` : t('تحويل إداري مباشر', 'Direct Admin Transfer')}
                   </span>
                 ),
               },
               {
                 key: 'sourceWarehouseName',
-                header: 'المستودع المصدر',
+                header: t('المستودع المصدر', 'Source Warehouse'),
                 exportValue: (req) => req.sourceWarehouseName,
                 render: (req) => <span className="text-slate-600">{req.sourceWarehouseName}</span>,
               },
               {
                 key: 'targetWarehouseName',
-                header: 'المستودع الوجهة (السيارة)',
+                header: t('المستودع الوجهة (السيارة)', 'Target Warehouse (Van)'),
                 exportValue: (req) => req.targetWarehouseName,
                 render: (req) => <span className="text-slate-600">{req.targetWarehouseName}</span>,
               },
               {
                 key: 'itemsCount',
-                header: 'عدد الأصناف',
+                header: t('عدد الأصناف', 'Items Count'),
                 align: 'center',
                 sortable: true,
                 sortValue: (req) => req.items.length,
                 exportValue: (req) => req.items.length,
-                render: (req) => <span className="font-bold text-slate-700 tabular-nums">{req.items.length} أصناف</span>,
+                render: (req) => <span className="font-bold text-slate-700 tabular-nums">{req.items.length} {t('أصناف', 'items')}</span>,
               },
               {
                 key: 'status',
-                header: 'الحالة',
+                header: t('الحالة', 'Status'),
                 align: 'center',
                 sortable: true,
                 sortValue: (req) => req.status,
@@ -1184,7 +1253,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               },
               {
                 key: 'actions',
-                header: 'الإجراءات',
+                header: t('الإجراءات', 'Actions'),
                 align: 'center',
                 render: (req) => (
                   <div className="flex items-center justify-center gap-1.5 flex-wrap">
@@ -1193,24 +1262,24 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                       className="px-2.5 py-1 bg-blue-50 text-blue-900 hover:bg-blue-100 rounded-lg font-bold text-[11px] flex items-center gap-1 cursor-pointer"
                     >
                       <Eye className="w-3.5 h-3.5" />
-                      <span>فحص الأصناف</span>
+                      <span>{t('فحص الأصناف', 'Inspect Items')}</span>
                     </button>
                     {req.status === 'pending' && (currentUser?.role === 'admin' || hasPermission('canManageTransfers')) && (
                       <button
                         onClick={() => handleExecuteItemTransfer(req)}
                         className="px-2.5 py-1 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-bold text-[11px] cursor-pointer"
-                        title="موافقة وصرف البضاعة من المخزن الرئيسي"
+                        title={t('موافقة وصرف البضاعة من المخزن الرئيسي', 'Approve & dispatch goods from main warehouse')}
                       >
-                        اعتماد وصرف
+                        {t('اعتماد وصرف', 'Approve & Dispatch')}
                       </button>
                     )}
                     {req.status === 'executed' && (
                       <button
                         onClick={() => handleConfirmCustodyReceipt(req)}
                         className="px-2.5 py-1 bg-[#011E58] hover:bg-[#003589] text-white rounded-md font-bold text-[11px] cursor-pointer"
-                        title="تأكيد استلام المندوب وإضافة البضاعة لعهدة السيارة"
+                        title={t('تأكيد استلام المندوب وإضافة البضاعة لعهدة السيارة', 'Confirm rep receipt and add stock to van custody')}
                       >
-                        تأكيد استلام المندوب
+                        {t('تأكيد استلام المندوب', 'Confirm Rep Receipt')}
                       </button>
                     )}
                   </div>
@@ -1225,27 +1294,27 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
       {activeTab === 'reps-list' && (
         <UnifiedDataTable<Representative>
           compact
-          title="دليل المناديب ومتابعة العهد المالية"
-          subtitle="قائمة مندوبي التوزيع الميدانيين وأرصدة العهد النقدية الحالية"
+          title={t('دليل المناديب ومتابعة العهد المالية', 'Representatives Directory & Cash Custody')}
+          subtitle={t('قائمة مندوبي التوزيع الميدانيين وأرصدة العهد النقدية الحالية', 'List of field distribution reps and current cash custody balances')}
           data={representatives}
           rowKey={(rep) => rep.id}
           onRowClick={(rep) => {
             setCustodyRepId(rep.id);
             setActiveTab('rep-custody-statement');
           }}
-          searchPlaceholder="بحث باسم المندوب أو الهاتف أو رقم السيارة..."
+          searchPlaceholder={t('بحث باسم المندوب أو الهاتف أو رقم السيارة...', 'Search by rep name, phone, or vehicle #...')}
           searchFilter={(rep, q) =>
             rep.name.toLowerCase().includes(q) ||
             (rep.phone || '').includes(q) ||
             (rep.vehicleNumber || '').toLowerCase().includes(q)
           }
-          exportFilename="دليل_المناديب"
-          pdfTitle="دليل المناديب ومتابعة العهد المالية"
-          emptyTitle="لا يوجد مناديب مسجلون حالياً"
+          exportFilename={t('دليل_المناديب', 'Representatives_Directory')}
+          pdfTitle={t('دليل المناديب ومتابعة العهد المالية', 'Representatives Directory & Cash Custody')}
+          emptyTitle={t('لا يوجد مناديب مسجلون حالياً', 'No representatives registered yet')}
           columns={[
             {
               key: 'name',
-              header: 'اسم المندوب',
+              header: t('اسم المندوب', 'Rep Name'),
               sortable: true,
               sortValue: (rep) => rep.name,
               exportValue: (rep) => rep.name,
@@ -1253,7 +1322,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
             },
             {
               key: 'phone',
-              header: 'رقم الهاتف',
+              header: t('رقم الهاتف', 'Phone'),
               sortable: true,
               sortValue: (rep) => rep.phone || '',
               exportValue: (rep) => rep.phone || '-',
@@ -1261,46 +1330,46 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
             },
             {
               key: 'vehicleNumber',
-              header: 'رقم السيارة / العهدة',
+              header: t('رقم السيارة / العهدة', 'Vehicle / Custody #'),
               sortable: true,
               sortValue: (rep) => rep.vehicleNumber || '',
-              exportValue: (rep) => rep.vehicleNumber || 'سيارة التوزيع 1',
-              render: (rep) => <span className="font-bold text-slate-800">{rep.vehicleNumber || 'سيارة التوزيع 1'}</span>,
+              exportValue: (rep) => rep.vehicleNumber || t('سيارة التوزيع 1', 'Distribution Van 1'),
+              render: (rep) => <span className="font-bold text-slate-800">{rep.vehicleNumber || t('سيارة التوزيع 1', 'Distribution Van 1')}</span>,
             },
             {
               key: 'currentBalance',
-              header: 'العهدة المالية الحالية',
+              header: t('العهدة المالية الحالية', 'Current Cash Custody'),
               align: 'center',
               sortable: true,
               sortValue: (rep) => (rep.balanceHidden || rep.currentBalance === undefined ? 0 : rep.currentBalance),
               exportValue: (rep) =>
-                rep.balanceHidden || rep.currentBalance === undefined ? 'محجوب' : rep.currentBalance,
+                rep.balanceHidden || rep.currentBalance === undefined ? t('محجوب', 'Hidden') : rep.currentBalance,
               render: (rep) => (
                 <span className="text-emerald-700 font-black font-mono tabular-nums">
                   {rep.balanceHidden || rep.currentBalance === undefined
-                    ? 'محجوب'
-                    : `${rep.currentBalance.toLocaleString()} ${settings.currency}`}
+                    ? t('محجوب', 'Hidden')
+                    : `${formatLocaleNumber(rep.currentBalance)} ${settings.currency}`}
                 </span>
               ),
             },
             {
               key: 'status',
-              header: 'الحالة',
+              header: t('الحالة', 'Status'),
               align: 'center',
               sortable: true,
               sortValue: (rep) => rep.status,
-              exportValue: (rep) => (rep.status === 'active' ? 'نشط ميدانياً' : 'موقف'),
+              exportValue: (rep) => (rep.status === 'active' ? t('نشط ميدانياً', 'Active in Field') : t('موقف', 'Suspended')),
               render: (rep) => (
                 <span className={`px-2 py-0.5 rounded border text-[10px] font-bold ${
                   rep.status === 'active' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-slate-100 border-slate-200 text-slate-700'
                 }`}>
-                  {rep.status === 'active' ? 'نشط ميدانياً' : 'موقف'}
+                  {rep.status === 'active' ? t('نشط ميدانياً', 'Active in Field') : t('موقف', 'Suspended')}
                 </span>
               ),
             },
             {
               key: 'actions',
-              header: 'الإجراءات',
+              header: t('الإجراءات', 'Actions'),
               align: 'center',
               render: (rep) => (
                 <div className="flex items-center justify-center gap-2 flex-wrap">
@@ -1312,7 +1381,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                     }}
                     className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-900 hover:bg-blue-100 font-bold text-[11px] cursor-pointer"
                   >
-                    توريد نقدية
+                    {t('توريد نقدية', 'Deposit Cash')}
                   </button>
                   <button
                     onClick={() => {
@@ -1321,7 +1390,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                     }}
                     className="px-2.5 py-1 rounded-md bg-[#EEF3FA] text-[#011E58] hover:bg-[#DCE6F5] font-bold text-[11px] cursor-pointer"
                   >
-                    كشف العهدة
+                    {t('كشف العهدة', 'Custody Statement')}
                   </button>
                   <button
                     onClick={() => {
@@ -1333,7 +1402,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                       setIsAddRepModalOpen(true);
                     }}
                     className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 cursor-pointer"
-                    title="تعديل بيانات المندوب"
+                    title={t('تعديل بيانات المندوب', 'Edit Representative')}
                   >
                     <Edit className="w-4 h-4" />
                   </button>
@@ -1352,9 +1421,9 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
             <div className="awlad-filter-row justify-between" data-testid="rep-custody-filter-row">
               <div className="flex flex-nowrap items-center gap-1.5 shrink-0">
                 <label className="inline-flex items-center gap-1 h-8 px-2 rounded-md border border-slate-300 dark:border-[#2A436E] bg-slate-50 dark:bg-[#10203D] shrink-0">
-                  <span className="text-[10.5px] font-bold text-slate-500 dark:text-[#9CB0D4]">المندوب:</span>
+                  <span className="text-[10.5px] font-bold text-slate-500 dark:text-[#9CB0D4]">{t('المندوب:', 'Rep:')}</span>
                   <select
-                    aria-label="المندوب"
+                    aria-label={t('المندوب', 'Representative')}
                     value={custodyRepId}
                     disabled={isRepUser}
                     onChange={(e) => setCustodyRepId(e.target.value)}
@@ -1366,20 +1435,20 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                   </select>
                 </label>
                 <label className="inline-flex items-center gap-1 h-8 px-2 rounded-md border border-slate-300 dark:border-[#2A436E] bg-slate-50 dark:bg-[#10203D] shrink-0">
-                  <span className="text-[10.5px] font-bold text-slate-500 dark:text-[#9CB0D4]">من:</span>
+                  <span className="text-[10.5px] font-bold text-slate-500 dark:text-[#9CB0D4]">{t('من:', 'From:')}</span>
                   <input
                     type="date"
-                    aria-label="من تاريخ"
+                    aria-label={t('من تاريخ', 'From date')}
                     value={custodyDateFrom}
                     onChange={(e) => setCustodyDateFrom(e.target.value)}
                     className="bg-transparent font-mono text-xs outline-hidden text-slate-800 dark:text-[#EEF4FC]"
                   />
                 </label>
                 <label className="inline-flex items-center gap-1 h-8 px-2 rounded-md border border-slate-300 dark:border-[#2A436E] bg-slate-50 dark:bg-[#10203D] shrink-0">
-                  <span className="text-[10.5px] font-bold text-slate-500 dark:text-[#9CB0D4]">إلى:</span>
+                  <span className="text-[10.5px] font-bold text-slate-500 dark:text-[#9CB0D4]">{t('إلى:', 'To:')}</span>
                   <input
                     type="date"
-                    aria-label="إلى تاريخ"
+                    aria-label={t('إلى تاريخ', 'To date')}
                     value={custodyDateTo}
                     onChange={(e) => setCustodyDateTo(e.target.value)}
                     className="bg-transparent font-mono text-xs outline-hidden text-slate-800 dark:text-[#EEF4FC]"
@@ -1392,7 +1461,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                   className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-blue-900 hover:bg-blue-950 text-white font-bold cursor-pointer disabled:opacity-50 shrink-0"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isCustodyLoading ? 'animate-spin' : ''}`} />
-                  <span>تحديث الكشف</span>
+                  <span>{t('تحديث الكشف', 'Refresh Statement')}</span>
                 </button>
               </div>
 
@@ -1411,7 +1480,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                   className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer shrink-0"
                 >
                   <PackageCheck className="w-3.5 h-3.5" />
-                  <span>تسليم جزئي للعميل</span>
+                  <span>{t('تسليم جزئي للعميل', 'Partial Delivery')}</span>
                 </button>
                 <button
                   type="button"
@@ -1426,7 +1495,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                   className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] border border-[#B8CAE8] font-bold cursor-pointer shrink-0"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  <span>إرجاع للمخزن الرئيسي</span>
+                  <span>{t('إرجاع للمخزن الرئيسي', 'Return to Main Warehouse')}</span>
                 </button>
                 {(currentUser?.role === 'admin' || hasPermission('canApprove') || hasPermission('canManageReps')) && (
                   <button
@@ -1442,7 +1511,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                     className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md bg-slate-800 hover:bg-slate-900 text-white font-bold cursor-pointer shrink-0"
                   >
                     <AlertTriangle className="w-3.5 h-3.5" />
-                    <span>تسوية / تالف / عجز</span>
+                    <span>{t('تسوية / تالف / عجز', 'Adjust / Damaged / Shortage')}</span>
                   </button>
                 )}
                 <button
@@ -1461,7 +1530,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                   className="inline-flex items-center gap-1 h-8 px-2.5 rounded-md border border-slate-300 bg-white hover:bg-slate-50 font-bold text-slate-700 cursor-pointer disabled:opacity-50 shrink-0"
                 >
                   <Printer className="w-3.5 h-3.5 text-[#011E58]" />
-                  <span>طباعة</span>
+                  <span>{t('طباعة', 'Print')}</span>
                 </button>
               </div>
             </div>
@@ -1479,28 +1548,28 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden text-xs">
                 <div className="bg-white px-3 py-2">
                   <span className="text-[11px] text-slate-500 font-bold flex items-center gap-1">
-                    <Wallet className="w-3.5 h-3.5 text-[#003589]" /> رصيد العهدة النقدية الحالية
+                    <Wallet className="w-3.5 h-3.5 text-[#003589]" /> {t('رصيد العهدة النقدية الحالية', 'Current Cash Custody Balance')}
                   </span>
                   <p className="text-base font-black text-[#011E58] font-mono tabular-nums mt-0.5">
-                    {custodyStatement.financialSummary.currentCashCustodyBalance.toLocaleString()} {settings.currency}
+                    {formatLocaleNumber(custodyStatement.financialSummary.currentCashCustodyBalance)} {settings.currency}
                   </p>
                 </div>
                 <div className="bg-white px-3 py-2">
-                  <span className="text-[11px] text-slate-500 font-bold">إجمالي مبيعات المندوب</span>
+                  <span className="text-[11px] text-slate-500 font-bold">{t('إجمالي مبيعات المندوب', 'Total Rep Sales')}</span>
                   <p className="text-base font-black text-slate-900 font-mono tabular-nums mt-0.5">
-                    {custodyStatement.financialSummary.totalSalesAmount.toLocaleString()} {settings.currency}
+                    {formatLocaleNumber(custodyStatement.financialSummary.totalSalesAmount)} {settings.currency}
                   </p>
                 </div>
                 <div className="bg-white px-3 py-2">
-                  <span className="text-[11px] text-emerald-700 font-bold">المحصّل من الفواتير</span>
+                  <span className="text-[11px] text-emerald-700 font-bold">{t('المحصّل من الفواتير', 'Collected from Invoices')}</span>
                   <p className="text-base font-black text-emerald-700 font-mono tabular-nums mt-0.5">
-                    {custodyStatement.financialSummary.totalSalesPaidAmount.toLocaleString()} {settings.currency}
+                    {formatLocaleNumber(custodyStatement.financialSummary.totalSalesPaidAmount)} {settings.currency}
                   </p>
                 </div>
                 <div className="bg-white px-3 py-2">
-                  <span className="text-[11px] text-amber-700 font-bold">المتبقي بالآجل عند العملاء</span>
+                  <span className="text-[11px] text-amber-700 font-bold">{t('المتبقي بالآجل عند العملاء', 'Credit Due from Customers')}</span>
                   <p className="text-base font-black text-amber-800 font-mono tabular-nums mt-0.5">
-                    {custodyStatement.financialSummary.totalSalesRemainingAmount.toLocaleString()} {settings.currency}
+                    {formatLocaleNumber(custodyStatement.financialSummary.totalSalesRemainingAmount)} {settings.currency}
                   </p>
                 </div>
               </div>
@@ -1508,57 +1577,57 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               {/* Item Custody Totals Strip */}
               <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 bg-[#011E58] text-white p-2.5 rounded-lg text-center text-[11px] tabular-nums">
                 <div>
-                  <span className="text-[#B8CAE8] block">المستلم فعلياً</span>
-                  <strong className="text-xs font-mono">{custodyStatement.totals.totalReceivedQty}</strong>
+                  <span className="text-[#B8CAE8] block">{t('المستلم فعلياً', 'Physically Received')}</span>
+                  <strong className="text-xs font-mono">{formatLocaleNumber(custodyStatement.totals.totalReceivedQty)}</strong>
                 </div>
                 <div>
-                  <span className="text-amber-300 block">بانتظار الاستلام</span>
-                  <strong className="text-xs font-mono">{custodyStatement.totals.totalPendingReceiveQty}</strong>
+                  <span className="text-amber-300 block">{t('بانتظار الاستلام', 'Pending Receipt')}</span>
+                  <strong className="text-xs font-mono">{formatLocaleNumber(custodyStatement.totals.totalPendingReceiveQty)}</strong>
                 </div>
                 <div>
-                  <span className="text-emerald-300 block">مسلم للعملاء</span>
-                  <strong className="text-xs font-mono">{custodyStatement.totals.totalDeliveredQty}</strong>
+                  <span className="text-emerald-300 block">{t('مسلم للعملاء', 'Delivered to Customers')}</span>
+                  <strong className="text-xs font-mono">{formatLocaleNumber(custodyStatement.totals.totalDeliveredQty)}</strong>
                 </div>
                 <div>
-                  <span className="text-[#DCE6F5] block">مرتجع للمخزن</span>
-                  <strong className="text-xs font-mono">{custodyStatement.totals.totalReturnedQty}</strong>
+                  <span className="text-[#DCE6F5] block">{t('مرتجع للمخزن', 'Returned to Warehouse')}</span>
+                  <strong className="text-xs font-mono">{formatLocaleNumber(custodyStatement.totals.totalReturnedQty)}</strong>
                 </div>
                 <div>
-                  <span className="text-rose-300 block">تسويات / تالف</span>
-                  <strong className="text-xs font-mono">{custodyStatement.totals.totalReductionsQty}</strong>
+                  <span className="text-rose-300 block">{t('تسويات / تالف', 'Adjustments / Damaged')}</span>
+                  <strong className="text-xs font-mono">{formatLocaleNumber(custodyStatement.totals.totalReductionsQty)}</strong>
                 </div>
                 <div>
-                  <span className="text-[#B8CAE8] block">المتبقي بالعهدة</span>
-                  <strong className="text-xs font-mono text-white">{custodyStatement.totals.totalRemainingCustodyQty}</strong>
+                  <span className="text-[#B8CAE8] block">{t('المتبقي بالعهدة', 'Remaining Custody')}</span>
+                  <strong className="text-xs font-mono text-white">{formatLocaleNumber(custodyStatement.totals.totalRemainingCustodyQty)}</strong>
                 </div>
                 <div>
-                  <span className="text-[#DCE6F5] block">رصيد السيارة الفعلي</span>
-                  <strong className="text-xs font-mono">{custodyStatement.totals.totalVanPhysicalQty}</strong>
+                  <span className="text-[#DCE6F5] block">{t('رصيد السيارة الفعلي', 'Actual Van Stock')}</span>
+                  <strong className="text-xs font-mono">{formatLocaleNumber(custodyStatement.totals.totalVanPhysicalQty)}</strong>
                 </div>
                 <div>
-                  <span className="text-emerald-200 block">قيمة العهدة بالتكلفة</span>
-                  <strong className="text-xs font-mono">{custodyStatement.totals.totalCustodyCostValue.toLocaleString()}</strong>
+                  <span className="text-emerald-200 block">{t('قيمة العهدة بالتكلفة', 'Custody Cost Value')}</span>
+                  <strong className="text-xs font-mono">{formatLocaleNumber(custodyStatement.totals.totalCustodyCostValue)}</strong>
                 </div>
               </div>
 
               {/* Items Summary Table */}
               <UnifiedDataTable
                 compact
-                title="ملخص الأصناف في عهدة المندوب"
-                subtitle="المتبقي = المستلم − المسلم للعملاء − المرتجع − التسويات"
+                title={t('ملخص الأصناف في عهدة المندوب', 'Summary of Items in Rep Custody')}
+                subtitle={t('المتبقي = المستلم − المسلم للعملاء − المرتجع − التسويات', 'Remaining = Received − Delivered − Returned − Adjustments')}
                 data={custodyStatement.itemsSummary}
                 rowKey={(it) => it.productId}
-                searchPlaceholder="بحث باسم الصنف أو الكود..."
+                searchPlaceholder={t('بحث باسم الصنف أو الكود...', 'Search by item name or code...')}
                 searchFilter={(it, q) =>
                   it.productName.toLowerCase().includes(q) || (it.productCode || '').toLowerCase().includes(q)
                 }
-                exportFilename="ملخص_أصناف_عهدة_المندوب"
-                pdfTitle="ملخص الأصناف في عهدة المندوب"
-                emptyTitle="لا توجد حركات أصناف مسجلة لهذا المندوب في الفترة المحددة"
+                exportFilename={t('ملخص_أصناف_عهدة_المندوب', 'Rep_Custody_Items_Summary')}
+                pdfTitle={t('ملخص الأصناف في عهدة المندوب', 'Summary of Items in Rep Custody')}
+                emptyTitle={t('لا توجد حركات أصناف مسجلة لهذا المندوب في الفترة المحددة', 'No item movements recorded for this rep in the selected period')}
                 columns={[
                   {
                     key: 'productName',
-                    header: 'الصنف',
+                    header: t('الصنف', 'Item'),
                     sortable: true,
                     sortValue: (it) => it.productName,
                     exportValue: (it) => it.productName,
@@ -1569,78 +1638,78 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                       </div>
                     ),
                   },
-                  { key: 'baseUnit', header: 'الوحدة', align: 'center', exportValue: (it) => it.baseUnit, render: (it) => it.baseUnit },
+                  { key: 'baseUnit', header: t('الوحدة', 'Unit'), align: 'center', exportValue: (it) => it.baseUnit, render: (it) => t(it.baseUnit) },
                   {
                     key: 'receivedQty',
-                    header: 'مستلم',
+                    header: t('مستلم', 'Received'),
                     align: 'center',
                     sortable: true,
                     sortValue: (it) => it.receivedQty,
                     exportValue: (it) => it.receivedQty,
-                    render: (it) => <span className="font-mono font-bold text-blue-900 tabular-nums">{it.receivedQty}</span>,
+                    render: (it) => <span className="font-mono font-bold text-blue-900 tabular-nums">{formatLocaleNumber(it.receivedQty)}</span>,
                   },
                   {
                     key: 'pendingReceiveQty',
-                    header: 'معلّق (قيد الاستلام)',
+                    header: t('معلّق (قيد الاستلام)', 'Pending Receipt'),
                     align: 'center',
                     exportValue: (it) => it.pendingReceiveQty,
-                    render: (it) => <span className="font-mono text-amber-700 tabular-nums">{it.pendingReceiveQty}</span>,
+                    render: (it) => <span className="font-mono text-amber-700 tabular-nums">{formatLocaleNumber(it.pendingReceiveQty)}</span>,
                   },
                   {
                     key: 'deliveredToCustomersQty',
-                    header: 'مسلم للعملاء',
+                    header: t('مسلم للعملاء', 'Delivered'),
                     align: 'center',
                     exportValue: (it) => it.deliveredToCustomersQty,
-                    render: (it) => <span className="font-mono font-bold text-emerald-700 tabular-nums">{it.deliveredToCustomersQty}</span>,
+                    render: (it) => <span className="font-mono font-bold text-emerald-700 tabular-nums">{formatLocaleNumber(it.deliveredToCustomersQty)}</span>,
                   },
                   {
                     key: 'invoicedSoldQty',
-                    header: 'مفوتر',
+                    header: t('مفوتر', 'Invoiced'),
                     align: 'center',
                     exportValue: (it) => it.invoicedSoldQty,
-                    render: (it) => <span className="font-mono text-slate-700 tabular-nums">{it.invoicedSoldQty}</span>,
+                    render: (it) => <span className="font-mono text-slate-700 tabular-nums">{formatLocaleNumber(it.invoicedSoldQty)}</span>,
                   },
                   {
                     key: 'returnedToWarehouseQty',
-                    header: 'مرتجع للمخزن',
+                    header: t('مرتجع للمخزن', 'Returned'),
                     align: 'center',
                     exportValue: (it) => it.returnedToWarehouseQty,
-                    render: (it) => <span className="font-mono text-[#003589] tabular-nums">{it.returnedToWarehouseQty}</span>,
+                    render: (it) => <span className="font-mono text-[#003589] tabular-nums">{formatLocaleNumber(it.returnedToWarehouseQty)}</span>,
                   },
                   {
                     key: 'approvedReductionsQty',
-                    header: 'تالف/عجز/تسوية',
+                    header: t('تالف/عجز/تسوية', 'Damaged/Short/Adj'),
                     align: 'center',
                     exportValue: (it) => it.approvedReductionsQty,
-                    render: (it) => <span className="font-mono text-rose-700 tabular-nums">{it.approvedReductionsQty}</span>,
+                    render: (it) => <span className="font-mono text-rose-700 tabular-nums">{formatLocaleNumber(it.approvedReductionsQty)}</span>,
                   },
                   {
                     key: 'remainingCustodyQty',
-                    header: 'المتبقي بالعهدة',
+                    header: t('المتبقي بالعهدة', 'Remaining Custody'),
                     align: 'center',
                     sortable: true,
                     sortValue: (it) => it.remainingCustodyQty,
                     exportValue: (it) => it.remainingCustodyQty,
                     cellClassName: 'bg-blue-50/60',
-                    render: (it) => <span className="font-mono font-black text-blue-950 tabular-nums">{it.remainingCustodyQty}</span>,
+                    render: (it) => <span className="font-mono font-black text-blue-950 tabular-nums">{formatLocaleNumber(it.remainingCustodyQty)}</span>,
                   },
                   {
                     key: 'vanPhysicalStockQty',
-                    header: 'رصيد السيارة',
+                    header: t('رصيد السيارة', 'Van Stock'),
                     align: 'center',
                     exportValue: (it) => it.vanPhysicalStockQty,
-                    render: (it) => <span className="font-mono font-bold text-slate-800 tabular-nums">{it.vanPhysicalStockQty}</span>,
+                    render: (it) => <span className="font-mono font-bold text-slate-800 tabular-nums">{formatLocaleNumber(it.vanPhysicalStockQty)}</span>,
                   },
                   {
                     key: 'custodyValueAtCost',
-                    header: 'القيمة بالتكلفة',
+                    header: t('القيمة بالتكلفة', 'Value at Cost'),
                     align: 'center',
                     sortable: true,
                     sortValue: (it) => it.custodyValueAtCost,
                     exportValue: (it) => it.custodyValueAtCost,
                     render: (it) => (
                       <span className="font-mono font-bold text-slate-900 tabular-nums">
-                        {it.custodyValueAtCost.toLocaleString()} {settings.currency}
+                        {formatLocaleNumber(it.custodyValueAtCost)} {settings.currency}
                       </span>
                     ),
                   },
@@ -1650,39 +1719,39 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               {/* Chronological Custody Ledger Table */}
               <UnifiedDataTable
                 compact
-                title={`سجل حركات العهدة التفصيلي (${custodyStatement.ledger.length})`}
+                title={`${t('سجل حركات العهدة التفصيلي', 'Detailed Custody Movements Ledger')} (${custodyStatement.ledger.length})`}
                 data={custodyStatement.ledger}
                 rowKey={(row) => row.id}
-                searchPlaceholder="بحث برقم المستند أو الصنف أو العميل..."
+                searchPlaceholder={t('بحث برقم المستند أو الصنف أو العميل...', 'Search by document #, item, or customer...')}
                 searchFilter={(row, q) =>
                   (row.docNumber || '').toLowerCase().includes(q) ||
                   (row.productName || '').toLowerCase().includes(q) ||
                   (row.customerName || '').toLowerCase().includes(q)
                 }
-                exportFilename="سجل_حركات_عهدة_المندوب"
-                pdfTitle="سجل حركات عهدة المندوب التفصيلي"
-                emptyTitle="لا توجد حركات مسجلة في دفتر العهدة"
+                exportFilename={t('سجل_حركات_عهدة_المندوب', 'Rep_Custody_Ledger')}
+                pdfTitle={t('سجل حركات عهدة المندوب التفصيلي', 'Detailed Rep Custody Ledger')}
+                emptyTitle={t('لا توجد حركات مسجلة في دفتر العهدة', 'No movements recorded in custody ledger')}
                 columns={[
-                  { key: 'date', header: 'التاريخ', sortable: true, sortValue: (r) => r.date, exportValue: (r) => r.date, render: (r) => <span className="font-mono text-slate-600">{r.date}</span> },
-                  { key: 'docType', header: 'نوع الحركة', exportValue: (r) => r.docType, render: (r) => <span className="font-bold text-slate-800">{r.docType}</span> },
-                  { key: 'docNumber', header: 'رقم المستند', exportValue: (r) => r.docNumber, render: (r) => <span className="font-mono text-blue-900 font-bold">{r.docNumber}</span> },
-                  { key: 'productName', header: 'الصنف', exportValue: (r) => r.productName, render: (r) => <span className="font-bold">{r.productName}</span> },
-                  { key: 'customerName', header: 'العميل / الجهة', exportValue: (r) => r.customerName || '-', render: (r) => <span className="text-slate-600">{r.customerName || '-'}</span> },
+                  { key: 'date', header: t('التاريخ', 'Date'), sortable: true, sortValue: (r) => r.date, exportValue: (r) => r.date, render: (r) => <span className="font-mono text-slate-600">{r.date}</span> },
+                  { key: 'docType', header: t('نوع الحركة', 'Type'), exportValue: (r) => r.docType, render: (r) => <span className="font-bold text-slate-800">{t(r.docType)}</span> },
+                  { key: 'docNumber', header: t('رقم المستند', 'Document #'), exportValue: (r) => r.docNumber, render: (r) => <span className="font-mono text-blue-900 font-bold">{r.docNumber}</span> },
+                  { key: 'productName', header: t('الصنف', 'Item'), exportValue: (r) => r.productName, render: (r) => <span className="font-bold">{r.productName}</span> },
+                  { key: 'customerName', header: t('العميل / الجهة', 'Customer / Party'), exportValue: (r) => r.customerName || '-', render: (r) => <span className="text-slate-600">{r.customerName || '-'}</span> },
                   {
                     key: 'quantityIn',
-                    header: 'وارد للعهدة (+)',
+                    header: t('وارد للعهدة (+)', 'In (+)'),
                     align: 'center',
                     exportValue: (r) => r.quantityIn,
-                    render: (r) => <span className="font-mono font-bold text-emerald-700 tabular-nums">{r.quantityIn > 0 ? `+${r.quantityIn}` : '-'}</span>,
+                    render: (r) => <span className="font-mono font-bold text-emerald-700 tabular-nums">{r.quantityIn > 0 ? `+${formatLocaleNumber(r.quantityIn)}` : '-'}</span>,
                   },
                   {
                     key: 'quantityOut',
-                    header: 'صادر من العهدة (-)',
+                    header: t('صادر من العهدة (-)', 'Out (-)'),
                     align: 'center',
                     exportValue: (r) => r.quantityOut,
-                    render: (r) => <span className="font-mono font-bold text-rose-700 tabular-nums">{r.quantityOut > 0 ? `-${r.quantityOut}` : '-'}</span>,
+                    render: (r) => <span className="font-mono font-bold text-rose-700 tabular-nums">{r.quantityOut > 0 ? `-${formatLocaleNumber(r.quantityOut)}` : '-'}</span>,
                   },
-                  { key: 'notes', header: 'ملاحظات', exportValue: (r) => r.notes || '-', render: (r) => <span className="text-slate-500">{r.notes || '-'}</span> },
+                  { key: 'notes', header: t('ملاحظات', 'Notes'), exportValue: (r) => r.notes || '-', render: (r) => <span className="text-slate-500">{r.notes || '-'}</span> },
                 ]}
               />
             </>
@@ -1695,7 +1764,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
         <Modal
           isOpen={isNewCashModalOpen}
           onClose={() => setIsNewCashModalOpen(false)}
-          title="طلب تحويل مالي بالنصف (توريد تحصيلات أو صرف عهدة)"
+          title={t('طلب تحويل مالي (توريد تحصيلات أو صرف عهدة)', 'Cash Transfer Request (Collections Deposit or Custody Issue)')}
         >
           <form onSubmit={handleSubmitCashTransfer} className="space-y-3 text-xs">
             {error && (
@@ -1706,7 +1775,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
             )}
 
             <div>
-              <label className="block font-bold mb-1">اتجاه التحويل:</label>
+              <label className="block font-bold mb-1">{t('اتجاه التحويل:', 'Transfer Direction:')}</label>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
@@ -1715,7 +1784,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                     direction === 'rep_to_owner' ? 'bg-[#003589] text-white border-[#003589]' : 'bg-slate-50 text-slate-700 border-slate-300'
                   }`}
                 >
-                  توريد من مندوب إلى الفرع
+                  {t('توريد من مندوب إلى الفرع', 'Deposit from Rep to Branch')}
                 </button>
                 <button
                   type="button"
@@ -1724,27 +1793,29 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                     direction === 'owner_to_rep' ? 'bg-[#011E58] text-white border-[#011E58]' : 'bg-slate-50 text-slate-700 border-slate-300'
                   }`}
                 >
-                  صرف عهدة نقدية للمندوب
+                  {t('صرف عهدة نقدية للمندوب', 'Issue Cash Custody to Rep')}
                 </button>
               </div>
             </div>
 
             <div>
-              <label className="block font-bold mb-1">المندوب المعني:</label>
+              <label className="block font-bold mb-1">{t('المندوب المعني:', 'Representative:')}</label>
               <select
                 value={selectedRepId}
                 onChange={(e) => setSelectedRepId(e.target.value)}
                 className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
               >
                 {representatives.map(r => (
-                  <option key={r.id} value={r.id}>{r.name} (رصيد عهدته: {r.currentBalance} {settings.currency})</option>
+                  <option key={r.id} value={r.id}>
+                    {r.name} ({t('رصيد عهدته:', 'Custody balance:')} {r.balanceHidden || r.currentBalance === undefined ? t('محجوب', 'Hidden') : `${formatLocaleNumber(r.currentBalance)} ${settings.currency}`})
+                  </option>
                 ))}
               </select>
             </div>
 
             <div className="grid grid-cols-2 gap-2.5">
               <div>
-                <label className="block font-bold mb-1">المبلغ المحول ({settings.currency}):</label>
+                <label className="block font-bold mb-1">{t('المبلغ المحول', 'Transferred Amount')} ({settings.currency}):</label>
                 <input
                   type="number"
                   required
@@ -1757,7 +1828,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               </div>
 
               <div>
-                <label className="block font-bold mb-1">الخزينة المتأثرة للفرع:</label>
+                <label className="block font-bold mb-1">{t('الخزينة المتأثرة للفرع:', 'Affected Branch Cashbox:')}</label>
                 <select
                   value={selectedCashboxId}
                   onChange={(e) => setSelectedCashboxId(e.target.value)}
@@ -1765,7 +1836,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 >
                   {cashboxes.map(c => (
                     <option key={c.id} value={c.id}>
-                      {c.balanceHidden ? `${c.name} (رصيد محجوب)` : `${c.name} (${(c.currentBalance ?? 0).toLocaleString()} ${settings.currency})`}
+                      {c.balanceHidden ? `${c.name} (${t('رصيد محجوب', 'Hidden balance')})` : `${c.name} (${formatLocaleNumber(c.currentBalance ?? 0)} ${settings.currency})`}
                     </option>
                   ))}
                 </select>
@@ -1773,12 +1844,12 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
             </div>
 
             <div>
-              <label className="block font-bold mb-1">ملاحظات التحويل:</label>
+              <label className="block font-bold mb-1">{t('ملاحظات التحويل:', 'Transfer Notes:')}</label>
               <textarea
                 rows={2}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="تفاصيل التوريد أو سبب الصرف..."
+                placeholder={t('تفاصيل التوريد أو سبب الصرف...', 'Deposit details or reason for issue...')}
                 className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300"
               />
             </div>
@@ -1789,14 +1860,14 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 onClick={() => setIsNewCashModalOpen(false)}
                 className="px-3.5 py-1.5 rounded-lg border border-slate-300 text-slate-600 font-bold cursor-pointer"
               >
-                إلغاء
+                {t('إلغاء', 'Cancel')}
               </button>
               <button
                 type="submit"
                 disabled={isSubmitting}
                 className="px-4 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50"
               >
-                {isSubmitting ? 'جاري الإرسال...' : 'إرسال طلب التحويل'}
+                {isSubmitting ? t('جاري الإرسال...', 'Sending...') : t('إرسال طلب التحويل', 'Submit Transfer Request')}
               </button>
             </div>
           </form>
@@ -1808,7 +1879,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
         <Modal
           isOpen={isNewItemReqModalOpen}
           onClose={() => setIsNewItemReqModalOpen(false)}
-          title="طلب تحويل أصناف وعهدة مخزنية (مرتبط بفاتورة مبيعات)"
+          title={t('طلب تحويل أصناف وعهدة مخزنية (مرتبط بفاتورة مبيعات)', 'Item Transfer & Inventory Custody Request (Linked to Invoice)')}
         >
           <form onSubmit={handleSubmitItemTransferRequest} className="space-y-3 text-xs">
             {itemReqError && (
@@ -1819,7 +1890,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
             )}
 
             <div>
-              <label className="block font-bold mb-1">نوع الإذن / المسار:</label>
+              <label className="block font-bold mb-1">{t('نوع الإذن / المسار:', 'Request Type / Flow:')}</label>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
@@ -1828,7 +1899,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                     itemReqTransferMode === 'transfer' ? 'bg-[#011E58] text-white border-[#011E58]' : 'bg-slate-50 text-slate-700 border-slate-300'
                   }`}
                 >
-                  تحويل عادي / طلب سحب
+                  {t('تحويل عادي / طلب سحب', 'Standard Transfer / Pull Request')}
                 </button>
                 <button
                   type="button"
@@ -1837,17 +1908,20 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                     itemReqTransferMode === 'custody_dispatch' ? 'bg-[#003589] text-white border-[#003589]' : 'bg-slate-50 text-slate-700 border-slate-300'
                   }`}
                 >
-                  صرف عهدة مباشرة من المخزن للمندوب
+                  {t('صرف عهدة مباشرة من المخزن للمندوب', 'Direct Custody Dispatch from Warehouse to Rep')}
                 </button>
               </div>
               <p className="text-[10px] text-slate-500 mt-1">
-                في وضع صرف العهدة المباشر يُخصم المخزن الرئيسي فوراً ولا تُضاف البضاعة لرصيد سيارة المندوب إلا بعد تأكيد الاستلام.
+                {t(
+                  'في وضع صرف العهدة المباشر يُخصم المخزن الرئيسي فوراً ولا تُضاف البضاعة لرصيد سيارة المندوب إلا بعد تأكيد الاستلام.',
+                  'In Direct Custody Dispatch mode, main warehouse stock is deducted immediately and van stock is credited only after receipt confirmation.'
+                )}
               </p>
             </div>
 
             <div className="grid grid-cols-2 gap-2.5">
               <div>
-                <label className="block font-bold mb-1">المندوب:</label>
+                <label className="block font-bold mb-1">{t('المندوب:', 'Representative:')}</label>
                 <select
                   value={itemReqRepId}
                   onChange={(e) => setItemReqRepId(e.target.value)}
@@ -1860,16 +1934,16 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               </div>
 
               <div>
-                <label className="block font-bold mb-1">الفاتورة المرتبطة (إن وجدت):</label>
+                <label className="block font-bold mb-1">{t('الفاتورة المرتبطة (إن وجدت):', 'Linked Invoice (if any):')}</label>
                 <select
                   value={itemReqInvoiceId}
                   onChange={(e) => setItemReqInvoiceId(e.target.value)}
                   className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
                 >
-                  <option value="">-- بدون ربط بفاتورة (تحويل عهدة مباشر) --</option>
+                  <option value="">{t('-- بدون ربط بفاتورة (تحويل عهدة مباشر) --', '-- No Linked Invoice (Direct Custody Transfer) --')}</option>
                   {invoices.filter(i => i.type === 'sales').map(inv => (
                     <option key={inv.id} value={inv.id}>
-                      {inv.invoiceNumber} - {inv.customerName} ({inv.grandTotal} {settings.currency})
+                      {inv.invoiceNumber} - {inv.customerName} ({formatLocaleNumber(inv.grandTotal)} {settings.currency})
                     </option>
                   ))}
                 </select>
@@ -1878,7 +1952,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
 
             <div className="grid grid-cols-2 gap-2.5">
               <div>
-                <label className="block font-bold mb-1">المستودع المصدر (المقر الرئيسي):</label>
+                <label className="block font-bold mb-1">{t('المستودع المصدر (المقر الرئيسي):', 'Source Warehouse (Main Branch):')}</label>
                 <select
                   value={itemReqSourceWhId}
                   onChange={(e) => setItemReqSourceWhId(e.target.value)}
@@ -1891,7 +1965,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               </div>
 
               <div>
-                <label className="block font-bold mb-1">مستودع الوجهة (سيارة المندوب):</label>
+                <label className="block font-bold mb-1">{t('مستودع الوجهة (سيارة المندوب):', 'Target Warehouse (Rep Van):')}</label>
                 <select
                   value={itemReqTargetWhId}
                   onChange={(e) => setItemReqTargetWhId(e.target.value)}
@@ -1906,7 +1980,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
 
             {/* Item Selector Box */}
             <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
-              <span className="font-bold text-slate-800 block">إضافة أصناف للطلب (بحث فوري):</span>
+              <span className="font-bold text-slate-800 block">{t('إضافة أصناف للطلب (بحث فوري):', 'Add Items to Request (Quick Search):')}</span>
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                 <div className="flex-1">
                   <ProductSearchSelect
@@ -1918,7 +1992,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                     warehouses={warehouses}
                     currency={settings.currency}
                     inputRef={repProdSearchRef}
-                    placeholder="ابحث باسم الصنف أو الكود أو الباركود..."
+                    placeholder={t('ابحث باسم الصنف أو الكود أو الباركود...', 'Search by item name, code, or barcode...')}
                   />
                 </div>
                 <input
@@ -1934,14 +2008,14 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                     }
                   }}
                   className="w-24 px-2.5 py-1.5 rounded-lg border border-slate-300 text-center font-bold bg-white"
-                  placeholder="الكمية"
+                  placeholder={t('الكمية', 'Qty')}
                 />
                 <button
                   type="button"
                   onClick={handleAddItemToReq}
                   className="h-8 px-3 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-bold cursor-pointer"
                 >
-                  إضافة +
+                  {t('إضافة +', 'Add +')}
                 </button>
               </div>
 
@@ -1954,13 +2028,13 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                     data={selectedItemsForReq.map((it, idx) => ({ ...it, _idx: idx }))}
                     rowKey={(it) => `${it.productId}-${it._idx}`}
                     columns={[
-                      { key: 'productName', header: 'الصنف', render: (it) => <span className="font-bold">{it.productName}</span> },
-                      { key: 'requestedQty', header: 'الكمية المطلوبة', align: 'center', render: (it) => <span className="font-bold text-[#011E58] tabular-nums">{it.requestedQty} {it.unit}</span> },
-                      { key: 'availableInVanQty', header: 'المتاح بالسيارة', align: 'center', render: (it) => <span className="text-slate-600 tabular-nums">{it.availableInVanQty}</span> },
-                      { key: 'shortageQty', header: 'العجز', align: 'center', render: (it) => <span className="font-bold text-red-600 tabular-nums">{it.shortageQty}</span> },
+                      { key: 'productName', header: t('الصنف', 'Item'), render: (it) => <span className="font-bold">{it.productName}</span> },
+                      { key: 'requestedQty', header: t('الكمية المطلوبة', 'Requested Qty'), align: 'center', render: (it) => <span className="font-bold text-[#011E58] tabular-nums">{formatLocaleNumber(it.requestedQty)} {t(it.unit)}</span> },
+                      { key: 'availableInVanQty', header: t('المتاح بالسيارة', 'Available in Van'), align: 'center', render: (it) => <span className="text-slate-600 tabular-nums">{formatLocaleNumber(it.availableInVanQty)}</span> },
+                      { key: 'shortageQty', header: t('العجز', 'Shortage'), align: 'center', render: (it) => <span className="font-bold text-red-600 tabular-nums">{formatLocaleNumber(it.shortageQty)}</span> },
                       {
                         key: 'remove',
-                        header: 'حذف',
+                        header: t('حذف', 'Remove'),
                         align: 'center',
                         render: (it) => (
                           <button
@@ -1979,12 +2053,12 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
             </div>
 
             <div>
-              <label className="block font-bold mb-1">ملاحظات الطلب:</label>
+              <label className="block font-bold mb-1">{t('ملاحظات الطلب:', 'Request Notes:')}</label>
               <textarea
                 rows={2}
                 value={itemReqNotes}
                 onChange={(e) => setItemReqNotes(e.target.value)}
-                placeholder="أسباب طلب العهدة أو مواعيد التسليم..."
+                placeholder={t('أسباب طلب العهدة أو مواعيد التسليم...', 'Reasons for custody request or delivery schedule...')}
                 className="w-full px-2.5 py-1.5 rounded-md border border-slate-300"
               />
             </div>
@@ -1995,14 +2069,14 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 onClick={() => setIsNewItemReqModalOpen(false)}
                 className="h-8 px-3 rounded-md border border-slate-300 text-slate-600 font-bold cursor-pointer"
               >
-                إلغاء
+                {t('إلغاء', 'Cancel')}
               </button>
               <button
                 type="submit"
                 disabled={isSubmittingItemReq || selectedItemsForReq.length === 0}
                 className="h-8 px-3.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-black cursor-pointer disabled:opacity-50"
               >
-                {isSubmittingItemReq ? 'جاري الإرسال...' : 'إرسال طلب التحويل للإدارة'}
+                {isSubmittingItemReq ? t('جاري الإرسال...', 'Submitting...') : t('إرسال طلب التحويل للإدارة', 'Submit Transfer Request')}
               </button>
             </div>
           </form>
@@ -2014,22 +2088,22 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
         <Modal
           isOpen={!!activeItemReqDetail}
           onClose={() => setActiveItemReqDetail(null)}
-          title={`تفاصيل طلب تحويل أصناف رقم: ${activeItemReqDetail.requestNumber}`}
+          title={`${t('تفاصيل طلب تحويل أصناف رقم:', 'Item Transfer Request Details #:')} ${activeItemReqDetail.requestNumber}`}
         >
           <div className="space-y-3 text-xs">
             <div className="grid grid-cols-2 gap-2.5 p-2.5 bg-slate-50 rounded-lg border border-slate-200">
               <div>
-                <p className="text-slate-500">المندوب: <strong className="text-slate-800">{activeItemReqDetail.representativeName}</strong></p>
-                <p className="text-slate-500">المستودع المصدر: <strong className="text-slate-800">{activeItemReqDetail.sourceWarehouseName}</strong></p>
+                <p className="text-slate-500">{t('المندوب:', 'Representative:')} <strong className="text-slate-800">{activeItemReqDetail.representativeName}</strong></p>
+                <p className="text-slate-500">{t('المستودع المصدر:', 'Source Warehouse:')} <strong className="text-slate-800">{activeItemReqDetail.sourceWarehouseName}</strong></p>
               </div>
               <div>
-                <p className="text-slate-500">التاريخ: <strong className="font-mono text-slate-800">{activeItemReqDetail.date}</strong></p>
-                <p className="text-slate-500">الفاتورة المرتبطة: <strong className="text-blue-900">{activeItemReqDetail.invoiceNumber || 'تحويل مباشر'}</strong></p>
+                <p className="text-slate-500">{t('التاريخ:', 'Date:')} <strong className="font-mono text-slate-800">{activeItemReqDetail.date}</strong></p>
+                <p className="text-slate-500">{t('الفاتورة المرتبطة:', 'Linked Invoice:')} <strong className="text-blue-900">{activeItemReqDetail.invoiceNumber || t('تحويل مباشر', 'Direct Transfer')}</strong></p>
               </div>
             </div>
 
             <div>
-              <span className="font-bold text-slate-800 block mb-1.5">الأصناف المطلوبة وحالة العجز:</span>
+              <span className="font-bold text-slate-800 block mb-1.5">{t('الأصناف المطلوبة وحالة العجز:', 'Requested Items & Shortage Status:')}</span>
               <UnifiedDataTable
                 compact
                 searchable={false}
@@ -2037,17 +2111,17 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 data={activeItemReqDetail.items.map((item, idx) => ({ ...item, _idx: idx }))}
                 rowKey={(item) => `${item.productId}-${item._idx}`}
                 columns={[
-                  { key: 'productName', header: 'الصنف', render: (item) => <span className="font-bold text-slate-800">{item.productName}</span> },
-                  { key: 'unit', header: 'الوحدة', align: 'center', render: (item) => <span className="text-slate-600">{item.unit}</span> },
-                  { key: 'requestedQty', header: 'الكمية المطلوبة', align: 'center', render: (item) => <span className="font-bold text-blue-900 tabular-nums">{item.requestedQty}</span> },
-                  { key: 'availableInVanQty', header: 'المتاح بالسيارة', align: 'center', render: (item) => <span className="text-slate-600 tabular-nums">{item.availableInVanQty}</span> },
-                  { key: 'shortageQty', header: 'العجز', align: 'center', render: (item) => <span className="font-black text-red-600 tabular-nums">{item.shortageQty}</span> },
+                  { key: 'productName', header: t('الصنف', 'Item'), render: (item) => <span className="font-bold text-slate-800">{item.productName}</span> },
+                  { key: 'unit', header: t('الوحدة', 'Unit'), align: 'center', render: (item) => <span className="text-slate-600">{t(item.unit)}</span> },
+                  { key: 'requestedQty', header: t('الكمية المطلوبة', 'Requested Qty'), align: 'center', render: (item) => <span className="font-bold text-blue-900 tabular-nums">{formatLocaleNumber(item.requestedQty)}</span> },
+                  { key: 'availableInVanQty', header: t('المتاح بالسيارة', 'Available in Van'), align: 'center', render: (item) => <span className="text-slate-600 tabular-nums">{formatLocaleNumber(item.availableInVanQty)}</span> },
+                  { key: 'shortageQty', header: t('العجز', 'Shortage'), align: 'center', render: (item) => <span className="font-black text-red-600 tabular-nums">{formatLocaleNumber(item.shortageQty)}</span> },
                 ]}
               />
             </div>
 
             {activeItemReqDetail.notes && (
-              <p className="text-slate-600 italic">ملاحظات: {activeItemReqDetail.notes}</p>
+              <p className="text-slate-600 italic">{t('ملاحظات:', 'Notes:')} {activeItemReqDetail.notes}</p>
             )}
 
             <div className="flex justify-between items-center pt-2.5 border-t">
@@ -2061,14 +2135,14 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                       onClick={() => handleRejectItemTransfer(activeItemReqDetail)}
                       className="px-3.5 py-1.5 bg-red-100 hover:bg-red-200 text-red-800 font-bold rounded-lg cursor-pointer"
                     >
-                      رفض الطلب
+                      {t('رفض الطلب', 'Reject Request')}
                     </button>
                     <button
                       type="button"
                       onClick={() => handleExecuteItemTransfer(activeItemReqDetail)}
                       className="h-8 px-3.5 bg-[#003589] hover:bg-[#0049B0] text-white font-black rounded-md cursor-pointer"
                     >
-                      اعتماد وصرف من المخزن الرئيسي
+                      {t('اعتماد وصرف من المخزن الرئيسي', 'Approve & Dispatch from Main Warehouse')}
                     </button>
                   </>
                 )}
@@ -2078,7 +2152,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                     onClick={() => handleConfirmCustodyReceipt(activeItemReqDetail)}
                     className="h-8 px-3.5 bg-[#011E58] hover:bg-[#003589] text-white font-black rounded-md cursor-pointer"
                   >
-                    تأكيد استلام المندوب
+                    {t('تأكيد استلام المندوب', 'Confirm Rep Receipt')}
                   </button>
                 )}
                 <button
@@ -2086,7 +2160,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                   onClick={() => setActiveItemReqDetail(null)}
                   className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg cursor-pointer"
                 >
-                  إغلاق
+                  {t('إغلاق', 'Close')}
                 </button>
               </div>
             </div>
@@ -2101,23 +2175,23 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
           onClose={() => !isSubmittingCustodyOp && setCustodyActionModal(null)}
           title={
             custodyActionModal === 'deliver'
-              ? 'تسجيل تسليم جزئي من العهدة للعميل'
+              ? t('تسجيل تسليم جزئي من العهدة للعميل', 'Record Partial Custody Delivery to Customer')
               : custodyActionModal === 'return'
-              ? 'تسجيل إرجاع أصناف من العهدة للمخزن الرئيسي'
-              : 'تسوية عهدة المندوب (تالف / عجز / تسوية)'
+              ? t('تسجيل إرجاع أصناف من العهدة للمخزن الرئيسي', 'Record Custody Return to Main Warehouse')
+              : t('تسوية عهدة المندوب (تالف / عجز / تسوية)', 'Adjust Rep Custody (Damaged / Shortage / Adjustment)')
           }
           maxWidth="md"
         >
           <form onSubmit={handleSubmitCustodyOp} className="space-y-3 text-xs">
             <div>
-              <label className="block font-bold mb-1">الصنف:</label>
+              <label className="block font-bold mb-1">{t('الصنف:', 'Item:')}</label>
               <select
                 required
                 value={custodyOpProductId}
                 onChange={(e) => setCustodyOpProductId(e.target.value)}
                 className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold"
               >
-                <option value="">-- اختر الصنف --</option>
+                <option value="">{t('-- اختر الصنف --', '-- Select Item --')}</option>
                 {products.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} ({p.code})
@@ -2129,25 +2203,25 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
             {custodyActionModal === 'deliver' && (
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block font-bold mb-1">العميل (من الدليل):</label>
+                  <label className="block font-bold mb-1">{t('العميل (من الدليل):', 'Customer (Directory):')}</label>
                   <select
                     value={custodyOpCustomerId}
                     onChange={(e) => setCustodyOpCustomerId(e.target.value)}
                     className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold"
                   >
-                    <option value="">-- عميل نقدي / إدخال يدوي --</option>
+                    <option value="">{t('-- عميل نقدي / إدخال يدوي --', '-- Cash Customer / Manual Entry --')}</option>
                     {customers.map((c) => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="block font-bold mb-1">أو اسم العميل:</label>
+                  <label className="block font-bold mb-1">{t('أو اسم العميل:', 'Or Customer Name:')}</label>
                   <input
                     type="text"
                     value={custodyOpCustomerName}
                     onChange={(e) => setCustodyOpCustomerName(e.target.value)}
-                    placeholder="اسم العميل المستلم..."
+                    placeholder={t('اسم العميل المستلم...', 'Receiving customer name...')}
                     className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300"
                   />
                 </div>
@@ -2156,7 +2230,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
 
             {custodyActionModal === 'return' && (
               <div>
-                <label className="block font-bold mb-1">المستودع المستلم للمرتجع:</label>
+                <label className="block font-bold mb-1">{t('المستودع المستلم للمرتجع:', 'Receiving Warehouse for Return:')}</label>
                 <select
                   value={custodyOpTargetWhId}
                   onChange={(e) => setCustodyOpTargetWhId(e.target.value)}
@@ -2171,35 +2245,35 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
 
             {custodyActionModal === 'adjust' && (
               <div>
-                <label className="block font-bold mb-1">نوع التسوية:</label>
+                <label className="block font-bold mb-1">{t('نوع التسوية:', 'Adjustment Type:')}</label>
                 <select
                   value={custodyOpType}
                   onChange={(e) => setCustodyOpType(e.target.value as any)}
                   className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white font-bold"
                 >
-                  <option value="custody_damaged">تالف عهدة</option>
-                  <option value="custody_shortage">عجز عهدة</option>
-                  <option value="custody_adjustment">تسوية إدارية للعهدة</option>
+                  <option value="custody_damaged">{t('تالف عهدة', 'Damaged Custody')}</option>
+                  <option value="custody_shortage">{t('عجز عهدة', 'Custody Shortage')}</option>
+                  <option value="custody_adjustment">{t('تسوية إدارية للعهدة', 'Administrative Custody Adjustment')}</option>
                 </select>
               </div>
             )}
 
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block font-bold mb-1">الكمية:</label>
+                <label className="block font-bold mb-1">{t('الكمية:', 'Quantity:')}</label>
                 <input
                   type="number"
                   required
                   min={0.001}
                   step="0.001"
-                  placeholder="أدخل الكمية"
+                  placeholder={t('أدخل الكمية', 'Enter quantity')}
                   value={custodyOpQty}
                   onChange={(e) => setCustodyOpQty(e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
                   className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-mono font-bold"
                 />
               </div>
               <div>
-                <label className="block font-bold mb-1">التاريخ:</label>
+                <label className="block font-bold mb-1">{t('التاريخ:', 'Date:')}</label>
                 <input
                   type="date"
                   required
@@ -2211,7 +2285,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
             </div>
 
             <div>
-              <label className="block font-bold mb-1">ملاحظات / سبب:</label>
+              <label className="block font-bold mb-1">{t('ملاحظات / سبب:', 'Notes / Reason:')}</label>
               <input
                 type="text"
                 value={custodyOpNotes}
@@ -2226,14 +2300,14 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 onClick={() => setCustodyActionModal(null)}
                 className="px-3.5 py-1.5 rounded-lg border border-slate-300 font-bold cursor-pointer"
               >
-                إلغاء
+                {t('إلغاء', 'Cancel')}
               </button>
               <button
                 type="submit"
                 disabled={isSubmittingCustodyOp || !custodyOpProductId || Number(custodyOpQty || 0) <= 0}
                 className="px-4 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50"
               >
-                {isSubmittingCustodyOp ? 'جاري التنفيذ...' : 'حفظ وتنفيذ'}
+                {isSubmittingCustodyOp ? t('جاري التنفيذ...', 'Executing...') : t('حفظ وتنفيذ', 'Save & Execute')}
               </button>
             </div>
           </form>
@@ -2245,7 +2319,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
         <Modal
           isOpen={isAddRepModalOpen}
           onClose={() => !isSavingRep && setIsAddRepModalOpen(false)}
-          title={editingRep ? 'تعديل بيانات المندوب' : 'إضافة مندوب مبيعات جديد'}
+          title={editingRep ? t('تعديل بيانات المندوب', 'Edit Representative') : t('إضافة مندوب مبيعات جديد', 'Add New Sales Representative')}
         >
           <form onSubmit={handleSaveRep} className="space-y-3 text-xs">
             {repFormError && (
@@ -2255,23 +2329,24 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               </div>
             )}
             <div>
-              <label className="block font-bold mb-1">اسم المندوب:</label>
+              <label className="block font-bold mb-1">{t('اسم المندوب:', 'Representative Name:')}</label>
               <input
                 type="text"
                 required
                 value={repName}
                 onChange={(e) => setRepName(e.target.value)}
-                placeholder="اسم المندوب ثلاثي..."
+                placeholder={t('اسم المندوب ثلاثي...', 'Full representative name...')}
                 className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-2.5">
               <div>
-                <label className="block font-bold mb-1">رقم الهاتف:</label>
+                <label className="block font-bold mb-1">{t('رقم الهاتف:', 'Phone Number:')}</label>
                 <input
                   type="text"
                   required
+                  dir="ltr"
                   value={repPhone}
                   onChange={(e) => setRepPhone(e.target.value)}
                   placeholder="010XXXXXXXX"
@@ -2280,12 +2355,12 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               </div>
 
               <div>
-                <label className="block font-bold mb-1">رقم السيارة / رمز العهدة:</label>
+                <label className="block font-bold mb-1">{t('رقم السيارة / رمز العهدة:', 'Vehicle # / Custody Code:')}</label>
                 <input
                   type="text"
                   value={repVehicle}
                   onChange={(e) => setRepVehicle(e.target.value)}
-                  placeholder="مثال: سيارة توزيع 4 (أ ب ج 123)"
+                  placeholder={t('مثال: سيارة توزيع 4 (أ ب ج 123)', 'e.g., Distribution Van 4')}
                   className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300"
                 />
               </div>
@@ -2294,7 +2369,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
             {!editingRep && (
               <>
                 <div>
-                  <label className="block font-bold mb-1">رصيد العهدة الافتتاحي ({settings.currency}):</label>
+                  <label className="block font-bold mb-1">{t('رصيد العهدة الافتتاحي', 'Opening Custody Balance')} ({settings.currency}):</label>
                   <input
                     type="number"
                     placeholder="0.00"
@@ -2315,10 +2390,13 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                       />
                       <div>
                         <span className="font-black text-[#011E58] block">
-                          إنشاء حساب دخول تلقائي بصلاحيات المندوب الافتراضية
+                          {t('إنشاء حساب دخول تلقائي بصلاحيات المندوب الافتراضية', 'Create automatic login account with default rep permissions')}
                         </span>
                         <span className="text-[11px] text-[#003589] block mt-0.5">
-                          يفعّل المبيعات والعملاء والتحويلات وإنشاء مسودات الشراء وإرسالها، مع إنشاء مستودع سيارة مربوط 1:1 (يمكن تعديل الصلاحيات لاحقاً من إدارة المستخدمين).
+                          {t(
+                            'يفعّل المبيعات والعملاء والتحويلات وإنشاء مسودات الشراء وإرسالها، مع إنشاء مستودع سيارة مربوط 1:1 (يمكن تعديل الصلاحيات لاحقاً من إدارة المستخدمين).',
+                            'Enables sales, customers, transfers, purchase drafts & messaging, plus a 1:1 linked van warehouse (permissions can be edited later in User Management).'
+                          )}
                         </span>
                       </div>
                     </label>
@@ -2326,25 +2404,25 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                     {createRepAccount && (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
                         <div>
-                          <label className="block font-bold text-slate-700 mb-1">اسم المستخدم للدخول: *</label>
+                          <label className="block font-bold text-slate-700 mb-1">{t('اسم المستخدم للدخول: *', 'Login Username: *')}</label>
                           <input
                             type="text"
                             required={createRepAccount}
                             value={repUsername}
                             onChange={(e) => setRepUsername(e.target.value)}
-                            placeholder="مثال: rep_ahmed"
+                            placeholder="rep_ahmed"
                             dir="ltr"
                             className="w-full h-8 px-2 rounded-md border border-[#B8CAE8] bg-white font-mono"
                           />
                         </div>
                         <div>
-                          <label className="block font-bold text-slate-700 mb-1">كلمة المرور: *</label>
+                          <label className="block font-bold text-slate-700 mb-1">{t('كلمة المرور: *', 'Password: *')}</label>
                           <input
                             type="password"
                             required={createRepAccount}
                             value={repPassword}
                             onChange={(e) => setRepPassword(e.target.value)}
-                            placeholder="4 أحرف على الأقل..."
+                            placeholder={t('4 أحرف على الأقل...', 'At least 4 chars...')}
                             dir="ltr"
                             className="w-full h-8 px-2 rounded-md border border-[#B8CAE8] bg-white font-mono"
                           />
@@ -2363,14 +2441,14 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 onClick={() => setIsAddRepModalOpen(false)}
                 className="px-3.5 py-1.5 rounded-lg border border-slate-300 text-slate-600 font-bold cursor-pointer disabled:opacity-50"
               >
-                إلغاء
+                {t('إلغاء', 'Cancel')}
               </button>
               <button
                 type="submit"
                 disabled={isSavingRep}
                 className="px-4 py-1.5 rounded-lg bg-blue-900 hover:bg-blue-950 text-white font-black cursor-pointer disabled:opacity-50"
               >
-                {isSavingRep ? 'جاري الحفظ...' : editingRep ? 'تحديث المندوب' : 'حفظ المندوب الجديد'}
+                {isSavingRep ? t('جاري الحفظ...', 'Saving...') : editingRep ? t('تحديث المندوب', 'Update Rep') : t('حفظ المندوب الجديد', 'Save New Rep')}
               </button>
             </div>
           </form>
@@ -2382,34 +2460,34 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
         <Modal
           isOpen={!!activeTransferForAudit}
           onClose={() => setActiveTransferForAudit(null)}
-          title={`سجل المراجعة والتأكيد الثنائي للتحويل: ${activeTransferForAudit.transferNumber}`}
+          title={`${t('سجل المراجعة والتأكيد الثنائي للتحويل:', 'Dual-Confirmation Audit Trail for Transfer:')} ${activeTransferForAudit.transferNumber}`}
         >
           <div className="space-y-3 text-xs">
             <div className="p-2.5 bg-slate-50 rounded-lg border flex items-center justify-between">
               <div>
-                <span className="block text-slate-500">المبلغ المحول:</span>
+                <span className="block text-slate-500">{t('المبلغ المحول:', 'Transferred Amount:')}</span>
                 <span className="text-sm font-black text-blue-950 font-mono">
-                  {activeTransferForAudit.amount.toLocaleString()} {settings.currency}
+                  {formatLocaleNumber(activeTransferForAudit.amount)} {settings.currency}
                 </span>
               </div>
               <div>{getStatusBadge(activeTransferForAudit.status)}</div>
             </div>
 
-            <div className="space-y-2.5 relative before:absolute before:top-2 before:bottom-2 before:right-3.5 before:w-0.5 before:bg-slate-200">
+            <div className="space-y-2.5 relative before:absolute before:top-2 before:bottom-2 before:start-3.5 before:w-0.5 before:bg-slate-200">
               {activeTransferForAudit.auditTrail.map((log, idx) => (
-                <div key={idx} className="relative flex items-start gap-2.5 mr-1">
+                <div key={idx} className="relative flex items-start gap-2.5 ms-1">
                   <div className="w-6 h-6 rounded-full bg-blue-900 text-white flex items-center justify-center font-bold text-[10px] shrink-0 z-10">
                     {idx + 1}
                   </div>
                   <div className="flex-1 bg-white p-2.5 rounded-lg border border-slate-200 shadow-xs">
                     <div className="flex justify-between items-center mb-0.5">
-                      <span className="font-bold text-slate-900">{log.action}</span>
+                      <span className="font-bold text-slate-900">{t(log.action)}</span>
                       <span className="text-[10px] text-slate-400 font-mono">
-                        {new Date(log.timestamp).toLocaleString('ar-EG')}
+                        {formatLocaleDateTime(log.timestamp)}
                       </span>
                     </div>
                     <div className="text-slate-600">
-                      بواسطة: <strong className="text-blue-900">{log.user}</strong>
+                      {t('بواسطة:', 'By:')} <strong className="text-blue-900">{log.user}</strong>
                     </div>
                     {log.note && (
                       <p className="mt-1 text-[11px] text-slate-500 italic">"{log.note}"</p>
@@ -2424,7 +2502,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 onClick={() => setActiveTransferForAudit(null)}
                 className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg cursor-pointer"
               >
-                إغلاق
+                {t('إغلاق', 'Close')}
               </button>
             </div>
           </div>

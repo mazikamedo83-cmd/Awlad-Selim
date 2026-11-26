@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
+import { usePreferences } from '../../../context/PreferencesContext';
+import { formatLocaleNumber } from '../../../i18n/translator';
 import { formatCountdownMmSs, formatMobileSyncTimestamp } from '../../../services/syncEngine';
 import { syncNativeStatusBarStyle } from '../../../services/native';
 
@@ -10,6 +12,7 @@ interface MobileSendReceiveScreenProps {
 
 export const MobileSendReceiveScreen: React.FC<MobileSendReceiveScreenProps> = ({ onBack }) => {
   const data = useData();
+  const { t, dir, isRtl } = usePreferences();
   const [isSending, setIsSending] = useState(false);
   const [isReceiving, setIsReceiving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -44,14 +47,18 @@ export const MobileSendReceiveScreen: React.FC<MobileSendReceiveScreenProps> = (
       const res = await data.syncSendOnly({ includeHeldBatches: true });
       if (!res.ok || res.failedCount > 0 || res.conflictCount > 0) {
         setErrorMsg(
-          res.error ||
-            'تعذر إرسال بعض العمليات — تم الاحتفاظ بالبيانات محلياً لإعادة المحاولة'
+          res.error
+            ? t(res.error)
+            : t(
+                'تعذر إرسال بعض العمليات — تم الاحتفاظ بالبيانات محلياً لإعادة المحاولة',
+                'Failed to send some operations — data retained locally for retry'
+              )
         );
       } else {
         setErrorMsg(null);
       }
     } catch (err: any) {
-      setErrorMsg(err?.message || 'تعذر الاتصال بالسيرفر لإرسال العمليات');
+      setErrorMsg(err?.message ? t(err.message) : t('تعذر الاتصال بالسيرفر لإرسال العمليات', 'Unable to connect to server to send operations'));
     } finally {
       setIsSending(false);
     }
@@ -64,12 +71,12 @@ export const MobileSendReceiveScreen: React.FC<MobileSendReceiveScreenProps> = (
     try {
       const res = await data.syncReceiveOnly();
       if (!res.ok) {
-        setErrorMsg(res.error || 'تعذر استلام التحديثات حالياً');
+        setErrorMsg(res.error ? t(res.error) : t('تعذر استلام التحديثات حالياً', 'Unable to receive updates right now'));
       } else {
         setErrorMsg(null);
       }
     } catch (err: any) {
-      setErrorMsg(err?.message || 'تعذر الاتصال للاستلام');
+      setErrorMsg(err?.message ? t(err.message) : t('تعذر الاتصال للاستلام', 'Unable to connect to receive'));
     } finally {
       setIsReceiving(false);
     }
@@ -83,23 +90,25 @@ export const MobileSendReceiveScreen: React.FC<MobileSendReceiveScreenProps> = (
   const sendButtonLabel =
     isSending || data.isMandatorySending
       ? data.sendProgressPercent > 0
-        ? `جاري الإرسال (${data.sendProgressPercent}%)...`
-        : 'جاري الإرسال...'
-      : 'إرسال';
+        ? `${t('جاري الإرسال', 'Sending')} (${formatLocaleNumber(data.sendProgressPercent)}%)...`
+        : t('جاري الإرسال...', 'Sending...')
+      : t('إرسال', 'Send');
 
   const receiveButtonLabel = isReceiving
     ? data.receiveProgressPercent > 0
-      ? `جاري الاستلام (${data.receiveProgressPercent}%)...`
-      : 'جاري الاستلام...'
-    : 'استلام';
+      ? `${t('جاري الاستلام', 'Receiving')} (${formatLocaleNumber(data.receiveProgressPercent)}%)...`
+      : t('جاري الاستلام...', 'Receiving...')
+    : t('استلام', 'Receive');
+
+  const BackIcon = isRtl ? ArrowLeft : ArrowRight;
 
   return (
     <div
-      dir="rtl"
+      dir={dir}
       data-testid="mobile-send-receive-screen"
       className="fixed inset-0 z-[55] no-dark-surface bg-[#FFFFFF] dark:bg-[#FFFFFF] text-[#111111] dark:text-[#111111] font-['Cairo',sans-serif] flex flex-col overflow-y-auto pb-safe"
     >
-      {/* Top Royal Navy Header Bar (#1e3a8a) with white left-pointing Back Arrow only */}
+      {/* Top Royal Navy Header Bar (#1e3a8a) */}
       <header
         dir="ltr"
         className="w-full shrink-0 bg-[#1e3a8a] dark:bg-[#1e3a8a] pt-safe"
@@ -109,10 +118,10 @@ export const MobileSendReceiveScreen: React.FC<MobileSendReceiveScreenProps> = (
             type="button"
             data-testid="mobile-send-receive-back-btn"
             onClick={() => onBack?.()}
-            aria-label="رجوع"
+            aria-label={t('رجوع', 'Back')}
             className="w-10 h-10 flex items-center justify-center text-white dark:text-white rounded-full active:bg-white/15 cursor-pointer"
           >
-            <ArrowLeft className="w-6 h-6" strokeWidth={2.5} />
+            <BackIcon className="w-6 h-6" strokeWidth={2.5} />
           </button>
         </div>
       </header>
@@ -125,8 +134,8 @@ export const MobileSendReceiveScreen: React.FC<MobileSendReceiveScreenProps> = (
           className="w-full bg-[#CCCCCC] dark:bg-[#CCCCCC] text-[#111111] dark:text-[#111111] text-[15px] leading-snug font-medium py-1.5 px-3 text-center"
         >
           {lastSendFmt
-            ? `آخر إرسال في ${lastSendFmt.fullText}`
-            : 'آخر إرسال: لم يتم الإرسال بعد'}
+            ? `${t('آخر إرسال في', 'Last sent at')} ${lastSendFmt.fullText}`
+            : t('آخر إرسال: لم يتم الإرسال بعد', 'Last Send: Not sent yet')}
         </div>
 
         {/* 2. Pending Operations Count Gray Bar */}
@@ -134,7 +143,7 @@ export const MobileSendReceiveScreen: React.FC<MobileSendReceiveScreenProps> = (
           data-testid="sync-pending-ops-count"
           className="mt-2.5 w-full bg-[#CCCCCC] dark:bg-[#CCCCCC] text-[#111111] dark:text-[#111111] text-[15px] leading-snug font-medium py-1.5 px-3 text-center tabular-nums"
         >
-          {`عدد العمليات المعلقة ${unsentCount}`}
+          {`${t('عدد العمليات المعلقة', 'Pending Operations Count')} ${formatLocaleNumber(unsentCount)}`}
         </div>
 
         {/* 3. Dark Blue Send Button (#000080) */}
@@ -154,8 +163,8 @@ export const MobileSendReceiveScreen: React.FC<MobileSendReceiveScreenProps> = (
           className="mt-6 w-full bg-[#CCCCCC] dark:bg-[#CCCCCC] text-[#111111] dark:text-[#111111] text-[15px] leading-snug font-medium py-1.5 px-3 text-center"
         >
           {lastReceiveFmt
-            ? `آخر استلام في ${lastReceiveFmt.fullText}`
-            : 'آخر استلام: لم يتم الاستلام بعد'}
+            ? `${t('آخر استلام في', 'Last received at')} ${lastReceiveFmt.fullText}`
+            : t('آخر استلام: لم يتم الاستلام بعد', 'Last Receive: Not received yet')}
         </div>
 
         {/* 5. Green Receive Button (#008000) */}
@@ -171,7 +180,7 @@ export const MobileSendReceiveScreen: React.FC<MobileSendReceiveScreenProps> = (
 
         {/* 6. Mandatory Send Label Gray Bar */}
         <div className="mt-7 w-full bg-[#CCCCCC] dark:bg-[#CCCCCC] text-[#111111] dark:text-[#111111] text-[15px] leading-snug font-medium py-1.5 px-3 text-center">
-          الإرسال الإجباري بعد
+          {t('الإرسال الإجباري بعد', 'Mandatory Send In')}
         </div>
 
         {/* 7. Large Bold Black Countdown Digits */}

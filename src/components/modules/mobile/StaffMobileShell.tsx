@@ -23,13 +23,17 @@ import {
   TrendingUp,
   WifiOff,
   ChevronLeft,
+  ChevronRight,
   ChevronDown,
+  ArrowLeft,
   ArrowRight,
   Search,
   Plus,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
+import { usePreferences } from '../../../context/PreferencesContext';
+import { formatLocaleNumber, formatLocaleTime } from '../../../i18n/translator';
 import { registerAndroidBackButton } from '../../../services/native';
 import { CashOperationType, MobileNotificationItem, UserPermissions } from '../../../types';
 import type { NavItemKey } from '../../layout/Sidebar';
@@ -106,6 +110,9 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
 }) => {
   const { currentUser, hasPermission, logout, refreshAuthContext, setIsAccountSwitcherOpen, savedAccounts } = useAuth();
   const data = useData();
+  const { t, dir, isRtl } = usePreferences();
+  const BackArrow = isRtl ? ArrowRight : ArrowLeft;
+  const NavChevron = isRtl ? ChevronLeft : ChevronRight;
 
   const [isMoreViewOpen, setIsMoreViewOpen] = useState(false);
   const [moreSearchQuery, setMoreSearchQuery] = useState('');
@@ -165,160 +172,160 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     () => [
       {
         id: 'sales',
-        title: 'المبيعات والعملاء',
+        title: t('المبيعات والعملاء', 'Sales & Customers'),
         icon: ShoppingCart,
         colorClass: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
         permission: 'canManageSales',
         items: [
-          { key: 'customer-orders', label: 'طلبات العملاء والمندوبين' },
-          { key: 'new-sale', label: 'فاتورة مبيعات جديدة (+)', badge: 'سريع' },
-          { key: 'sales-invoices', label: 'فواتير المبيعات' },
-          { key: 'quotes', label: 'عروض الأسعار', badge: 'جديد' },
-          { key: 'customers', label: 'دليل العملاء والأرصدة والتحصيل' },
-          { key: 'sales-returns', label: 'مرتجع المبيعات' },
-          { key: 'deleted-invoices', label: 'الفواتير المحذوفة والملغاة', permission: 'canViewDeletedInvoices' },
+          { key: 'customer-orders', label: t('طلبات العملاء والمندوبين', 'Customer & Rep Orders') },
+          { key: 'new-sale', label: t('فاتورة مبيعات جديدة (+)', 'New Sales Invoice (+)'), badge: t('سريع', 'Quick') },
+          { key: 'sales-invoices', label: t('فواتير المبيعات', 'Sales Invoices') },
+          { key: 'quotes', label: t('عروض الأسعار', 'Price Quotes'), badge: t('جديد', 'New') },
+          { key: 'customers', label: t('دليل العملاء والأرصدة والتحصيل', 'Customers, Balances & Collections') },
+          { key: 'sales-returns', label: t('مرتجع المبيعات', 'Sales Returns') },
+          { key: 'deleted-invoices', label: t('الفواتير المحذوفة والملغاة', 'Deleted & Voided Invoices'), permission: 'canViewDeletedInvoices' },
         ],
       },
       {
         id: 'purchases',
-        title: 'المشتريات والموردون',
+        title: t('المشتريات والموردون', 'Purchases & Suppliers'),
         icon: Truck,
         colorClass: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
         permission: ['canManagePurchases', 'canCreatePurchase'],
         items: [
-          { key: 'new-purchase', label: 'فاتورة شراء جديدة (+)' },
-          { key: 'purchase-invoices', label: 'فواتير المشتريات' },
-          { key: 'suppliers', label: 'دليل الموردين والأرصدة والتسويات' },
-          { key: 'purchase-returns', label: 'مرتجع المشتريات', permission: 'canManagePurchases' },
+          { key: 'new-purchase', label: t('فاتورة شراء جديدة (+)', 'New Purchase Invoice (+)') },
+          { key: 'purchase-invoices', label: t('فواتير المشتريات', 'Purchase Invoices') },
+          { key: 'suppliers', label: t('دليل الموردين والأرصدة والتسويات', 'Suppliers, Balances & Settlements') },
+          { key: 'purchase-returns', label: t('مرتجع المشتريات', 'Purchase Returns'), permission: 'canManagePurchases' },
         ],
       },
       {
         id: 'inventory',
-        title: 'المخازن والمنتجات',
+        title: t('المخازن والمنتجات', 'Inventory & Products'),
         icon: Boxes,
         colorClass: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
         permission: 'canManageInventory',
         items: [
-          { key: 'products', label: 'المنتجات والأسعار والباركود' },
-          { key: 'product-categories', label: 'تصنيفات السلع' },
-          { key: 'units-settings', label: 'الوحدات ومعاملات التحويل', permission: ['canManageInventory', 'canManageSettings'] },
-          { key: 'warehouses', label: 'أرصدة المستودعات', permission: 'canManageWarehouses' },
+          { key: 'products', label: t('المنتجات والأسعار والباركود', 'Products, Prices & Barcodes') },
+          { key: 'product-categories', label: t('تصنيفات السلع', 'Product Categories') },
+          { key: 'units-settings', label: t('الوحدات ومعاملات التحويل', 'Units & Conversion Factors'), permission: ['canManageInventory', 'canManageSettings'] },
+          { key: 'warehouses', label: t('أرصدة المستودعات', 'Warehouse Balances'), permission: 'canManageWarehouses' },
           {
             key: 'stock-transfers-orders',
-            label: 'أوامر تحويل الأصناف',
+            label: t('أوامر تحويل الأصناف', 'Stock Transfer Orders'),
             permission: ['canCreateStockTransfer', 'canApproveStockTransfer', 'canExecuteStockTransfer', 'canManageInventory'],
           },
           {
             key: 'stock-counts',
-            label: 'جرد المخزن المعتمد',
+            label: t('جرد المخزن المعتمد', 'Approved Stock Counts'),
             permission: ['canCreateStockCount', 'canApproveStockCount', 'canManageInventory'],
           },
-          { key: 'stock-transfers', label: 'تحويل سريع بين المستودعات' },
-          { key: 'stock-adjustments', label: 'تسوية سريعة للمخزون' },
-          { key: 'damaged-stock', label: 'بضاعة تالفة ومنتهية' },
-          { key: 'stock-movements', label: 'سجل حركة الأصناف' },
-          { key: 'abu-selim-import', label: 'استيراد الملفات' },
+          { key: 'stock-transfers', label: t('تحويل سريع بين المستودعات', 'Quick Warehouse Transfer') },
+          { key: 'stock-adjustments', label: t('تسوية سريعة للمخزون', 'Quick Stock Adjustment') },
+          { key: 'damaged-stock', label: t('بضاعة تالفة ومنتهية', 'Damaged & Expired Stock') },
+          { key: 'stock-movements', label: t('سجل حركة الأصناف', 'Stock Movements Log') },
+          { key: 'abu-selim-import', label: t('استيراد الملفات', 'Import Files') },
         ],
       },
       {
         id: 'finance',
-        title: 'الحسابات والخزائن',
+        title: t('الحسابات والخزائن', 'Accounts & Cashboxes'),
         icon: Wallet,
         colorClass: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
         permission: ['canManageCashboxes', 'canManageAccounts'],
         items: [
           {
             key: 'customer-accounts',
-            label: 'حسابات العملاء وكشوف الحساب',
-            badge: 'العملاء',
+            label: t('حسابات العملاء وكشوف الحساب', 'Customer Accounts & Statements'),
+            badge: t('العملاء', 'Customers'),
             permission: ['canManageAccounts', 'canManageCashboxes'],
           },
           {
             key: 'supplier-accounts',
-            label: 'حسابات الموردين وكشوف الحساب',
-            badge: 'الموردون',
+            label: t('حسابات الموردين وكشوف الحساب', 'Supplier Accounts & Statements'),
+            badge: t('الموردون', 'Suppliers'),
             permission: ['canManageAccounts', 'canManageCashboxes'],
           },
-          { key: 'cashboxes', label: 'الخزائن والبنوك والحركة النقدية', permission: 'canManageCashboxes' },
-          { key: 'cashbox-transfer', label: 'تحويل بين الخزائن', permission: 'canManageCashboxes' },
-          { key: 'expenses', label: 'المصروفات والإيرادات', permission: 'canManageCashboxes' },
-          { key: 'personal-accounts', label: 'الحسابات الشخصية للملاك', permission: 'canViewPersonalAccounts' },
+          { key: 'cashboxes', label: t('الخزائن والبنوك والحركة النقدية', 'Cashboxes, Banks & Cash Flow'), permission: 'canManageCashboxes' },
+          { key: 'cashbox-transfer', label: t('تحويل بين الخزائن', 'Cashbox Transfer'), permission: 'canManageCashboxes' },
+          { key: 'expenses', label: t('المصروفات والإيرادات', 'Expenses & Revenues'), permission: 'canManageCashboxes' },
+          { key: 'personal-accounts', label: t('الحسابات الشخصية للملاك', 'Owners Personal Accounts'), permission: 'canViewPersonalAccounts' },
         ],
       },
       {
         id: 'cheques',
-        title: 'الشيكات والأقساط',
+        title: t('الشيكات والأقساط', 'Cheques & Installments'),
         icon: CreditCard,
         colorClass: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
         permission: 'canManageAccounts',
         items: [
-          { key: 'cheques', label: 'الشيكات (واردة / صادرة)' },
-          { key: 'installments', label: 'إدارة وجدولة الأقساط' },
+          { key: 'cheques', label: t('الشيكات (واردة / صادرة)', 'Cheques (Incoming / Outgoing)') },
+          { key: 'installments', label: t('إدارة وجدولة الأقساط', 'Installments Management') },
         ],
       },
       {
         id: 'reps',
-        title: 'المندوبون والتحويلات',
+        title: t('المندوبون والتحويلات', 'Representatives & Transfers'),
         icon: Users2,
         colorClass: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
         permission: ['canManageReps', 'canManageTransfers', 'canManageSales', 'canManageAccounts', 'canApprove'],
         items: [
           {
             key: 'refresh-sync',
-            label: 'إرسال واستلام',
+            label: t('إرسال واستلام', 'Send & Receive'),
             permission: ['canManageReps', 'canManageTransfers', 'canManageSales', 'canManageAccounts', 'canApprove'],
           },
-          { key: 'reps', label: 'قائمة المناديب والعهد', permission: 'canManageReps' },
-          { key: 'rep-transfers', label: 'طلب تحويل بالنصف (المالي)', permission: 'canManageTransfers' },
-          { key: 'rep-item-transfers', label: 'تحويل أصناف وعهدة للمناديب', permission: 'canManageTransfers' },
+          { key: 'reps', label: t('قائمة المناديب والعهد', 'Representatives & Custody'), permission: 'canManageReps' },
+          { key: 'rep-transfers', label: t('طلب تحويل بالنصف (المالي)', 'Cash Custody Transfer'), permission: 'canManageTransfers' },
+          { key: 'rep-item-transfers', label: t('تحويل أصناف وعهدة للمناديب', 'Rep Stock Custody Transfer'), permission: 'canManageTransfers' },
         ],
       },
       {
         id: 'hr',
-        title: 'الموظفون',
+        title: t('الموظفون', 'Employees'),
         icon: Users,
         colorClass: 'bg-[var(--awlad-blue-tint-50)] text-[var(--awlad-navy-900)] border-[var(--awlad-blue-tint-100)]',
         permission: 'canManageEmployees',
         items: [
-          { key: 'employees', label: 'شؤون الموظفين' },
+          { key: 'employees', label: t('شؤون الموظفين', 'HR & Employees') },
         ],
       },
       {
         id: 'reports-users',
-        title: 'التقارير والمستخدمون',
+        title: t('التقارير والمستخدمون', 'Reports & Users'),
         icon: FileBarChart,
         colorClass: 'bg-slate-100 text-slate-900 border-slate-300',
         items: [
-          { key: 'reports', label: 'جميع التقارير والأرباح', permission: 'canViewReports' },
-          { key: 'item-movement-report', label: 'تقرير حركة الصنف المفصل', permission: ['canViewReports', 'canManageInventory'] },
-          { key: 'users', label: 'إدارة المستخدمين والصلاحيات', permission: 'canManageUsers' },
-          { key: 'audit-log', label: 'سجل العمليات (Audit)', permission: 'canManageUsers' },
+          { key: 'reports', label: t('جميع التقارير والأرباح', 'All Reports & Profits'), permission: 'canViewReports' },
+          { key: 'item-movement-report', label: t('تقرير حركة الصنف المفصل', 'Detailed Item Movement Report'), permission: ['canViewReports', 'canManageInventory'] },
+          { key: 'users', label: t('إدارة المستخدمين والصلاحيات', 'Users & Permissions'), permission: 'canManageUsers' },
+          { key: 'audit-log', label: t('سجل العمليات (Audit)', 'Audit Log'), permission: 'canManageUsers' },
         ],
       },
       {
         id: 'settings',
-        title: 'الإعدادات والنسخ الاحتياطي',
+        title: t('الإعدادات والنسخ الاحتياطي', 'Settings & Backup'),
         icon: Settings,
         colorClass: 'bg-slate-100 text-slate-900 border-slate-300',
         permission: 'canManageSettings',
         items: [
-          { key: 'system-settings', label: 'إعدادات النظام والحساب', allowAllStaff: true },
-          { key: 'branches-settings', label: 'الفروع', permission: 'canManageSettings' },
-          { key: 'barcode-settings', label: 'إعدادات الباركود', permission: 'canManageSettings' },
-          { key: 'printers-settings', label: 'الطابعات المتعددة', permission: 'canManageSettings' },
-          { key: 'invoice-settings', label: 'تصميم الفاتورة', permission: 'canManageSettings' },
-          { key: 'storefront-manager', label: 'إدارة واجهة المتجر والعروض', permission: 'canManageSettings' },
-          { key: 'mobile-settings', label: 'إعدادات تطبيق العملاء والمناديب', permission: 'canManageSettings' },
-          { key: 'online-sync-settings', label: 'المزامنة أونلاين', permission: 'canManageSettings' },
-          { key: 'services-settings', label: 'الخدمات والتنبيهات', permission: 'canManageSettings' },
-          { key: 'server-settings', label: 'إعدادات السيرفر والاتصال', permission: 'canManageSettings' },
-          { key: 'diagnostics-settings', label: 'سجل التشخيص والأخطاء', permission: 'canManageSettings' },
-          { key: 'backup', label: 'النسخ الاحتياطي والاستعادة', permission: 'canManageSettings' },
-          { key: 'migration', label: 'PostgreSQL وسجل الترحيل', permission: 'canManageSettings' },
+          { key: 'system-settings', label: t('إعدادات النظام والحساب', 'System & Account Settings'), allowAllStaff: true },
+          { key: 'branches-settings', label: t('الفروع', 'Branches'), permission: 'canManageSettings' },
+          { key: 'barcode-settings', label: t('إعدادات الباركود', 'Barcode Settings'), permission: 'canManageSettings' },
+          { key: 'printers-settings', label: t('الطابعات المتعددة', 'Multiple Printers'), permission: 'canManageSettings' },
+          { key: 'invoice-settings', label: t('تصميم الفاتورة', 'Invoice Design'), permission: 'canManageSettings' },
+          { key: 'storefront-manager', label: t('إدارة واجهة المتجر والعروض', 'Storefront & Offers Manager'), permission: 'canManageSettings' },
+          { key: 'mobile-settings', label: t('إعدادات تطبيق العملاء والمناديب', 'Customer & Rep App Settings'), permission: 'canManageSettings' },
+          { key: 'online-sync-settings', label: t('المزامنة أونلاين', 'Online Sync'), permission: 'canManageSettings' },
+          { key: 'services-settings', label: t('الخدمات والتنبيهات', 'Services & Alerts'), permission: 'canManageSettings' },
+          { key: 'server-settings', label: t('إعدادات السيرفر والاتصال', 'Server & Connection Settings'), permission: 'canManageSettings' },
+          { key: 'diagnostics-settings', label: t('سجل التشخيص والأخطاء', 'Diagnostics & Error Logs'), permission: 'canManageSettings' },
+          { key: 'backup', label: t('النسخ الاحتياطي والاستعادة', 'Backup & Restore'), permission: 'canManageSettings' },
+          { key: 'migration', label: t('PostgreSQL وسجل الترحيل', 'PostgreSQL & Migration Log'), permission: 'canManageSettings' },
         ],
       },
     ],
-    []
+    [t]
   );
 
   const filteredSections = useMemo(
@@ -340,23 +347,23 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
   const getRoleArabicLabel = (role?: string) => {
     switch (role) {
       case 'admin':
-        return 'مدير عام / الإدارة';
+        return t('مدير عام / الإدارة', 'General Manager / Admin');
       case 'manager':
-        return 'مدير فرع';
+        return t('مدير فرع', 'Branch Manager');
       case 'accountant':
-        return 'محاسب مالي';
+        return t('محاسب مالي', 'Accountant');
       case 'sales':
-        return 'موظف مبيعات';
+        return t('موظف مبيعات', 'Sales Staff');
       case 'warehouse':
-        return 'أمين مستودع';
+        return t('أمين مستودع', 'Warehouse Keeper');
       case 'purchases':
-        return 'موظف مشتريات';
+        return t('موظف مشتريات', 'Purchases Staff');
       case 'representative':
-        return 'مندوب مبيعات';
+        return t('مندوب مبيعات', 'Sales Rep');
       case 'customer':
-        return 'عميل مسجل';
+        return t('عميل مسجل', 'Registered Customer');
       default:
-        return 'موظف';
+        return t('موظف', 'Staff');
     }
   };
 
@@ -410,7 +417,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     }> = [
       {
         key: 'dashboard',
-        label: 'الرئيسية',
+        label: t('الرئيسية', 'Home'),
         icon: LayoutDashboard,
         active: !isMoreViewOpen && currentPage === 'dashboard',
         onClick: () => {
@@ -423,7 +430,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     if (checkPerm('canManageSales')) {
       tabs.push({
         key: 'sales',
-        label: 'المبيعات',
+        label: t('المبيعات', 'Sales'),
         icon: ShoppingCart,
         active:
           !isMoreViewOpen &&
@@ -436,7 +443,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     } else if (checkPerm('canManageAccounts')) {
       tabs.push({
         key: 'accounts',
-        label: 'الحسابات',
+        label: t('الحسابات', 'Accounts'),
         icon: Wallet,
         active: !isMoreViewOpen && ['customer-accounts', 'supplier-accounts', 'cheques'].includes(currentPage),
         onClick: () => {
@@ -449,7 +456,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     if (checkPerm(['canManageInventory', 'canManageWarehouses', 'canCreateStockCount', 'canCreateStockTransfer'])) {
       tabs.push({
         key: 'inventory',
-        label: 'المخزون',
+        label: t('المخزون', 'Inventory'),
         icon: Boxes,
         active:
           !isMoreViewOpen &&
@@ -475,7 +482,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     if (checkPerm(['canManagePurchases', 'canCreatePurchase'])) {
       tabs.push({
         key: 'purchases',
-        label: 'المشتريات',
+        label: t('المشتريات', 'Purchases'),
         icon: Truck,
         active: !isMoreViewOpen && ['purchase-invoices', 'new-purchase', 'suppliers', 'purchase-returns'].includes(currentPage),
         onClick: () => {
@@ -486,7 +493,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     } else if (checkPerm('canManageCashboxes')) {
       tabs.push({
         key: 'cashboxes',
-        label: 'الخزينة',
+        label: t('الخزينة', 'Cashbox'),
         icon: Wallet,
         active: !isMoreViewOpen && ['cashboxes', 'cashbox-transfer', 'expenses'].includes(currentPage),
         onClick: () => {
@@ -497,7 +504,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     } else if (checkPerm('canViewReports')) {
       tabs.push({
         key: 'reports',
-        label: 'التقارير',
+        label: t('التقارير', 'Reports'),
         icon: FileBarChart,
         active: !isMoreViewOpen && ['reports', 'item-movement-report'].includes(currentPage),
         onClick: () => {
@@ -509,14 +516,14 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
 
     tabs.push({
       key: 'more',
-      label: 'المزيد',
+      label: t('المزيد', 'More'),
       icon: Menu,
       active: isMoreViewOpen,
       onClick: () => setIsMoreViewOpen((prev) => !prev),
     });
 
     return tabs;
-  }, [currentPage, currentUser, isMoreViewOpen, onNavigate]);
+  }, [currentPage, currentUser, isMoreViewOpen, onNavigate, t]);
 
   const mobileGridTiles = useMemo(() => {
     const tiles: Array<{
@@ -529,37 +536,37 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     if (checkPerm('canManageSales')) {
       tiles.push({
         id: 'new-sale',
-        label: 'فاتورة بيع',
+        label: t('فاتورة بيع', 'Sales Invoice'),
         icon: <SalesInvoiceIcon className="w-11 h-11" />,
         onClick: () => onNavigate('new-sale'),
       });
       tiles.push({
         id: 'sales-invoices',
-        label: 'عرض فواتير البيع',
+        label: t('عرض فواتير البيع', 'Sales Invoices'),
         icon: <SalesInvoicesListIcon className="w-11 h-11" />,
         onClick: () => onNavigate('sales-invoices'),
       });
       tiles.push({
         id: 'sales-returns',
-        label: 'مرتجع بيع',
+        label: t('مرتجع بيع', 'Sales Return'),
         icon: <SalesReturnIcon className="w-11 h-11" />,
         onClick: () => onNavigate('sales-returns'),
       });
       tiles.push({
         id: 'customer-orders',
-        label: 'طلبات العملاء',
+        label: t('طلبات العملاء', 'Customer Orders'),
         icon: <OrdersClipboardIcon className="w-11 h-11" />,
         onClick: () => onNavigate('customer-orders'),
       });
       tiles.push({
         id: 'quotes',
-        label: 'عروض الأسعار',
+        label: t('عروض الأسعار', 'Price Quotes'),
         icon: <PriceQuoteIcon className="w-11 h-11" />,
         onClick: () => onNavigate('quotes'),
       });
       tiles.push({
         id: 'customers',
-        label: 'العملاء',
+        label: t('العملاء', 'Customers'),
         icon: <CustomersGroupIcon className="w-11 h-11" />,
         onClick: () => onNavigate('customers'),
       });
@@ -567,7 +574,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     if (checkPerm('canViewDeletedInvoices')) {
       tiles.push({
         id: 'deleted-invoices',
-        label: 'الفواتير المحذوفة',
+        label: t('الفواتير المحذوفة', 'Deleted Invoices'),
         icon: <DeletedInvoicesIcon className="w-11 h-11" />,
         onClick: () => onNavigate('deleted-invoices'),
       });
@@ -576,19 +583,19 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     if (checkPerm(['canManagePurchases', 'canCreatePurchase'])) {
       tiles.push({
         id: 'new-purchase',
-        label: 'فاتورة شراء',
+        label: t('فاتورة شراء', 'Purchase Invoice'),
         icon: <PurchaseInvoiceIcon className="w-11 h-11" />,
         onClick: () => onNavigate('new-purchase'),
       });
       tiles.push({
         id: 'purchase-invoices',
-        label: 'عرض فواتير الشراء',
+        label: t('عرض فواتير الشراء', 'Purchase Invoices'),
         icon: <PurchaseInvoicesListIcon className="w-11 h-11" />,
         onClick: () => onNavigate('purchase-invoices'),
       });
       tiles.push({
         id: 'suppliers',
-        label: 'الموردون',
+        label: t('الموردون', 'Suppliers'),
         icon: <SuppliersTruckIcon className="w-11 h-11" />,
         onClick: () => onNavigate('suppliers'),
       });
@@ -596,7 +603,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     if (checkPerm('canManagePurchases')) {
       tiles.push({
         id: 'purchase-returns',
-        label: 'مرتجع شراء',
+        label: t('مرتجع شراء', 'Purchase Return'),
         icon: <PurchaseReturnIcon className="w-11 h-11" />,
         onClick: () => onNavigate('purchase-returns'),
       });
@@ -605,7 +612,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     if (canMobileAddProduct) {
       tiles.push({
         id: 'mobile-add-product',
-        label: 'إضافة صنف جديد',
+        label: t('إضافة صنف جديد', 'Add Product'),
         icon: <ProductAddIcon className="w-10 h-10" />,
         onClick: () => setIsAddProductModalOpen(true),
       });
@@ -613,7 +620,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     if (checkPerm(['canManageInventory', 'canManageWarehouses'])) {
       tiles.push({
         id: 'inventory',
-        label: 'المخزن والأصناف',
+        label: t('المخزن والأصناف', 'Inventory & Items'),
         icon: <WarehouseBoxesIcon className="w-10 h-10" />,
         onClick: () =>
           onNavigate(
@@ -624,7 +631,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     if (checkPerm('canManageInventory')) {
       tiles.push({
         id: 'damaged-stock',
-        label: 'بضاعة تالفة',
+        label: t('بضاعة تالفة', 'Damaged Stock'),
         icon: <DamagedStockIcon className="w-10 h-10" />,
         onClick: () => onNavigate('damaged-stock'),
       });
@@ -633,7 +640,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     if (checkPerm(['canCreateStockTransfer', 'canApproveStockTransfer', 'canExecuteStockTransfer', 'canManageInventory'])) {
       tiles.push({
         id: 'stock-transfers-orders',
-        label: 'تحويل الأصناف',
+        label: t('تحويل الأصناف', 'Stock Transfers'),
         icon: <StockTransfersIcon className="w-11 h-11" />,
         onClick: () => onNavigate('stock-transfers-orders'),
       });
@@ -642,7 +649,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     if (checkPerm(['canCreateStockCount', 'canApproveStockCount', 'canManageInventory'])) {
       tiles.push({
         id: 'stock-counts',
-        label: 'جرد المخزون',
+        label: t('جرد المخزون', 'Stock Count'),
         icon: <StockCountIcon className="w-11 h-11" />,
         onClick: () => onNavigate('stock-counts'),
       });
@@ -651,7 +658,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     if (checkPerm(['canManageAccounts', 'canManageCashboxes'])) {
       tiles.push({
         id: 'customer-accounts',
-        label: 'الحسابات الشاملة',
+        label: t('الحسابات الشاملة', 'All Accounts'),
         icon: <AccountsLedgerIcon className="w-11 h-11" />,
         onClick: () => onNavigate('customer-accounts'),
       });
@@ -660,19 +667,19 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     if (checkPerm('canManageCashboxes')) {
       tiles.push({
         id: 'cashboxes',
-        label: 'الخزينة',
+        label: t('الخزينة', 'Cashbox'),
         icon: <SafeVaultIcon className="w-11 h-11" />,
         onClick: () => onNavigate('cashboxes'),
       });
       tiles.push({
         id: 'cashbox-transfer',
-        label: 'تحويل الخزائن',
+        label: t('تحويل الخزائن', 'Cashbox Transfer'),
         icon: <CashTransferIcon className="w-11 h-11" />,
         onClick: () => onNavigate('cashbox-transfer'),
       });
       tiles.push({
         id: 'expenses',
-        label: 'المصروفات',
+        label: t('المصروفات', 'Expenses'),
         icon: <ExpensesCashIcon className="w-11 h-11" />,
         onClick: () => onNavigate('expenses'),
       });
@@ -680,7 +687,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     if (checkPerm('canViewPersonalAccounts')) {
       tiles.push({
         id: 'personal-accounts',
-        label: 'الحسابات الشخصية',
+        label: t('الحسابات الشخصية', 'Personal Accounts'),
         icon: <PersonalAccountsIcon className="w-11 h-11" />,
         onClick: () => onNavigate('personal-accounts'),
       });
@@ -689,13 +696,13 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     if (checkPerm('canManageAccounts')) {
       tiles.push({
         id: 'cheques',
-        label: 'الشيكات',
+        label: t('الشيكات', 'Cheques'),
         icon: <ChequesIcon className="w-11 h-11" />,
         onClick: () => onNavigate('cheques'),
       });
       tiles.push({
         id: 'installments',
-        label: 'الأقساط',
+        label: t('الأقساط', 'Installments'),
         icon: <InstallmentsIcon className="w-11 h-11" />,
         onClick: () => onNavigate('installments'),
       });
@@ -704,7 +711,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     if (checkPerm(['canManageReps', 'canManageTransfers', 'canManageSales', 'canManageAccounts', 'canApprove'])) {
       tiles.push({
         id: 'refresh-sync',
-        label: 'إرسال واستلام',
+        label: t('إرسال واستلام', 'Send & Receive'),
         icon: <RefreshCloudIcon className="w-11 h-11" />,
         onClick: () => onNavigate('refresh-sync'),
       });
@@ -713,7 +720,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     if (checkPerm('canManageReps')) {
       tiles.push({
         id: 'reps',
-        label: 'المندوبون',
+        label: t('المندوبون', 'Representatives'),
         icon: <RepsFleetIcon className="w-11 h-11" />,
         onClick: () => onNavigate('reps'),
       });
@@ -722,7 +729,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     if (checkPerm('canManageEmployees')) {
       tiles.push({
         id: 'employees',
-        label: 'شؤون الموظفين',
+        label: t('شؤون الموظفين', 'HR & Employees'),
         icon: <EmployeesHrIcon className="w-11 h-11" />,
         onClick: () => onNavigate('employees'),
       });
@@ -731,7 +738,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     if (checkPerm('canViewReports')) {
       tiles.push({
         id: 'reports',
-        label: 'التقارير والأرباح',
+        label: t('التقارير والأرباح', 'Reports & Profits'),
         icon: <ReportsChartIcon className="w-11 h-11" />,
         onClick: () => onNavigate('reports'),
       });
@@ -740,13 +747,13 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     if (checkPerm('canManageUsers')) {
       tiles.push({
         id: 'users',
-        label: 'المستخدمون',
+        label: t('المستخدمون', 'Users'),
         icon: <UsersShieldIcon className="w-11 h-11" />,
         onClick: () => onNavigate('users'),
       });
       tiles.push({
         id: 'audit-log',
-        label: 'سجل المراجعة',
+        label: t('سجل المراجعة', 'Audit Log'),
         icon: <AuditShieldIcon className="w-11 h-11" />,
         onClick: () => onNavigate('audit-log'),
       });
@@ -755,13 +762,13 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     if (checkPerm('canManageSettings')) {
       tiles.push({
         id: 'branches-settings',
-        label: 'الفروع',
+        label: t('الفروع', 'Branches'),
         icon: <BranchesBuildingIcon className="w-11 h-11" />,
         onClick: () => onNavigate('branches-settings'),
       });
       tiles.push({
         id: 'backup',
-        label: 'النسخ الاحتياطي',
+        label: t('النسخ الاحتياطي', 'Backup'),
         icon: <BackupCloudIcon className="w-11 h-11" />,
         onClick: () => onNavigate('backup'),
       });
@@ -769,23 +776,23 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
 
     tiles.push({
       id: 'system-settings',
-      label: 'الإعدادات',
+      label: t('الإعدادات', 'Settings'),
       icon: <SettingsTwinGearsIcon className="w-11 h-11" />,
       onClick: () => onNavigate('system-settings'),
     });
 
     tiles.push({
       id: 'logout',
-      label: 'تسجيل الخروج',
+      label: t('تسجيل الخروج', 'Logout'),
       icon: <LogoutDoorIcon className="w-11 h-11" />,
       onClick: () => setShowLogoutConfirm(true),
     });
 
     return tiles;
-  }, [currentUser, onNavigate]);
+  }, [currentUser, onNavigate, t]);
 
   return (
-    <div className="h-[100dvh] overflow-hidden print:h-auto print:overflow-visible bg-[var(--awlad-surface-page)] dark:bg-[#081326] text-slate-800 dark:text-[#DCE6F5] font-['Cairo'] antialiased flex flex-col">
+    <div dir={dir} className="h-[100dvh] overflow-hidden print:h-auto print:overflow-visible bg-[var(--awlad-surface-page)] dark:bg-[#081326] text-slate-800 dark:text-[#DCE6F5] font-['Cairo'] antialiased flex flex-col">
       {/* Slim Logo-Navy/Royal Top App Header Bar */}
       <header className="shrink-0 z-30 awlad-brand-gradient text-white border-b border-[var(--awlad-royal-500)]/40 pt-safe no-print">
         <div className="w-full max-w-full mx-auto px-2 h-11 flex items-center justify-between gap-1.5">
@@ -811,13 +818,13 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                 data.markNotificationsRead();
               }}
               className="relative min-h-[32px] min-w-[32px] flex items-center justify-center rounded-md hover:bg-white/15 text-white cursor-pointer"
-              title="الإشعارات"
-              aria-label="الإشعارات"
+              title={t('الإشعارات', 'Notifications')}
+              aria-label={t('الإشعارات', 'Notifications')}
             >
               <Bell className="w-4 h-4" />
               {data.unreadNotificationCount > 0 && (
-                <span className="absolute top-0.5 right-0.5 min-w-[14px] h-[14px] px-1 rounded bg-red-600 text-white text-[9px] font-black flex items-center justify-center tabular-nums">
-                  {data.unreadNotificationCount}
+                <span className="absolute top-0.5 end-0.5 min-w-[14px] h-[14px] px-1 rounded bg-red-600 text-white text-[9px] font-black flex items-center justify-center tabular-nums">
+                  {formatLocaleNumber(data.unreadNotificationCount)}
                 </span>
               )}
             </button>
@@ -826,8 +833,8 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
               type="button"
               onClick={() => setIsServerModalOpen(true)}
               className="min-h-[32px] min-w-[32px] flex items-center justify-center rounded-md hover:bg-white/15 text-white cursor-pointer"
-              title="عنوان السيرفر المركزي"
-              aria-label="إعدادات السيرفر"
+              title={t('عنوان السيرفر المركزي', 'Central Server Address')}
+              aria-label={t('إعدادات السيرفر', 'Server Settings')}
             >
               <Server className="w-4 h-4" />
             </button>
@@ -836,8 +843,8 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
               type="button"
               onClick={() => data.triggerManualSync()}
               className="min-h-[32px] min-w-[32px] flex items-center justify-center rounded-md hover:bg-white/15 text-white cursor-pointer"
-              title="تحديث ومزامنة"
-              aria-label="تحديث ومزامنة"
+              title={t('تحديث ومزامنة', 'Refresh & Sync')}
+              aria-label={t('تحديث ومزامنة', 'Refresh & Sync')}
             >
               <RefreshCw className={`w-4 h-4 ${data.networkStatus === 'synchronizing' ? 'animate-spin' : ''}`} />
             </button>
@@ -846,13 +853,13 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
               type="button"
               onClick={() => setIsAccountSwitcherOpen(true)}
               className="relative min-h-[32px] min-w-[32px] flex items-center justify-center rounded-md hover:bg-white/15 text-white cursor-pointer"
-              title="الحسابات المحفوظة"
-              aria-label="تبديل الحساب"
+              title={t('الحسابات المحفوظة', 'Saved Accounts')}
+              aria-label={t('تبديل الحساب', 'Switch Account')}
             >
               <Users className="w-4 h-4" />
-                {savedAccounts.length > 1 && (
-                <span className="absolute top-0.5 right-0.5 min-w-[14px] h-[14px] px-1 rounded bg-[var(--awlad-royal-500)] text-white text-[9px] font-black flex items-center justify-center tabular-nums">
-                  {savedAccounts.length}
+              {savedAccounts.length > 1 && (
+                <span className="absolute top-0.5 end-0.5 min-w-[14px] h-[14px] px-1 rounded bg-[var(--awlad-royal-500)] text-white text-[9px] font-black flex items-center justify-center tabular-nums">
+                  {formatLocaleNumber(savedAccounts.length)}
                 </span>
               )}
             </button>
@@ -866,8 +873,8 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
               className={`min-h-[32px] min-w-[32px] flex items-center justify-center rounded-md cursor-pointer ${
                 !isMoreViewOpen && currentPage === 'system-settings' ? 'bg-white dark:bg-[#1659C8] text-[var(--awlad-navy-900)] dark:text-white' : 'text-white hover:bg-white/15'
               }`}
-              title="الإعدادات"
-              aria-label="الإعدادات"
+              title={t('الإعدادات', 'Settings')}
+              aria-label={t('الإعدادات', 'Settings')}
             >
               <Settings className="w-4 h-4" />
             </button>
@@ -876,8 +883,8 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
               type="button"
               onClick={() => setShowLogoutConfirm(true)}
               className="min-h-[32px] min-w-[32px] flex items-center justify-center rounded-md bg-red-600/90 hover:bg-red-700 text-white cursor-pointer"
-              title="تسجيل الخروج"
-              aria-label="تسجيل الخروج"
+              title={t('تسجيل الخروج', 'Logout')}
+              aria-label={t('تسجيل الخروج', 'Logout')}
             >
               <LogOut className="w-4 h-4" />
             </button>
@@ -892,9 +899,9 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
             <div className="flex items-center gap-2 min-w-0">
               <WifiOff className="w-3.5 h-3.5 text-amber-700 shrink-0" />
               <span className="truncate">
-                بيانات مخزنة مؤقتاً
+                {t('بيانات مخزنة مؤقتاً', 'Cached offline data')}
                 {data.lastCacheTimestamp
-                  ? ` · ${new Date(data.lastCacheTimestamp).toLocaleTimeString('ar-EG')}`
+                  ? ` · ${formatLocaleTime(data.lastCacheTimestamp)}`
                   : ''}
               </span>
             </div>
@@ -903,7 +910,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
               onClick={() => data.triggerManualSync()}
               className="min-h-[30px] px-2.5 rounded-md bg-amber-600 text-white text-[11px] font-bold shrink-0 cursor-pointer"
             >
-              إعادة المحاولة
+              {t('إعادة المحاولة', 'Retry')}
             </button>
           </div>
         )}
@@ -916,7 +923,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
               onClick={() => setMobileBanner(null)}
               className="text-[11px] underline shrink-0 cursor-pointer"
             >
-              إغلاق
+              {t('إغلاق', 'Close')}
             </button>
           </div>
         )}
@@ -924,23 +931,23 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         {!isMoreViewOpen && currentPage === 'refresh-sync' ? (
           <MobileSendReceiveScreen onBack={() => onNavigate('dashboard')} />
         ) : isMoreViewOpen ? (
-          <section aria-label="جميع الأقسام والعمليات" className="space-y-2 no-print">
+          <section aria-label={t('جميع الأقسام والعمليات', 'All Sections & Operations')} className="space-y-2 no-print">
             <div className="bg-white rounded-lg border border-slate-200 p-1.5">
               <div className="relative">
                 <input
                   type="text"
                   value={moreSearchQuery}
                   onChange={(e) => setMoreSearchQuery(e.target.value)}
-                  placeholder="ابحث عن قسم أو شاشة..."
-                  className="w-full h-9 rounded-md border border-slate-300 pr-8 pl-7 text-xs font-bold bg-slate-50 focus:bg-white focus:outline-hidden focus:border-[var(--awlad-royal-700)]"
+                  placeholder={t('ابحث عن قسم أو شاشة...', 'Search for a section or screen...')}
+                  className="w-full h-9 rounded-md border border-slate-300 ps-8 pe-7 text-xs font-bold bg-slate-50 focus:bg-white focus:outline-hidden focus:border-[var(--awlad-royal-700)]"
                 />
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-2.5" />
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute start-2.5 top-2.5" />
                 {moreSearchQuery && (
                   <button
                     type="button"
                     onClick={() => setMoreSearchQuery('')}
-                    className="absolute left-1.5 top-1.5 p-1 text-slate-400 hover:text-slate-700 cursor-pointer"
-                    aria-label="مسح البحث"
+                    className="absolute end-1.5 top-1.5 p-1 text-slate-400 hover:text-slate-700 cursor-pointer"
+                    aria-label={t('مسح البحث', 'Clear search')}
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -950,7 +957,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
 
             {checkPerm('canManageCashboxes') && !moreSearchQuery.trim() && (
               <div className="bg-white border border-slate-200 rounded-lg p-2 space-y-1.5">
-                <p className="text-[11px] font-black text-[var(--awlad-navy-900)]">عمليات الخزينة السريعة</p>
+                <p className="text-[11px] font-black text-[var(--awlad-navy-900)]">{t('عمليات الخزينة السريعة', 'Quick Cashbox Operations')}</p>
                 <div className="grid grid-cols-2 gap-1.5 text-xs font-bold">
                   <button
                     type="button"
@@ -961,7 +968,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                     className="h-9 flex items-center justify-center gap-1.5 rounded-md bg-[var(--awlad-blue-tint-50)] border border-[var(--awlad-blue-tint-100)] text-[var(--awlad-navy-900)] cursor-pointer"
                   >
                     <ArrowDownCircle className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
-                    <span>إيداع نقدي</span>
+                    <span>{t('إيداع نقدي', 'Cash Deposit')}</span>
                   </button>
                   <button
                     type="button"
@@ -972,7 +979,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                     className="h-9 flex items-center justify-center gap-1.5 rounded-md bg-[var(--awlad-blue-tint-50)] border border-[var(--awlad-blue-tint-100)] text-[var(--awlad-navy-900)] cursor-pointer"
                   >
                     <ArrowUpCircle className="w-3.5 h-3.5 text-red-700 shrink-0" />
-                    <span>سحب نقدي</span>
+                    <span>{t('سحب نقدي', 'Cash Withdrawal')}</span>
                   </button>
                   <button
                     type="button"
@@ -983,7 +990,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                     className="h-9 flex items-center justify-center gap-1.5 rounded-md bg-[var(--awlad-blue-tint-50)] border border-[var(--awlad-blue-tint-100)] text-[var(--awlad-navy-900)] cursor-pointer"
                   >
                     <TrendingDown className="w-3.5 h-3.5 text-amber-700 shrink-0" />
-                    <span>مصروف</span>
+                    <span>{t('مصروف', 'Expense')}</span>
                   </button>
                   <button
                     type="button"
@@ -994,7 +1001,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                     className="h-9 flex items-center justify-center gap-1.5 rounded-md bg-[var(--awlad-blue-tint-50)] border border-[var(--awlad-blue-tint-100)] text-[var(--awlad-navy-900)] cursor-pointer"
                   >
                     <TrendingUp className="w-3.5 h-3.5 text-[var(--awlad-royal-700)] shrink-0" />
-                    <span>إيداع ربحي</span>
+                    <span>{t('إيداع ربحي', 'Profit Deposit')}</span>
                   </button>
                 </div>
               </div>
@@ -1018,7 +1025,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                       </div>
                       <ChevronDown
                         className={`w-4 h-4 text-slate-500 shrink-0 transition-transform duration-150 ${
-                          isCollapsed ? 'rotate-90' : ''
+                          isCollapsed ? (isRtl ? 'rotate-90' : '-rotate-90') : ''
                         }`}
                       />
                     </button>
@@ -1035,12 +1042,12 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                                 setIsMoreViewOpen(false);
                                 onNavigate(item.key);
                               }}
-                              className={`w-full min-h-[36px] px-2.5 py-1.5 flex items-center justify-between gap-2 text-right text-xs transition-colors cursor-pointer ${
+                              className={`w-full min-h-[36px] px-2.5 py-1.5 flex items-center justify-between gap-2 text-start text-xs transition-colors cursor-pointer ${
                                 active ? 'bg-[var(--awlad-blue-tint-50)] dark:bg-[#1659C8] text-[var(--awlad-navy-900)] dark:text-white font-black' : 'text-slate-800 hover:bg-slate-50 font-bold'
                               }`}
                             >
                               <span className="truncate">{item.label}</span>
-                              <ChevronLeft className={`w-3.5 h-3.5 shrink-0 ${active ? 'text-[var(--awlad-royal-700)] dark:text-white' : 'text-slate-400'}`} />
+                              <NavChevron className={`w-3.5 h-3.5 shrink-0 ${active ? 'text-[var(--awlad-royal-700)] dark:text-white' : 'text-slate-400'}`} />
                             </button>
                           );
                         })}
@@ -1060,15 +1067,15 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                   onClick={() => onNavigate('dashboard')}
                   className="h-8 px-2 rounded-md text-[var(--awlad-navy-900)] hover:bg-[var(--awlad-blue-tint-50)] text-xs font-black flex items-center gap-1.5 cursor-pointer"
                 >
-                  <ArrowRight className="w-3.5 h-3.5 shrink-0" />
-                  <span>العودة للرئيسية</span>
+                  <BackArrow className="w-3.5 h-3.5 shrink-0" />
+                  <span>{t('العودة للرئيسية', 'Back to Home')}</span>
                 </button>
-                <span className="text-[11px] font-bold text-slate-500 truncate">{data.settings.companyName || 'أولاد سليم'}</span>
+                <span className="text-[11px] font-bold text-slate-500 truncate">{data.settings.companyName || t('أولاد سليم', 'AWLAD SELIM')}</span>
               </div>
             )}
 
             {currentPage === 'dashboard' && (
-              <section aria-label="الاختصارات السريعة" className="space-y-2 no-print">
+              <section aria-label={t('الاختصارات السريعة', 'Quick Shortcuts')} className="space-y-2 no-print">
                 {/* Compact Logo-Navy Banner */}
                 <div className="rounded-lg awlad-brand-gradient text-white px-2.5 py-2 flex items-center justify-between gap-2">
                   <div className="min-w-0">
@@ -1084,14 +1091,14 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
                       className="h-8 px-2.5 rounded-md bg-white dark:bg-[#1659C8] dark:hover:bg-[#1F6BE6] text-[var(--awlad-navy-900)] dark:text-white text-xs font-black flex items-center gap-1 shrink-0 cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" />
-                      <span>أضف صنف</span>
+                      <span>{t('أضف صنف', 'Add Product')}</span>
                     </button>
                   )}
                 </div>
 
                 {/* 3-Col Compact Quick Shortcuts Grid */}
                 <div>
-                  <h2 className="text-xs font-black text-[var(--awlad-navy-900)] mb-1">الاختصارات السريعة</h2>
+                  <h2 className="text-xs font-black text-[var(--awlad-navy-900)] mb-1">{t('الاختصارات السريعة', 'Quick Shortcuts')}</h2>
                   <div className="grid grid-cols-3 gap-1.5">
                     {mobileGridTiles.map((tile) => (
                       <button
@@ -1116,7 +1123,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
 
       {/* Compact 5-Tab Bottom Navigation Bar */}
       <nav
-        aria-label="التنقل السفلي"
+        aria-label={t('التنقل السفلي', 'Bottom Navigation')}
         className="shrink-0 z-30 bg-white dark:bg-[#0E1C36] border-t border-slate-200 dark:border-[#21375C] pb-safe shadow-[0_-2px_10px_rgba(1,30,88,0.08)] dark:shadow-[0_-4px_16px_rgba(0,0,0,0.35)] no-print"
       >
         <div className="w-full max-w-3xl mx-auto flex items-stretch justify-around">
@@ -1146,7 +1153,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
       <MobileAddProductModal
         isOpen={isAddProductModalOpen}
         onClose={() => setIsAddProductModalOpen(false)}
-        onSaved={(pname) => setMobileBanner(`تمت إضافة الصنف "${pname}" بنجاح.`)}
+        onSaved={(pname) => setMobileBanner(t(`تمت إضافة الصنف "${pname}" بنجاح.`, `Product "${pname}" added successfully.`))}
       />
 
       <MobileNotificationsSheet
@@ -1175,9 +1182,9 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
           logout();
         }}
         variant="danger"
-        title="هل تريد تسجيل الخروج؟"
-        message="سيتم إنهاء جلستك الحالية والعودة إلى شاشة الدخول الموحدة."
-        confirmLabel="نعم، تسجيل الخروج"
+        title={t('هل تريد تسجيل الخروج؟', 'Log out?')}
+        message={t('سيتم إنهاء جلستك الحالية والعودة إلى شاشة الدخول الموحدة.', 'Your current session will end and you will return to the login screen.')}
+        confirmLabel={t('نعم، تسجيل الخروج', 'Yes, Logout')}
       />
     </div>
   );

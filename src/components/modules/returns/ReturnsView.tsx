@@ -11,6 +11,8 @@ import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { exportToExcel } from '../../common/ExcelExporter';
 import { QuantityInput } from '../../common/QuantityInput';
 import { UnifiedDataTable } from '../../common/UnifiedDataTable';
+import { usePreferences } from '../../../context/PreferencesContext';
+import { formatLocaleNumber } from '../../../i18n/translator';
 
 export interface ReturnsViewProps {
   initialTypeFilter?: 'all' | 'sales_return' | 'purchase_return';
@@ -32,6 +34,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
     rejectSalesReturnRequest,
   } = useData();
   const { currentUser, hasPermission } = useAuth();
+  const { t, locale } = usePreferences();
   const isRepRole = currentUser?.role === 'representative';
   const canManagePurchaseReturnRequests =
     !isRepRole &&
@@ -165,7 +168,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
     e.preventDefault();
     if (!approvingReq || isProcessingReq) return;
     if (approveRefundType === 'cash' && (!canUseTreasuryCashRefund || !approveCashboxId)) {
-      setApproveError('يرجى اختيار الخزينة التي سيتم استرداد قيمتها إليها (تتطلب صلاحية الخزائن).');
+      setApproveError(t('يرجى اختيار الخزينة التي سيتم استرداد قيمتها إليها (تتطلب صلاحية الخزائن).', 'Please select the cashbox to receive the refund (requires cashbox permission).'));
       return;
     }
     setApproveError(null);
@@ -179,11 +182,14 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
     if (res.success) {
       setRequestBanner({
         type: 'success',
-        text: `تم اعتماد طلب مرتجع المشتريات (${approvingReq.requestNumber}) وإنشاء المرتجع (${res.invoiceReturn?.returnNumber || ''}) وتحديث المخزون وحساب المورد.`,
+        text: t(
+          `تم اعتماد طلب مرتجع المشتريات (${approvingReq.requestNumber}) وإنشاء المرتجع (${res.invoiceReturn?.returnNumber || ''}) وتحديث المخزون وحساب المورد.`,
+          `Purchase return request (${approvingReq.requestNumber}) approved, return (${res.invoiceReturn?.returnNumber || ''}) created, and inventory & supplier balance updated.`
+        ),
       });
       setApprovingReq(null);
     } else {
-      setApproveError(res.error || 'تعذر اعتماد طلب مرتجع المشتريات');
+      setApproveError(res.error ? t(res.error) : t('تعذر اعتماد طلب مرتجع المشتريات', 'Unable to approve purchase return request'));
     }
   };
 
@@ -191,7 +197,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
     e.preventDefault();
     if (!rejectingReq || isProcessingReq) return;
     if (!rejectReason.trim()) {
-      setRejectError('يرجى كتابة سبب رفض طلب مرتجع المشتريات.');
+      setRejectError(t('يرجى كتابة سبب رفض طلب مرتجع المشتريات.', 'Please enter a rejection reason for the purchase return request.'));
       return;
     }
     setRejectError(null);
@@ -201,12 +207,15 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
     if (res.success) {
       setRequestBanner({
         type: 'success',
-        text: `تم رفض طلب مرتجع المشتريات (${rejectingReq.requestNumber}) وإبلاغ المندوب بالسبب.`,
+        text: t(
+          `تم رفض طلب مرتجع المشتريات (${rejectingReq.requestNumber}) وإبلاغ المندوب بالسبب.`,
+          `Purchase return request (${rejectingReq.requestNumber}) rejected and representative notified.`
+        ),
       });
       setRejectingReq(null);
       setRejectReason('');
     } else {
-      setRejectError(res.error || 'تعذر رفض الطلب');
+      setRejectError(res.error ? t(res.error) : t('تعذر رفض الطلب', 'Unable to reject request'));
     }
   };
 
@@ -222,7 +231,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
     e.preventDefault();
     if (!approvingSalesReq || isProcessingSalesReq) return;
     if (approveSalesRefundType === 'cash' && (!canUseTreasuryCashRefund || !approveSalesCashboxId)) {
-      setApproveSalesError('يرجى اختيار الخزينة المصروف منها المبلغ (تتطلب صلاحية الخزائن أو الحسابات).');
+      setApproveSalesError(t('يرجى اختيار الخزينة المصروف منها المبلغ (تتطلب صلاحية الخزائن أو الحسابات).', 'Please select the cashbox to disburse from (requires cashbox or accounts permission).'));
       return;
     }
     setApproveSalesError(null);
@@ -236,11 +245,14 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
     if (res.success) {
       setRequestBanner({
         type: 'success',
-        text: `تم اعتماد طلب مرتجع المبيعات (${approvingSalesReq.requestNumber}) وإنشاء المرتجع (${res.invoiceReturn?.returnNumber || ''}) وتحديث المخزون والحساب.`,
+        text: t(
+          `تم اعتماد طلب مرتجع المبيعات (${approvingSalesReq.requestNumber}) وإنشاء المرتجع (${res.invoiceReturn?.returnNumber || ''}) وتحديث المخزون والحساب.`,
+          `Sales return request (${approvingSalesReq.requestNumber}) approved, return (${res.invoiceReturn?.returnNumber || ''}) created, and inventory & account updated.`
+        ),
       });
       setApprovingSalesReq(null);
     } else {
-      setApproveSalesError(res.error || 'تعذر اعتماد طلب مرتجع المبيعات');
+      setApproveSalesError(res.error ? t(res.error) : t('تعذر اعتماد طلب مرتجع المبيعات', 'Unable to approve sales return request'));
     }
   };
 
@@ -248,7 +260,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
     e.preventDefault();
     if (!rejectingSalesReq || isProcessingSalesReq) return;
     if (!rejectSalesReason.trim()) {
-      setRejectSalesError('يرجى كتابة سبب رفض طلب مرتجع المبيعات.');
+      setRejectSalesError(t('يرجى كتابة سبب رفض طلب مرتجع المبيعات.', 'Please enter a rejection reason for the sales return request.'));
       return;
     }
     setRejectSalesError(null);
@@ -258,12 +270,15 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
     if (res.success) {
       setRequestBanner({
         type: 'success',
-        text: `تم رفض طلب مرتجع المبيعات (${rejectingSalesReq.requestNumber}) وإبلاغ المندوب بالسبب.`,
+        text: t(
+          `تم رفض طلب مرتجع المبيعات (${rejectingSalesReq.requestNumber}) وإبلاغ المندوب بالسبب.`,
+          `Sales return request (${rejectingSalesReq.requestNumber}) rejected and representative notified.`
+        ),
       });
       setRejectingSalesReq(null);
       setRejectSalesReason('');
     } else {
-      setRejectSalesError(res.error || 'تعذر رفض الطلب');
+      setRejectSalesError(res.error ? t(res.error) : t('تعذر رفض الطلب', 'Unable to reject request'));
     }
   };
 
@@ -315,7 +330,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
   const handleSubmitReturn = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedInvoice) {
-      setError('يرجى اختيار الفاتورة الأصلية أولاً');
+      setError(t('يرجى اختيار الفاتورة الأصلية أولاً', 'Please select the original invoice first'));
       return;
     }
 
@@ -334,12 +349,12 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
       });
 
     if (returnItems.length === 0) {
-      setError('يرجى تحديد كمية أكبر من صفر لصنف واحد على الأقل للمرتجع');
+      setError(t('يرجى تحديد كمية أكبر من صفر لصنف واحد على الأقل للمرتجع', 'Please specify a quantity greater than zero for at least one item'));
       return;
     }
 
     if (!reason.trim()) {
-      setError('يرجى كتابة سبب المرتجع');
+      setError(t('يرجى كتابة سبب المرتجع', 'Please enter a return reason'));
       return;
     }
 
@@ -359,7 +374,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
         refundType: 'cash',
         reason: reason.trim(),
         date: returnDate,
-        notes: `طلب مرتجع مبيعات نقدي مرتبط بالفاتورة ${selectedInvoice.invoiceNumber}`,
+        notes: t(`طلب مرتجع مبيعات نقدي مرتبط بالفاتورة ${selectedInvoice.invoiceNumber}`, `Cash sales return request linked to invoice ${selectedInvoice.invoiceNumber}`),
       });
       setIsSubmitting(false);
       if (reqRes.success) {
@@ -369,11 +384,11 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
         setRequestBanner({
           type: 'success',
           text: reqRes.queuedOffline
-            ? 'تم حفظ طلب مرتجع المبيعات النقدي في طابور المزامنة لمراجعة الإدارة والخزينة فور عودة الاتصال.'
-            : `تم رفع طلب مرتجع المبيعات النقدي (${reqRes.request?.requestNumber || ''}) للمراجعة دون تعديل رصيد الخزينة حتى الاعتماد.`,
+            ? t('تم حفظ طلب مرتجع المبيعات النقدي في طابور المزامنة لمراجعة الإدارة والخزينة فور عودة الاتصال.', 'Cash sales return request queued offline for management & treasury review once online.')
+            : t(`تم رفع طلب مرتجع المبيعات النقدي (${reqRes.request?.requestNumber || ''}) للمراجعة دون تعديل رصيد الخزينة حتى الاعتماد.`, `Cash sales return request (${reqRes.request?.requestNumber || ''}) submitted for review without modifying treasury balance until approved.`),
         });
       } else {
-        setError(reqRes.error || 'تعذر رفع طلب مرتجع المبيعات النقدي');
+        setError(reqRes.error ? t(reqRes.error) : t('تعذر رفع طلب مرتجع المبيعات النقدي', 'Unable to submit cash sales return request'));
       }
       return;
     }
@@ -406,25 +421,25 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
       setSelectedInvoiceId('');
       setReturnQuantities({});
     } else {
-      setError(res.error || 'تعذر تسجيل المرتجع');
+      setError(res.error ? t(res.error) : t('تعذر تسجيل المرتجع', 'Unable to record return'));
     }
   };
 
   const handlePrintReturn = (ret: InvoiceReturn) => {
     setPrintData({
-      title: ret.type === 'sales_return' ? 'سند مرتجع مبيعات' : 'سند مرتجع مشتريات',
+      title: ret.type === 'sales_return' ? t('سند مرتجع مبيعات', 'Sales Return Voucher') : t('سند مرتجع مشتريات', 'Purchase Return Voucher'),
       docNumber: ret.returnNumber,
-      docType: ret.type === 'sales_return' ? 'مرتجع مبيعات' : 'مرتجع مشتريات',
+      docType: ret.type === 'sales_return' ? t('مرتجع مبيعات', 'Sales Return') : t('مرتجع مشتريات', 'Purchase Return'),
       date: ret.date,
-      partyName: ret.partyName,
-      warehouseName: ret.warehouseName,
+      partyName: t(ret.partyName),
+      warehouseName: t(ret.warehouseName),
       grandTotal: ret.grandTotal,
       paidAmount: ret.refundType === 'cash' ? ret.grandTotal : 0,
-      paymentType: ret.refundType === 'cash' ? 'رد نقدي فوري' : 'خصم من رصيد الحساب',
-      notes: `الفاتورة الأصلية: ${ret.originalInvoiceNumber} | السبب: ${ret.reason}`,
+      paymentType: ret.refundType === 'cash' ? t('رد نقدي فوري', 'Immediate Cash Refund') : t('خصم من رصيد الحساب', 'Deduct from Account Balance'),
+      notes: `${t('الفاتورة الأصلية:', 'Original Invoice:')} ${ret.originalInvoiceNumber} | ${t('السبب:', 'Reason:')} ${ret.reason}`,
       items: ret.items.map(it => ({
         name: it.productName,
-        unit: it.unit,
+        unit: t(it.unit),
         quantity: it.quantity,
         price: it.unitPrice,
         total: it.total,
@@ -438,9 +453,9 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-white px-2.5 py-2 rounded-lg border border-slate-200">
         <div>
-          <h2 className="text-sm font-black text-slate-900 tracking-tight">إدارة مرتجعات المبيعات والمشتريات</h2>
+          <h2 className="text-sm font-black text-slate-900 tracking-tight">{t('إدارة مرتجعات المبيعات والمشتريات', 'Sales & Purchase Returns Management')}</h2>
           <p className="text-[11px] text-slate-500">
-            ربط المرتجعات بالفاتورة الأصلية والتحقق من عدم تجاوز الكميات وتعديل المخازن والأرصدة
+            {t('ربط المرتجعات بالفاتورة الأصلية والتحقق من عدم تجاوز الكميات وتعديل المخازن والأرصدة', 'Link returns to original invoices, validate quantities, and update warehouses and balances')}
           </p>
         </div>
 
@@ -453,23 +468,23 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
           className="h-8 flex items-center gap-1.5 px-2.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-black transition-colors cursor-pointer"
         >
           <RotateCcw className="w-3.5 h-3.5" />
-          <span>إنشاء سند مرتجع جديد</span>
+          <span>{t('إنشاء سند مرتجع جديد', 'Create New Return Voucher')}</span>
         </button>
       </div>
 
       {/* Unified Returns Table */}
       <UnifiedDataTable<InvoiceReturn>
         compact
-        title={`سجل مرتجعات المبيعات والمشتريات (${filteredReturns.length})`}
+        title={t(`سجل مرتجعات المبيعات والمشتريات (${filteredReturns.length})`, `Sales & Purchase Returns Log (${filteredReturns.length})`)}
         data={filteredReturns}
         rowKey={(ret) => ret.id}
         onRowClick={(ret) => setPreviewReturn(ret)}
         searchValue={searchTerm}
         onSearchChange={setSearchTerm}
-        searchPlaceholder="بحث برقم المرتجع، الفاتورة الأصلية، أو الطرف..."
+        searchPlaceholder={t('بحث برقم المرتجع، الفاتورة الأصلية، أو الطرف...', 'Search by return #, original invoice, or party...')}
         exportFilename="AWLAD_SELIM_Returns"
-        pdfTitle="سجل مرتجعات المبيعات والمشتريات"
-        emptyTitle="لا توجد مرتجعات مسجلة حتى الآن"
+        pdfTitle={t('سجل مرتجعات المبيعات والمشتريات', 'Sales & Purchase Returns Log')}
+        emptyTitle={t('لا توجد مرتجعات مسجلة حتى الآن', 'No returns recorded yet')}
         toolbarFilters={
           <div className="flex flex-nowrap items-center gap-1.5 shrink-0">
             <button
@@ -479,7 +494,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                 returnTypeFilter === 'all' ? 'bg-blue-900 text-white' : 'bg-white border border-slate-300 text-slate-700'
               }`}
             >
-              الكل
+              {t('الكل', 'All')}
             </button>
             <button
               type="button"
@@ -488,7 +503,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                 returnTypeFilter === 'sales_return' ? 'bg-blue-900 text-white' : 'bg-white border border-slate-300 text-slate-700'
               }`}
             >
-              مرتجع مبيعات
+              {t('مرتجع مبيعات', 'Sales Return')}
             </button>
             <button
               type="button"
@@ -497,88 +512,88 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                 returnTypeFilter === 'purchase_return' ? 'bg-blue-900 text-white' : 'bg-white border border-slate-300 text-slate-700'
               }`}
             >
-              مرتجع مشتريات
+              {t('مرتجع مشتريات', 'Purchase Return')}
             </button>
           </div>
         }
         columns={[
           {
             key: 'returnNumber',
-            header: 'رقم المرتجع',
+            header: t('رقم المرتجع', 'Return #'),
             sortValue: (r) => r.returnNumber,
             exportValue: (r) => r.returnNumber,
             render: (r) => <span className="font-mono font-bold text-blue-900">{r.returnNumber}</span>,
           },
           {
             key: 'type',
-            header: 'النوع',
+            header: t('النوع', 'Type'),
             sortValue: (r) => r.type,
-            exportValue: (r) => (r.type === 'sales_return' ? 'مرتجع مبيعات' : 'مرتجع مشتريات'),
+            exportValue: (r) => (r.type === 'sales_return' ? t('مرتجع مبيعات', 'Sales Return') : t('مرتجع مشتريات', 'Purchase Return')),
             render: (r) =>
               r.type === 'sales_return' ? (
                 <span className="px-2 py-0.5 rounded border border-[#DCE6F5] bg-[#EEF3FA] text-[#011E58] font-bold text-[10px]">
-                  مرتجع مبيعات
+                  {t('مرتجع مبيعات', 'Sales Return')}
                 </span>
               ) : (
                 <span className="px-2 py-0.5 rounded border border-[#B8CAE8] bg-[#DCE6F5] text-[#002160] font-bold text-[10px]">
-                  مرتجع مشتريات
+                  {t('مرتجع مشتريات', 'Purchase Return')}
                 </span>
               ),
           },
           {
             key: 'originalInvoiceNumber',
-            header: 'الفاتورة الأصلية',
+            header: t('الفاتورة الأصلية', 'Original Invoice'),
             sortValue: (r) => r.originalInvoiceNumber,
             exportValue: (r) => r.originalInvoiceNumber,
             render: (r) => <span className="font-mono text-slate-700">{r.originalInvoiceNumber}</span>,
           },
           {
             key: 'date',
-            header: 'التاريخ',
+            header: t('التاريخ', 'Date'),
             sortValue: (r) => r.date,
             exportValue: (r) => r.date,
             render: (r) => <span className="font-mono tabular-nums text-slate-600">{r.date}</span>,
           },
           {
             key: 'partyName',
-            header: 'العميل / المورد',
+            header: t('العميل / المورد', 'Customer / Supplier'),
             sortValue: (r) => r.partyName,
-            exportValue: (r) => r.partyName,
-            render: (r) => <span className="font-bold text-slate-800">{r.partyName}</span>,
+            exportValue: (r) => t(r.partyName),
+            render: (r) => <span className="font-bold text-slate-800">{t(r.partyName)}</span>,
           },
           {
             key: 'warehouseName',
-            header: 'المستودع',
+            header: t('المستودع', 'Warehouse'),
             sortValue: (r) => r.warehouseName,
-            exportValue: (r) => r.warehouseName,
-            render: (r) => <span className="text-slate-600">{r.warehouseName}</span>,
+            exportValue: (r) => t(r.warehouseName),
+            render: (r) => <span className="text-slate-600">{t(r.warehouseName)}</span>,
           },
           {
             key: 'grandTotal',
-            header: 'القيمة الإجمالية',
+            header: t('القيمة الإجمالية', 'Total Value'),
             align: 'center',
             sortValue: (r) => r.grandTotal,
             exportValue: (r) => r.grandTotal,
             render: (r) => (
               <span className="font-mono tabular-nums font-black text-slate-900">
-                {r.grandTotal.toLocaleString()} {settings.currency}
+                {formatLocaleNumber(r.grandTotal)} {t(settings.currency)}
               </span>
             ),
           },
           {
             key: 'refundType',
-            header: 'طريقة التسوية',
+            header: t('طريقة التسوية', 'Settlement Method'),
             sortValue: (r) => r.refundType,
-            exportValue: (r) => (r.refundType === 'balance' ? 'خصم من الرصيد' : 'رد نقدي من الخزينة'),
+            exportValue: (r) => (r.refundType === 'balance' ? t('خصم من الرصيد', 'Balance Deduction') : t('رد نقدي من الخزينة', 'Cash Refund from Treasury')),
             render: (r) => (
               <span className="text-[11px] font-semibold text-slate-700">
-                {r.refundType === 'balance' ? 'خصم من الرصيد' : 'رد نقدي من الخزينة'}
+                {r.refundType === 'balance' ? t('خصم من الرصيد', 'Balance Deduction') : t('رد نقدي من الخزينة', 'Cash Refund from Treasury')}
               </span>
             ),
           },
           {
             key: 'actions',
-            header: 'طباعة',
+            header: t('طباعة', 'Print'),
             align: 'center',
             sortable: false,
             render: (r) => (
@@ -586,7 +601,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                 type="button"
                 onClick={() => handlePrintReturn(r)}
                 className="p-1.5 text-slate-500 hover:text-blue-900 cursor-pointer"
-                title="طباعة سند المرتجع"
+                title={t('طباعة سند المرتجع', 'Print Return Voucher')}
               >
                 <Printer className="w-4 h-4" />
               </button>
@@ -605,25 +620,25 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-xs font-black text-slate-900">طلبات مرتجع المبيعات من المناديب</h3>
+                  <h3 className="text-xs font-black text-slate-900">{t('طلبات مرتجع المبيعات من المناديب', 'Sales Return Requests from Representatives')}</h3>
                   {pendingSrReqCount > 0 && (
                     <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 font-mono font-black text-[10px]">
-                      {pendingSrReqCount} بانتظار الاعتماد
+                      {pendingSrReqCount} {t('بانتظار الاعتماد', 'Pending Approval')}
                     </span>
                   )}
                 </div>
                 <p className="text-[11px] text-slate-500">
-                  تُسجَّل طلبات المرتجع النقدي المرفوعة من المندوب للمراجعة فقط دون مساس بالخزينة أو المخزون حتى اعتمادها وتحديد الخزينة من المخولين.
+                  {t('تُسجَّل طلبات المرتجع النقدي المرفوعة من المندوب للمراجعة فقط دون مساس بالخزينة أو المخزون حتى اعتمادها وتحديد الخزينة من المخولين.', 'Cash return requests submitted by representatives are logged for review only without affecting treasury or inventory until approved by authorized staff.')}
                 </p>
               </div>
             </div>
 
             <div className="awlad-filter-row w-auto max-w-full" data-testid="returns-sales-req-filter-row">
               {[
-                { id: 'pending' as const, label: `معلق (${pendingSrReqCount})` },
-                { id: 'approved' as const, label: 'معتمد' },
-                { id: 'rejected' as const, label: 'مرفوض' },
-                { id: 'all' as const, label: 'الكل' },
+                { id: 'pending' as const, label: `${t('معلق', 'Pending')} (${pendingSrReqCount})` },
+                { id: 'approved' as const, label: t('معتمد', 'Approved') },
+                { id: 'rejected' as const, label: t('مرفوض', 'Rejected') },
+                { id: 'all' as const, label: t('الكل', 'All') },
               ].map((st) => (
                 <button
                   key={st.id}
@@ -648,11 +663,11 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
             rowKey={(req) => req.id}
             onRowClick={(req) => setPreviewSalesRequest(req)}
             exportFilename="AWLAD_SELIM_SalesReturnRequests"
-            emptyTitle="لا توجد طلبات مرتجع مبيعات في هذا التصنيف"
+            emptyTitle={t('لا توجد طلبات مرتجع مبيعات في هذا التصنيف', 'No sales return requests in this category')}
             columns={[
               {
                 key: 'requestNumber',
-                header: 'رقم الطلب',
+                header: t('رقم الطلب', 'Request #'),
                 sortValue: (r) => r.requestNumber,
                 exportValue: (r) => r.requestNumber,
                 render: (r) => (
@@ -664,81 +679,81 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
               },
               {
                 key: 'originalInvoiceNumber',
-                header: 'الفاتورة الأصلية',
+                header: t('الفاتورة الأصلية', 'Original Invoice'),
                 sortValue: (r) => r.originalInvoiceNumber,
                 exportValue: (r) => r.originalInvoiceNumber,
                 render: (r) => <span className="font-mono font-bold text-slate-800">{r.originalInvoiceNumber}</span>,
               },
               {
                 key: 'requestedByName',
-                header: 'المندوب / مقدم الطلب',
+                header: t('المندوب / مقدم الطلب', 'Rep / Requester'),
                 sortValue: (r) => r.representativeName || r.requestedByName,
                 exportValue: (r) => r.representativeName || r.requestedByName,
                 render: (r) => (
                   <div>
                     <span className="font-bold text-slate-800 block">{r.representativeName || r.requestedByName}</span>
-                    <span className="text-[10px] text-slate-500">بواسطة: {r.requestedByName}</span>
+                    <span className="text-[10px] text-slate-500">{t('بواسطة:', 'By:')} {r.requestedByName}</span>
                   </div>
                 ),
               },
               {
                 key: 'customerName',
-                header: 'العميل والمستودع',
+                header: t('العميل والمستودع', 'Customer & Warehouse'),
                 sortValue: (r) => r.customerName,
-                exportValue: (r) => `${r.customerName} (${r.warehouseName})`,
+                exportValue: (r) => `${t(r.customerName)} (${t(r.warehouseName)})`,
                 render: (r) => (
                   <div>
-                    <span className="font-bold text-slate-800 block">{r.customerName}</span>
-                    <span className="text-[10px] text-slate-500">{r.warehouseName}</span>
+                    <span className="font-bold text-slate-800 block">{t(r.customerName)}</span>
+                    <span className="text-[10px] text-slate-500">{t(r.warehouseName)}</span>
                   </div>
                 ),
               },
               {
                 key: 'items',
-                header: 'الأصناف',
+                header: t('الأصناف', 'Items'),
                 render: (r) => (
                   <div>
                     <div className="space-y-0.5">
                       {(r.items || []).map((it, i) => (
                         <div key={i} className="text-[11px] text-slate-700">
-                          <span className="font-bold">{it.productName}</span> ({it.quantity} {it.unit} × {it.unitPrice})
+                          <span className="font-bold">{it.productName}</span> ({it.quantity} {t(it.unit)} × {it.unitPrice})
                         </div>
                       ))}
                     </div>
-                    <p className="text-[10px] text-slate-500 mt-1">السبب: {r.reason}</p>
+                    <p className="text-[10px] text-slate-500 mt-1">{t('السبب:', 'Reason:')} {r.reason}</p>
                   </div>
                 ),
               },
               {
                 key: 'grandTotal',
-                header: 'الإجمالي',
+                header: t('الإجمالي', 'Total'),
                 align: 'center',
                 sortValue: (r) => Number(r.grandTotal || 0),
                 exportValue: (r) => Number(r.grandTotal || 0),
                 render: (r) => (
                   <div className="font-mono tabular-nums font-black text-slate-900 whitespace-nowrap">
-                    {Number(r.grandTotal || 0).toLocaleString()} {settings.currency}
+                    {formatLocaleNumber(Number(r.grandTotal || 0))} {t(settings.currency)}
                     <span className="block text-[10px] text-slate-500 font-normal">
-                      {r.refundType === 'cash' ? 'طلب رد نقدي' : 'طلب خصم من الرصيد'}
+                      {r.refundType === 'cash' ? t('طلب رد نقدي', 'Cash refund request') : t('طلب خصم من الرصيد', 'Balance deduction request')}
                     </span>
                   </div>
                 ),
               },
               {
                 key: 'status',
-                header: 'الحالة',
+                header: t('الحالة', 'Status'),
                 align: 'center',
                 sortValue: (r) => r.status,
-                exportValue: (r) => (r.status === 'pending' ? 'قيد الانتظار' : r.status === 'approved' ? 'معتمد' : 'مرفوض'),
+                exportValue: (r) => (r.status === 'pending' ? t('قيد الانتظار', 'Pending') : r.status === 'approved' ? t('معتمد', 'Approved') : t('مرفوض', 'Rejected')),
                 render: (r) =>
                   r.status === 'pending' ? (
                     <span className="px-2 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-900 font-bold text-[10px]">
-                      قيد الانتظار
+                      {t('قيد الانتظار', 'Pending')}
                     </span>
                   ) : r.status === 'approved' ? (
                     <div className="space-y-0.5">
                       <span className="px-2 py-0.5 rounded border border-emerald-200 bg-emerald-50 text-emerald-900 font-bold text-[10px] inline-block">
-                        معتمد
+                        {t('معتمد', 'Approved')}
                       </span>
                       {r.approvedReturnNumber && (
                         <span className="block font-mono text-[10px] text-emerald-800">{r.approvedReturnNumber}</span>
@@ -747,7 +762,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                   ) : (
                     <div className="space-y-0.5">
                       <span className="px-2 py-0.5 rounded border border-red-200 bg-red-50 text-red-900 font-bold text-[10px] inline-block">
-                        مرفوض
+                        {t('مرفوض', 'Rejected')}
                       </span>
                       {r.rejectionReason && (
                         <span className="block text-[10px] text-red-700 max-w-[160px]">{r.rejectionReason}</span>
@@ -757,7 +772,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
               },
               {
                 key: 'actions',
-                header: 'الإجراءات',
+                header: t('الإجراءات', 'Actions'),
                 align: 'center',
                 sortable: false,
                 render: (r) =>
@@ -769,7 +784,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                         className="px-2 py-1 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold inline-flex items-center gap-1 cursor-pointer"
                       >
                         <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>اعتماد</span>
+                        <span>{t('اعتماد', 'Approve')}</span>
                       </button>
                       <button
                         type="button"
@@ -781,11 +796,11 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                         className="px-2 py-1 rounded-md bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 font-bold inline-flex items-center gap-1 cursor-pointer"
                       >
                         <XCircle className="w-3.5 h-3.5" />
-                        <span>رفض</span>
+                        <span>{t('رفض', 'Reject')}</span>
                       </button>
                     </div>
                   ) : (
-                    <span className="text-[11px] text-slate-500 font-semibold">{r.reviewedByName || 'تمت المراجعة'}</span>
+                    <span className="text-[11px] text-slate-500 font-semibold">{r.reviewedByName || t('تمت المراجعة', 'Reviewed')}</span>
                   ),
               },
             ]}
@@ -803,25 +818,25 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-xs font-black text-slate-900">طلبات مرتجع المشتريات من المناديب</h3>
+                  <h3 className="text-xs font-black text-slate-900">{t('طلبات مرتجع المشتريات من المناديب', 'Purchase Return Requests from Representatives')}</h3>
                   {pendingPrReqCount > 0 && (
                     <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-900 border border-amber-300 font-mono font-black text-[10px] tabular-nums">
-                      {pendingPrReqCount} بانتظار المراجعة
+                      {pendingPrReqCount} {t('بانتظار المراجعة', 'Pending Review')}
                     </span>
                   )}
                 </div>
                 <p className="text-[11px] text-slate-500">
-                  لا يتأثر المخزون أو رصيد المورد أو الخزينة إلا بعد اعتماد الطلب رسمياً من الإدارة أو مسؤول المشتريات.
+                  {t('لا يتأثر المخزون أو رصيد المورد أو الخزينة إلا بعد اعتماد الطلب رسمياً من الإدارة أو مسؤول المشتريات.', 'Inventory, supplier balance, and treasury are not affected until officially approved by management or purchasing manager.')}
                 </p>
               </div>
             </div>
 
             <div className="awlad-filter-row w-auto max-w-full" data-testid="returns-purchase-req-filter-row">
               {[
-                { id: 'pending' as const, label: `معلق (${pendingPrReqCount})` },
-                { id: 'approved' as const, label: 'معتمد' },
-                { id: 'rejected' as const, label: 'مرفوض' },
-                { id: 'all' as const, label: 'الكل' },
+                { id: 'pending' as const, label: `${t('معلق', 'Pending')} (${pendingPrReqCount})` },
+                { id: 'approved' as const, label: t('معتمد', 'Approved') },
+                { id: 'rejected' as const, label: t('مرفوض', 'Rejected') },
+                { id: 'all' as const, label: t('الكل', 'All') },
               ].map((st) => (
                 <button
                   key={st.id}
@@ -849,7 +864,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
             >
               <span>{requestBanner.text}</span>
               <button type="button" onClick={() => setRequestBanner(null)} className="underline text-[11px] cursor-pointer">
-                إغلاق
+                {t('إغلاق', 'Close')}
               </button>
             </div>
           )}
@@ -861,11 +876,11 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
             rowKey={(req) => req.id}
             onRowClick={(req) => setPreviewPurchaseRequest(req)}
             exportFilename="AWLAD_SELIM_PurchaseReturnRequests"
-            emptyTitle="لا توجد طلبات مرتجع مشتريات في هذا التصنيف"
+            emptyTitle={t('لا توجد طلبات مرتجع مشتريات في هذا التصنيف', 'No purchase return requests in this category')}
             columns={[
               {
                 key: 'requestNumber',
-                header: 'رقم الطلب',
+                header: t('رقم الطلب', 'Request #'),
                 sortValue: (r) => r.requestNumber,
                 exportValue: (r) => r.requestNumber,
                 render: (r) => (
@@ -877,81 +892,81 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
               },
               {
                 key: 'originalInvoiceNumber',
-                header: 'الفاتورة الأصلية',
+                header: t('الفاتورة الأصلية', 'Original Invoice'),
                 sortValue: (r) => r.originalInvoiceNumber,
                 exportValue: (r) => r.originalInvoiceNumber,
                 render: (r) => <span className="font-mono font-bold text-slate-800">{r.originalInvoiceNumber}</span>,
               },
               {
                 key: 'requestedByName',
-                header: 'المندوب / مقدم الطلب',
+                header: t('المندوب / مقدم الطلب', 'Rep / Requester'),
                 sortValue: (r) => r.representativeName || r.requestedByName,
                 exportValue: (r) => r.representativeName || r.requestedByName,
                 render: (r) => (
                   <div>
                     <span className="font-bold text-slate-800 block">{r.representativeName || r.requestedByName}</span>
-                    <span className="text-[10px] text-slate-500">بواسطة: {r.requestedByName}</span>
+                    <span className="text-[10px] text-slate-500">{t('بواسطة:', 'By:')} {r.requestedByName}</span>
                   </div>
                 ),
               },
               {
                 key: 'supplierName',
-                header: 'المورد والمستودع',
+                header: t('المورد والمستودع', 'Supplier & Warehouse'),
                 sortValue: (r) => r.supplierName,
-                exportValue: (r) => `${r.supplierName} (${r.warehouseName})`,
+                exportValue: (r) => `${r.supplierName} (${t(r.warehouseName)})`,
                 render: (r) => (
                   <div>
                     <span className="font-bold text-slate-800 block">{r.supplierName}</span>
-                    <span className="text-[10px] text-slate-500">{r.warehouseName}</span>
+                    <span className="text-[10px] text-slate-500">{t(r.warehouseName)}</span>
                   </div>
                 ),
               },
               {
                 key: 'items',
-                header: 'الأصناف',
+                header: t('الأصناف', 'Items'),
                 render: (r) => (
                   <div>
                     <div className="space-y-0.5">
                       {(r.items || []).map((it, i) => (
                         <div key={i} className="text-[11px] text-slate-700">
-                          <span className="font-bold">{it.productName}</span> ({it.quantity} {it.unit} × {it.unitPrice})
+                          <span className="font-bold">{it.productName}</span> ({it.quantity} {t(it.unit)} × {it.unitPrice})
                         </div>
                       ))}
                     </div>
-                    <p className="text-[10px] text-slate-500 mt-1">السبب: {r.reason}</p>
+                    <p className="text-[10px] text-slate-500 mt-1">{t('السبب:', 'Reason:')} {r.reason}</p>
                   </div>
                 ),
               },
               {
                 key: 'grandTotal',
-                header: 'الإجمالي',
+                header: t('الإجمالي', 'Total'),
                 align: 'center',
                 sortValue: (r) => Number(r.grandTotal || 0),
                 exportValue: (r) => Number(r.grandTotal || 0),
                 render: (r) => (
                   <div className="font-mono tabular-nums font-black text-slate-900 whitespace-nowrap">
-                    {Number(r.grandTotal || 0).toLocaleString()} {settings.currency}
+                    {formatLocaleNumber(Number(r.grandTotal || 0))} {t(settings.currency)}
                     <span className="block text-[10px] text-slate-500 font-normal">
-                      {r.refundType === 'cash' ? 'مقترح: نقدي' : 'مقترح: خصم رصيد'}
+                      {r.refundType === 'cash' ? t('مقترح: نقدي', 'Suggested: Cash') : t('مقترح: خصم رصيد', 'Suggested: Balance Ded.')}
                     </span>
                   </div>
                 ),
               },
               {
                 key: 'status',
-                header: 'الحالة',
+                header: t('الحالة', 'Status'),
                 align: 'center',
                 sortValue: (r) => r.status,
-                exportValue: (r) => (r.status === 'pending' ? 'قيد الانتظار' : r.status === 'approved' ? 'معتمد' : 'مرفوض'),
+                exportValue: (r) => (r.status === 'pending' ? t('قيد الانتظار', 'Pending') : r.status === 'approved' ? t('معتمد', 'Approved') : t('مرفوض', 'Rejected')),
                 render: (r) =>
                   r.status === 'pending' ? (
                     <span className="px-2 py-0.5 rounded border border-amber-200 bg-amber-50 text-amber-900 font-bold text-[10px]">
-                      قيد الانتظار
+                      {t('قيد الانتظار', 'Pending')}
                     </span>
                   ) : r.status === 'approved' ? (
                     <div className="space-y-0.5">
                       <span className="px-2 py-0.5 rounded border border-emerald-200 bg-emerald-50 text-emerald-900 font-bold text-[10px] inline-block">
-                        معتمد
+                        {t('معتمد', 'Approved')}
                       </span>
                       {r.approvedReturnNumber && (
                         <span className="block font-mono text-[10px] text-emerald-800">{r.approvedReturnNumber}</span>
@@ -960,7 +975,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                   ) : (
                     <div className="space-y-0.5">
                       <span className="px-2 py-0.5 rounded border border-red-200 bg-red-50 text-red-900 font-bold text-[10px] inline-block">
-                        مرفوض
+                        {t('مرفوض', 'Rejected')}
                       </span>
                       {r.rejectionReason && (
                         <span className="block text-[10px] text-red-700 max-w-[160px]">{r.rejectionReason}</span>
@@ -970,7 +985,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
               },
               {
                 key: 'actions',
-                header: 'الإجراءات',
+                header: t('الإجراءات', 'Actions'),
                 align: 'center',
                 sortable: false,
                 render: (r) =>
@@ -982,7 +997,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                         className="px-2 py-1 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold inline-flex items-center gap-1 cursor-pointer"
                       >
                         <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>اعتماد</span>
+                        <span>{t('اعتماد', 'Approve')}</span>
                       </button>
                       <button
                         type="button"
@@ -994,11 +1009,11 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                         className="px-2 py-1 rounded-md bg-red-50 hover:bg-red-100 text-red-800 border border-red-200 font-bold inline-flex items-center gap-1 cursor-pointer"
                       >
                         <XCircle className="w-3.5 h-3.5" />
-                        <span>رفض</span>
+                        <span>{t('رفض', 'Reject')}</span>
                       </button>
                     </div>
                   ) : (
-                    <span className="text-[11px] text-slate-500 font-semibold">{r.reviewedByName || 'تمت المراجعة'}</span>
+                    <span className="text-[11px] text-slate-500 font-semibold">{r.reviewedByName || t('تمت المراجعة', 'Reviewed')}</span>
                   ),
               },
             ]}
@@ -1010,7 +1025,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
       <Modal
         isOpen={isNewModalOpen}
         onClose={() => setIsNewModalOpen(false)}
-        title="إنشاء سند مرتجع مرتبط بفاتورة"
+        title={t('إنشاء سند مرتجع مرتبط بفاتورة', 'Create Invoice-Linked Return Voucher')}
         maxWidth="4xl"
       >
         <form onSubmit={handleSubmitReturn} className="space-y-2 text-xs">
@@ -1020,7 +1035,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
-              <label className="block font-bold mb-0.5">نوع المرتجع:</label>
+              <label className="block font-bold mb-0.5">{t('نوع المرتجع:', 'Return Type:')}</label>
               <div className="grid grid-cols-2 gap-1.5">
                 <button
                   type="button"
@@ -1032,7 +1047,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                     returnType === 'sales_return' ? 'bg-blue-900 text-white border-blue-900' : 'bg-slate-50 border-slate-300'
                   }`}
                 >
-                  مرتجع مبيعات من عميل
+                  {t('مرتجع مبيعات من عميل', 'Customer Sales Return')}
                 </button>
                 {!isRepRole && (
                   <button
@@ -1045,14 +1060,14 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                       returnType === 'purchase_return' ? 'bg-blue-900 text-white border-blue-900' : 'bg-slate-50 border-slate-300'
                     }`}
                   >
-                    مرتجع مشتريات لمورد
+                    {t('مرتجع مشتريات لمورد', 'Supplier Purchase Return')}
                   </button>
                 )}
               </div>
             </div>
 
             <div>
-              <label className="block font-bold mb-0.5">تاريخ المرتجع:</label>
+              <label className="block font-bold mb-0.5">{t('تاريخ المرتجع:', 'Return Date:')}</label>
               <input
                 type="date"
                 value={returnDate}
@@ -1063,16 +1078,16 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
           </div>
 
           <div>
-            <label className="block font-bold mb-0.5">اختر الفاتورة الأصلية المراد الإرجاع منها:</label>
+            <label className="block font-bold mb-0.5">{t('اختر الفاتورة الأصلية المراد الإرجاع منها:', 'Select Original Invoice to Return From:')}</label>
             <select
               value={selectedInvoiceId}
               onChange={(e) => handleSelectInvoice(e.target.value)}
               className="w-full h-8 border border-slate-300 rounded-md py-1 px-2 font-bold bg-white"
             >
-              <option value="">-- اختر الفاتورة الأصلية --</option>
+              <option value="">{t('-- اختر الفاتورة الأصلية --', '-- Select Original Invoice --')}</option>
               {availableInvoices.map(inv => (
                 <option key={inv.id} value={inv.id}>
-                  {inv.invoiceNumber} - ({inv.customerName || inv.supplierName}) - الإجمالي: {inv.grandTotal} {settings.currency} بتاريخ {inv.date}
+                  {inv.invoiceNumber} - ({inv.customerName || inv.supplierName}) - {t('الإجمالي:', 'Total:')} {formatLocaleNumber(inv.grandTotal)} {t(settings.currency)} {t('بتاريخ', 'on')} {inv.date}
                 </option>
               ))}
             </select>
@@ -1081,15 +1096,15 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
           {/* Item Quantities Return Form */}
           {selectedInvoice && (
             <div className="border border-slate-200 rounded-lg p-2 bg-slate-50 space-y-1.5 awlad-table-scroll">
-              <h4 className="font-bold text-slate-800">الأصناف المتوفرة بالفاتورة الأصلية للإرجاع:</h4>
-              <table className="w-full text-right text-xs bg-white rounded-md border border-slate-200">
+              <h4 className="font-bold text-slate-800">{t('الأصناف المتوفرة بالفاتورة الأصلية للإرجاع:', 'Available Items in Original Invoice for Return:')}</h4>
+              <table className="w-full text-start text-xs bg-white rounded-md border border-slate-200">
                 <thead>
                   <tr className="bg-slate-100 border-b border-slate-200">
-                    <th className="px-2 py-1.5">الصنف</th>
-                    <th className="px-2 py-1.5 text-center">الوحدة</th>
-                    <th className="px-2 py-1.5 text-center">الكمية الأصلية</th>
-                    <th className="px-2 py-1.5 text-center">السعر</th>
-                    <th className="px-2 py-1.5 text-center w-24">الكمية المرتجعة</th>
+                    <th className="px-2 py-1.5">{t('الصنف', 'Item')}</th>
+                    <th className="px-2 py-1.5 text-center">{t('الوحدة', 'Unit')}</th>
+                    <th className="px-2 py-1.5 text-center">{t('الكمية الأصلية', 'Original Qty')}</th>
+                    <th className="px-2 py-1.5 text-center">{t('السعر', 'Price')}</th>
+                    <th className="px-2 py-1.5 text-center w-24">{t('الكمية المرتجعة', 'Return Qty')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -1100,9 +1115,9 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                     return (
                       <tr key={it.productId}>
                         <td className="px-2 py-1 font-bold">{it.productName}</td>
-                        <td className="px-2 py-1 text-center">{it.unit}</td>
+                        <td className="px-2 py-1 text-center">{t(it.unit)}</td>
                         <td className="px-2 py-1 text-center font-bold">
-                          {it.quantity} {alreadyRet > 0 && <span className="text-red-600 text-[10px] block">تم إرجاع {alreadyRet} سابقاً</span>}
+                          {it.quantity} {alreadyRet > 0 && <span className="text-red-600 text-[10px] block">{t(`تم إرجاع ${alreadyRet} سابقاً`, `${alreadyRet} previously returned`)}</span>}
                         </td>
                         <td className="px-2 py-1 text-center font-mono">{it.unitPrice}</td>
                         <td className="px-2 py-1 text-center">
@@ -1117,7 +1132,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                                 [it.productId]: Math.min(maxAllowed, Math.max(0, q)),
                               }))
                             }
-                            ariaLabel={`كمية المرتجع ${it.productName}`}
+                            ariaLabel={`${t('كمية المرتجع', 'Return Qty')} ${it.productName}`}
                             inputClassName="w-20 h-7 border border-slate-300 rounded-md px-1 text-center font-mono font-bold outline-hidden focus:border-blue-700"
                           />
                         </td>
@@ -1128,9 +1143,9 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
               </table>
 
               <div className="flex justify-between items-center pt-1">
-                <span className="font-bold text-slate-700">إجمالي قيمة المرتجع المحتسب:</span>
+                <span className="font-bold text-slate-700">{t('إجمالي قيمة المرتجع المحتسب:', 'Calculated Return Total:')}</span>
                 <span className="text-sm font-black text-blue-900 font-mono">
-                  {calculatedGrandTotal.toFixed(2)} {settings.currency}
+                  {calculatedGrandTotal.toFixed(2)} {t(settings.currency)}
                 </span>
               </div>
             </div>
@@ -1139,46 +1154,46 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
           {/* Refund method */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-slate-50 p-2 rounded-lg border border-slate-200">
             <div>
-              <label className="block font-bold mb-0.5">طريقة التسوية المالية:</label>
+              <label className="block font-bold mb-0.5">{t('طريقة التسوية المالية:', 'Financial Settlement Method:')}</label>
               <select
                 value={canUseTreasuryCashRefund || (isRepRole && returnType === 'sales_return') ? refundType : 'balance'}
                 onChange={(e) => setRefundType(e.target.value as 'balance' | 'cash')}
                 className="w-full h-8 bg-white border border-slate-300 rounded-md py-1 px-2 font-bold"
               >
-                <option value="balance">تعديل وخصم من رصيد الحساب الآجل</option>
+                <option value="balance">{t('تعديل وخصم من رصيد الحساب الآجل', 'Adjust & deduct from credit account balance')}</option>
                 {(canUseTreasuryCashRefund || (isRepRole && returnType === 'sales_return')) && (
                   <option value="cash">
-                    {isRepRole ? 'طلب رد نقدي (يرفع لموافقة الخزينة/الإدارة)' : 'رد نقدي فوري من الخزينة'}
+                    {isRepRole ? t('طلب رد نقدي (يرفع لموافقة الخزينة/الإدارة)', 'Cash refund request (requires treasury/admin approval)') : t('رد نقدي فوري من الخزينة', 'Immediate cash refund from treasury')}
                   </option>
                 )}
               </select>
             </div>
             {canUseTreasuryCashRefund && refundType === 'cash' ? (
               <div>
-                <label className="block font-bold mb-0.5">الخزينة المسدد منها:</label>
+                <label className="block font-bold mb-0.5">{t('الخزينة المسدد منها:', 'Paid from Cashbox:')}</label>
                 <select
                   value={refundCashboxId}
                   onChange={(e) => setRefundCashboxId(e.target.value)}
                   className="w-full h-8 bg-white border border-slate-300 rounded-md py-1 px-2 font-bold"
                 >
                   {cashboxes.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
+                    <option key={c.id} value={c.id}>{t(c.name)}</option>
                   ))}
                 </select>
               </div>
             ) : isRepRole && refundType === 'cash' ? (
               <div className="flex items-center px-2 py-1 rounded-md bg-amber-50 border border-amber-200 text-amber-900 font-bold text-[11px]">
-                يُرسل هذا المرتجع كطلب مراجعة للخزينة والإدارة، ولا يتم صرف أو خصم أي مبلغ من أي خزينة إلا بعد الاعتماد.
+                {t('يُرسل هذا المرتجع كطلب مراجعة للخزينة والإدارة، ولا يتم صرف أو خصم أي مبلغ من أي خزينة إلا بعد الاعتماد.', 'This return is sent as a review request to treasury & management; no amount is disbursed or deducted from any cashbox until approved.')}
               </div>
             ) : !canUseTreasuryCashRefund ? (
               <div className="flex items-center px-2 py-1 rounded-md bg-slate-100 border border-slate-200 text-slate-600 font-bold text-[11px]">
-                الرد النقدي من الخزينة متاح لصلاحية إدارة الخزائن والحسابات فقط.
+                {t('الرد النقدي من الخزينة متاح لصلاحية إدارة الخزائن والحسابات فقط.', 'Cash refund from treasury is available only with cashboxes and accounts management permission.')}
               </div>
             ) : null}
           </div>
 
           <div>
-            <label className="block font-bold mb-0.5">سبب المرتجع:</label>
+            <label className="block font-bold mb-0.5">{t('سبب المرتجع:', 'Return Reason:')}</label>
             <input
               type="text"
               required
@@ -1189,9 +1204,9 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
           </div>
 
           <div className="flex justify-end gap-2 pt-2 border-t">
-            <button type="button" onClick={() => setIsNewModalOpen(false)} className="px-2.5 py-1 border border-slate-300 rounded-md font-bold cursor-pointer">إلغاء</button>
+            <button type="button" onClick={() => setIsNewModalOpen(false)} className="px-2.5 py-1 border border-slate-300 rounded-md font-bold cursor-pointer">{t('إلغاء', 'Cancel')}</button>
             <button type="submit" disabled={isSubmitting || calculatedGrandTotal === 0} className="px-3 py-1 bg-blue-900 text-white rounded-md font-bold hover:bg-blue-950 cursor-pointer disabled:opacity-50">
-              اعتماد المرتجع وتعديل المخزن
+              {t('اعتماد المرتجع وتعديل المخزن', 'Approve Return & Update Inventory')}
             </button>
           </div>
         </form>
@@ -1201,8 +1216,8 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
       <Modal
         isOpen={Boolean(approvingReq)}
         onClose={() => !isProcessingReq && setApprovingReq(null)}
-        title={approvingReq ? `اعتماد طلب مرتجع مشتريات: ${approvingReq.requestNumber}` : ''}
-        subtitle="سيتم إنشاء سند مرتجع مشتريات رسمي وخصم الكميات من المخزن وتحديث حساب المورد/الخزينة."
+        title={approvingReq ? `${t('اعتماد طلب مرتجع مشتريات:', 'Approve Purchase Return Request:')} ${approvingReq.requestNumber}` : ''}
+        subtitle={t('سيتم إنشاء سند مرتجع مشتريات رسمي وخصم الكميات من المخزن وتحديث حساب المورد/الخزينة.', 'An official purchase return voucher will be created, stock deducted, and supplier/treasury account updated.')}
         maxWidth="md"
       >
         {approvingReq && (
@@ -1212,52 +1227,52 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
             )}
             <div className="p-2 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
               <div className="flex justify-between">
-                <span className="text-slate-500">المورد:</span>
+                <span className="text-slate-500">{t('المورد:', 'Supplier:')}</span>
                 <strong className="text-slate-900">{approvingReq.supplierName}</strong>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">الفاتورة الأصلية:</span>
+                <span className="text-slate-500">{t('الفاتورة الأصلية:', 'Original Invoice:')}</span>
                 <strong className="font-mono text-blue-900">{approvingReq.originalInvoiceNumber}</strong>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">الإجمالي:</span>
+                <span className="text-slate-500">{t('الإجمالي:', 'Total:')}</span>
                 <strong className="font-mono text-emerald-800">
-                  {Number(approvingReq.grandTotal || 0).toLocaleString()} {settings.currency}
+                  {formatLocaleNumber(Number(approvingReq.grandTotal || 0))} {t(settings.currency)}
                 </strong>
               </div>
             </div>
 
             <div>
-              <label className="block font-bold mb-0.5">طريقة التسوية المالية:</label>
+              <label className="block font-bold mb-0.5">{t('طريقة التسوية المالية:', 'Financial Settlement Method:')}</label>
               <select
                 value={canUseTreasuryCashRefund ? approveRefundType : 'balance'}
                 onChange={(e) => setApproveRefundType(e.target.value as 'balance' | 'cash')}
                 className="w-full h-8 border border-slate-300 rounded-md py-1 px-2 font-bold bg-white"
               >
-                <option value="balance">تعديل وخصم من رصيد حساب المورد</option>
+                <option value="balance">{t('تعديل وخصم من رصيد حساب المورد', 'Adjust & deduct from supplier account balance')}</option>
                 {canUseTreasuryCashRefund && (
-                  <option value="cash">استرداد نقدي إلى الخزينة</option>
+                  <option value="cash">{t('استرداد نقدي إلى الخزينة', 'Cash refund to treasury')}</option>
                 )}
               </select>
             </div>
 
             {canUseTreasuryCashRefund && approveRefundType === 'cash' && (
               <div>
-                <label className="block font-bold mb-0.5">الخزينة المستلمة للاسترداد النقدي:</label>
+                <label className="block font-bold mb-0.5">{t('الخزينة المستلمة للاسترداد النقدي:', 'Receiving Cashbox for Cash Refund:')}</label>
                 <select
                   value={approveCashboxId}
                   onChange={(e) => setApproveCashboxId(e.target.value)}
                   className="w-full h-8 border border-slate-300 rounded-md py-1 px-2 font-bold bg-white"
                 >
                   {cashboxes.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
+                    <option key={c.id} value={c.id}>{t(c.name)}</option>
                   ))}
                 </select>
               </div>
             )}
 
             <div>
-              <label className="block font-bold mb-0.5">ملاحظات الاعتماد (اختياري):</label>
+              <label className="block font-bold mb-0.5">{t('ملاحظات الاعتماد (اختياري):', 'Approval Notes (optional):')}</label>
               <input
                 type="text"
                 value={approveNotes}
@@ -1273,14 +1288,14 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                 onClick={() => setApprovingReq(null)}
                 className="px-2.5 py-1 border border-slate-300 rounded-md font-bold cursor-pointer"
               >
-                إلغاء
+                {t('إلغاء', 'Cancel')}
               </button>
               <button
                 type="submit"
                 disabled={isProcessingReq}
                 className="h-8 px-3 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-black cursor-pointer disabled:opacity-50"
               >
-                {isProcessingReq ? 'جاري الاعتماد...' : 'تأكيد الاعتماد والترحيل'}
+                {isProcessingReq ? t('جاري الاعتماد...', 'Approving...') : t('تأكيد الاعتماد والترحيل', 'Confirm Approval & Post')}
               </button>
             </div>
           </form>
@@ -1291,7 +1306,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
       <Modal
         isOpen={Boolean(rejectingReq)}
         onClose={() => !isProcessingReq && setRejectingReq(null)}
-        title={rejectingReq ? `رفض طلب مرتجع مشتريات: ${rejectingReq.requestNumber}` : ''}
+        title={rejectingReq ? `${t('رفض طلب مرتجع مشتريات:', 'Reject Purchase Return Request:')} ${rejectingReq.requestNumber}` : ''}
         maxWidth="md"
       >
         {rejectingReq && (
@@ -1300,13 +1315,13 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
               <div className="px-2.5 py-1.5 rounded-md bg-red-50 border border-red-200 text-red-800 font-bold">{rejectError}</div>
             )}
             <div>
-              <label className="block font-bold mb-0.5">سبب الرفض (إلزامي):</label>
+              <label className="block font-bold mb-0.5">{t('سبب الرفض (إلزامي):', 'Rejection Reason (required):')}</label>
               <textarea
                 rows={3}
                 required
                 value={rejectReason}
                 onChange={(e) => setRejectReason(e.target.value)}
-                placeholder="اكتب سبب رفض طلب مرتجع المشتريات ليظهر للمندوب..."
+                placeholder={t('اكتب سبب رفض طلب مرتجع المشتريات ليظهر للمندوب...', 'Enter purchase return rejection reason to show to the representative...')}
                 className="w-full border border-slate-300 rounded-md py-1.5 px-2"
               />
             </div>
@@ -1317,14 +1332,14 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                 onClick={() => setRejectingReq(null)}
                 className="px-2.5 py-1 border border-slate-300 rounded-md font-bold cursor-pointer"
               >
-                إلغاء
+                {t('إلغاء', 'Cancel')}
               </button>
               <button
                 type="submit"
                 disabled={isProcessingReq}
                 className="px-3 py-1 bg-red-700 hover:bg-red-800 text-white rounded-md font-black cursor-pointer disabled:opacity-50"
               >
-                {isProcessingReq ? 'جاري الرفض...' : 'تأكيد رفض الطلب'}
+                {isProcessingReq ? t('جاري الرفض...', 'Rejecting...') : t('تأكيد رفض الطلب', 'Confirm Rejection')}
               </button>
             </div>
           </form>
@@ -1335,8 +1350,8 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
       <Modal
         isOpen={Boolean(approvingSalesReq)}
         onClose={() => !isProcessingSalesReq && setApprovingSalesReq(null)}
-        title={approvingSalesReq ? `اعتماد طلب مرتجع مبيعات: ${approvingSalesReq.requestNumber}` : ''}
-        subtitle="سيتم إنشاء سند مرتجع مبيعات رسمي وإرجاع الكميات للمخزن وتحديث الخزينة أو حساب العميل."
+        title={approvingSalesReq ? `${t('اعتماد طلب مرتجع مبيعات:', 'Approve Sales Return Request:')} ${approvingSalesReq.requestNumber}` : ''}
+        subtitle={t('سيتم إنشاء سند مرتجع مبيعات رسمي وإرجاع الكميات للمخزن وتحديث الخزينة أو حساب العميل.', 'An official sales return voucher will be created, stock returned, and treasury or customer account updated.')}
         maxWidth="md"
       >
         {approvingSalesReq && (
@@ -1346,52 +1361,52 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
             )}
             <div className="p-2 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
               <div className="flex justify-between">
-                <span className="text-slate-500">العميل:</span>
-                <strong className="text-slate-900">{approvingSalesReq.customerName}</strong>
+                <span className="text-slate-500">{t('العميل:', 'Customer:')}</span>
+                <strong className="text-slate-900">{t(approvingSalesReq.customerName)}</strong>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">الفاتورة الأصلية:</span>
+                <span className="text-slate-500">{t('الفاتورة الأصلية:', 'Original Invoice:')}</span>
                 <strong className="font-mono text-blue-900">{approvingSalesReq.originalInvoiceNumber}</strong>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">الإجمالي:</span>
+                <span className="text-slate-500">{t('الإجمالي:', 'Total:')}</span>
                 <strong className="font-mono text-emerald-800">
-                  {Number(approvingSalesReq.grandTotal || 0).toLocaleString()} {settings.currency}
+                  {formatLocaleNumber(Number(approvingSalesReq.grandTotal || 0))} {t(settings.currency)}
                 </strong>
               </div>
             </div>
 
             <div>
-              <label className="block font-bold mb-0.5">طريقة التسوية المالية المعتمدة:</label>
+              <label className="block font-bold mb-0.5">{t('طريقة التسوية المالية المعتمدة:', 'Approved Financial Settlement Method:')}</label>
               <select
                 value={canUseTreasuryCashRefund ? approveSalesRefundType : 'balance'}
                 onChange={(e) => setApproveSalesRefundType(e.target.value as 'cash' | 'balance')}
                 className="w-full h-8 border border-slate-300 rounded-md py-1 px-2 font-bold bg-white"
               >
-                <option value="balance">تعديل وخصم من رصيد حساب العميل</option>
+                <option value="balance">{t('تعديل وخصم من رصيد حساب العميل', 'Adjust & deduct from customer account balance')}</option>
                 {canUseTreasuryCashRefund && (
-                  <option value="cash">صرف نقدي من الخزينة</option>
+                  <option value="cash">{t('صرف نقدي من الخزينة', 'Cash disbursement from treasury')}</option>
                 )}
               </select>
             </div>
 
             {canUseTreasuryCashRefund && approveSalesRefundType === 'cash' && (
               <div>
-                <label className="block font-bold mb-0.5">الخزينة المصروف منها:</label>
+                <label className="block font-bold mb-0.5">{t('الخزينة المصروف منها:', 'Disbursing Cashbox:')}</label>
                 <select
                   value={approveSalesCashboxId}
                   onChange={(e) => setApproveSalesCashboxId(e.target.value)}
                   className="w-full h-8 border border-slate-300 rounded-md py-1 px-2 font-bold bg-white"
                 >
                   {cashboxes.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
+                    <option key={c.id} value={c.id}>{t(c.name)}</option>
                   ))}
                 </select>
               </div>
             )}
 
             <div>
-              <label className="block font-bold mb-0.5">ملاحظات الاعتماد (اختياري):</label>
+              <label className="block font-bold mb-0.5">{t('ملاحظات الاعتماد (اختياري):', 'Approval Notes (optional):')}</label>
               <input
                 type="text"
                 value={approveSalesNotes}
@@ -1407,14 +1422,14 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                 onClick={() => setApprovingSalesReq(null)}
                 className="px-2.5 py-1 border border-slate-300 rounded-md font-bold cursor-pointer"
               >
-                إلغاء
+                {t('إلغاء', 'Cancel')}
               </button>
               <button
                 type="submit"
                 disabled={isProcessingSalesReq}
                 className="h-8 px-3 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-black cursor-pointer disabled:opacity-50"
               >
-                {isProcessingSalesReq ? 'جاري الاعتماد...' : 'تأكيد الاعتماد والترحيل'}
+                {isProcessingSalesReq ? t('جاري الاعتماد...', 'Approving...') : t('تأكيد الاعتماد والترحيل', 'Confirm Approval & Post')}
               </button>
             </div>
           </form>
@@ -1425,7 +1440,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
       <Modal
         isOpen={Boolean(rejectingSalesReq)}
         onClose={() => !isProcessingSalesReq && setRejectingSalesReq(null)}
-        title={rejectingSalesReq ? `رفض طلب مرتجع مبيعات: ${rejectingSalesReq.requestNumber}` : ''}
+        title={rejectingSalesReq ? `${t('رفض طلب مرتجع مبيعات:', 'Reject Sales Return Request:')} ${rejectingSalesReq.requestNumber}` : ''}
         maxWidth="md"
       >
         {rejectingSalesReq && (
@@ -1434,13 +1449,13 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
               <div className="px-2.5 py-1.5 rounded-md bg-red-50 border border-red-200 text-red-800 font-bold">{rejectSalesError}</div>
             )}
             <div>
-              <label className="block font-bold mb-0.5">سبب الرفض (إلزامي):</label>
+              <label className="block font-bold mb-0.5">{t('سبب الرفض (إلزامي):', 'Rejection Reason (required):')}</label>
               <textarea
                 rows={3}
                 required
                 value={rejectSalesReason}
                 onChange={(e) => setRejectSalesReason(e.target.value)}
-                placeholder="اكتب سبب رفض طلب مرتجع المبيعات ليظهر للمندوب..."
+                placeholder={t('اكتب سبب رفض طلب مرتجع المبيعات ليظهر للمندوب...', 'Enter sales return rejection reason to show to the representative...')}
                 className="w-full border border-slate-300 rounded-md py-1.5 px-2"
               />
             </div>
@@ -1451,14 +1466,14 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                 onClick={() => setRejectingSalesReq(null)}
                 className="px-2.5 py-1 border border-slate-300 rounded-md font-bold cursor-pointer"
               >
-                إلغاء
+                {t('إلغاء', 'Cancel')}
               </button>
               <button
                 type="submit"
                 disabled={isProcessingSalesReq}
                 className="px-3 py-1 bg-red-700 hover:bg-red-800 text-white rounded-md font-black cursor-pointer disabled:opacity-50"
               >
-                {isProcessingSalesReq ? 'جاري الرفض...' : 'تأكيد رفض الطلب'}
+                {isProcessingSalesReq ? t('جاري الرفض...', 'Rejecting...') : t('تأكيد رفض الطلب', 'Confirm Rejection')}
               </button>
             </div>
           </form>
@@ -1469,68 +1484,68 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
       <Modal
         isOpen={Boolean(previewReturn)}
         onClose={() => setPreviewReturn(null)}
-        title={previewReturn ? `تفاصيل سند المرتجع: ${previewReturn.returnNumber}` : ''}
+        title={previewReturn ? `${t('تفاصيل سند المرتجع:', 'Return Voucher Details:')} ${previewReturn.returnNumber}` : ''}
         maxWidth="2xl"
       >
         {previewReturn && (
           <div className="space-y-2.5 text-xs">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-2.5 rounded-lg bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C]">
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">النوع</span>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('النوع', 'Type')}</span>
                 <strong className="text-slate-900 dark:text-[#F3F7FC]">
-                  {previewReturn.type === 'sales_return' ? 'مرتجع مبيعات' : 'مرتجع مشتريات'}
+                  {previewReturn.type === 'sales_return' ? t('مرتجع مبيعات', 'Sales Return') : t('مرتجع مشتريات', 'Purchase Return')}
                 </strong>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الفاتورة الأصلية</span>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('الفاتورة الأصلية', 'Original Invoice')}</span>
                 <strong className="font-mono text-slate-900 dark:text-[#F3F7FC]">{previewReturn.originalInvoiceNumber}</strong>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">التاريخ</span>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('التاريخ', 'Date')}</span>
                 <strong className="font-mono tabular-nums text-slate-900 dark:text-[#F3F7FC]">{previewReturn.date}</strong>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">العميل / المورد</span>
-                <strong className="text-slate-900 dark:text-[#F3F7FC]">{previewReturn.partyName}</strong>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('العميل / المورد', 'Customer / Supplier')}</span>
+                <strong className="text-slate-900 dark:text-[#F3F7FC]">{t(previewReturn.partyName)}</strong>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">المستودع</span>
-                <strong className="text-slate-900 dark:text-[#F3F7FC]">{previewReturn.warehouseName}</strong>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('المستودع', 'Warehouse')}</span>
+                <strong className="text-slate-900 dark:text-[#F3F7FC]">{t(previewReturn.warehouseName)}</strong>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">طريقة التسوية</span>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('طريقة التسوية', 'Settlement Method')}</span>
                 <strong className="text-slate-900 dark:text-[#F3F7FC]">
-                  {previewReturn.refundType === 'cash' ? 'رد نقدي من الخزينة' : 'خصم من رصيد الحساب'}
+                  {previewReturn.refundType === 'cash' ? t('رد نقدي من الخزينة', 'Cash Refund from Treasury') : t('خصم من رصيد الحساب', 'Deduct from Account Balance')}
                 </strong>
               </div>
             </div>
 
             {previewReturn.reason && (
               <div className="p-2 rounded-md bg-amber-50/70 dark:bg-amber-500/15 border border-amber-200 dark:border-amber-500/30 text-amber-950 dark:text-amber-200">
-                <span className="font-bold">سبب المرتجع: </span>
+                <span className="font-bold">{t('سبب المرتجع:', 'Return Reason:')} </span>
                 <span>{previewReturn.reason}</span>
               </div>
             )}
 
             <div className="border border-slate-200 dark:border-[#21375C] rounded-lg overflow-hidden awlad-table-scroll">
-              <table className="w-full text-right text-xs">
+              <table className="w-full text-start text-xs">
                 <thead>
                   <tr className="bg-slate-100 dark:bg-[#172E56] text-slate-700 dark:text-[#F3F7FC] font-bold border-b border-slate-200 dark:border-[#2A436E]">
-                    <th className="p-2">الصنف</th>
-                    <th className="p-2 text-center">الوحدة</th>
-                    <th className="p-2 text-center">الكمية</th>
-                    <th className="p-2 text-center">السعر</th>
-                    <th className="p-2 text-center">الإجمالي</th>
+                    <th className="p-2">{t('الصنف', 'Item')}</th>
+                    <th className="p-2 text-center">{t('الوحدة', 'Unit')}</th>
+                    <th className="p-2 text-center">{t('الكمية', 'Quantity')}</th>
+                    <th className="p-2 text-center">{t('السعر', 'Price')}</th>
+                    <th className="p-2 text-center">{t('الإجمالي', 'Total')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-[#1B2F52]">
                   {(previewReturn.items || []).map((it, idx) => (
                     <tr key={`${it.productId}-${idx}`}>
                       <td className="p-2 font-bold">{it.productName}</td>
-                      <td className="p-2 text-center">{it.unit}</td>
+                      <td className="p-2 text-center">{t(it.unit)}</td>
                       <td className="p-2 text-center font-mono tabular-nums">{it.quantity}</td>
-                      <td className="p-2 text-center font-mono tabular-nums">{Number(it.unitPrice || 0).toLocaleString()}</td>
-                      <td className="p-2 text-center font-mono tabular-nums font-bold">{Number(it.total || 0).toLocaleString()}</td>
+                      <td className="p-2 text-center font-mono tabular-nums">{formatLocaleNumber(Number(it.unitPrice || 0))}</td>
+                      <td className="p-2 text-center font-mono tabular-nums font-bold">{formatLocaleNumber(Number(it.total || 0))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1539,9 +1554,9 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
 
             <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-200 dark:border-[#21375C]">
               <div className="font-black text-sm text-slate-900 dark:text-[#F3F7FC]">
-                الإجمالي:{' '}
+                {t('الإجمالي:', 'Total:')}{' '}
                 <span className="font-mono tabular-nums text-[#003589] dark:text-[#85B8FF]">
-                  {Number(previewReturn.grandTotal || 0).toLocaleString()} {settings.currency}
+                  {formatLocaleNumber(Number(previewReturn.grandTotal || 0))} {t(settings.currency)}
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -1555,14 +1570,14 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                   className="h-8 px-3 rounded-md bg-[#003589] dark:bg-[#1659C8] hover:bg-[#0049B0] text-white font-bold inline-flex items-center gap-1.5 cursor-pointer"
                 >
                   <Printer className="w-3.5 h-3.5" />
-                  <span>طباعة السند</span>
+                  <span>{t('طباعة السند', 'Print Voucher')}</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setPreviewReturn(null)}
                   className="h-8 px-3 rounded-md border border-slate-300 dark:border-[#2A436E] font-bold cursor-pointer"
                 >
-                  إغلاق
+                  {t('إغلاق', 'Close')}
                 </button>
               </div>
             </div>
@@ -1574,63 +1589,63 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
       <Modal
         isOpen={!!previewSalesRequest}
         onClose={() => setPreviewSalesRequest(null)}
-        title={previewSalesRequest ? `تفاصيل طلب مرتجع مبيعات: ${previewSalesRequest.requestNumber}` : 'تفاصيل طلب مرتجع مبيعات'}
-        subtitle={previewSalesRequest?.customerName}
+        title={previewSalesRequest ? `${t('تفاصيل طلب مرتجع مبيعات:', 'Sales Return Request Details:')} ${previewSalesRequest.requestNumber}` : t('تفاصيل طلب مرتجع مبيعات', 'Sales Return Request Details')}
+        subtitle={previewSalesRequest?.customerName ? t(previewSalesRequest.customerName) : undefined}
         maxWidth="2xl"
       >
         {previewSalesRequest && (
           <div className="space-y-3 text-xs">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-2.5 rounded-lg bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C]">
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الفاتورة الأصلية</span>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('الفاتورة الأصلية', 'Original Invoice')}</span>
                 <strong className="font-mono">{previewSalesRequest.originalInvoiceNumber}</strong>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">المندوب / المرسل</span>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('المندوب / المرسل', 'Rep / Sender')}</span>
                 <strong>{previewSalesRequest.representativeName || previewSalesRequest.requestedByName}</strong>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">التاريخ</span>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('التاريخ', 'Date')}</span>
                 <strong className="font-mono tabular-nums">{previewSalesRequest.date}</strong>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">العميل</span>
-                <strong>{previewSalesRequest.customerName}</strong>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('العميل', 'Customer')}</span>
+                <strong>{t(previewSalesRequest.customerName)}</strong>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">المستودع</span>
-                <strong>{previewSalesRequest.warehouseName}</strong>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('المستودع', 'Warehouse')}</span>
+                <strong>{t(previewSalesRequest.warehouseName)}</strong>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الإجمالي</span>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('الإجمالي', 'Total')}</span>
                 <strong className="font-mono tabular-nums text-[#003589] dark:text-[#85B8FF]">
-                  {Number(previewSalesRequest.grandTotal || 0).toLocaleString()} {settings.currency}
+                  {formatLocaleNumber(Number(previewSalesRequest.grandTotal || 0))} {t(settings.currency)}
                 </strong>
               </div>
             </div>
             {previewSalesRequest.reason && (
               <div className="p-2 rounded-md bg-amber-50/70 dark:bg-amber-500/15 border border-amber-200 dark:border-amber-500/30">
-                <span className="font-bold">سبب المرتجع: </span>
+                <span className="font-bold">{t('سبب المرتجع:', 'Return Reason:')} </span>
                 <span>{previewSalesRequest.reason}</span>
               </div>
             )}
             <div className="border border-slate-200 dark:border-[#21375C] rounded-lg overflow-hidden">
-              <table className="w-full text-right text-xs">
+              <table className="w-full text-start text-xs">
                 <thead>
                   <tr className="bg-slate-100 dark:bg-[#172E56] font-bold border-b border-slate-200 dark:border-[#2A436E]">
-                    <th className="p-2">الصنف</th>
-                    <th className="p-2 text-center">الوحدة</th>
-                    <th className="p-2 text-center">الكمية</th>
-                    <th className="p-2 text-center">السعر</th>
+                    <th className="p-2">{t('الصنف', 'Item')}</th>
+                    <th className="p-2 text-center">{t('الوحدة', 'Unit')}</th>
+                    <th className="p-2 text-center">{t('الكمية', 'Quantity')}</th>
+                    <th className="p-2 text-center">{t('السعر', 'Price')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-[#1B2F52]">
                   {(previewSalesRequest.items || []).map((it, idx) => (
                     <tr key={`${it.productId}-${idx}`}>
                       <td className="p-2 font-bold">{it.productName}</td>
-                      <td className="p-2 text-center">{it.unit}</td>
+                      <td className="p-2 text-center">{t(it.unit)}</td>
                       <td className="p-2 text-center font-mono tabular-nums">{it.quantity}</td>
-                      <td className="p-2 text-center font-mono tabular-nums">{Number(it.unitPrice || 0).toLocaleString()}</td>
+                      <td className="p-2 text-center font-mono tabular-nums">{formatLocaleNumber(Number(it.unitPrice || 0))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1647,7 +1662,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                   }}
                   className="h-8 px-3 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
                 >
-                  مراجعة واعتماد
+                  {t('مراجعة واعتماد', 'Review & Approve')}
                 </button>
               )}
               <button
@@ -1655,7 +1670,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                 onClick={() => setPreviewSalesRequest(null)}
                 className="h-8 px-3 rounded-md border border-slate-300 dark:border-[#2A436E] font-bold cursor-pointer"
               >
-                إغلاق
+                {t('إغلاق', 'Close')}
               </button>
             </div>
           </div>
@@ -1666,7 +1681,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
       <Modal
         isOpen={!!previewPurchaseRequest}
         onClose={() => setPreviewPurchaseRequest(null)}
-        title={previewPurchaseRequest ? `تفاصيل طلب مرتجع مشتريات: ${previewPurchaseRequest.requestNumber}` : 'تفاصيل طلب مرتجع مشتريات'}
+        title={previewPurchaseRequest ? `${t('تفاصيل طلب مرتجع مشتريات:', 'Purchase Return Request Details:')} ${previewPurchaseRequest.requestNumber}` : t('تفاصيل طلب مرتجع مشتريات', 'Purchase Return Request Details')}
         subtitle={previewPurchaseRequest?.supplierName}
         maxWidth="2xl"
       >
@@ -1674,55 +1689,55 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
           <div className="space-y-3 text-xs">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-2.5 rounded-lg bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C]">
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الفاتورة الأصلية</span>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('الفاتورة الأصلية', 'Original Invoice')}</span>
                 <strong className="font-mono">{previewPurchaseRequest.originalInvoiceNumber}</strong>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">المندوب / المرسل</span>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('المندوب / المرسل', 'Rep / Sender')}</span>
                 <strong>{previewPurchaseRequest.representativeName || previewPurchaseRequest.requestedByName}</strong>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">التاريخ</span>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('التاريخ', 'Date')}</span>
                 <strong className="font-mono tabular-nums">{previewPurchaseRequest.date}</strong>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">المورد</span>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('المورد', 'Supplier')}</span>
                 <strong>{previewPurchaseRequest.supplierName}</strong>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">المستودع</span>
-                <strong>{previewPurchaseRequest.warehouseName}</strong>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('المستودع', 'Warehouse')}</span>
+                <strong>{t(previewPurchaseRequest.warehouseName)}</strong>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الإجمالي</span>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('الإجمالي', 'Total')}</span>
                 <strong className="font-mono tabular-nums text-[#003589] dark:text-[#85B8FF]">
-                  {Number(previewPurchaseRequest.grandTotal || 0).toLocaleString()} {settings.currency}
+                  {formatLocaleNumber(Number(previewPurchaseRequest.grandTotal || 0))} {t(settings.currency)}
                 </strong>
               </div>
             </div>
             {previewPurchaseRequest.reason && (
               <div className="p-2 rounded-md bg-amber-50/70 dark:bg-amber-500/15 border border-amber-200 dark:border-amber-500/30">
-                <span className="font-bold">سبب المرتجع: </span>
+                <span className="font-bold">{t('سبب المرتجع:', 'Return Reason:')} </span>
                 <span>{previewPurchaseRequest.reason}</span>
               </div>
             )}
             <div className="border border-slate-200 dark:border-[#21375C] rounded-lg overflow-hidden">
-              <table className="w-full text-right text-xs">
+              <table className="w-full text-start text-xs">
                 <thead>
                   <tr className="bg-slate-100 dark:bg-[#172E56] font-bold border-b border-slate-200 dark:border-[#2A436E]">
-                    <th className="p-2">الصنف</th>
-                    <th className="p-2 text-center">الوحدة</th>
-                    <th className="p-2 text-center">الكمية</th>
-                    <th className="p-2 text-center">السعر</th>
+                    <th className="p-2">{t('الصنف', 'Item')}</th>
+                    <th className="p-2 text-center">{t('الوحدة', 'Unit')}</th>
+                    <th className="p-2 text-center">{t('الكمية', 'Quantity')}</th>
+                    <th className="p-2 text-center">{t('السعر', 'Price')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-[#1B2F52]">
                   {(previewPurchaseRequest.items || []).map((it, idx) => (
                     <tr key={`${it.productId}-${idx}`}>
                       <td className="p-2 font-bold">{it.productName}</td>
-                      <td className="p-2 text-center">{it.unit}</td>
+                      <td className="p-2 text-center">{t(it.unit)}</td>
                       <td className="p-2 text-center font-mono tabular-nums">{it.quantity}</td>
-                      <td className="p-2 text-center font-mono tabular-nums">{Number(it.unitPrice || 0).toLocaleString()}</td>
+                      <td className="p-2 text-center font-mono tabular-nums">{formatLocaleNumber(Number(it.unitPrice || 0))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1734,7 +1749,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                 onClick={() => setPreviewPurchaseRequest(null)}
                 className="h-8 px-3 rounded-md border border-slate-300 dark:border-[#2A436E] font-bold cursor-pointer"
               >
-                إغلاق
+                {t('إغلاق', 'Close')}
               </button>
             </div>
           </div>

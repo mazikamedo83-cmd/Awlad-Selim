@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { X } from 'lucide-react';
+import { usePreferences } from '../../context/PreferencesContext';
 
 interface ModalProps {
   isOpen: boolean;
@@ -18,6 +19,7 @@ export const Modal: React.FC<ModalProps> = ({
   children,
   maxWidth = '2xl',
 }) => {
+  const { dir, t } = usePreferences();
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -52,14 +54,14 @@ export const Modal: React.FC<ModalProps> = ({
   }[maxWidth];
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto no-print">
+    <div dir={dir} className="fixed inset-0 z-50 overflow-y-auto no-print">
       {/* Backdrop */}
       <div 
         className="fixed inset-0 bg-slate-900/60 dark:bg-[#040B17]/75 backdrop-blur-xs transition-opacity" 
         onClick={onClose} 
       />
 
-      <div className="flex min-h-full items-center justify-center p-2 text-right">
+      <div className="flex min-h-full items-center justify-center p-2 text-start">
         <div
           role="dialog"
           aria-modal="true"
@@ -75,7 +77,7 @@ export const Modal: React.FC<ModalProps> = ({
             <button
               onClick={onClose}
               className="rounded-md p-1 min-w-[28px] min-h-[28px] flex items-center justify-center text-white/80 hover:bg-white/15 hover:text-white transition-colors shrink-0 cursor-pointer"
-              aria-label="إغلاق"
+              aria-label={t('إغلاق')}
             >
               <X className="h-4 w-4" />
             </button>

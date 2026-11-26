@@ -6,6 +6,8 @@ import {
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useShortcuts } from '../../../context/ShortcutsContext';
+import { usePreferences } from '../../../context/PreferencesContext';
+import { formatLocaleNumber } from '../../../i18n/translator';
 import { Supplier } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
@@ -19,6 +21,7 @@ export const SuppliersView: React.FC = () => {
     addSupplier, updateSupplier, deleteSupplier, recordSupplierPayment, settleSupplierAdvance
   } = useData();
   const { currentUser, hasPermission } = useAuth();
+  const { t, language } = usePreferences();
   const canApproveOverpayment =
     currentUser?.role === 'admin' ||
     currentUser?.role === 'manager' ||
@@ -118,10 +121,10 @@ export const SuppliersView: React.FC = () => {
       return [...list].sort((a, b) => Number(a.currentBalance || 0) - Number(b.currentBalance || 0));
     }
     if (sortBy === 'name') {
-      return [...list].sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+      return [...list].sort((a, b) => a.name.localeCompare(b.name, language));
     }
     return list;
-  }, [suppliers, searchTerm, balanceFilter, sortBy]);
+  }, [suppliers, searchTerm, balanceFilter, sortBy, language]);
 
   const handleOpenAdd = () => {
     const nextCode = `SUPP-${(suppliers.length + 2001)}`;
@@ -164,7 +167,7 @@ export const SuppliersView: React.FC = () => {
     if (isSavingSupplier) return;
     setSupplierFormError(null);
     if (!formData.name.trim()) {
-      setSupplierFormError('يرجى إدخال اسم المورد أو الشركة.');
+      setSupplierFormError(t('يرجى إدخال اسم المورد أو الشركة.', 'Please enter the supplier or company name.'));
       return;
     }
 
@@ -177,7 +180,13 @@ export const SuppliersView: React.FC = () => {
           address: formData.address.trim(),
           notes: formData.notes.trim(),
         });
-        setStatusBanner({ type: 'success', text: `تم تحديث بيانات المورد (${formData.name.trim()}) بنجاح.` });
+        setStatusBanner({
+          type: 'success',
+          text: t(
+            `تم تحديث بيانات المورد (${formData.name.trim()}) بنجاح.`,
+            `Supplier (${formData.name.trim()}) updated successfully.`
+          ),
+        });
       } else {
         await addSupplier({
           code: formData.code.trim(),
@@ -187,11 +196,17 @@ export const SuppliersView: React.FC = () => {
           notes: formData.notes.trim(),
           openingBalance: Number(formData.openingBalance) || 0,
         });
-        setStatusBanner({ type: 'success', text: `تمت إضافة المورد (${formData.name.trim()}) بنجاح.` });
+        setStatusBanner({
+          type: 'success',
+          text: t(
+            `تمت إضافة المورد (${formData.name.trim()}) بنجاح.`,
+            `Supplier (${formData.name.trim()}) added successfully.`
+          ),
+        });
       }
       setIsAddModalOpen(false);
     } catch (err: any) {
-      setSupplierFormError(err?.message || 'تعذر حفظ بيانات المورد');
+      setSupplierFormError(t(err?.message || 'تعذر حفظ بيانات المورد', err?.message || 'Could not save supplier details'));
     } finally {
       setIsSavingSupplier(false);
     }
@@ -202,17 +217,22 @@ export const SuppliersView: React.FC = () => {
     if (isSubmittingPayment) return;
     setPaymentError(null);
     if (!paymentSupplier || paymentAmount <= 0) {
-      setPaymentError('يرجى إدخال مبلغ صحيح أكبر من صفر.');
+      setPaymentError(t('يرجى إدخال مبلغ صحيح أكبر من صفر.', 'Please enter a valid amount greater than zero.'));
       return;
     }
     if (!paymentCashboxId) {
-      setPaymentError('يرجى اختيار الخزينة أو الحساب البنكي المسدد منه.');
+      setPaymentError(t('يرجى اختيار الخزينة أو الحساب البنكي المسدد منه.', 'Please select the cashbox or bank account to pay from.'));
       return;
     }
     const debt = Math.max(0, Number(paymentSupplier.currentBalance || 0));
     const overpayment = Math.max(0, Number((paymentAmount - debt).toFixed(2)));
     if (overpayment > 0.009 && !canApproveOverpayment) {
-      setPaymentError('المبلغ المدخل يتجاوز المستحق للمورد — يتطلب سداد الدفعة الزائدة/المقدمة موافقة المدير أو صلاحية الاعتماد.');
+      setPaymentError(
+        t(
+          'المبلغ المدخل يتجاوز المستحق للمورد — يتطلب سداد الدفعة الزائدة/المقدمة موافقة المدير أو صلاحية الاعتماد.',
+          'Entered amount exceeds supplier balance due — advance/overpayment requires manager or approval permission.'
+        )
+      );
       return;
     }
 
@@ -227,25 +247,31 @@ export const SuppliersView: React.FC = () => {
 
       if (res.success) {
         setPrintData({
-          title: 'سند صرف وسداد نقدية لمورد',
+          title: t('سند صرف وسداد نقدية لمورد', 'Supplier Cash Payment Voucher'),
           docNumber: `PAY-${Date.now().toString().slice(-6)}`,
-          docType: 'سند صرف',
+          docType: t('سند صرف', 'Payment Voucher'),
           date: new Date().toISOString().split('T')[0],
           partyName: paymentSupplier.name,
           partyPhone: paymentSupplier.phone,
           partyAddress: paymentSupplier.address,
           grandTotal: paymentAmount,
           paidAmount: paymentAmount,
-          notes: paymentNotes || 'تم صرف المبلغ نقداً من الخزينة لحساب المورد',
+          notes: paymentNotes || t('تم صرف المبلغ نقداً من الخزينة لحساب المورد', 'Cash disbursed from cashbox to supplier account'),
         });
         setIsPrintModalOpen(true);
-        setStatusBanner({ type: 'success', text: `تم سداد مبلغ ${paymentAmount.toLocaleString()} ${settings.currency} للمورد (${paymentSupplier.name}).` });
+        setStatusBanner({
+          type: 'success',
+          text: t(
+            `تم سداد مبلغ ${formatLocaleNumber(paymentAmount)} ${t(settings.currency)} للمورد (${paymentSupplier.name}).`,
+            `Paid ${formatLocaleNumber(paymentAmount)} ${t(settings.currency)} to supplier (${paymentSupplier.name}).`
+          ),
+        });
         setPaymentSupplier(null);
         setPaymentAmount(0);
         setPaymentNotes('');
         setPaymentError(null);
       } else {
-        setPaymentError(res.error || 'تعذر سداد الدفعة');
+        setPaymentError(t(res.error || 'تعذر سداد الدفعة', res.error || 'Could not record payment'));
       }
     } finally {
       setIsSubmittingPayment(false);
@@ -257,13 +283,19 @@ export const SuppliersView: React.FC = () => {
     setIsDeletingSupplier(true);
     try {
       await deleteSupplier(supplierToDelete.id);
-      setStatusBanner({ type: 'success', text: `تم حذف المورد (${supplierToDelete.name}) بنجاح.` });
+      setStatusBanner({
+        type: 'success',
+        text: t(`تم حذف المورد (${supplierToDelete.name}) بنجاح.`, `Supplier (${supplierToDelete.name}) deleted successfully.`),
+      });
       if (statementSupplier?.id === supplierToDelete.id) {
         setStatementSupplier(null);
       }
       setSupplierToDelete(null);
     } catch (err: any) {
-      setStatusBanner({ type: 'error', text: err?.message || 'تعذر حذف المورد لوجود فواتير أو حركات مالية مرتبطة به.' });
+      setStatusBanner({
+        type: 'error',
+        text: t(err?.message || 'تعذر حذف المورد لوجود فواتير أو حركات مالية مرتبطة به.', err?.message || 'Cannot delete supplier linked to existing invoices or financial transactions.'),
+      });
       setSupplierToDelete(null);
     } finally {
       setIsDeletingSupplier(false);
@@ -283,7 +315,7 @@ export const SuppliersView: React.FC = () => {
     const { openInvoices, availableAdvance } = getSupplierAdvanceInfo(supp);
     const firstInv = openInvoices[0];
     setSettleError(null);
-    setSettleNotes('تسوية دفعة مقدمة على فاتورة المشتريات');
+    setSettleNotes(t('تسوية دفعة مقدمة على فاتورة المشتريات', 'Settle advance payment against purchase invoice'));
     setSettleSupplier(supp);
     setSettleInvoiceId(firstInv?.id || '');
     setSettleAmount(firstInv ? Math.min(availableAdvance, Number(firstInv.remainingAmount || 0)) : 0);
@@ -302,13 +334,16 @@ export const SuppliersView: React.FC = () => {
       if (res.success) {
         setStatusBanner({
           type: 'success',
-          text: `تمت تسوية دفعة مقدمة بمبلغ ${settleAmount.toLocaleString()} ${settings.currency} لصالح المورد (${settleSupplier.name}) دون حركة خزينة.`,
+          text: t(
+            `تمت تسوية دفعة مقدمة بمبلغ ${formatLocaleNumber(settleAmount)} ${t(settings.currency)} لصالح المورد (${settleSupplier.name}) دون حركة خزينة.`,
+            `Settled advance payment of ${formatLocaleNumber(settleAmount)} ${t(settings.currency)} for supplier (${settleSupplier.name}) with no cashbox movement.`
+          ),
         });
         setIsConfirmingSettle(false);
         setSettleSupplier(null);
       } else {
         setIsConfirmingSettle(false);
-        setSettleError(res.error || 'تعذر تنفيذ تسوية الدفعة المقدمة');
+        setSettleError(t(res.error || 'تعذر تنفيذ تسوية الدفعة المقدمة', res.error || 'Could not complete advance settlement'));
       }
     } finally {
       setIsSettlingAdvance(false);
@@ -325,8 +360,8 @@ export const SuppliersView: React.FC = () => {
       typeLabel: string;
       badgeClass: string;
       description: string;
-      credit: number; // له / مشتريات
-      debit: number;  // سداد / مرتجع
+      credit: number;
+      debit: number;
       timestamp: number;
     }> = [];
 
@@ -334,10 +369,10 @@ export const SuppliersView: React.FC = () => {
       events.push({
         id: 'opening-bal',
         date: statementSupplier.createdAt ? statementSupplier.createdAt.split('T')[0] : '2026-01-01',
-        docNumber: 'افتتاحي',
-        typeLabel: 'رصيد أول المدة',
+        docNumber: t('افتتاحي', 'OPENING'),
+        typeLabel: t('رصيد أول المدة', 'Opening Balance'),
         badgeClass: 'bg-slate-100 text-slate-800',
-        description: 'الرصيد الافتتاحي المسجل للمورد',
+        description: t('الرصيد الافتتاحي المسجل للمورد', 'Recorded opening balance for supplier'),
         credit: statementSupplier.openingBalance > 0 ? statementSupplier.openingBalance : 0,
         debit: statementSupplier.openingBalance < 0 ? Math.abs(statementSupplier.openingBalance) : 0,
         timestamp: new Date(statementSupplier.createdAt || '2026-01-01').getTime(),
@@ -357,9 +392,9 @@ export const SuppliersView: React.FC = () => {
           id: inv.id,
           date: inv.date,
           docNumber: inv.invoiceNumber,
-          typeLabel: 'فاتورة مشتريات',
+          typeLabel: t('فاتورة مشتريات', 'Purchase Invoice'),
           badgeClass: 'bg-[#EEF3FA] text-[#011E58]',
-          description: `توريد بضاعة للمستودع (${inv.warehouseName})`,
+          description: t(`توريد بضاعة للمستودع (${t(inv.warehouseName)})`, `Goods supply to warehouse (${t(inv.warehouseName)})`),
           credit: inv.grandTotal,
           debit: cashPaidAtInvoice > 0 ? cashPaidAtInvoice : 0,
           timestamp: new Date(inv.date).getTime(),
@@ -373,9 +408,9 @@ export const SuppliersView: React.FC = () => {
           id: ret.id,
           date: ret.date,
           docNumber: ret.returnNumber,
-          typeLabel: 'مرتجع مشتريات',
+          typeLabel: t('مرتجع مشتريات', 'Purchase Return'),
           badgeClass: 'bg-amber-50 text-amber-800',
-          description: `مرتجع للفاتورة (${ret.originalInvoiceNumber}) - ${ret.reason}`,
+          description: t(`مرتجع للفاتورة (${ret.originalInvoiceNumber}) - ${t(ret.reason)}`, `Return for invoice (${ret.originalInvoiceNumber}) - ${t(ret.reason)}`),
           credit: 0,
           debit: ret.grandTotal,
           timestamp: new Date(ret.date).getTime(),
@@ -389,9 +424,9 @@ export const SuppliersView: React.FC = () => {
           id: tx.id,
           date: tx.date,
           docNumber: tx.transactionNumber,
-          typeLabel: 'سند صرف نقدية',
+          typeLabel: t('سند صرف نقدية', 'Cash Payment Voucher'),
           badgeClass: 'bg-emerald-50 text-emerald-800',
-          description: `سداد من (${tx.cashboxName}) - ${tx.notes || tx.description}`,
+          description: t(`سداد من (${t(tx.cashboxName)}) - ${t(tx.notes || tx.description)}`, `Paid from (${t(tx.cashboxName)}) - ${t(tx.notes || tx.description)}`),
           credit: 0,
           debit: tx.amount,
           timestamp: new Date(tx.date).getTime(),
@@ -404,7 +439,7 @@ export const SuppliersView: React.FC = () => {
       running = running + ev.credit - ev.debit;
       return { ...ev, runningBalance: running };
     });
-  }, [statementSupplier, invoices, invoiceReturns, financialTransactions]);
+  }, [statementSupplier, invoices, invoiceReturns, financialTransactions, t]);
 
   return (
     <div className="space-y-2">
@@ -415,9 +450,12 @@ export const SuppliersView: React.FC = () => {
             <SuppliersTruckIcon className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-sm font-black text-slate-900 tracking-tight">دليل الموردين والمطاحن</h2>
+            <h2 className="text-sm font-black text-slate-900 tracking-tight">{t('دليل الموردين والمطاحن', 'Suppliers & Mills Directory')}</h2>
             <p className="text-[11px] text-slate-500">
-              إدارة حسابات ومستحقات شركات ومصانع الأغذية وسداد الدفعات النقدية
+              {t(
+                'إدارة حسابات ومستحقات شركات ومصانع الأغذية وسداد الدفعات النقدية',
+                'Manage supplier & factory accounts, payables, and cash payments'
+              )}
             </p>
           </div>
         </div>
@@ -427,7 +465,7 @@ export const SuppliersView: React.FC = () => {
           className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-black transition-colors cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5" />
-          <span>إضافة مورد جديد</span>
+          <span>{t('إضافة مورد جديد', 'Add New Supplier')}</span>
         </button>
       </div>
 
@@ -448,7 +486,7 @@ export const SuppliersView: React.FC = () => {
             <span>{statusBanner.text}</span>
           </div>
           <button onClick={() => setStatusBanner(null)} className="underline text-[11px] cursor-pointer">
-            إغلاق
+            {t('إغلاق', 'Close')}
           </button>
         </div>
       )}
@@ -456,70 +494,70 @@ export const SuppliersView: React.FC = () => {
       {/* Compact Supplier Summary Ledger Strip */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-px bg-slate-200 dark:bg-[#21375C] border border-slate-200 dark:border-[#21375C] rounded-lg overflow-hidden text-xs">
         <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
-          <div className="text-[11px] font-bold text-slate-500 dark:text-[#A9BCD9]">إجمالي الموردين المسجلين</div>
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#A9BCD9]">{t('إجمالي الموردين المسجلين', 'Total Registered Suppliers')}</div>
           <div className="text-sm font-black font-mono tabular-nums text-[var(--awlad-navy-950)] dark:text-[#F3F7FC]">
-            {supplierSummary.count} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">مورد</span>
+            {formatLocaleNumber(supplierSummary.count)} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">{t('مورد', 'suppliers')}</span>
           </div>
         </div>
         <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
-          <div className="text-[11px] font-bold text-slate-500 dark:text-[#A9BCD9]">مستحقات للموردين (علينا)</div>
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#A9BCD9]">{t('مستحقات للموردين (علينا)', 'Payable to Suppliers (We Owe)')}</div>
           <div className="text-sm font-black font-mono tabular-nums text-rose-700 dark:text-rose-400">
-            {supplierSummary.totalPayable.toLocaleString()} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">{settings.currency}</span>
+            {formatLocaleNumber(supplierSummary.totalPayable)} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">{t(settings.currency)}</span>
           </div>
         </div>
         <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
-          <div className="text-[11px] font-bold text-slate-500 dark:text-[#A9BCD9]">دفعات مقدمة لدى الموردين (لنا)</div>
+          <div className="text-[11px] font-bold text-slate-500 dark:text-[#A9BCD9]">{t('دفعات مقدمة لدى الموردين (لنا)', 'Advances with Suppliers (Our Credit)')}</div>
           <div className="text-sm font-black font-mono tabular-nums text-emerald-700 dark:text-emerald-400">
-            {supplierSummary.totalAdvance.toLocaleString()} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">{settings.currency}</span>
+            {formatLocaleNumber(supplierSummary.totalAdvance)} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">{t(settings.currency)}</span>
           </div>
         </div>
       </div>
 
       {/* Unified Suppliers Table */}
       <UnifiedDataTable<Supplier>
-        title={`سجل الموردين والمطاحن (${filteredSuppliers.length})`}
-        subtitle="بحث، فرز، كشوف حسابات، وتسوية الدفعات المقدمة"
+        title={t(`سجل الموردين والمطاحن (${formatLocaleNumber(filteredSuppliers.length)})`, `Suppliers & Mills Ledger (${formatLocaleNumber(filteredSuppliers.length)})`)}
+        subtitle={t('بحث، فرز، كشوف حسابات، وتسوية الدفعات المقدمة', 'Search, sort, account statements, and advance settlements')}
         data={filteredSuppliers}
         rowKey={(s) => s.id}
         onRowClick={(s) => setStatementSupplier(s)}
         compact
         searchValue={searchTerm}
         onSearchChange={setSearchTerm}
-        searchPlaceholder="بحث باسم المورد أو الكود أو رقم الهاتف أو العنوان..."
+        searchPlaceholder={t('بحث باسم المورد أو الكود أو رقم الهاتف أو العنوان...', 'Search by supplier name, code, phone, or address...')}
         exportFilename="AWLAD_SELIM_Suppliers"
-        pdfTitle="دليل الموردين والمطاحن"
-        emptyTitle="لا يوجد موردون مسجلون حالياً"
-        emptySubtitle={'انقر على زر "إضافة مورد جديد" لإضافة أول شركة توريد أو مورد للمنظومة.'}
+        pdfTitle={t('دليل الموردين والمطاحن', 'Suppliers & Mills Directory')}
+        emptyTitle={t('لا يوجد موردون مسجلون حالياً', 'No Suppliers Registered Yet')}
+        emptySubtitle={t('انقر على زر "إضافة مورد جديد" لإضافة أول شركة توريد أو مورد للمنظومة.', 'Click "Add New Supplier" to add your first supplier or vendor.')}
         toolbarFilters={
           <div className="flex flex-nowrap items-center gap-1.5 shrink-0">
             <select
-              aria-label="تصفية رصيد المورد"
+              aria-label={t('تصفية رصيد المورد', 'Filter Supplier Balance')}
               value={balanceFilter}
               onChange={(e) => setBalanceFilter(e.target.value as any)}
               className="h-8 shrink-0 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC] outline-hidden focus:border-[var(--awlad-royal-700)]"
             >
-              <option value="all">كل الأرصدة ({suppliers.length})</option>
-              <option value="payable">مستحق للمورد (علينا)</option>
-              <option value="advance">رصيد مقدم (لنا)</option>
-              <option value="settled">حساب متوازن</option>
+              <option value="all">{t(`كل الأرصدة (${formatLocaleNumber(suppliers.length)})`, `All Balances (${formatLocaleNumber(suppliers.length)})`)}</option>
+              <option value="payable">{t('مستحق للمورد (علينا)', 'Payable (We Owe)')}</option>
+              <option value="advance">{t('رصيد مقدم (لنا)', 'Advance Credit (For Us)')}</option>
+              <option value="settled">{t('حساب متوازن', 'Settled Account')}</option>
             </select>
             <select
-              aria-label="ترتيب الموردين"
+              aria-label={t('ترتيب الموردين', 'Sort Suppliers')}
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as any)}
               className="h-8 shrink-0 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC] outline-hidden focus:border-[var(--awlad-royal-700)]"
             >
-              <option value="default">الترتيب الافتراضي</option>
-              <option value="balance_desc">الأعلى مديونية</option>
-              <option value="balance_asc">الأعلى رصيد مقدم</option>
-              <option value="name">ترتيب أبجدي</option>
+              <option value="default">{t('الترتيب الافتراضي', 'Default Order')}</option>
+              <option value="balance_desc">{t('الأعلى مديونية', 'Highest Payable')}</option>
+              <option value="balance_asc">{t('الأعلى رصيد مقدم', 'Highest Advance Credit')}</option>
+              <option value="name">{t('ترتيب أبجدي', 'Alphabetical')}</option>
             </select>
           </div>
         }
         columns={[
           {
             key: 'code',
-            header: 'الكود',
+            header: t('الكود', 'Code'),
             sortValue: (s) => s.code,
             exportValue: (s) => s.code,
             render: (s) => (
@@ -530,14 +568,14 @@ export const SuppliersView: React.FC = () => {
           },
           {
             key: 'name',
-            header: 'اسم المورد / الشركة',
+            header: t('اسم المورد / الشركة', 'Supplier / Company Name'),
             sortValue: (s) => s.name,
             exportValue: (s) => s.name,
             render: (s) => <span className="font-black text-slate-900">{s.name}</span>,
           },
           {
             key: 'phone',
-            header: 'الهاتف',
+            header: t('الهاتف', 'Phone'),
             sortValue: (s) => s.phone,
             exportValue: (s) => s.phone,
             render: (s) => (
@@ -548,14 +586,14 @@ export const SuppliersView: React.FC = () => {
           },
           {
             key: 'address',
-            header: 'العنوان',
+            header: t('العنوان', 'Address'),
             sortValue: (s) => s.address || '',
             exportValue: (s) => s.address || '',
             render: (s) => <span className="text-slate-600">{s.address || '—'}</span>,
           },
           {
             key: 'currentBalance',
-            header: 'الرصيد الحالي',
+            header: t('الرصيد الحالي', 'Current Balance'),
             align: 'center',
             sortValue: (s) => Number(s.currentBalance || 0),
             exportValue: (s) => Number(s.currentBalance || 0),
@@ -570,7 +608,7 @@ export const SuppliersView: React.FC = () => {
                       : 'text-slate-600'
                   }`}
                 >
-                  {Math.abs(Number(supp.currentBalance || 0)).toLocaleString()} {settings.currency}
+                  {formatLocaleNumber(Math.abs(Number(supp.currentBalance || 0)))} {t(settings.currency)}
                 </div>
                 <span
                   className={`inline-block px-1.5 py-0.5 rounded border text-[10px] font-bold ${
@@ -581,14 +619,18 @@ export const SuppliersView: React.FC = () => {
                       : 'bg-slate-100 text-slate-600 border-slate-200'
                   }`}
                 >
-                  {supp.currentBalance < 0 ? 'رصيد لنا (مقدم)' : supp.currentBalance > 0 ? 'مستحق للمورد' : 'متوازن'}
+                  {supp.currentBalance < 0
+                    ? t('رصيد لنا (مقدم)', 'Advance (For Us)')
+                    : supp.currentBalance > 0
+                    ? t('مستحق للمورد', 'Payable to Supplier')
+                    : t('متوازن', 'Settled')}
                 </span>
               </div>
             ),
           },
           {
             key: 'availableAdvance',
-            header: 'مقدم قابل للتسوية',
+            header: t('مقدم قابل للتسوية', 'Settleable Advance'),
             align: 'center',
             sortValue: (s) => getSupplierAdvanceInfo(s).availableAdvance,
             exportValue: (s) => getSupplierAdvanceInfo(s).availableAdvance,
@@ -599,14 +641,14 @@ export const SuppliersView: React.FC = () => {
               }
               return (
                 <span className="font-mono font-bold text-emerald-700 tabular-nums">
-                  {availableAdvance.toLocaleString()} {settings.currency}
+                  {formatLocaleNumber(availableAdvance)} {t(settings.currency)}
                 </span>
               );
             },
           },
           {
             key: 'actions',
-            header: 'الإجراءات',
+            header: t('الإجراءات', 'Actions'),
             align: 'center',
             sortable: false,
             render: (supp) => {
@@ -624,7 +666,7 @@ export const SuppliersView: React.FC = () => {
                     className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-bold text-[11px] whitespace-nowrap cursor-pointer"
                   >
                     <ArrowUpRight className="w-3 h-3" />
-                    <span>سداد دفعة</span>
+                    <span>{t('سداد دفعة', 'Pay')}</span>
                   </button>
                   <button
                     type="button"
@@ -632,7 +674,7 @@ export const SuppliersView: React.FC = () => {
                     className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-md font-bold text-[11px] whitespace-nowrap cursor-pointer"
                   >
                     <FileText className="w-3 h-3" />
-                    <span>كشف الحساب</span>
+                    <span>{t('كشف الحساب', 'Statement')}</span>
                   </button>
                   {availableAdvance > 0 && openInvoices.length > 0 && (currentUser?.role === 'admin' || hasPermission('canManageAccounts')) && (
                     <button
@@ -641,14 +683,14 @@ export const SuppliersView: React.FC = () => {
                       className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] border border-[#DCE6F5] rounded-md font-bold text-[11px] whitespace-nowrap cursor-pointer"
                     >
                       <DollarSign className="w-3 h-3" />
-                      <span>تسوية مقدم</span>
+                      <span>{t('تسوية مقدم', 'Settle Advance')}</span>
                     </button>
                   )}
                   <button
                     type="button"
                     onClick={() => handleOpenEdit(supp)}
                     className="p-1 text-slate-500 hover:text-blue-900 hover:bg-slate-100 rounded-md cursor-pointer"
-                    title="تعديل بيانات المورد"
+                    title={t('تعديل بيانات المورد', 'Edit Supplier Details')}
                   >
                     <Edit className="w-3.5 h-3.5" />
                   </button>
@@ -657,7 +699,7 @@ export const SuppliersView: React.FC = () => {
                       type="button"
                       onClick={() => setSupplierToDelete(supp)}
                       className="p-1 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded-md cursor-pointer"
-                      title="حذف المورد"
+                      title={t('حذف المورد', 'Delete Supplier')}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -669,16 +711,25 @@ export const SuppliersView: React.FC = () => {
         ] as UnifiedColumn<Supplier>[]}
       />
 
-      {/* Supplier Statement Modal (Section 5: فواتير المشتريات المرتبطة، مرتجعات المشتريات، المدفوعات، كشف الحساب) */}
+      {/* Supplier Statement Modal */}
       {statementSupplier && (
         <Modal
           isOpen={!!statementSupplier}
           onClose={() => setStatementSupplier(null)}
-          title={`كشف حساب المورد: ${statementSupplier.name} (${statementSupplier.code})`}
+          title={t(
+            `كشف حساب المورد: ${statementSupplier.name} (${statementSupplier.code})`,
+            `Supplier Statement: ${statementSupplier.name} (${statementSupplier.code})`
+          )}
           subtitle={
             statementSupplier.currentBalance < 0
-              ? `دفعة مقدمة للمورد / رصيد لنا: ${Math.abs(statementSupplier.currentBalance).toLocaleString()} ${settings.currency}`
-              : `الرصيد المستحق الحالي للمورد: ${statementSupplier.currentBalance.toLocaleString()} ${settings.currency}`
+              ? t(
+                  `دفعة مقدمة للمورد / رصيد لنا: ${formatLocaleNumber(Math.abs(statementSupplier.currentBalance))} ${t(settings.currency)}`,
+                  `Supplier Advance / Credit Balance: ${formatLocaleNumber(Math.abs(statementSupplier.currentBalance))} ${t(settings.currency)}`
+                )
+              : t(
+                  `الرصيد المستحق الحالي للمورد: ${formatLocaleNumber(statementSupplier.currentBalance)} ${t(settings.currency)}`,
+                  `Current Payable to Supplier: ${formatLocaleNumber(statementSupplier.currentBalance)} ${t(settings.currency)}`
+                )
           }
           maxWidth="4xl"
         >
@@ -690,7 +741,7 @@ export const SuppliersView: React.FC = () => {
                   className="flex items-center gap-1.5 px-2.5 py-1 bg-[#EEF3FA] text-[#011E58] rounded-md font-mono font-bold border border-[#DCE6F5] hover:bg-[#DCE6F5]"
                 >
                   <Phone className="w-3.5 h-3.5 text-[#003589]" />
-                  <span>{statementSupplier.phone}</span>
+                  <span dir="ltr">{statementSupplier.phone}</span>
                 </a>
                 <span className="text-slate-600">{statementSupplier.address}</span>
               </div>
@@ -698,22 +749,25 @@ export const SuppliersView: React.FC = () => {
                 <button
                   onClick={() => {
                     setPrintData({
-                      title: 'كشف حساب مورد معتمد',
+                      title: t('كشف حساب مورد معتمد', 'Certified Supplier Account Statement'),
                       docNumber: statementSupplier.code,
-                      docType: 'كشف حساب',
+                      docType: t('كشف حساب', 'Account Statement'),
                       date: new Date().toISOString().split('T')[0],
                       partyName: statementSupplier.name,
                       partyPhone: statementSupplier.phone,
                       partyAddress: statementSupplier.address,
                       grandTotal: statementSupplier.currentBalance,
-                      notes: `الرصيد المستحق: ${statementSupplier.currentBalance.toLocaleString()} ${settings.currency}`,
+                      notes: t(
+                        `الرصيد المستحق: ${formatLocaleNumber(statementSupplier.currentBalance)} ${t(settings.currency)}`,
+                        `Balance Due: ${formatLocaleNumber(statementSupplier.currentBalance)} ${t(settings.currency)}`
+                      ),
                     });
                     setIsPrintModalOpen(true);
                   }}
                   className="flex items-center gap-1.5 px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-slate-700 font-bold hover:bg-slate-50 cursor-pointer"
                 >
                   <Printer className="w-3.5 h-3.5 text-blue-900" />
-                  <span>طباعة كشف الحساب</span>
+                  <span>{t('طباعة كشف الحساب', 'Print Statement')}</span>
                 </button>
               </div>
             </div>
@@ -723,29 +777,32 @@ export const SuppliersView: React.FC = () => {
               maxHeightClassName="max-h-96"
               data={supplierMovements}
               rowKey={(mov) => mov.id}
-              searchPlaceholder="بحث برقم المستند أو البيان..."
+              searchPlaceholder={t('بحث برقم المستند أو البيان...', 'Search by document number or description...')}
               exportFilename={`AWLAD_SELIM_Supplier_${statementSupplier.code}`}
-              pdfTitle={`كشف حساب المورد: ${statementSupplier.name}`}
-              emptyTitle="لا توجد فواتير أو حركات مشتريات مسجلة لهذا المورد بعد"
-              emptySubtitle={`الرصيد الافتتاحي هو: ${statementSupplier.openingBalance.toLocaleString()} ${settings.currency}`}
+              pdfTitle={t(`كشف حساب المورد: ${statementSupplier.name}`, `Supplier Statement: ${statementSupplier.name}`)}
+              emptyTitle={t('لا توجد فواتير أو حركات مشتريات مسجلة لهذا المورد بعد', 'No purchase invoices or transactions recorded for this supplier yet')}
+              emptySubtitle={t(
+                `الرصيد الافتتاحي هو: ${formatLocaleNumber(statementSupplier.openingBalance)} ${t(settings.currency)}`,
+                `Opening Balance: ${formatLocaleNumber(statementSupplier.openingBalance)} ${t(settings.currency)}`
+              )}
               columns={[
                 {
                   key: 'date',
-                  header: 'التاريخ',
+                  header: t('التاريخ', 'Date'),
                   sortValue: (m) => m.date,
                   exportValue: (m) => m.date,
                   render: (m) => <span className="font-mono tabular-nums text-slate-600">{m.date}</span>,
                 },
                 {
                   key: 'docNumber',
-                  header: 'رقم المستند',
+                  header: t('رقم المستند', 'Document #'),
                   sortValue: (m) => m.docNumber,
                   exportValue: (m) => m.docNumber,
                   render: (m) => <span className="font-mono font-bold text-blue-900">{m.docNumber}</span>,
                 },
                 {
                   key: 'typeLabel',
-                  header: 'نوع المعاملة',
+                  header: t('نوع المعاملة', 'Transaction Type'),
                   sortValue: (m) => m.typeLabel,
                   exportValue: (m) => m.typeLabel,
                   render: (m) => (
@@ -756,52 +813,57 @@ export const SuppliersView: React.FC = () => {
                 },
                 {
                   key: 'description',
-                  header: 'البيان',
+                  header: t('البيان', 'Description'),
                   sortValue: (m) => m.description,
                   exportValue: (m) => m.description,
                   render: (m) => <span className="text-slate-700">{m.description}</span>,
                 },
                 {
                   key: 'credit',
-                  header: 'له / مشتريات (دائن)',
+                  header: t('له / مشتريات (دائن)', 'Credit / Purchases'),
                   align: 'center',
                   sortValue: (m) => m.credit,
                   exportValue: (m) => m.credit,
                   render: (m) => (
                     <span className="font-mono tabular-nums font-bold text-slate-900">
-                      {m.credit > 0 ? m.credit.toLocaleString() : '—'}
+                      {m.credit > 0 ? formatLocaleNumber(m.credit) : '—'}
                     </span>
                   ),
                 },
                 {
                   key: 'debit',
-                  header: 'سداد / مرتجع (مدين)',
+                  header: t('سداد / مرتجع (مدين)', 'Debit / Payments & Returns'),
                   align: 'center',
                   sortValue: (m) => m.debit,
                   exportValue: (m) => m.debit,
                   render: (m) => (
                     <span className="font-mono tabular-nums font-bold text-emerald-700">
-                      {m.debit > 0 ? m.debit.toLocaleString() : '—'}
+                      {m.debit > 0 ? formatLocaleNumber(m.debit) : '—'}
                     </span>
                   ),
                 },
                 {
                   key: 'runningBalance',
-                  header: 'الرصيد التراكمي',
+                  header: t('الرصيد التراكمي', 'Running Balance'),
                   align: 'center',
                   sortValue: (m) => m.runningBalance,
                   exportValue: (m) => m.runningBalance,
                   render: (m) => (
                     <span className="font-mono font-black text-red-700 tabular-nums">
-                      {Math.abs(m.runningBalance).toLocaleString()}
+                      {formatLocaleNumber(Math.abs(m.runningBalance))}
                     </span>
                   ),
                 },
                 {
                   key: 'direction',
-                  header: 'الاتجاه',
+                  header: t('الاتجاه', 'Direction'),
                   align: 'center',
-                  exportValue: (m) => (m.runningBalance > 0.005 ? 'علينا' : m.runningBalance < -0.005 ? 'لنا (مقدم)' : 'متوازن'),
+                  exportValue: (m) =>
+                    m.runningBalance > 0.005
+                      ? t('علينا', 'Payable')
+                      : m.runningBalance < -0.005
+                      ? t('لنا (مقدم)', 'Advance')
+                      : t('متوازن', 'Settled'),
                   render: (m) => (
                     <span
                       className={`px-2 py-0.5 rounded text-[10px] font-black border ${
@@ -812,7 +874,11 @@ export const SuppliersView: React.FC = () => {
                           : 'bg-slate-100 text-slate-600 border-slate-200'
                       }`}
                     >
-                      {m.runningBalance > 0.005 ? 'علينا' : m.runningBalance < -0.005 ? 'لنا (مقدم)' : 'متوازن'}
+                      {m.runningBalance > 0.005
+                        ? t('علينا', 'Payable')
+                        : m.runningBalance < -0.005
+                        ? t('لنا (مقدم)', 'Advance')
+                        : t('متوازن', 'Settled')}
                     </span>
                   ),
                 },
@@ -825,7 +891,7 @@ export const SuppliersView: React.FC = () => {
                 onClick={() => setStatementSupplier(null)}
                 className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-md cursor-pointer"
               >
-                إغلاق
+                {t('إغلاق', 'Close')}
               </button>
             </div>
           </div>
@@ -836,7 +902,7 @@ export const SuppliersView: React.FC = () => {
       <Modal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
-        title={editingSupplier ? 'تعديل بيانات المورد' : 'إضافة مورد جديد'}
+        title={editingSupplier ? t('تعديل بيانات المورد', 'Edit Supplier Details') : t('إضافة مورد جديد', 'Add New Supplier')}
         maxWidth="md"
       >
         <form onSubmit={handleSaveSupplier} className="space-y-2 text-xs">
@@ -847,7 +913,7 @@ export const SuppliersView: React.FC = () => {
             </div>
           )}
           <div>
-            <label className="block font-bold mb-1">اسم المورد / الشركة:</label>
+            <label className="block font-bold mb-1">{t('اسم المورد / الشركة:', 'Supplier / Company Name:')}</label>
             <input
               type="text"
               required
@@ -857,17 +923,18 @@ export const SuppliersView: React.FC = () => {
             />
           </div>
           <div>
-            <label className="block font-bold mb-1">الهاتف:</label>
+            <label className="block font-bold mb-1">{t('الهاتف:', 'Phone:')}</label>
             <input
               type="tel"
               required
+              dir="ltr"
               value={formData.phone}
               onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
               className="w-full h-8 border border-slate-300 rounded-md px-2 py-1 font-mono"
             />
           </div>
           <div>
-            <label className="block font-bold mb-1">العنوان:</label>
+            <label className="block font-bold mb-1">{t('العنوان:', 'Address:')}</label>
             <input
               type="text"
               value={formData.address}
@@ -877,7 +944,7 @@ export const SuppliersView: React.FC = () => {
           </div>
           {!editingSupplier && (
             <div>
-              <label className="block font-bold mb-1">رصيد أول المدة المستحق له:</label>
+              <label className="block font-bold mb-1">{t('رصيد أول المدة المستحق له:', 'Opening Balance Payable:')}</label>
               <input
                 type="number"
                 placeholder="0.00"
@@ -888,9 +955,11 @@ export const SuppliersView: React.FC = () => {
             </div>
           )}
           <div className="flex justify-end gap-2 pt-2 border-t">
-            <button type="button" onClick={() => setIsAddModalOpen(false)} className="px-2.5 py-1 border border-slate-300 rounded-md font-bold cursor-pointer">إلغاء</button>
+            <button type="button" onClick={() => setIsAddModalOpen(false)} className="px-2.5 py-1 border border-slate-300 rounded-md font-bold cursor-pointer">
+              {t('إلغاء', 'Cancel')}
+            </button>
             <button type="submit" disabled={isSavingSupplier} className="px-3 py-1 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-bold cursor-pointer disabled:opacity-50">
-              {isSavingSupplier ? 'جاري الحفظ...' : 'حفظ المورد'}
+              {isSavingSupplier ? t('جاري الحفظ...', 'Saving...') : t('حفظ المورد', 'Save Supplier')}
             </button>
           </div>
         </form>
@@ -901,13 +970,19 @@ export const SuppliersView: React.FC = () => {
         <Modal
           isOpen={!!paymentSupplier}
           onClose={() => setPaymentSupplier(null)}
-          title={`سداد دفعة للمورد: ${paymentSupplier.name}`}
+          title={t(`سداد دفعة للمورد: ${paymentSupplier.name}`, `Pay Supplier: ${paymentSupplier.name}`)}
           subtitle={
             paymentSupplier.currentBalance > 0
-              ? `المستحق للمورد (علينا): ${paymentSupplier.currentBalance.toLocaleString()} ${settings.currency}`
+              ? t(
+                  `المستحق للمورد (علينا): ${formatLocaleNumber(paymentSupplier.currentBalance)} ${t(settings.currency)}`,
+                  `Payable to Supplier: ${formatLocaleNumber(paymentSupplier.currentBalance)} ${t(settings.currency)}`
+                )
               : paymentSupplier.currentBalance < 0
-              ? `دفعة مقدمة لنا عند المورد: ${Math.abs(paymentSupplier.currentBalance).toLocaleString()} ${settings.currency}`
-              : 'حساب المورد متوازن حالياً (0)'
+              ? t(
+                  `دفعة مقدمة لنا عند المورد: ${formatLocaleNumber(Math.abs(paymentSupplier.currentBalance))} ${t(settings.currency)}`,
+                  `Advance Credit with Supplier: ${formatLocaleNumber(Math.abs(paymentSupplier.currentBalance))} ${t(settings.currency)}`
+                )
+              : t('حساب المورد متوازن حالياً (0)', 'Supplier account is currently settled (0)')
           }
           maxWidth="md"
         >
@@ -919,7 +994,7 @@ export const SuppliersView: React.FC = () => {
               </div>
             )}
             <div>
-              <label className="block font-bold mb-1">المبلغ المسدد ({settings.currency}):</label>
+              <label className="block font-bold mb-1">{t(`المبلغ المسدد (${t(settings.currency)}):`, `Payment Amount (${t(settings.currency)}):`)}</label>
               <input
                 type="number"
                 min="0.01"
@@ -947,16 +1022,22 @@ export const SuppliersView: React.FC = () => {
                     <ShieldAlert className="w-4 h-4 shrink-0" />
                     <span>
                       {canApproveOverpayment
-                        ? 'تنبيه دفعة مقدمة للمورد (رصيد لنا)'
-                        : 'سداد يتجاوز المستحق يتطلب صلاحية اعتماد إدارية'}
+                        ? t('تنبيه دفعة مقدمة للمورد (رصيد لنا)', 'Supplier Advance Overpayment Notice (Credit for Us)')
+                        : t('سداد يتجاوز المستحق يتطلب صلاحية اعتماد إدارية', 'Overpayment Requires Managerial Approval Permission')}
                     </span>
                   </div>
                   <p>
-                    المبلغ المدخل يتجاوز المديونية القائمة ({debt.toLocaleString()} {settings.currency}) بمقدار {overpayment.toLocaleString()} {settings.currency} — سيُسجل كدفعة مقدمة لنا عند المورد.
+                    {t(
+                      `المبلغ المدخل يتجاوز المديونية القائمة (${formatLocaleNumber(debt)} ${t(settings.currency)}) بمقدار ${formatLocaleNumber(overpayment)} ${t(settings.currency)} — سيُسجل كدفعة مقدمة لنا عند المورد.`,
+                      `Entered amount exceeds current payable (${formatLocaleNumber(debt)} ${t(settings.currency)}) by ${formatLocaleNumber(overpayment)} ${t(settings.currency)} — it will be recorded as an advance credit with the supplier.`
+                    )}
                   </p>
                   {!canApproveOverpayment && (
                     <p className="text-[11px] underline">
-                      لا تملك صلاحية اعتماد الدفعة الزائدة للمورد (مسموح للمدير العام / مدير الفرع / صلاحية الاعتماد فقط).
+                      {t(
+                        'لا تملك صلاحية اعتماد الدفعة الزائدة للمورد (مسموح للمدير العام / مدير الفرع / صلاحية الاعتماد فقط).',
+                        'You do not have permission to approve supplier overpayments (allowed for Admin / Branch Manager / Approver only).'
+                      )}
                     </p>
                   )}
                 </div>
@@ -964,7 +1045,7 @@ export const SuppliersView: React.FC = () => {
             })()}
 
             <div>
-              <label className="block font-bold mb-1">الخزينة أو الحساب المسدد منه:</label>
+              <label className="block font-bold mb-1">{t('الخزينة أو الحساب المسدد منه:', 'Paying Cashbox / Bank Account:')}</label>
               <select
                 value={paymentCashboxId}
                 onChange={(e) => setPaymentCashboxId(e.target.value)}
@@ -972,23 +1053,27 @@ export const SuppliersView: React.FC = () => {
               >
                 {cashboxes.map(cb => (
                   <option key={cb.id} value={cb.id}>
-                    {cb.balanceHidden ? `${cb.name} (رصيد محجوب)` : `${cb.name} (رصيدها: ${(cb.currentBalance ?? 0).toLocaleString()})`}
+                    {cb.balanceHidden
+                      ? `${t(cb.name)} (${t('رصيد محجوب', 'Balance Hidden')})`
+                      : `${t(cb.name)} (${t('رصيدها:', 'Balance:')} ${formatLocaleNumber(cb.currentBalance ?? 0)})`}
                   </option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="block font-bold mb-1">ملاحظات الصرف:</label>
+              <label className="block font-bold mb-1">{t('ملاحظات الصرف:', 'Payment Notes:')}</label>
               <input
                 type="text"
                 value={paymentNotes}
                 onChange={(e) => setPaymentNotes(e.target.value)}
-                placeholder="سداد دفعة من حساب المورد..."
+                placeholder={t('سداد دفعة من حساب المورد...', 'Supplier account payment...')}
                 className="w-full h-8 border border-slate-300 rounded-md px-2 py-1"
               />
             </div>
             <div className="flex justify-end gap-2 pt-2 border-t">
-              <button type="button" onClick={() => setPaymentSupplier(null)} className="px-2.5 py-1 border border-slate-300 rounded-md font-bold cursor-pointer">إلغاء</button>
+              <button type="button" onClick={() => setPaymentSupplier(null)} className="px-2.5 py-1 border border-slate-300 rounded-md font-bold cursor-pointer">
+                {t('إلغاء', 'Cancel')}
+              </button>
               <button
                 type="submit"
                 disabled={
@@ -998,7 +1083,7 @@ export const SuppliersView: React.FC = () => {
                 }
                 className="px-3 py-1 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-bold cursor-pointer disabled:opacity-50"
               >
-                {isSubmittingPayment ? 'جاري الصرف...' : 'تأكيد الصرف'}
+                {isSubmittingPayment ? t('جاري الصرف...', 'Processing...') : t('تأكيد الصرف', 'Confirm Payment')}
               </button>
             </div>
           </form>
@@ -1011,9 +1096,16 @@ export const SuppliersView: React.FC = () => {
         onConfirm={handleConfirmDeleteSupplier}
         variant="danger"
         isLoading={isDeletingSupplier}
-        title="تأكيد حذف المورد"
-        message={supplierToDelete ? `هل أنت متأكد من حذف المورد (${supplierToDelete.name})؟ لن يتم الحذف إذا كان مرتبطاً بفواتير أو حركات مالية.` : ''}
-        confirmLabel="حذف المورد"
+        title={t('تأكيد حذف المورد', 'Confirm Delete Supplier')}
+        message={
+          supplierToDelete
+            ? t(
+                `هل أنت متأكد من حذف المورد (${supplierToDelete.name})؟ لن يتم الحذف إذا كان مرتبطاً بفواتير أو حركات مالية.`,
+                `Are you sure you want to delete supplier (${supplierToDelete.name})? Deletion will be blocked if linked to invoices or financial transactions.`
+              )
+            : ''
+        }
+        confirmLabel={t('حذف المورد', 'Delete Supplier')}
       />
 
       {/* Advance Settlement Modal */}
@@ -1021,8 +1113,11 @@ export const SuppliersView: React.FC = () => {
         <Modal
           isOpen={!!settleSupplier}
           onClose={() => !isSettlingAdvance && setSettleSupplier(null)}
-          title={`تسوية دفعة مقدمة للمورد: ${settleSupplier.name}`}
-          subtitle="تسوية داخلية من الرصيد المقدم المتاح على فاتورة مشتريات دون التأثير على الخزائن"
+          title={t(`تسوية دفعة مقدمة للمورد: ${settleSupplier.name}`, `Settle Advance for Supplier: ${settleSupplier.name}`)}
+          subtitle={t(
+            'تسوية داخلية من الرصيد المقدم المتاح على فاتورة مشتريات دون التأثير على الخزائن',
+            'Internal settlement from available advance credit onto a purchase invoice without affecting cashboxes'
+          )}
           maxWidth="md"
         >
           <form
@@ -1031,11 +1126,11 @@ export const SuppliersView: React.FC = () => {
               const { availableAdvance, openInvoices } = getSupplierAdvanceInfo(settleSupplier);
               const inv = openInvoices.find((i) => i.id === settleInvoiceId);
               if (!inv) {
-                setSettleError('يرجى اختيار فاتورة مشتريات مفتوحة للتسوية.');
+                setSettleError(t('يرجى اختيار فاتورة مشتريات مفتوحة للتسوية.', 'Please select an open purchase invoice for settlement.'));
                 return;
               }
               if (settleAmount <= 0 || settleAmount > Math.min(availableAdvance, inv.remainingAmount) + 0.01) {
-                setSettleError('مبلغ التسوية يتجاوز المسموح به على الفاتورة أو الرصيد المقدم المتاح.');
+                setSettleError(t('مبلغ التسوية يتجاوز المسموح به على الفاتورة أو الرصيد المقدم المتاح.', 'Settlement amount exceeds invoice remaining balance or available advance credit.'));
                 return;
               }
               setSettleError(null);
@@ -1050,7 +1145,7 @@ export const SuppliersView: React.FC = () => {
               </div>
             )}
             <div>
-              <label className="block font-bold mb-1">فاتورة المشتريات المفتوحة:</label>
+              <label className="block font-bold mb-1">{t('فاتورة المشتريات المفتوحة:', 'Open Purchase Invoice:')}</label>
               <select
                 value={settleInvoiceId}
                 onChange={(e) => {
@@ -1066,14 +1161,17 @@ export const SuppliersView: React.FC = () => {
               >
                 {getSupplierAdvanceInfo(settleSupplier).openInvoices.map((inv) => (
                   <option key={inv.id} value={inv.id}>
-                    {inv.invoiceNumber} — متبقي: {Number(inv.remainingAmount || 0).toLocaleString()} {settings.currency}
+                    {inv.invoiceNumber} — {t('متبقي:', 'Remaining:')} {formatLocaleNumber(Number(inv.remainingAmount || 0))} {t(settings.currency)}
                   </option>
                 ))}
               </select>
             </div>
             <div>
               <label className="block font-bold mb-1">
-                مبلغ التسوية ({settings.currency}) — المتاح: {getSupplierAdvanceInfo(settleSupplier).availableAdvance.toLocaleString()}
+                {t(
+                  `مبلغ التسوية (${t(settings.currency)}) — المتاح: ${formatLocaleNumber(getSupplierAdvanceInfo(settleSupplier).availableAdvance)}`,
+                  `Settlement Amount (${t(settings.currency)}) — Available: ${formatLocaleNumber(getSupplierAdvanceInfo(settleSupplier).availableAdvance)}`
+                )}
               </label>
               <input
                 type="number"
@@ -1086,7 +1184,7 @@ export const SuppliersView: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block font-bold mb-1">ملاحظات التسوية:</label>
+              <label className="block font-bold mb-1">{t('ملاحظات التسوية:', 'Settlement Notes:')}</label>
               <input
                 type="text"
                 value={settleNotes}
@@ -1100,14 +1198,14 @@ export const SuppliersView: React.FC = () => {
                 onClick={() => setSettleSupplier(null)}
                 className="px-2.5 py-1 border border-slate-300 rounded-md font-bold cursor-pointer"
               >
-                إلغاء
+                {t('إلغاء', 'Cancel')}
               </button>
               <button
                 type="submit"
                 disabled={isSettlingAdvance}
                 className="px-3 py-1 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-bold cursor-pointer disabled:opacity-50"
               >
-                تنفيذ التسوية
+                {t('تنفيذ التسوية', 'Execute Settlement')}
               </button>
             </div>
           </form>
@@ -1120,13 +1218,16 @@ export const SuppliersView: React.FC = () => {
         onConfirm={handleConfirmSettleAdvance}
         variant="warning"
         isLoading={isSettlingAdvance}
-        title="تأكيد تسوية الدفعة المقدمة"
+        title={t('تأكيد تسوية الدفعة المقدمة', 'Confirm Advance Settlement')}
         message={
           settleSupplier
-            ? `سيتم تسوية مبلغ ${settleAmount.toLocaleString()} ${settings.currency} من رصيد الدفعة المقدمة لحساب المورد (${settleSupplier.name}) على الفاتورة المحددة دون أي سحب أو حركة جديدة في الخزينة.`
+            ? t(
+                `سيتم تسوية مبلغ ${formatLocaleNumber(settleAmount)} ${t(settings.currency)} من رصيد الدفعة المقدمة لحساب المورد (${settleSupplier.name}) على الفاتورة المحددة دون أي سحب أو حركة جديدة في الخزينة.`,
+                `An amount of ${formatLocaleNumber(settleAmount)} ${t(settings.currency)} from the advance credit of supplier (${settleSupplier.name}) will be settled against the selected invoice with no new cashbox withdrawal.`
+              )
             : ''
         }
-        confirmLabel="تأكيد التسوية"
+        confirmLabel={t('تأكيد التسوية', 'Confirm Settlement')}
       />
 
       {/* Print Document Modal */}

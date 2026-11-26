@@ -4,6 +4,8 @@ import {
   XCircle, RotateCcw, Calendar, Check 
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
+import { usePreferences } from '../../../context/PreferencesContext';
+import { formatLocaleNumber } from '../../../i18n/translator';
 import { Cheque, InstallmentSchedule } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
@@ -15,6 +17,7 @@ interface ChequesViewProps {
 
 export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
   const { cheques, installments, cashboxes, settings, addCheque, updateChequeStatus, payInstallment } = useData();
+  const { t } = usePreferences();
 
   const [activeTab, setActiveTab] = useState<'cheques' | 'installments'>(initialTab || 'cheques');
   const [searchTerm, setSearchTerm] = useState('');
@@ -74,7 +77,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
     setChequeError(null);
     const numAmt = Number(amount || 0);
     if (!chequeNum.trim() || numAmt <= 0) {
-      setChequeError('يرجى إدخال رقم الشيك ومبلغ أكبر من صفر.');
+      setChequeError(t('يرجى إدخال رقم الشيك ومبلغ أكبر من صفر.', 'Please enter a cheque number and an amount greater than zero.'));
       return;
     }
 
@@ -92,7 +95,10 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
         notes: notes.trim(),
       });
 
-      setStatusBanner({ type: 'success', text: `تم تسجيل الشيك رقم (${chequeNum.trim()}) بنجاح.` });
+      setStatusBanner({
+        type: 'success',
+        text: t(`تم تسجيل الشيك رقم (${chequeNum.trim()}) بنجاح.`, `Cheque No. (${chequeNum.trim()}) recorded successfully.`),
+      });
       setIsAddChequeOpen(false);
       setChequeNum('');
       setBankName('');
@@ -100,7 +106,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
       setPartyName('');
       setNotes('');
     } catch (err: any) {
-      setChequeError(err?.message || 'تعذر حفظ الشيك');
+      setChequeError(err?.message ? t(err.message) : t('تعذر حفظ الشيك', 'Failed to save cheque'));
     } finally {
       setIsSavingCheque(false);
     }
@@ -112,16 +118,19 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
     setCollectError(null);
     if (!collectingCheque) return;
     if (!collectCashboxId) {
-      setCollectError('يرجى اختيار الخزينة أو الحساب البنكي.');
+      setCollectError(t('يرجى اختيار الخزينة أو الحساب البنكي.', 'Please select a cashbox or bank account.'));
       return;
     }
     setIsCollectingCheque(true);
     try {
       await updateChequeStatus(collectingCheque.id, 'collected', collectCashboxId, 'تم تحصيل الشيك وإيداعه بنجاح');
-      setStatusBanner({ type: 'success', text: `تم تحصيل الشيك رقم (${collectingCheque.chequeNumber}) بنجاح.` });
+      setStatusBanner({
+        type: 'success',
+        text: t(`تم تحصيل الشيك رقم (${collectingCheque.chequeNumber}) بنجاح.`, `Cheque No. (${collectingCheque.chequeNumber}) collected successfully.`),
+      });
       setCollectingCheque(null);
     } catch (err: any) {
-      setCollectError(err?.message || 'تعذر تحصيل الشيك');
+      setCollectError(err?.message ? t(err.message) : t('تعذر تحصيل الشيك', 'Failed to collect cheque'));
     } finally {
       setIsCollectingCheque(false);
     }
@@ -132,10 +141,13 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
     setIsRejectingCheque(true);
     try {
       await updateChequeStatus(rejectingCheque.id, 'rejected', undefined, reason || 'شيك مرتد / مرفوض');
-      setStatusBanner({ type: 'success', text: `تم تسجيل رفض/ارتداد الشيك رقم (${rejectingCheque.chequeNumber}).` });
+      setStatusBanner({
+        type: 'success',
+        text: t(`تم تسجيل رفض/ارتداد الشيك رقم (${rejectingCheque.chequeNumber}).`, `Cheque No. (${rejectingCheque.chequeNumber}) marked as rejected/bounced.`),
+      });
       setRejectingCheque(null);
     } catch (err: any) {
-      setStatusBanner({ type: 'error', text: err?.message || 'تعذر تحديث حالة الشيك' });
+      setStatusBanner({ type: 'error', text: err?.message ? t(err.message) : t('تعذر تحديث حالة الشيك', 'Failed to update cheque status') });
       setRejectingCheque(null);
     } finally {
       setIsRejectingCheque(false);
@@ -148,16 +160,22 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
     setInstallmentError(null);
     if (!payingSchedule) return;
     if (!installmentCashboxId) {
-      setInstallmentError('يرجى اختيار الخزينة المودع بها.');
+      setInstallmentError(t('يرجى اختيار الخزينة المودع بها.', 'Please select the deposit cashbox.'));
       return;
     }
     setIsPayingInstallment(true);
     try {
       await payInstallment(payingSchedule.schedule.id, payingSchedule.itemId, payingSchedule.amount, installmentCashboxId);
-      setStatusBanner({ type: 'success', text: `تم تسجيل سداد القسط بمبلغ ${payingSchedule.amount.toLocaleString()} ${settings.currency}.` });
+      setStatusBanner({
+        type: 'success',
+        text: t(
+          `تم تسجيل سداد القسط بمبلغ ${formatLocaleNumber(payingSchedule.amount)} ${t(settings.currency)}.`,
+          `Installment payment of ${formatLocaleNumber(payingSchedule.amount)} ${t(settings.currency)} recorded.`
+        ),
+      });
       setPayingSchedule(null);
     } catch (err: any) {
-      setInstallmentError(err?.message || 'تعذر سداد القسط');
+      setInstallmentError(err?.message ? t(err.message) : t('تعذر سداد القسط', 'Failed to pay installment'));
     } finally {
       setIsPayingInstallment(false);
     }
@@ -180,9 +198,9 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-white px-2.5 py-2 rounded-lg border border-slate-200">
         <div>
-          <h2 className="text-sm font-black text-slate-900 tracking-tight">إدارة الشيكات والأقساط المالية</h2>
+          <h2 className="text-sm font-black text-slate-900 tracking-tight">{t('إدارة الشيكات والأقساط المالية', 'Cheques & Installments Management')}</h2>
           <p className="text-[11px] text-slate-500">
-            متابعة استحقاق الشيكات البنكية، تواريخ التحصيل، وجداول أقساط العملاء
+            {t('متابعة استحقاق الشيكات البنكية، تواريخ التحصيل، وجداول أقساط العملاء', 'Track bank cheque maturities, collection dates, and customer installment schedules')}
           </p>
         </div>
 
@@ -195,7 +213,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-900 hover:bg-blue-950 text-white text-xs font-black cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>إضافة شيك بنكي</span>
+            <span>{t('إضافة شيك بنكي', 'Add Bank Cheque')}</span>
           </button>
         )}
       </div>
@@ -217,7 +235,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
             <span>{statusBanner.text}</span>
           </div>
           <button onClick={() => setStatusBanner(null)} className="underline text-[11px] cursor-pointer">
-            إغلاق
+            {t('إغلاق', 'Close')}
           </button>
         </div>
       )}
@@ -230,7 +248,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
             activeTab === 'cheques' ? 'border-blue-900 text-blue-950' : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
-          الشيكات البنكية ({cheques.length})
+          {t('الشيكات البنكية', 'Bank Cheques')} ({formatLocaleNumber(cheques.length)})
         </button>
         <button
           onClick={() => setActiveTab('installments')}
@@ -238,52 +256,52 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
             activeTab === 'installments' ? 'border-blue-900 text-blue-950' : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
-          جداول متابعة الأقساط ({installments.length})
+          {t('جداول متابعة الأقساط', 'Installment Schedules')} ({formatLocaleNumber(installments.length)})
         </button>
       </div>
 
       {/* Cheques Tab */}
       {activeTab === 'cheques' && (
         <UnifiedDataTable<Cheque>
-          title={`سجل الشيكات البنكية (${filteredCheques.length})`}
+          title={`${t('سجل الشيكات البنكية', 'Bank Cheques Register')} (${formatLocaleNumber(filteredCheques.length)})`}
           data={filteredCheques}
           rowKey={(chq) => chq.id}
           onRowClick={(chq) => setPreviewCheque(chq)}
           compact
           searchValue={searchTerm}
           onSearchChange={setSearchTerm}
-          searchPlaceholder="بحث برقم الشيك أو البنك أو الطرف..."
-          exportFilename="سجل-الشيكات-البنكية"
-          pdfTitle="سجل الشيكات البنكية"
+          searchPlaceholder={t('بحث برقم الشيك أو البنك أو الطرف...', 'Search by cheque #, bank, or party...')}
+          exportFilename={t('سجل-الشيكات-البنكية', 'bank-cheques-register')}
+          pdfTitle={t('سجل الشيكات البنكية', 'Bank Cheques Register')}
           toolbarFilters={
             <div className="flex flex-nowrap items-center gap-1.5 shrink-0">
               <select
-                aria-label="نوع الشيك"
+                aria-label={t('نوع الشيك', 'Cheque Type')}
                 value={chequeTypeFilter}
                 onChange={(e) => setChequeTypeFilter(e.target.value as any)}
                 className="h-8 shrink-0 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC]"
               >
-                <option value="all">كل الأنواع</option>
-                <option value="incoming">شيك وارد (لنا)</option>
-                <option value="outgoing">شيك صادر (علينا)</option>
+                <option value="all">{t('كل الأنواع', 'All Types')}</option>
+                <option value="incoming">{t('شيك وارد (لنا)', 'Incoming Cheque (Receivable)')}</option>
+                <option value="outgoing">{t('شيك صادر (علينا)', 'Outgoing Cheque (Payable)')}</option>
               </select>
               <select
-                aria-label="حالة الشيك"
+                aria-label={t('حالة الشيك', 'Cheque Status')}
                 value={chequeStatusFilter}
                 onChange={(e) => setChequeStatusFilter(e.target.value as any)}
                 className="h-8 shrink-0 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC]"
               >
-                <option value="all">كل الحالات</option>
-                <option value="pending">قيد التحصيل</option>
-                <option value="collected">محصل / مدفوع</option>
-                <option value="rejected">مرفوض / مرتد</option>
+                <option value="all">{t('كل الحالات', 'All Statuses')}</option>
+                <option value="pending">{t('قيد التحصيل', 'Pending Collection')}</option>
+                <option value="collected">{t('محصل / مدفوع', 'Collected / Paid')}</option>
+                <option value="rejected">{t('مرفوض / مرتد', 'Rejected / Bounced')}</option>
               </select>
             </div>
           }
           columns={[
             {
               key: 'chequeNumber',
-              header: 'رقم الشيك',
+              header: t('رقم الشيك', 'Cheque No.'),
               align: 'right',
               sortValue: (c) => c.chequeNumber,
               exportValue: (c) => c.chequeNumber,
@@ -291,20 +309,20 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
             },
             {
               key: 'type',
-              header: 'النوع',
+              header: t('النوع', 'Type'),
               align: 'center',
               sortValue: (c) => c.type,
-              exportValue: (c) => (c.type === 'incoming' ? 'شيك وارد (لنا)' : 'شيك صادر (علينا)'),
+              exportValue: (c) => (c.type === 'incoming' ? t('شيك وارد (لنا)', 'Incoming (Receivable)') : t('شيك صادر (علينا)', 'Outgoing (Payable)')),
               render: (c) =>
                 c.type === 'incoming' ? (
-                  <span className="px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold text-[10px]">شيك وارد (لنا)</span>
+                  <span className="px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold text-[10px]">{t('شيك وارد (لنا)', 'Incoming (Receivable)')}</span>
                 ) : (
-                  <span className="px-2 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-800 font-bold text-[10px]">شيك صادر (علينا)</span>
+                  <span className="px-2 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-800 font-bold text-[10px]">{t('شيك صادر (علينا)', 'Outgoing (Payable)')}</span>
                 ),
             },
             {
               key: 'bankName',
-              header: 'البنك المسحوب عليه',
+              header: t('البنك المسحوب عليه', 'Drawee Bank'),
               align: 'right',
               sortValue: (c) => c.bankName,
               exportValue: (c) => c.bankName,
@@ -312,7 +330,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
             },
             {
               key: 'partyName',
-              header: 'الطرف (الساحب / المستفيد)',
+              header: t('الطرف (الساحب / المستفيد)', 'Party (Drawer / Payee)'),
               align: 'right',
               sortValue: (c) => c.partyName,
               exportValue: (c) => c.partyName,
@@ -320,7 +338,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
             },
             {
               key: 'dueDate',
-              header: 'تاريخ الاستحقاق',
+              header: t('تاريخ الاستحقاق', 'Due Date'),
               align: 'center',
               sortValue: (c) => c.dueDate,
               exportValue: (c) => c.dueDate,
@@ -328,37 +346,43 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
             },
             {
               key: 'amount',
-              header: 'المبلغ',
+              header: t('المبلغ', 'Amount'),
               align: 'center',
               sortValue: (c) => c.amount,
               exportValue: (c) => c.amount,
               render: (c) => (
                 <span className="font-mono font-black text-blue-950 tabular-nums">
-                  {c.amount.toLocaleString()} {settings.currency}
+                  {formatLocaleNumber(c.amount)} {t(settings.currency)}
                 </span>
               ),
             },
             {
               key: 'status',
-              header: 'الحالة',
+              header: t('الحالة', 'Status'),
               align: 'center',
               sortValue: (c) => c.status,
               exportValue: (c) =>
-                c.status === 'collected' ? 'تم التحصيل' : c.status === 'pending' ? 'برسم التحصيل' : c.status === 'rejected' ? 'مرفوض' : 'جديد',
+                c.status === 'collected'
+                  ? t('تم التحصيل', 'Collected')
+                  : c.status === 'pending'
+                  ? t('برسم التحصيل', 'Pending')
+                  : c.status === 'rejected'
+                  ? t('مرفوض', 'Rejected')
+                  : t('جديد', 'New'),
               render: (c) =>
                 c.status === 'collected' ? (
-                  <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px]">تم التحصيل</span>
+                  <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px]">{t('تم التحصيل', 'Collected')}</span>
                 ) : c.status === 'pending' ? (
-                  <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-bold text-[10px]">برسم التحصيل</span>
+                  <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-bold text-[10px]">{t('برسم التحصيل', 'Pending')}</span>
                 ) : c.status === 'rejected' ? (
-                  <span className="px-2 py-0.5 rounded bg-red-100 text-red-800 font-bold text-[10px]">مرفوض</span>
+                  <span className="px-2 py-0.5 rounded bg-red-100 text-red-800 font-bold text-[10px]">{t('مرفوض', 'Rejected')}</span>
                 ) : (
-                  <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-800 font-bold text-[10px]">جديد</span>
+                  <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-800 font-bold text-[10px]">{t('جديد', 'New')}</span>
                 ),
             },
             {
               key: 'actions',
-              header: 'الإجراءات',
+              header: t('الإجراءات', 'Actions'),
               align: 'center',
               sortable: false,
               render: (chq) =>
@@ -371,13 +395,13 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
                       }}
                       className="px-2 py-0.5 bg-blue-900 hover:bg-blue-950 text-white rounded-md font-bold text-[11px] cursor-pointer"
                     >
-                      تحصيل
+                      {t('تحصيل', 'Collect')}
                     </button>
                     <button
                       onClick={() => setRejectingCheque(chq)}
                       className="px-2 py-0.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-md font-bold text-[11px] cursor-pointer"
                     >
-                      رفض / ارتداد
+                      {t('رفض / ارتداد', 'Reject / Bounce')}
                     </button>
                   </div>
                 ) : (
@@ -391,17 +415,17 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
       {/* Installments Tab */}
       {activeTab === 'installments' && (
         <UnifiedDataTable<InstallmentSchedule & { flatItems?: any }>
-          title="جداول متابعة الأقساط"
+          title={t('جداول متابعة الأقساط', 'Installment Schedules')}
           data={installments}
           rowKey={(sch) => sch.id}
           onRowClick={(sch) => setPreviewInstallment(sch)}
           compact
-          exportFilename="جداول-الأقساط"
-          pdfTitle="جداول متابعة الأقساط"
+          exportFilename={t('جداول-الأقساط', 'installment-schedules')}
+          pdfTitle={t('جداول متابعة الأقساط', 'Installment Schedules')}
           columns={[
             {
               key: 'scheduleNumber',
-              header: 'رقم الجدولة',
+              header: t('رقم الجدولة', 'Schedule No.'),
               align: 'center',
               sortValue: (s) => s.scheduleNumber,
               exportValue: (s) => s.scheduleNumber,
@@ -409,7 +433,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
             },
             {
               key: 'customerName',
-              header: 'العميل',
+              header: t('العميل', 'Customer'),
               align: 'right',
               sortValue: (s) => s.customerName,
               exportValue: (s) => s.customerName,
@@ -417,31 +441,31 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
             },
             {
               key: 'totalAmount',
-              header: 'إجمالي الأقساط',
+              header: t('إجمالي الأقساط', 'Total Installments'),
               align: 'center',
               sortValue: (s) => s.totalAmount,
               exportValue: (s) => s.totalAmount,
-              render: (s) => <span className="font-mono font-bold tabular-nums">{s.totalAmount.toLocaleString()} {settings.currency}</span>,
+              render: (s) => <span className="font-mono font-bold tabular-nums">{formatLocaleNumber(s.totalAmount)} {t(settings.currency)}</span>,
             },
             {
               key: 'paidAmount',
-              header: 'المسدد',
+              header: t('المسدد', 'Paid'),
               align: 'center',
               sortValue: (s) => s.paidAmount,
               exportValue: (s) => s.paidAmount,
-              render: (s) => <span className="font-mono font-bold text-emerald-700 tabular-nums">{s.paidAmount.toLocaleString()}</span>,
+              render: (s) => <span className="font-mono font-bold text-emerald-700 tabular-nums">{formatLocaleNumber(s.paidAmount)}</span>,
             },
             {
               key: 'remainingAmount',
-              header: 'المتبقي',
+              header: t('المتبقي', 'Remaining'),
               align: 'center',
               sortValue: (s) => s.remainingAmount,
               exportValue: (s) => s.remainingAmount,
-              render: (s) => <span className="font-mono font-bold text-red-700 tabular-nums">{s.remainingAmount.toLocaleString()} {settings.currency}</span>,
+              render: (s) => <span className="font-mono font-bold text-red-700 tabular-nums">{formatLocaleNumber(s.remainingAmount)} {t(settings.currency)}</span>,
             },
             {
               key: 'nextDue',
-              header: 'الأقساط المستحقة',
+              header: t('الأقساط المستحقة', 'Due Installments'),
               align: 'right',
               sortable: false,
               render: (sch) => (
@@ -450,10 +474,10 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
                     const isOverdue = it.status === 'pending' && new Date(it.dueDate) < new Date();
                     return (
                       <div key={it.id} className="flex items-center justify-between gap-2 text-[11px] py-0.5 border-b border-slate-100 last:border-b-0">
-                        <span className="font-bold">قسط {it.installmentNumber} ({it.dueDate})</span>
-                        <span className="font-mono tabular-nums">{it.amount.toLocaleString()}</span>
+                        <span className="font-bold">{t('قسط', 'Installment')} {it.installmentNumber} ({it.dueDate})</span>
+                        <span className="font-mono tabular-nums">{formatLocaleNumber(it.amount)}</span>
                         {it.status === 'paid' ? (
-                          <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold">مسدد</span>
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold">{t('مسدد', 'Paid')}</span>
                         ) : (
                           <button
                             onClick={() => {
@@ -462,7 +486,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
                             }}
                             className={`px-2 py-0.5 rounded text-[10px] font-bold text-white cursor-pointer ${isOverdue ? 'bg-red-600' : 'bg-blue-900'}`}
                           >
-                            {isOverdue ? 'متأخر · سداد' : 'تسجيل سداد'}
+                            {isOverdue ? t('متأخر · سداد', 'Overdue · Pay') : t('تسجيل سداد', 'Record Payment')}
                           </button>
                         )}
                       </div>
@@ -479,7 +503,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
       <Modal
         isOpen={isAddChequeOpen}
         onClose={() => setIsAddChequeOpen(false)}
-        title="إضافة شيك بنكي جديد"
+        title={t('إضافة شيك بنكي جديد', 'Add New Bank Cheque')}
         maxWidth="md"
       >
         <form onSubmit={handleAddChequeSubmit} className="space-y-2 text-xs">
@@ -490,28 +514,28 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
             </div>
           )}
           <div>
-            <label className="block font-bold mb-1">نوع الشيك:</label>
+            <label className="block font-bold mb-1">{t('نوع الشيك:', 'Cheque Type:')}</label>
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => setChequeType('incoming')}
                 className={`h-8 px-2 border rounded-md font-bold cursor-pointer ${chequeType === 'incoming' ? 'bg-blue-900 text-white' : 'bg-slate-50'}`}
               >
-                شيك وارد (من عميل)
+                {t('شيك وارد (من عميل)', 'Incoming Cheque (Customer)')}
               </button>
               <button
                 type="button"
                 onClick={() => setChequeType('outgoing')}
                 className={`h-8 px-2 border rounded-md font-bold cursor-pointer ${chequeType === 'outgoing' ? 'bg-blue-900 text-white' : 'bg-slate-50'}`}
               >
-                شيك صادر (لمورد)
+                {t('شيك صادر (لمورد)', 'Outgoing Cheque (Supplier)')}
               </button>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block font-bold mb-1">رقم الشيك:</label>
+              <label className="block font-bold mb-1">{t('رقم الشيك:', 'Cheque No.:')}</label>
               <input
                 type="text"
                 required
@@ -522,7 +546,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
             </div>
 
             <div>
-              <label className="block font-bold mb-1">البنك:</label>
+              <label className="block font-bold mb-1">{t('البنك:', 'Bank:')}</label>
               <input
                 type="text"
                 required
@@ -534,7 +558,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
           </div>
 
           <div>
-            <label className="block font-bold mb-1">الطرف (العميل أو المورد):</label>
+            <label className="block font-bold mb-1">{t('الطرف (العميل أو المورد):', 'Party (Customer or Supplier):')}</label>
             <input
               type="text"
               required
@@ -546,7 +570,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
 
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block font-bold mb-1">المبلغ ({settings.currency}):</label>
+              <label className="block font-bold mb-1">{t('المبلغ', 'Amount')} ({t(settings.currency)}):</label>
               <input
                 type="number"
                 min="1"
@@ -558,7 +582,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
               />
             </div>
             <div>
-              <label className="block font-bold mb-1">تاريخ الاستحقاق:</label>
+              <label className="block font-bold mb-1">{t('تاريخ الاستحقاق:', 'Due Date:')}</label>
               <input
                 type="date"
                 required
@@ -570,9 +594,11 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
           </div>
 
           <div className="flex justify-end gap-2 pt-2 border-t">
-            <button type="button" onClick={() => setIsAddChequeOpen(false)} className="px-2.5 py-1 border border-slate-300 rounded-md font-bold cursor-pointer">إلغاء</button>
+            <button type="button" onClick={() => setIsAddChequeOpen(false)} className="px-2.5 py-1 border border-slate-300 rounded-md font-bold cursor-pointer">
+              {t('إلغاء', 'Cancel')}
+            </button>
             <button type="submit" disabled={isSavingCheque} className="px-3 py-1 bg-blue-900 text-white rounded-md font-bold cursor-pointer disabled:opacity-50">
-              {isSavingCheque ? 'جاري الحفظ...' : 'حفظ الشيك'}
+              {isSavingCheque ? t('جاري الحفظ...', 'Saving...') : t('حفظ الشيك', 'Save Cheque')}
             </button>
           </div>
         </form>
@@ -583,7 +609,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
         <Modal
           isOpen={!!collectingCheque}
           onClose={() => setCollectingCheque(null)}
-          title={`تحصيل الشيك رقم ${collectingCheque.chequeNumber}`}
+          title={t(`تحصيل الشيك رقم ${collectingCheque.chequeNumber}`, `Collect Cheque #${collectingCheque.chequeNumber}`)}
           maxWidth="md"
         >
           <form onSubmit={handleConfirmCollect} className="space-y-2 text-xs">
@@ -594,27 +620,29 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
               </div>
             )}
             <div className="p-2 bg-slate-50 rounded-md border border-slate-200 space-y-1">
-              <p>البنك: <strong>{collectingCheque.bankName}</strong></p>
-              <p>المبلغ: <strong className="font-mono text-emerald-800">{collectingCheque.amount.toLocaleString()} {settings.currency}</strong></p>
+              <p>{t('البنك:', 'Bank:')} <strong>{collectingCheque.bankName}</strong></p>
+              <p>{t('المبلغ:', 'Amount:')} <strong className="font-mono text-emerald-800">{formatLocaleNumber(collectingCheque.amount)} {t(settings.currency)}</strong></p>
             </div>
 
             <div>
-              <label className="block font-bold mb-1">الخزينة أو الحساب البنكي المودع به:</label>
+              <label className="block font-bold mb-1">{t('الخزينة أو الحساب البنكي المودع به:', 'Deposit Cashbox or Bank Account:')}</label>
               <select
                 value={collectCashboxId}
                 onChange={(e) => setCollectCashboxId(e.target.value)}
                 className="w-full h-8 border border-slate-300 rounded-md px-2 py-1 font-bold bg-white"
               >
                 {cashboxes.map(cb => (
-                  <option key={cb.id} value={cb.id}>{cb.name}</option>
+                  <option key={cb.id} value={cb.id}>{t(cb.name)}</option>
                 ))}
               </select>
             </div>
 
             <div className="flex justify-end gap-2 pt-2 border-t">
-              <button type="button" onClick={() => setCollectingCheque(null)} className="px-2.5 py-1 border border-slate-300 rounded-md font-bold cursor-pointer">إلغاء</button>
+              <button type="button" onClick={() => setCollectingCheque(null)} className="px-2.5 py-1 border border-slate-300 rounded-md font-bold cursor-pointer">
+                {t('إلغاء', 'Cancel')}
+              </button>
               <button type="submit" disabled={isCollectingCheque} className="px-3 py-1 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-bold cursor-pointer disabled:opacity-50">
-                {isCollectingCheque ? 'جاري التحصيل...' : 'تأكيد التحصيل'}
+                {isCollectingCheque ? t('جاري التحصيل...', 'Collecting...') : t('تأكيد التحصيل', 'Confirm Collection')}
               </button>
             </div>
           </form>
@@ -626,7 +654,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
         <Modal
           isOpen={!!payingSchedule}
           onClose={() => setPayingSchedule(null)}
-          title="سداد قسط العميل"
+          title={t('سداد قسط العميل', 'Pay Customer Installment')}
           maxWidth="md"
         >
           <form onSubmit={handlePayInstallmentSubmit} className="space-y-2 text-xs">
@@ -637,7 +665,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
               </div>
             )}
             <div>
-              <label className="block font-bold mb-1">المبلغ المسدد ({settings.currency}):</label>
+              <label className="block font-bold mb-1">{t('المبلغ المسدد', 'Paid Amount')} ({t(settings.currency)}):</label>
               <input
                 type="number"
                 min="1"
@@ -649,22 +677,24 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
             </div>
 
             <div>
-              <label className="block font-bold mb-1">الخزينة المودع بها:</label>
+              <label className="block font-bold mb-1">{t('الخزينة المودع بها:', 'Deposit Cashbox:')}</label>
               <select
                 value={installmentCashboxId}
                 onChange={(e) => setInstallmentCashboxId(e.target.value)}
                 className="w-full h-8 border border-slate-300 rounded-md px-2 py-1 font-bold bg-white"
               >
                 {cashboxes.map(cb => (
-                  <option key={cb.id} value={cb.id}>{cb.name}</option>
+                  <option key={cb.id} value={cb.id}>{t(cb.name)}</option>
                 ))}
               </select>
             </div>
 
             <div className="flex justify-end gap-2 pt-2 border-t">
-              <button type="button" onClick={() => setPayingSchedule(null)} className="px-2.5 py-1 border border-slate-300 rounded-md font-bold cursor-pointer">إلغاء</button>
+              <button type="button" onClick={() => setPayingSchedule(null)} className="px-2.5 py-1 border border-slate-300 rounded-md font-bold cursor-pointer">
+                {t('إلغاء', 'Cancel')}
+              </button>
               <button type="submit" disabled={isPayingInstallment} className="px-3 py-1 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-bold cursor-pointer disabled:opacity-50">
-                {isPayingInstallment ? 'جاري التسديد...' : 'تأكيد سداد القسط'}
+                {isPayingInstallment ? t('جاري التسديد...', 'Processing...') : t('تأكيد سداد القسط', 'Confirm Installment Payment')}
               </button>
             </div>
           </form>
@@ -677,56 +707,63 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
         onConfirm={handleConfirmRejectCheque}
         variant="danger"
         requireInput
-        inputLabel="سبب رفض / ارتداد الشيك:"
-        inputPlaceholder="مثال: عدم كفاية الرصيد أو خطأ في التوقيع..."
+        inputLabel={t('سبب رفض / ارتداد الشيك:', 'Rejection / Bounce Reason:')}
+        inputPlaceholder={t('مثال: عدم كفاية الرصيد أو خطأ في التوقيع...', 'e.g., Insufficient funds or signature mismatch...')}
         isLoading={isRejectingCheque}
-        title="تأكيد رفض الشيك البنكي"
-        message={rejectingCheque ? `تسجيل ارتداد الشيك رقم (${rejectingCheque.chequeNumber}) الخاص بـ (${rejectingCheque.partyName}).` : ''}
-        confirmLabel="تأكيد الرفض"
+        title={t('تأكيد رفض الشيك البنكي', 'Confirm Cheque Rejection')}
+        message={
+          rejectingCheque
+            ? t(
+                `تسجيل ارتداد الشيك رقم (${rejectingCheque.chequeNumber}) الخاص بـ (${rejectingCheque.partyName}).`,
+                `Record bounced/rejected status for Cheque #${rejectingCheque.chequeNumber} (${rejectingCheque.partyName}).`
+              )
+            : ''
+        }
+        confirmLabel={t('تأكيد الرفض', 'Confirm Rejection')}
       />
 
       {/* Preview Cheque Detail Modal */}
       <Modal
         isOpen={!!previewCheque}
         onClose={() => setPreviewCheque(null)}
-        title={previewCheque ? `تفاصيل الشيك رقم ${previewCheque.chequeNumber}` : 'تفاصيل الشيك'}
+        title={previewCheque ? t(`تفاصيل الشيك رقم ${previewCheque.chequeNumber}`, `Cheque Details #${previewCheque.chequeNumber}`) : t('تفاصيل الشيك', 'Cheque Details')}
         maxWidth="md"
       >
         {previewCheque && (
           <div className="space-y-3 text-xs">
             <div className="grid grid-cols-2 gap-2 p-2.5 rounded-lg bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C]">
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">رقم الشيك</span>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('رقم الشيك', 'Cheque No.')}</span>
                 <strong className="font-mono text-slate-900 dark:text-[#F3F7FC]">{previewCheque.chequeNumber}</strong>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">النوع</span>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('النوع', 'Type')}</span>
                 <strong className="text-slate-900 dark:text-[#F3F7FC]">
-                  {previewCheque.type === 'incoming' ? 'شيك وارد (لنا)' : 'شيك صادر (علينا)'}
+                  {previewCheque.type === 'incoming' ? t('شيك وارد (لنا)', 'Incoming Cheque (Receivable)') : t('شيك صادر (علينا)', 'Outgoing Cheque (Payable)')}
                 </strong>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">البنك المسحوب عليه</span>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('البنك المسحوب عليه', 'Drawee Bank')}</span>
                 <strong className="text-slate-900 dark:text-[#F3F7FC]">{previewCheque.bankName}</strong>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الطرف</span>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('الطرف', 'Party')}</span>
                 <strong className="text-slate-900 dark:text-[#F3F7FC]">{previewCheque.partyName}</strong>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">تاريخ الاستحقاق</span>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('تاريخ الاستحقاق', 'Due Date')}</span>
                 <strong className="font-mono tabular-nums text-slate-900 dark:text-[#F3F7FC]">{previewCheque.dueDate}</strong>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">المبلغ</span>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('المبلغ', 'Amount')}</span>
                 <strong className="font-mono tabular-nums text-blue-950 dark:text-[#85B8FF]">
-                  {previewCheque.amount.toLocaleString()} {settings.currency}
+                  {formatLocaleNumber(previewCheque.amount)} {t(settings.currency)}
                 </strong>
               </div>
             </div>
             {previewCheque.notes && (
               <div className="p-2 rounded-md bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C]">
-                <span className="font-bold text-slate-600 dark:text-[#97AECE]">ملاحظات: </span>
+                <span className="font-bold text-slate-600 dark:text-[#97AECE]">{t('ملاحظات:', 'Notes:')} </span>
                 <span className="text-slate-900 dark:text-[#EEF4FC]">{previewCheque.notes}</span>
               </div>
             )}
@@ -743,7 +780,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
                     }}
                     className="h-8 px-3 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
                   >
-                    تحصيل الشيك
+                    {t('تحصيل الشيك', 'Collect Cheque')}
                   </button>
                   <button
                     type="button"
@@ -754,7 +791,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
                     }}
                     className="h-8 px-3 rounded-md bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold cursor-pointer"
                   >
-                    رفض / ارتداد
+                    {t('رفض / ارتداد', 'Reject / Bounce')}
                   </button>
                 </>
               )}
@@ -763,7 +800,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
                 onClick={() => setPreviewCheque(null)}
                 className="h-8 px-3 rounded-md border border-slate-300 dark:border-[#2A436E] font-bold cursor-pointer"
               >
-                إغلاق
+                {t('إغلاق', 'Close')}
               </button>
             </div>
           </div>
@@ -774,7 +811,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
       <Modal
         isOpen={!!previewInstallment}
         onClose={() => setPreviewInstallment(null)}
-        title={previewInstallment ? `تفاصيل جدولة الأقساط (${previewInstallment.scheduleNumber})` : 'تفاصيل الأقساط'}
+        title={previewInstallment ? t(`تفاصيل جدولة الأقساط (${previewInstallment.scheduleNumber})`, `Installment Schedule Details (${previewInstallment.scheduleNumber})`) : t('تفاصيل الأقساط', 'Installment Details')}
         subtitle={previewInstallment?.customerName}
         maxWidth="lg"
       >
@@ -782,40 +819,40 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
           <div className="space-y-3 text-xs">
             <div className="grid grid-cols-3 gap-2 p-2.5 rounded-lg bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C]">
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الإجمالي</span>
-                <strong className="font-mono tabular-nums">{previewInstallment.totalAmount.toLocaleString()} {settings.currency}</strong>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('الإجمالي', 'Total')}</span>
+                <strong className="font-mono tabular-nums">{formatLocaleNumber(previewInstallment.totalAmount)} {t(settings.currency)}</strong>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">المسدد</span>
-                <strong className="font-mono tabular-nums text-emerald-700 dark:text-emerald-400">{previewInstallment.paidAmount.toLocaleString()} {settings.currency}</strong>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('المسدد', 'Paid')}</span>
+                <strong className="font-mono tabular-nums text-emerald-700 dark:text-emerald-400">{formatLocaleNumber(previewInstallment.paidAmount)} {t(settings.currency)}</strong>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">المتبقي</span>
-                <strong className="font-mono tabular-nums text-red-700 dark:text-red-400">{previewInstallment.remainingAmount.toLocaleString()} {settings.currency}</strong>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('المتبقي', 'Remaining')}</span>
+                <strong className="font-mono tabular-nums text-red-700 dark:text-red-400">{formatLocaleNumber(previewInstallment.remainingAmount)} {t(settings.currency)}</strong>
               </div>
             </div>
 
             <div className="border border-slate-200 dark:border-[#21375C] rounded-lg overflow-hidden">
-              <table className="w-full text-right text-xs">
+              <table className="w-full text-start text-xs">
                 <thead>
                   <tr className="bg-slate-100 dark:bg-[#172E56] font-bold border-b border-slate-200 dark:border-[#2A436E]">
-                    <th className="p-2">القسط</th>
-                    <th className="p-2 text-center">تاريخ الاستحقاق</th>
-                    <th className="p-2 text-center">المبلغ</th>
-                    <th className="p-2 text-center">المسدد</th>
-                    <th className="p-2 text-center">الحالة</th>
+                    <th className="p-2">{t('القسط', 'Installment')}</th>
+                    <th className="p-2 text-center">{t('تاريخ الاستحقاق', 'Due Date')}</th>
+                    <th className="p-2 text-center">{t('المبلغ', 'Amount')}</th>
+                    <th className="p-2 text-center">{t('المسدد', 'Paid')}</th>
+                    <th className="p-2 text-center">{t('الحالة', 'Status')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-[#1B2F52]">
                   {previewInstallment.items.map((it) => (
                     <tr key={it.id}>
-                      <td className="p-2 font-bold">قسط {it.installmentNumber}</td>
+                      <td className="p-2 font-bold">{t('قسط', 'Installment')} {it.installmentNumber}</td>
                       <td className="p-2 text-center font-mono tabular-nums">{it.dueDate}</td>
-                      <td className="p-2 text-center font-mono tabular-nums font-bold">{it.amount.toLocaleString()}</td>
-                      <td className="p-2 text-center font-mono tabular-nums">{it.paidAmount.toLocaleString()}</td>
+                      <td className="p-2 text-center font-mono tabular-nums font-bold">{formatLocaleNumber(it.amount)}</td>
+                      <td className="p-2 text-center font-mono tabular-nums">{formatLocaleNumber(it.paidAmount)}</td>
                       <td className="p-2 text-center">
                         {it.status === 'paid' ? (
-                          <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px]">مسدد</span>
+                          <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px]">{t('مسدد', 'Paid')}</span>
                         ) : (
                           <button
                             type="button"
@@ -827,7 +864,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
                             }}
                             className="px-2 py-0.5 rounded bg-[#003589] text-white font-bold text-[10px] cursor-pointer"
                           >
-                            تسجيل سداد
+                            {t('تسجيل سداد', 'Record Payment')}
                           </button>
                         )}
                       </td>
@@ -843,7 +880,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
                 onClick={() => setPreviewInstallment(null)}
                 className="h-8 px-3 rounded-md border border-slate-300 dark:border-[#2A436E] font-bold cursor-pointer"
               >
-                إغلاق
+                {t('إغلاق', 'Close')}
               </button>
             </div>
           </div>

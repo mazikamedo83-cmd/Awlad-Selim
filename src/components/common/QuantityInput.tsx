@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Minus, Plus } from 'lucide-react';
 import { clampQuantity, formatQuantity, normalizeNumericText, parseQuantity, round3 } from '../../utils/quantity';
+import { usePreferences } from '../../context/PreferencesContext';
 
 export interface QuantityInputProps {
   value: number | '';
@@ -29,7 +30,7 @@ export const QuantityInput: React.FC<QuantityInputProps> = ({
   allowDecimals = true,
   showSteppers = false,
   onRemoveWhenZero,
-  ariaLabel = 'الكمية',
+  ariaLabel,
   inputClassName,
   className = '',
   inputRef,
@@ -37,6 +38,8 @@ export const QuantityInput: React.FC<QuantityInputProps> = ({
   disabled = false,
   placeholder,
 }) => {
+  const { t } = usePreferences();
+  const resolvedAriaLabel = ariaLabel ?? t('الكمية', 'Quantity');
   const [text, setText] = useState<string>(() => (value === '' ? '' : formatQuantity(value)));
   const [isFocused, setIsFocused] = useState(false);
 
@@ -129,7 +132,7 @@ export const QuantityInput: React.FC<QuantityInputProps> = ({
         onKeyDown={onKeyDown}
         disabled={disabled}
         placeholder={placeholder}
-        aria-label={ariaLabel}
+        aria-label={resolvedAriaLabel}
         className={inputClassName || defaultInputCls}
       />
     );
@@ -141,7 +144,7 @@ export const QuantityInput: React.FC<QuantityInputProps> = ({
         type="button"
         onClick={handleDecrement}
         disabled={disabled || ((Number(value) || 0) <= min && !onRemoveWhenZero)}
-        aria-label={`إنقاص ${ariaLabel}`}
+        aria-label={t(`إنقاص ${resolvedAriaLabel}`, `Decrease ${resolvedAriaLabel}`)}
         className="min-h-[32px] min-w-[32px] flex items-center justify-center rounded-md border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold disabled:opacity-40 cursor-pointer"
       >
         <Minus className="w-3.5 h-3.5" />
@@ -165,7 +168,7 @@ export const QuantityInput: React.FC<QuantityInputProps> = ({
         onKeyDown={onKeyDown}
         disabled={disabled}
         placeholder={placeholder}
-        aria-label={ariaLabel}
+        aria-label={resolvedAriaLabel}
         className={inputClassName || defaultInputCls}
       />
 
@@ -173,7 +176,7 @@ export const QuantityInput: React.FC<QuantityInputProps> = ({
         type="button"
         onClick={handleIncrement}
         disabled={disabled || (max !== undefined && (Number(value) || 0) >= max)}
-        aria-label={`زيادة ${ariaLabel}`}
+        aria-label={t(`زيادة ${resolvedAriaLabel}`, `Increase ${resolvedAriaLabel}`)}
         className="min-h-[32px] min-w-[32px] flex items-center justify-center rounded-md border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold disabled:opacity-40 cursor-pointer"
       >
         <Plus className="w-3.5 h-3.5" />

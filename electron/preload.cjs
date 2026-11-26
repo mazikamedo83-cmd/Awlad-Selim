@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('awladDesktop', {
   openDataFolder: () => ipcRenderer.invoke('awlad:open-data-folder'),
   openBackupsFolder: () => ipcRenderer.invoke('awlad:open-backups-folder'),
   copyText: (text) => ipcRenderer.invoke('awlad:copy-text', text),
+  setLanguage: (lang) => ipcRenderer.invoke('awlad:set-language', lang),
   offlineDb: {
     get: (namespace, key) => ipcRenderer.invoke('awlad:offline-kv-get', namespace, key),
     set: (namespace, key, value) => ipcRenderer.invoke('awlad:offline-kv-set', namespace, key, value),

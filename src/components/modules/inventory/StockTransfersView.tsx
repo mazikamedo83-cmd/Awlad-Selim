@@ -6,6 +6,8 @@ import {
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useShortcuts } from '../../../context/ShortcutsContext';
+import { usePreferences } from '../../../context/PreferencesContext';
+import { formatLocaleNumber } from '../../../i18n/translator';
 import { StockTransferRequest, Invoice } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { ProductSearchSelect } from '../../common/ProductSearchSelect';
@@ -14,12 +16,12 @@ import { exportToExcel } from '../../common/ExcelExporter';
 import { exportTableToPdf } from '../../common/PdfExporter';
 import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 
-const TRANSFER_STATUS_META: Record<StockTransferRequest['status'], { label: string; cls: string }> = {
-  draft: { label: 'مسودة', cls: 'bg-slate-100 text-slate-700 border-slate-300' },
-  submitted: { label: 'بانتظار الاعتماد', cls: 'bg-amber-100 text-amber-800 border-amber-300' },
-  approved: { label: 'معتمد (جاهز للتنفيذ)', cls: 'bg-blue-100 text-blue-800 border-blue-300' },
-  rejected: { label: 'مرفوض', cls: 'bg-red-100 text-red-800 border-red-300' },
-  executed: { label: 'منفذ ومُرحّل', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+const TRANSFER_STATUS_META: Record<StockTransferRequest['status'], { labelAr: string; labelEn: string; cls: string }> = {
+  draft: { labelAr: 'مسودة', labelEn: 'Draft', cls: 'bg-slate-100 text-slate-700 border-slate-300' },
+  submitted: { labelAr: 'بانتظار الاعتماد', labelEn: 'Pending Approval', cls: 'bg-amber-100 text-amber-800 border-amber-300' },
+  approved: { labelAr: 'معتمد (جاهز للتنفيذ)', labelEn: 'Approved (Ready)', cls: 'bg-blue-100 text-blue-800 border-blue-300' },
+  rejected: { labelAr: 'مرفوض', labelEn: 'Rejected', cls: 'bg-red-100 text-red-800 border-red-300' },
+  executed: { labelAr: 'منفذ ومُرحّل', labelEn: 'Executed & Posted', cls: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
 };
 
 interface CreateStockTransferModalProps {
@@ -34,6 +36,8 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
   onCreated,
 }) => {
   const { warehouses, representatives, products, settings, createStockTransferRequest, submitStockTransferRequest } = useData();
+  const { t, isLtr, locale } = usePreferences();
+  const fmt = (n: number) => formatLocaleNumber(n);
   const [sourceMode, setSourceMode] = useState<'warehouse' | 'rep'>('warehouse');
   const [targetMode, setTargetMode] = useState<'warehouse' | 'rep'>('warehouse');
   const [sourceWarehouseId, setSourceWarehouseId] = useState(warehouses[0]?.id || '');
@@ -142,13 +146,13 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
     setError(null);
     const prod = products.find((p) => p.id === pickedProductId);
     if (!prod) {
-      setError('يرجى البحث واختيار الصنف أولاً');
+      setError(t('يرجى البحث واختيار الصنف أولاً', 'Please search and select a product first'));
       searchInputRef.current?.focus();
       return;
     }
     const qtyVal = Number(pickedQty || 0);
     if (qtyVal <= 0) {
-      setError('يرجى إدخال كمية صالحة أكبر من الصفر');
+      setError(t('يرجى إدخال كمية صالحة أكبر من الصفر', 'Please enter a valid quantity greater than zero'));
       qtyInputRef.current?.focus();
       return;
     }
@@ -161,7 +165,11 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
       .reduce((s, it) => s + it.requestedQty * it.unitFactor, 0);
 
     if (!settings.allowNegativeStock && effectiveSourceWarehouseId && requestedBaseQty + alreadyRequestedBase > available) {
-      setError(`الكمية المطلوبة (${requestedBaseQty + alreadyRequestedBase} ${prod.baseUnit}) تتجاوز الرصيد المتاح بالمصدر (${available} ${prod.baseUnit})`);
+      setError(
+        isLtr
+          ? `Requested quantity (${fmt(requestedBaseQty + alreadyRequestedBase)} ${t(prod.baseUnit)}) exceeds available balance at source (${fmt(available)} ${t(prod.baseUnit)})`
+          : `الكمية المطلوبة (${fmt(requestedBaseQty + alreadyRequestedBase)} ${prod.baseUnit}) تتجاوز الرصيد المتاح بالمصدر (${fmt(available)} ${prod.baseUnit})`
+      );
       return;
     }
 
@@ -207,31 +215,31 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
     const tRep = representatives.find((r) => r.id === targetRepId);
 
     if (sourceMode === 'warehouse' && !sourceWarehouseId) {
-      setError('يرجى اختيار المستودع المصدر');
+      setError(t('يرجى اختيار المستودع المصدر', 'Please select a source warehouse'));
       return;
     }
     if (sourceMode === 'rep' && !sRep) {
-      setError('يرجى اختيار المندوب المصدر');
+      setError(t('يرجى اختيار المندوب المصدر', 'Please select a source representative'));
       return;
     }
     if (targetMode === 'warehouse' && !targetWarehouseId) {
-      setError('يرجى اختيار المستودع الوجهة');
+      setError(t('يرجى اختيار المستودع الوجهة', 'Please select a destination warehouse'));
       return;
     }
     if (targetMode === 'rep' && !tRep) {
-      setError('يرجى اختيار المندوب الوجهة');
+      setError(t('يرجى اختيار المندوب الوجهة', 'Please select a destination representative'));
       return;
     }
     if (sourceMode === 'warehouse' && targetMode === 'warehouse' && sourceWarehouseId === targetWarehouseId) {
-      setError('يرجى اختيار مستودع مصدر ومستودع وجهة مختلفين');
+      setError(t('يرجى اختيار مستودع مصدر ومستودع وجهة مختلفين', 'Please select different source and destination warehouses'));
       return;
     }
     if (sourceMode === 'rep' && targetMode === 'rep' && sourceRepId === targetRepId) {
-      setError('لا يمكن التحويل من سيارة المندوب إلى نفس المندوب');
+      setError(t('لا يمكن التحويل من سيارة المندوب إلى نفس المندوب', 'Cannot transfer from a rep vehicle to the same rep'));
       return;
     }
     if (items.length === 0) {
-      setError('يرجى إضافة صنف واحد على الأقل إلى طلب التحويل');
+      setError(t('يرجى إضافة صنف واحد على الأقل إلى طلب التحويل', 'Please add at least one item to the transfer request'));
       return;
     }
 
@@ -261,7 +269,7 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
 
     if (!res.success || !res.transfer) {
       setIsSubmitting(false);
-      setError(res.error || 'تعذر إنشاء طلب التحويل');
+      setError(res.error ? t(res.error) : t('تعذر إنشاء طلب التحويل', 'Unable to create transfer request'));
       return;
     }
 
@@ -279,8 +287,8 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="إنشاء أمر تحويل أصناف متعدد البنود (مستودعات / سيارات المناديب)"
-      subtitle="يدعم التحويل بين المستودعات أو إلى/من سيارات المناديب — ولا يتأثر المخزون الفعلي إلا بعد الاعتماد والتنفيذ"
+      title={t('إنشاء أمر تحويل أصناف متعدد البنود (مستودعات / سيارات المناديب)', 'Create Multi-Item Stock Transfer Order (Warehouses / Rep Vehicles)')}
+      subtitle={t('يدعم التحويل بين المستودعات أو إلى/من سيارات المناديب — ولا يتأثر المخزون الفعلي إلا بعد الاعتماد والتنفيذ', 'Supports transfers between warehouses or to/from rep vehicles — inventory updates only upon approval & execution')}
       maxWidth="4xl"
     >
       <div className="space-y-2 text-xs">
@@ -295,7 +303,7 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
           {/* Source Endpoint */}
           <div className="space-y-1">
             <div className="flex items-center justify-between gap-2">
-              <label className="font-bold text-slate-800 text-[11px]">المصدر (من):</label>
+              <label className="font-bold text-slate-800 text-[11px]">{t('المصدر (من):', 'Source (From):')}</label>
               <div className="flex rounded-md overflow-hidden border border-slate-300 text-[10px] font-bold">
                 <button
                   type="button"
@@ -303,7 +311,7 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
                   className={`px-2 py-0.5 flex items-center gap-1 cursor-pointer ${sourceMode === 'warehouse' ? 'bg-[#011E58] text-white' : 'bg-white text-slate-600'}`}
                 >
                   <WarehouseIcon className="w-3 h-3" />
-                  <span>مستودع</span>
+                  <span>{t('مستودع', 'Warehouse')}</span>
                 </button>
                 <button
                   type="button"
@@ -311,7 +319,7 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
                   className={`px-2 py-0.5 flex items-center gap-1 cursor-pointer ${sourceMode === 'rep' ? 'bg-[#003589] text-white' : 'bg-white text-slate-600'}`}
                 >
                   <Truck className="w-3 h-3" />
-                  <span>سيارة مندوب</span>
+                  <span>{t('سيارة مندوب', 'Rep Vehicle')}</span>
                 </button>
               </div>
             </div>
@@ -322,7 +330,7 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
                 className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 font-bold"
               >
                 {(activeWarehouses.length ? activeWarehouses : warehouses).map((w) => (
-                  <option key={w.id} value={w.id}>{w.name}</option>
+                  <option key={w.id} value={w.id}>{t(w.name)}</option>
                 ))}
               </select>
             ) : (
@@ -332,7 +340,7 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
                 className="w-full h-8 bg-white border border-[#B8CAE8] rounded-md px-2 font-bold text-[#011E58]"
               >
                 {(activeReps.length ? activeReps : representatives).map((r) => (
-                  <option key={r.id} value={r.id}>سيارة المندوب: {r.name}</option>
+                  <option key={r.id} value={r.id}>{t('سيارة المندوب:', 'Rep Vehicle:')} {r.name}</option>
                 ))}
               </select>
             )}
@@ -341,7 +349,7 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
           {/* Target Endpoint */}
           <div className="space-y-1">
             <div className="flex items-center justify-between gap-2">
-              <label className="font-bold text-slate-800 text-[11px]">الوجهة (إلى):</label>
+              <label className="font-bold text-slate-800 text-[11px]">{t('الوجهة (إلى):', 'Destination (To):')}</label>
               <div className="flex rounded-md overflow-hidden border border-slate-300 text-[10px] font-bold">
                 <button
                   type="button"
@@ -349,7 +357,7 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
                   className={`px-2 py-0.5 flex items-center gap-1 cursor-pointer ${targetMode === 'warehouse' ? 'bg-[#011E58] text-white' : 'bg-white text-slate-600'}`}
                 >
                   <WarehouseIcon className="w-3 h-3" />
-                  <span>مستودع</span>
+                  <span>{t('مستودع', 'Warehouse')}</span>
                 </button>
                 <button
                   type="button"
@@ -357,7 +365,7 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
                   className={`px-2 py-0.5 flex items-center gap-1 cursor-pointer ${targetMode === 'rep' ? 'bg-[#003589] text-white' : 'bg-white text-slate-600'}`}
                 >
                   <Truck className="w-3 h-3" />
-                  <span>سيارة مندوب</span>
+                  <span>{t('سيارة مندوب', 'Rep Vehicle')}</span>
                 </button>
               </div>
             </div>
@@ -368,7 +376,7 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
                 className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 font-bold"
               >
                 {(activeWarehouses.length ? activeWarehouses : warehouses).map((w) => (
-                  <option key={w.id} value={w.id}>{w.name}</option>
+                  <option key={w.id} value={w.id}>{t(w.name)}</option>
                 ))}
               </select>
             ) : (
@@ -378,7 +386,7 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
                 className="w-full h-8 bg-white border border-[#B8CAE8] rounded-md px-2 font-bold text-[#011E58]"
               >
                 {(activeReps.length ? activeReps : representatives).map((r) => (
-                  <option key={r.id} value={r.id}>سيارة المندوب: {r.name}</option>
+                  <option key={r.id} value={r.id}>{t('سيارة المندوب:', 'Rep Vehicle:')} {r.name}</option>
                 ))}
               </select>
             )}
@@ -386,7 +394,7 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
 
           {/* Date */}
           <div className="space-y-1">
-            <label className="block font-bold text-slate-800 text-[11px] pt-0.5">تاريخ أمر التحويل:</label>
+            <label className="block font-bold text-slate-800 text-[11px] pt-0.5">{t('تاريخ أمر التحويل:', 'Transfer Order Date:')}</label>
             <input
               type="date"
               value={date}
@@ -400,7 +408,7 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
         <div className="p-2 rounded-lg bg-[#EEF3FA] border border-[#DCE6F5] space-y-1.5">
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 items-end">
             <div className="sm:col-span-5">
-              <label className="block font-bold text-[11px] mb-0.5 text-[#011E58]">البحث الفوري عن الصنف:</label>
+              <label className="block font-bold text-[11px] mb-0.5 text-[#011E58]">{t('البحث الفوري عن الصنف:', 'Quick Item Search:')}</label>
               <ProductSearchSelect
                 products={products}
                 selectedProductId={pickedProductId}
@@ -408,14 +416,14 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
                 onAfterSelect={() => qtyInputRef.current?.focus()}
                 warehouseId={effectiveSourceWarehouseId || undefined}
                 warehouses={warehouses}
-                currency={settings.currency}
+                currency={t(settings.currency)}
                 inputRef={searchInputRef}
-                placeholder="اكتب اسم الصنف أو الكود أو الباركود..."
+                placeholder={t('اكتب اسم الصنف أو الكود أو الباركود...', 'Type item name, code, or barcode...')}
               />
             </div>
 
             <div className="sm:col-span-2">
-              <label className="block font-bold text-[11px] mb-0.5 text-blue-950">الوحدة:</label>
+              <label className="block font-bold text-[11px] mb-0.5 text-blue-950">{t('الوحدة:', 'Unit:')}</label>
               <select
                 value={pickedUnitName}
                 disabled={!pickedProduct}
@@ -431,7 +439,7 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
                 ) : (
                   availableUnitsForPicked.map((u) => (
                     <option key={u.name} value={u.name}>
-                      {u.name} {u.factor > 1 ? `(${u.factor})` : ''}
+                      {t(u.name)} {u.factor > 1 ? `(${fmt(u.factor)})` : ''}
                     </option>
                   ))
                 )}
@@ -439,13 +447,13 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
             </div>
 
             <div className="sm:col-span-2">
-              <label className="block font-bold text-[11px] mb-0.5 text-blue-950">الكمية:</label>
+              <label className="block font-bold text-[11px] mb-0.5 text-blue-950">{t('الكمية:', 'Quantity:')}</label>
               <input
                 ref={qtyInputRef}
                 type="number"
                 min="0.01"
                 step="any"
-                placeholder="أدخل الكمية"
+                placeholder={t('أدخل الكمية', 'Enter qty')}
                 value={pickedQty}
                 onChange={(e) => setPickedQty(e.target.value === '' ? '' : Number(e.target.value))}
                 onKeyDown={(e) => {
@@ -459,7 +467,7 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
             </div>
 
             <div className="sm:col-span-2">
-              <label className="block font-bold text-[11px] mb-0.5 text-blue-950">ملاحظة البند:</label>
+              <label className="block font-bold text-[11px] mb-0.5 text-blue-950">{t('ملاحظة البند:', 'Item Note:')}</label>
               <input
                 type="text"
                 value={pickedNotes}
@@ -470,7 +478,7 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
                     handleAddItem();
                   }
                 }}
-                placeholder="اختياري"
+                placeholder={t('اختياري', 'Optional')}
                 className="w-full h-8 bg-white border border-slate-300 rounded-md px-2"
               />
             </div>
@@ -487,12 +495,12 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
           </div>
           {pickedProduct && (
             <div className="flex flex-wrap items-center gap-3 text-[11px] text-blue-950 bg-white/80 px-2.5 py-1 rounded-lg border border-blue-100">
-              <span>المختار: <strong>{pickedProduct.name}</strong></span>
-              <span>• الكود: <strong className="font-mono">{pickedProduct.code}</strong></span>
+              <span>{t('المختار:', 'Selected:')} <strong>{pickedProduct.name}</strong></span>
+              <span>• {t('الكود:', 'Code:')} <strong className="font-mono">{pickedProduct.code}</strong></span>
               <span>
-                • المتاح بالمصدر:{' '}
+                • {t('المتاح بالمصدر:', 'Source Available:')}{' '}
                 <strong className="font-mono text-emerald-700">
-                  {effectiveSourceWarehouseId ? Number(pickedProduct.stockPerWarehouse?.[effectiveSourceWarehouseId] || 0) : 0} {pickedProduct.baseUnit}
+                  {fmt(effectiveSourceWarehouseId ? Number(pickedProduct.stockPerWarehouse?.[effectiveSourceWarehouseId] || 0) : 0)} {t(pickedProduct.baseUnit)}
                 </strong>
               </span>
             </div>
@@ -501,31 +509,31 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
 
         {/* Added items table */}
         <div className="border border-slate-200 rounded-lg awlad-table-scroll max-h-56 overflow-y-auto">
-          <table className="w-full text-right text-[11px]">
+          <table className="w-full text-start text-[11px]">
             <thead className="bg-slate-100 text-slate-700 font-bold border-b">
               <tr>
-                <th className="p-1.5">م</th>
-                <th className="p-1.5">الصنف</th>
-                <th className="p-1.5 text-center">المتاح بالمصدر</th>
-                <th className="p-1.5 text-center">الكمية المطلوبة</th>
-                <th className="p-1.5">ملاحظة</th>
-                <th className="p-1.5 text-center">حذف</th>
+                <th className="p-1.5">{t('م', '#')}</th>
+                <th className="p-1.5">{t('الصنف', 'Item')}</th>
+                <th className="p-1.5 text-center">{t('المتاح بالمصدر', 'Source Available')}</th>
+                <th className="p-1.5 text-center">{t('الكمية المطلوبة', 'Requested Qty')}</th>
+                <th className="p-1.5">{t('ملاحظة', 'Note')}</th>
+                <th className="p-1.5 text-center">{t('حذف', 'Delete')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {items.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="p-3 text-center text-slate-400">
-                    أضف صنفاً واحداً أو أكثر لقائمة التحويل.
+                    {t('أضف صنفاً واحداً أو أكثر لقائمة التحويل.', 'Add one or more items to the transfer list.')}
                   </td>
                 </tr>
               ) : (
                 items.map((it, idx) => (
                   <tr key={idx}>
-                    <td className="p-1.5 text-slate-500 font-mono">{idx + 1}</td>
+                    <td className="p-1.5 text-slate-500 font-mono">{fmt(idx + 1)}</td>
                     <td className="p-1.5 font-bold">{it.productName}</td>
-                    <td className="p-1.5 text-center font-mono">{it.available} {it.unit}</td>
-                    <td className="p-1.5 text-center font-mono font-black text-blue-900">{it.requestedQty} {it.unit}</td>
+                    <td className="p-1.5 text-center font-mono">{fmt(it.available)} {t(it.unit)}</td>
+                    <td className="p-1.5 text-center font-mono font-black text-blue-900">{fmt(it.requestedQty)} {t(it.unit)}</td>
                     <td className="p-1.5 text-slate-500">{it.notes || '-'}</td>
                     <td className="p-1.5 text-center">
                       <button
@@ -545,17 +553,17 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
           <div>
-            <label className="block font-bold text-[11px] mb-0.5">سبب التحويل:</label>
+            <label className="block font-bold text-[11px] mb-0.5">{t('سبب التحويل:', 'Transfer Reason:')}</label>
             <input
               type="text"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="تغذية فرع / تحميل سيارة مندوب / مرتجع للمخزن..."
+              placeholder={t('تغذية فرع / تحميل سيارة مندوب / مرتجع للمخزن...', 'Branch replenishment / Rep vehicle loading / Return to warehouse...')}
               className="w-full h-8 border border-slate-300 rounded-md px-2"
             />
           </div>
           <div>
-            <label className="block font-bold text-[11px] mb-0.5">ملاحظات عامة:</label>
+            <label className="block font-bold text-[11px] mb-0.5">{t('ملاحظات عامة:', 'General Notes:')}</label>
             <input
               type="text"
               value={notes}
@@ -567,7 +575,7 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
 
         <div className="flex justify-end gap-1.5 pt-2 border-t">
           <button type="button" onClick={onClose} className="h-8 px-2.5 border border-slate-300 rounded-md font-bold cursor-pointer">
-            إلغاء
+            {t('إلغاء', 'Cancel')}
           </button>
           <button
             type="button"
@@ -575,7 +583,7 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
             onClick={() => handleSubmit(false)}
             className="h-8 px-3 bg-slate-700 hover:bg-slate-800 text-white rounded-md font-bold cursor-pointer disabled:opacity-50"
           >
-            حفظ كمسودة
+            {t('حفظ كمسودة', 'Save as Draft')}
           </button>
           <button
             type="button"
@@ -584,7 +592,7 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
             className="flex items-center gap-1 h-8 px-3 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-black cursor-pointer disabled:opacity-50"
           >
             <Send className="w-3.5 h-3.5" />
-            <span>حفظ وإرسال للاعتماد</span>
+            <span>{t('حفظ وإرسال للاعتماد', 'Save & Submit for Approval')}</span>
           </button>
         </div>
       </div>
@@ -605,6 +613,13 @@ export const StockTransfersView: React.FC = () => {
   } = useData();
   const { currentUser, hasPermission } = useAuth();
   const { registerHandler, consumePendingAction } = useShortcuts();
+  const { t, isRtl, isLtr, locale } = usePreferences();
+  const fmt = (n: number) => formatLocaleNumber(n);
+  const getTransferStatusLabel = (status: StockTransferRequest['status']) => {
+    const meta = TRANSFER_STATUS_META[status];
+    if (!meta) return status;
+    return isLtr ? meta.labelEn : meta.labelAr;
+  };
 
   const canCreate = currentUser?.role === 'admin' || hasPermission('canCreateStockTransfer');
   const canApprove = currentUser?.role === 'admin' || hasPermission('canApproveStockTransfer');
@@ -649,39 +664,40 @@ export const StockTransfersView: React.FC = () => {
   }, [stockTransferRequests, statusFilter, searchTerm]);
 
   const handlePrintTransfer = (tr: StockTransferRequest) => {
+    const arrow = isRtl ? '←' : '→';
     setPrintData({
-      title: `أمر تحويل أصناف بين المستودعات (${tr.transferNumber})`,
+      title: `${t('أمر تحويل أصناف بين المستودعات', 'Warehouse Stock Transfer Order')} (${tr.transferNumber})`,
       docNumber: tr.transferNumber,
-      docType: 'إيصال استلام',
+      docType: t('إيصال استلام', 'Receipt'),
       date: tr.date,
-      partyName: `من: ${tr.sourceWarehouseName} ← إلى: ${tr.targetWarehouseName}`,
-      warehouseName: tr.sourceWarehouseName,
+      partyName: `${t('من:', 'From:')} ${t(tr.sourceWarehouseName)} ${arrow} ${t('إلى:', 'To:')} ${t(tr.targetWarehouseName)}`,
+      warehouseName: t(tr.sourceWarehouseName),
       items: tr.items.map((it) => ({
         name: it.productName,
-        unit: it.unit,
+        unit: t(it.unit),
         quantity: it.requestedQty,
         price: 0,
         total: it.requestedQty,
       })),
       grandTotal: tr.items.reduce((s, it) => s + it.requestedQty, 0),
-      notes: `الحالة: ${TRANSFER_STATUS_META[tr.status]?.label || tr.status}${tr.reason ? ` | السبب: ${tr.reason}` : ''}`,
+      notes: `${t('الحالة:', 'Status:')} ${getTransferStatusLabel(tr.status)}${tr.reason ? ` | ${t('السبب:', 'Reason:')} ${tr.reason}` : ''}`,
     });
   };
 
   const handleExportPdf = (tr: StockTransferRequest) => {
     exportTableToPdf(
-      `أمر تحويل أصناف (${tr.transferNumber})`,
-      ['م', 'الصنف', 'الوحدة', 'المتاح عند الطلب', 'الكمية المحولة', 'ملاحظات'],
-      tr.items.map((it, idx) => [idx + 1, it.productName, it.unit, it.availableQtySnapshot, it.requestedQty, it.notes || '-']),
+      `${t('أمر تحويل أصناف', 'Stock Transfer Order')} (${tr.transferNumber})`,
+      [t('م', '#'), t('الصنف', 'Item'), t('الوحدة', 'Unit'), t('المتاح عند الطلب', 'Available at Request'), t('الكمية المحولة', 'Transferred Qty'), t('ملاحظات', 'Notes')],
+      tr.items.map((it, idx) => [idx + 1, it.productName, t(it.unit), it.availableQtySnapshot, it.requestedQty, it.notes || '-']),
       {
         companyName: settings.companyName,
         docNumber: tr.transferNumber,
         dateRangeText: tr.date,
         meta: [
-          { label: 'من مستودع', value: tr.sourceWarehouseName },
-          { label: 'إلى مستودع', value: tr.targetWarehouseName },
-          { label: 'الحالة', value: TRANSFER_STATUS_META[tr.status]?.label || tr.status },
-          { label: 'المنشئ', value: tr.createdBy },
+          { label: t('من مستودع', 'From Warehouse'), value: t(tr.sourceWarehouseName) },
+          { label: t('إلى مستودع', 'To Warehouse'), value: t(tr.targetWarehouseName) },
+          { label: t('الحالة', 'Status'), value: getTransferStatusLabel(tr.status) },
+          { label: t('المنشئ', 'Created By'), value: tr.createdBy },
         ],
         notes: tr.reason || tr.notes,
       }
@@ -689,18 +705,27 @@ export const StockTransfersView: React.FC = () => {
   };
 
   const handleExportAllExcel = () => {
-    const headers = ['رقم الطلب', 'التاريخ', 'من مستودع', 'إلى مستودع', 'عدد الأصناف', 'الحالة', 'بواسطة', 'السبب'];
+    const headers = [
+      t('رقم الطلب', 'Order No.'),
+      t('التاريخ', 'Date'),
+      t('من مستودع', 'From Warehouse'),
+      t('إلى مستودع', 'To Warehouse'),
+      t('عدد الأصناف', 'Items Count'),
+      t('الحالة', 'Status'),
+      t('بواسطة', 'Created By'),
+      t('السبب', 'Reason'),
+    ];
     const rows = filteredRequests.map((r) => [
       r.transferNumber,
       r.date,
-      r.sourceWarehouseName,
-      r.targetWarehouseName,
+      t(r.sourceWarehouseName),
+      t(r.targetWarehouseName),
       r.items.length,
-      TRANSFER_STATUS_META[r.status]?.label || r.status,
+      getTransferStatusLabel(r.status),
       r.createdBy,
       r.reason || r.notes || '-',
     ]);
-    exportToExcel(`أوامر_تحويل_الأصناف_${new Date().toISOString().split('T')[0]}`, headers, rows);
+    exportToExcel(`${t('أوامر_تحويل_الأصناف', 'Stock_Transfers')}_${new Date().toISOString().split('T')[0]}`, headers, rows);
   };
 
   const runWorkflowAction = async (
@@ -713,7 +738,7 @@ export const StockTransfersView: React.FC = () => {
     try {
       const res = await action();
       if (!res.success) {
-        setActionError(res.error || 'تعذر تنفيذ الإجراء');
+        setActionError(res.error ? t(res.error) : t('تعذر تنفيذ الإجراء', 'Unable to execute action'));
         return;
       }
       setActiveTransfer(res.transfer || null);
@@ -730,10 +755,12 @@ export const StockTransfersView: React.FC = () => {
         <div>
           <h2 className="text-xs sm:text-sm font-black text-[#011E58] tracking-tight flex items-center gap-1.5">
             <ArrowLeftRight className="w-4 h-4 text-[#003589]" />
-            <span>نظام تحويل الأصناف بين المستودعات وعهدة المناديب</span>
+            <span>{t('نظام تحويل الأصناف بين المستودعات وعهدة المناديب', 'Stock Transfers Between Warehouses & Rep Custody')}</span>
           </h2>
           <p className="text-[11px] text-slate-500">
-            إدارة أوامر التحويل متعددة الأصناف (إنشاء ← إرسال ← اعتماد ← تنفيذ) مع فصل كامل عن تحويلات عهدة المندوب المرتبطة بالفواتير
+            {isLtr
+              ? 'Manage multi-item transfer orders (Create → Submit → Approve → Execute), completely separated from invoice-linked rep custody transfers'
+              : 'إدارة أوامر التحويل متعددة الأصناف (إنشاء ← إرسال ← اعتماد ← تنفيذ) مع فصل كامل عن تحويلات عهدة المندوب المرتبطة بالفواتير'}
           </p>
         </div>
 
@@ -744,7 +771,7 @@ export const StockTransfersView: React.FC = () => {
             className="flex items-center gap-1 h-8 px-2.5 border border-slate-300 rounded-md text-xs font-bold hover:bg-slate-50 text-slate-700 cursor-pointer"
           >
             <Download className="w-3.5 h-3.5 text-[#003589]" />
-            <span>تصدير Excel</span>
+            <span>{t('تصدير Excel', 'Export Excel')}</span>
           </button>
           {canCreate && (
             <button
@@ -753,7 +780,7 @@ export const StockTransfersView: React.FC = () => {
               className="flex items-center gap-1 h-8 px-2.5 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md text-xs font-black cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>إنشاء أمر تحويل أصناف</span>
+              <span>{t('إنشاء أمر تحويل أصناف', 'Create Transfer Order')}</span>
             </button>
           )}
         </div>
@@ -769,7 +796,7 @@ export const StockTransfersView: React.FC = () => {
         >
           <span>{banner.text}</span>
           <button type="button" onClick={() => setBanner(null)} className="underline text-[11px] cursor-pointer">
-            إغلاق
+            {t('إغلاق', 'Close')}
           </button>
         </div>
       )}
@@ -785,7 +812,7 @@ export const StockTransfersView: React.FC = () => {
               : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
           }`}
         >
-          تحويلات الأصناف بين المستودعات ({stockTransferRequests.length})
+          {t('تحويلات الأصناف بين المستودعات', 'Warehouse Stock Transfers')} ({fmt(stockTransferRequests.length)})
         </button>
         <button
           type="button"
@@ -796,42 +823,42 @@ export const StockTransfersView: React.FC = () => {
               : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
           }`}
         >
-          تحويلات المندوبين المرتبطة بالفواتير ({repItemTransfers.length})
+          {t('تحويلات المندوبين المرتبطة بالفواتير', 'Invoice-Linked Rep Transfers')} ({fmt(repItemTransfers.length)})
         </button>
       </div>
 
       {activeSubTab === 'warehouse_orders' ? (
         <UnifiedDataTable<StockTransferRequest>
           compact
-          title="تحويلات الأصناف بين المستودعات"
-          subtitle={`إجمالي الأوامر: ${filteredRequests.length}`}
+          title={t('تحويلات الأصناف بين المستودعات', 'Warehouse Stock Transfers')}
+          subtitle={`${t('إجمالي الأوامر:', 'Total Orders:')} ${fmt(filteredRequests.length)}`}
           data={filteredRequests}
           rowKey={(tr) => tr.id}
           searchValue={searchTerm}
           onSearchChange={setSearchTerm}
-          searchPlaceholder="بحث برقم التحويل أو اسم المستودع أو المنشئ..."
+          searchPlaceholder={t('بحث برقم التحويل أو اسم المستودع أو المنشئ...', 'Search by transfer #, warehouse, or creator...')}
           exportFilename="AWLAD_SELIM_StockTransfers"
-          pdfTitle="أوامر تحويل الأصناف بين المستودعات"
+          pdfTitle={t('أوامر تحويل الأصناف بين المستودعات', 'Warehouse Stock Transfer Orders')}
           defaultPageSize={25}
-          emptyTitle="لا توجد أوامر تحويل أصناف مسجلة بعد"
+          emptyTitle={t('لا توجد أوامر تحويل أصناف مسجلة بعد', 'No stock transfer orders recorded yet')}
           toolbarFilters={
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               className="h-8 shrink-0 bg-slate-50 border border-slate-300 rounded-md px-2 text-xs font-bold"
             >
-              <option value="all">كل حالات التحويل</option>
-              <option value="draft">مسودة</option>
-              <option value="submitted">بانتظار الاعتماد</option>
-              <option value="approved">معتمد</option>
-              <option value="executed">منفذ</option>
-              <option value="rejected">مرفوض</option>
+              <option value="all">{t('كل حالات التحويل', 'All Transfer Statuses')}</option>
+              <option value="draft">{t('مسودة', 'Draft')}</option>
+              <option value="submitted">{t('بانتظار الاعتماد', 'Pending Approval')}</option>
+              <option value="approved">{t('معتمد', 'Approved')}</option>
+              <option value="executed">{t('منفذ', 'Executed')}</option>
+              <option value="rejected">{t('مرفوض', 'Rejected')}</option>
             </select>
           }
           columns={[
             {
               key: 'transferNumber',
-              header: 'رقم الطلب',
+              header: t('رقم الطلب', 'Order No.'),
               sortable: true,
               sortValue: (tr) => tr.transferNumber,
               exportValue: (tr) => tr.transferNumber,
@@ -839,7 +866,7 @@ export const StockTransfersView: React.FC = () => {
             },
             {
               key: 'date',
-              header: 'التاريخ',
+              header: t('التاريخ', 'Date'),
               sortable: true,
               sortValue: (tr) => tr.date,
               exportValue: (tr) => tr.date,
@@ -847,32 +874,32 @@ export const StockTransfersView: React.FC = () => {
             },
             {
               key: 'sourceWarehouseName',
-              header: 'من مستودع',
+              header: t('من مستودع', 'From Warehouse'),
               sortable: true,
               sortValue: (tr) => tr.sourceWarehouseName,
-              exportValue: (tr) => tr.sourceWarehouseName,
-              render: (tr) => <span className="font-bold">{tr.sourceWarehouseName}</span>,
+              exportValue: (tr) => t(tr.sourceWarehouseName),
+              render: (tr) => <span className="font-bold">{t(tr.sourceWarehouseName)}</span>,
             },
             {
               key: 'targetWarehouseName',
-              header: 'إلى مستودع',
+              header: t('إلى مستودع', 'To Warehouse'),
               sortable: true,
               sortValue: (tr) => tr.targetWarehouseName,
-              exportValue: (tr) => tr.targetWarehouseName,
-              render: (tr) => <span className="font-bold text-[#011E58]">{tr.targetWarehouseName}</span>,
+              exportValue: (tr) => t(tr.targetWarehouseName),
+              render: (tr) => <span className="font-bold text-[#011E58]">{t(tr.targetWarehouseName)}</span>,
             },
             {
               key: 'itemsCount',
-              header: 'الأصناف',
+              header: t('الأصناف', 'Items'),
               align: 'center',
               sortable: true,
               sortValue: (tr) => tr.items.length,
               exportValue: (tr) => tr.items.length,
-              render: (tr) => <span className="font-mono font-bold tabular-nums">{tr.items.length}</span>,
+              render: (tr) => <span className="font-mono font-bold tabular-nums">{fmt(tr.items.length)}</span>,
             },
             {
               key: 'createdBy',
-              header: 'المنشئ',
+              header: t('المنشئ', 'Created By'),
               sortable: true,
               sortValue: (tr) => tr.createdBy,
               exportValue: (tr) => tr.createdBy,
@@ -880,23 +907,23 @@ export const StockTransfersView: React.FC = () => {
             },
             {
               key: 'status',
-              header: 'الحالة',
+              header: t('الحالة', 'Status'),
               align: 'center',
               sortable: true,
               sortValue: (tr) => tr.status,
-              exportValue: (tr) => TRANSFER_STATUS_META[tr.status]?.label || tr.status,
+              exportValue: (tr) => getTransferStatusLabel(tr.status),
               render: (tr) => {
                 const badge = TRANSFER_STATUS_META[tr.status] || TRANSFER_STATUS_META.draft;
                 return (
                   <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${badge.cls}`}>
-                    {badge.label}
+                    {getTransferStatusLabel(tr.status)}
                   </span>
                 );
               },
             },
             {
               key: 'actions',
-              header: 'الإجراءات',
+              header: t('الإجراءات', 'Actions'),
               align: 'center',
               exportValue: () => '',
               render: (tr) => (
@@ -909,7 +936,7 @@ export const StockTransfersView: React.FC = () => {
                       setShowRejectBox(false);
                     }}
                     className="p-1.5 rounded-lg text-blue-900 hover:bg-blue-50 cursor-pointer"
-                    title="مراجعة وتنفيذ"
+                    title={t('مراجعة وتنفيذ', 'Review & Execute')}
                   >
                     <Eye className="w-4 h-4" />
                   </button>
@@ -917,7 +944,7 @@ export const StockTransfersView: React.FC = () => {
                     type="button"
                     onClick={() => handlePrintTransfer(tr)}
                     className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer"
-                    title="طباعة"
+                    title={t('طباعة', 'Print')}
                   >
                     <Printer className="w-4 h-4" />
                   </button>
@@ -925,7 +952,7 @@ export const StockTransfersView: React.FC = () => {
                     type="button"
                     onClick={() => handleExportPdf(tr)}
                     className="p-1.5 rounded-lg text-blue-700 hover:bg-blue-50 cursor-pointer"
-                    title="تصدير PDF"
+                    title={t('تصدير PDF', 'Export PDF')}
                   >
                     <FileDown className="w-4 h-4" />
                   </button>
@@ -938,19 +965,19 @@ export const StockTransfersView: React.FC = () => {
         /* Rep Item Transfers clearly linked to Invoices */
         <UnifiedDataTable
           compact
-          title="تحويلات المندوبين المرتبطة بالفواتير"
-          subtitle={`إجمالي التحويلات: ${repItemTransfers.length}`}
+          title={t('تحويلات المندوبين المرتبطة بالفواتير', 'Invoice-Linked Rep Transfers')}
+          subtitle={`${t('إجمالي التحويلات:', 'Total Transfers:')} ${fmt(repItemTransfers.length)}`}
           data={repItemTransfers}
           rowKey={(r) => r.id}
-          searchPlaceholder="بحث برقم الطلب أو المندوب أو الفاتورة..."
+          searchPlaceholder={t('بحث برقم الطلب أو المندوب أو الفاتورة...', 'Search by order #, rep, or invoice...')}
           exportFilename="AWLAD_SELIM_RepItemTransfers"
-          pdfTitle="تحويلات عهدة المندوبين المرتبطة بالفواتير"
+          pdfTitle={t('تحويلات عهدة المندوبين المرتبطة بالفواتير', 'Invoice-Linked Rep Custody Transfers')}
           defaultPageSize={25}
-          emptyTitle="لا توجد طلبات تحويل عهدة مناديب مرتبطة بالفواتير"
+          emptyTitle={t('لا توجد طلبات تحويل عهدة مناديب مرتبطة بالفواتير', 'No invoice-linked rep custody transfer requests')}
           columns={[
             {
               key: 'requestNumber',
-              header: 'رقم الطلب',
+              header: t('رقم الطلب', 'Order No.'),
               sortable: true,
               sortValue: (r) => r.requestNumber,
               exportValue: (r) => r.requestNumber,
@@ -958,7 +985,7 @@ export const StockTransfersView: React.FC = () => {
             },
             {
               key: 'representativeName',
-              header: 'المندوب',
+              header: t('المندوب', 'Representative'),
               sortable: true,
               sortValue: (r) => r.representativeName,
               exportValue: (r) => r.representativeName,
@@ -966,10 +993,10 @@ export const StockTransfersView: React.FC = () => {
             },
             {
               key: 'invoiceNumber',
-              header: 'الفاتورة المرتبطة',
+              header: t('الفاتورة المرتبطة', 'Linked Invoice'),
               sortable: true,
               sortValue: (r) => r.invoiceNumber || '',
-              exportValue: (r) => r.invoiceNumber || 'عهدة عامة',
+              exportValue: (r) => r.invoiceNumber || t('عهدة عامة', 'General Custody'),
               render: (r) => {
                 const linkedInv = invoices.find((inv) => inv.id === r.invoiceId || inv.invoiceNumber === r.invoiceNumber);
                 return r.invoiceNumber ? (
@@ -982,45 +1009,45 @@ export const StockTransfersView: React.FC = () => {
                     <span>{r.invoiceNumber}</span>
                   </button>
                 ) : (
-                  <span className="text-slate-400">عهدة عامة</span>
+                  <span className="text-slate-400">{t('عهدة عامة', 'General Custody')}</span>
                 );
               },
             },
             {
               key: 'sourceWarehouseName',
-              header: 'من مستودع',
+              header: t('من مستودع', 'From Warehouse'),
               sortable: true,
               sortValue: (r) => r.sourceWarehouseName,
-              exportValue: (r) => r.sourceWarehouseName,
-              render: (r) => <span>{r.sourceWarehouseName}</span>,
+              exportValue: (r) => t(r.sourceWarehouseName),
+              render: (r) => <span>{t(r.sourceWarehouseName)}</span>,
             },
             {
               key: 'targetWarehouseName',
-              header: 'إلى سيارة المندوب',
+              header: t('إلى سيارة المندوب', 'To Rep Vehicle'),
               sortable: true,
               sortValue: (r) => r.targetWarehouseName,
-              exportValue: (r) => r.targetWarehouseName,
-              render: (r) => <span className="font-semibold">{r.targetWarehouseName}</span>,
+              exportValue: (r) => t(r.targetWarehouseName),
+              render: (r) => <span className="font-semibold">{t(r.targetWarehouseName)}</span>,
             },
             {
               key: 'itemsCount',
-              header: 'الأصناف',
+              header: t('الأصناف', 'Items'),
               align: 'center',
               sortable: true,
               sortValue: (r) => r.items.length,
               exportValue: (r) => r.items.length,
-              render: (r) => <span className="font-mono font-bold tabular-nums">{r.items.length}</span>,
+              render: (r) => <span className="font-mono font-bold tabular-nums">{fmt(r.items.length)}</span>,
             },
             {
               key: 'status',
-              header: 'الحالة',
+              header: t('الحالة', 'Status'),
               align: 'center',
               sortable: true,
               sortValue: (r) => r.status,
-              exportValue: (r) => r.status,
+              exportValue: (r) => t(r.status),
               render: (r) => (
                 <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-800 text-[10px] font-bold border border-slate-200">
-                  {r.status}
+                  {t(r.status)}
                 </span>
               ),
             },
@@ -1031,7 +1058,12 @@ export const StockTransfersView: React.FC = () => {
       <CreateStockTransferModal
         isOpen={isNewModalOpen}
         onClose={() => setIsNewModalOpen(false)}
-        onCreated={(tr) => setBanner({ type: 'success', text: `تم إنشاء أمر التحويل (${tr.transferNumber}) بنجاح.` })}
+        onCreated={(tr) =>
+          setBanner({
+            type: 'success',
+            text: `${t('تم إنشاء أمر التحويل', 'Transfer order')} (${tr.transferNumber}) ${t('بنجاح.', 'created successfully.')}`,
+          })
+        }
       />
 
       {/* Detail / Workflow Action Modal */}
@@ -1039,8 +1071,8 @@ export const StockTransfersView: React.FC = () => {
         <Modal
           isOpen={!!activeTransfer}
           onClose={() => setActiveTransfer(null)}
-          title={`تفاصيل أمر التحويل (${activeTransfer.transferNumber})`}
-          subtitle={`من ${activeTransfer.sourceWarehouseName} ← إلى ${activeTransfer.targetWarehouseName}`}
+          title={`${t('تفاصيل أمر التحويل', 'Transfer Order Details')} (${activeTransfer.transferNumber})`}
+          subtitle={`${t('من', 'From')} ${t(activeTransfer.sourceWarehouseName)} ${isRtl ? '←' : '→'} ${t('إلى', 'To')} ${t(activeTransfer.targetWarehouseName)}`}
           maxWidth="4xl"
         >
           <div className="space-y-2 text-xs">
@@ -1050,9 +1082,9 @@ export const StockTransfersView: React.FC = () => {
 
             <div className="p-2 rounded-lg bg-slate-50 border flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap gap-2">
-                <span>الحالة: <strong>{TRANSFER_STATUS_META[activeTransfer.status]?.label}</strong></span>
-                <span>• التاريخ: <strong className="font-mono">{activeTransfer.date}</strong></span>
-                <span>• المنشئ: <strong>{activeTransfer.createdBy}</strong></span>
+                <span>{t('الحالة:', 'Status:')} <strong>{getTransferStatusLabel(activeTransfer.status)}</strong></span>
+                <span>• {t('التاريخ:', 'Date:')} <strong className="font-mono">{activeTransfer.date}</strong></span>
+                <span>• {t('المنشئ:', 'Created By:')} <strong>{activeTransfer.createdBy}</strong></span>
               </div>
               <div className="flex gap-1">
                 <button
@@ -1060,7 +1092,7 @@ export const StockTransfersView: React.FC = () => {
                   onClick={() => handlePrintTransfer(activeTransfer)}
                   className="h-7 px-2 bg-white border rounded-md text-[11px] font-bold cursor-pointer"
                 >
-                  طباعة
+                  {t('طباعة', 'Print')}
                 </button>
                 <button
                   type="button"
@@ -1082,41 +1114,41 @@ export const StockTransfersView: React.FC = () => {
               columns={[
                 {
                   key: 'index',
-                  header: 'م',
+                  header: t('م', '#'),
                   align: 'center',
                   exportValue: (_, idx) => (idx ?? 0) + 1,
-                  render: (_, idx) => <span className="font-mono tabular-nums">{idx + 1}</span>,
+                  render: (_, idx) => <span className="font-mono tabular-nums">{fmt(idx + 1)}</span>,
                 },
                 {
                   key: 'productName',
-                  header: 'الصنف',
+                  header: t('الصنف', 'Item'),
                   exportValue: (it) => it.productName,
                   render: (it) => <span className="font-bold">{it.productName}</span>,
                 },
                 {
                   key: 'unit',
-                  header: 'الوحدة',
+                  header: t('الوحدة', 'Unit'),
                   align: 'center',
-                  exportValue: (it) => it.unit,
-                  render: (it) => <span>{it.unit}</span>,
+                  exportValue: (it) => t(it.unit),
+                  render: (it) => <span>{t(it.unit)}</span>,
                 },
                 {
                   key: 'availableQtySnapshot',
-                  header: 'المتاح عند الإنشاء',
+                  header: t('المتاح عند الإنشاء', 'Available at Creation'),
                   align: 'center',
                   exportValue: (it) => it.availableQtySnapshot,
-                  render: (it) => <span className="font-mono tabular-nums">{it.availableQtySnapshot}</span>,
+                  render: (it) => <span className="font-mono tabular-nums">{fmt(it.availableQtySnapshot)}</span>,
                 },
                 {
                   key: 'requestedQty',
-                  header: 'الكمية المطلوبة',
+                  header: t('الكمية المطلوبة', 'Requested Qty'),
                   align: 'center',
                   exportValue: (it) => it.requestedQty,
-                  render: (it) => <span className="font-mono font-black text-blue-900 tabular-nums">{it.requestedQty}</span>,
+                  render: (it) => <span className="font-mono font-black text-blue-900 tabular-nums">{fmt(it.requestedQty)}</span>,
                 },
                 {
                   key: 'notes',
-                  header: 'ملاحظة',
+                  header: t('ملاحظة', 'Note'),
                   exportValue: (it) => it.notes || '-',
                   render: (it) => <span className="text-slate-600">{it.notes || '-'}</span>,
                 },
@@ -1125,7 +1157,7 @@ export const StockTransfersView: React.FC = () => {
 
             {showRejectBox && (
               <div className="p-2 rounded-md bg-red-50 border border-red-200 space-y-1.5">
-                <label className="block font-bold text-red-900">سبب رفض طلب التحويل:</label>
+                <label className="block font-bold text-red-900">{t('سبب رفض طلب التحويل:', 'Rejection Reason:')}</label>
                 <input
                   type="text"
                   value={rejectReason}
@@ -1134,7 +1166,7 @@ export const StockTransfersView: React.FC = () => {
                 />
                 <div className="flex justify-end gap-1.5">
                   <button type="button" onClick={() => setShowRejectBox(false)} className="h-7 px-2.5 border rounded-md cursor-pointer">
-                    تراجع
+                    {t('تراجع', 'Back')}
                   </button>
                   <button
                     type="button"
@@ -1142,12 +1174,12 @@ export const StockTransfersView: React.FC = () => {
                     onClick={() =>
                       runWorkflowAction(
                         () => rejectStockTransferRequest(activeTransfer.id, rejectReason.trim()),
-                        'تم رفض طلب التحويل دون تعديل المخزون.'
+                        t('تم رفض طلب التحويل دون تعديل المخزون.', 'Transfer request rejected without modifying inventory.')
                       )
                     }
                     className="h-7 px-2.5 bg-red-700 text-white rounded-md font-bold cursor-pointer disabled:opacity-50"
                   >
-                    تأكيد الرفض
+                    {t('تأكيد الرفض', 'Confirm Rejection')}
                   </button>
                 </div>
               </div>
@@ -1161,13 +1193,13 @@ export const StockTransfersView: React.FC = () => {
                   onClick={() =>
                     runWorkflowAction(
                       () => submitStockTransferRequest(activeTransfer.id),
-                      `تم إرسال طلب التحويل (${activeTransfer.transferNumber}) للاعتماد.`
+                      `${t('تم إرسال طلب التحويل', 'Transfer request')} (${activeTransfer.transferNumber}) ${t('للاعتماد.', 'submitted for approval.')}`
                     )
                   }
                   className="flex items-center gap-1 h-8 px-2.5 bg-[#011E58] text-white rounded-md font-bold cursor-pointer disabled:opacity-50"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>إرسال للاعتماد</span>
+                  <span>{t('إرسال للاعتماد', 'Submit for Approval')}</span>
                 </button>
               )}
 
@@ -1180,7 +1212,7 @@ export const StockTransfersView: React.FC = () => {
                     className="flex items-center gap-1 h-8 px-2.5 bg-red-50 border border-red-200 text-red-700 rounded-md font-bold cursor-pointer disabled:opacity-50"
                   >
                     <XCircle className="w-3.5 h-3.5" />
-                    <span>رفض</span>
+                    <span>{t('رفض', 'Reject')}</span>
                   </button>
                   <button
                     type="button"
@@ -1188,13 +1220,13 @@ export const StockTransfersView: React.FC = () => {
                     onClick={() =>
                       runWorkflowAction(
                         () => approveStockTransferRequest(activeTransfer.id),
-                        `تم اعتماد أمر التحويل (${activeTransfer.transferNumber}).`
+                        `${t('تم اعتماد أمر التحويل', 'Transfer order')} (${activeTransfer.transferNumber}) ${t('بنجاح.', 'approved.')}`
                       )
                     }
                     className="flex items-center gap-1 h-8 px-2.5 bg-[#0049B0] text-white rounded-md font-bold cursor-pointer disabled:opacity-50"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>اعتماد الطلب</span>
+                    <span>{t('اعتماد الطلب', 'Approve Request')}</span>
                   </button>
                 </>
               )}
@@ -1206,13 +1238,13 @@ export const StockTransfersView: React.FC = () => {
                   onClick={() =>
                     runWorkflowAction(
                       () => executeStockTransferRequest(activeTransfer.id),
-                      `تم تنفيذ التحويل المخزني (${activeTransfer.transferNumber}) وتحديث أرصدة المستودعين.`
+                      `${t('تم تنفيذ التحويل المخزني', 'Stock transfer')} (${activeTransfer.transferNumber}) ${t('وتحديث أرصدة المستودعين.', 'executed and warehouse balances updated.')}`
                     )
                   }
                   className="flex items-center gap-1 h-8 px-3 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-black cursor-pointer disabled:opacity-50"
                 >
                   <Play className="w-3.5 h-3.5" />
-                  <span>{isActionSubmitting ? 'جاري التنفيذ...' : 'تنفيذ التحويل وتعديل الأرصدة'}</span>
+                  <span>{isActionSubmitting ? t('جاري التنفيذ...', 'Executing...') : t('تنفيذ التحويل وتعديل الأرصدة', 'Execute Transfer & Update Stock')}</span>
                 </button>
               )}
 
@@ -1221,7 +1253,7 @@ export const StockTransfersView: React.FC = () => {
                 onClick={() => setActiveTransfer(null)}
                 className="h-8 px-2.5 border rounded-md font-bold cursor-pointer"
               >
-                إغلاق
+                {t('إغلاق', 'Close')}
               </button>
             </div>
           </div>
@@ -1233,15 +1265,15 @@ export const StockTransfersView: React.FC = () => {
         <Modal
           isOpen={!!previewInvoice}
           onClose={() => setPreviewInvoice(null)}
-          title={`الفاتورة المرتبطة (${previewInvoice.invoiceNumber})`}
+          title={`${t('الفاتورة المرتبطة', 'Linked Invoice')} (${previewInvoice.invoiceNumber})`}
           maxWidth="2xl"
         >
           <div className="space-y-2 text-xs">
             <div className="p-2 bg-slate-50 rounded-md border grid grid-cols-2 gap-1.5">
-              <div>العميل: <strong>{previewInvoice.customerName || 'عام'}</strong></div>
-              <div>التاريخ: <strong className="font-mono">{previewInvoice.date}</strong></div>
-              <div>المستودع: <strong>{previewInvoice.warehouseName}</strong></div>
-              <div>الإجمالي: <strong className="font-mono text-blue-900">{previewInvoice.grandTotal.toLocaleString()} {settings.currency}</strong></div>
+              <div>{t('العميل:', 'Customer:')} <strong>{previewInvoice.customerName || t('عام', 'General')}</strong></div>
+              <div>{t('التاريخ:', 'Date:')} <strong className="font-mono">{previewInvoice.date}</strong></div>
+              <div>{t('المستودع:', 'Warehouse:')} <strong>{t(previewInvoice.warehouseName)}</strong></div>
+              <div>{t('الإجمالي:', 'Total:')} <strong className="font-mono text-blue-900">{fmt(previewInvoice.grandTotal)} {t(settings.currency)}</strong></div>
             </div>
             <UnifiedDataTable
               compact
@@ -1252,30 +1284,30 @@ export const StockTransfersView: React.FC = () => {
               columns={[
                 {
                   key: 'productName',
-                  header: 'الصنف',
+                  header: t('الصنف', 'Item'),
                   exportValue: (it) => it.productName,
                   render: (it) => <span className="font-bold">{it.productName}</span>,
                 },
                 {
                   key: 'unit',
-                  header: 'الوحدة',
+                  header: t('الوحدة', 'Unit'),
                   align: 'center',
-                  exportValue: (it) => it.unit,
-                  render: (it) => <span>{it.unit}</span>,
+                  exportValue: (it) => t(it.unit),
+                  render: (it) => <span>{t(it.unit)}</span>,
                 },
                 {
                   key: 'quantity',
-                  header: 'الكمية',
+                  header: t('الكمية', 'Quantity'),
                   align: 'center',
                   exportValue: (it) => it.quantity,
-                  render: (it) => <span className="font-mono tabular-nums">{it.quantity}</span>,
+                  render: (it) => <span className="font-mono tabular-nums">{fmt(it.quantity)}</span>,
                 },
                 {
                   key: 'total',
-                  header: 'الإجمالي',
+                  header: t('الإجمالي', 'Total'),
                   align: 'center',
                   exportValue: (it) => it.total,
-                  render: (it) => <span className="font-mono font-bold tabular-nums">{it.total.toLocaleString()}</span>,
+                  render: (it) => <span className="font-mono font-bold tabular-nums">{fmt(it.total)}</span>,
                 },
               ]}
             />

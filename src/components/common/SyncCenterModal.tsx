@@ -15,6 +15,8 @@ import {
 import { Modal } from './Modal';
 import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
+import { usePreferences } from '../../context/PreferencesContext';
+import { formatLocaleDateTime } from '../../i18n/translator';
 import { getConfiguredApiBaseUrl, getStoredInstallationId } from '../../services/api';
 import { localDb } from '../../services/localDb';
 import { saveAndShareDocument } from '../../services/native';
@@ -28,6 +30,7 @@ interface SyncCenterModalProps {
 
 export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClose }) => {
   const { currentUser } = useAuth();
+  const { t } = usePreferences();
   const {
     networkStatus,
     isSyncing,
@@ -76,15 +79,18 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
         filename: `awlad-selim-pending-sync-${stamp}.json`,
         content: JSON.stringify(payload, null, 2),
         mimeType: 'application/json;charset=utf-8',
-        title: 'نسخة احتياطية للعمليات المحلية غير المتزامنة - AWLAD SELIM',
+        title: t('نسخة احتياطية للعمليات المحلية غير المتزامنة - AWLAD SELIM', 'Unsynced Local Operations Backup - AWLAD SELIM'),
       });
       if (res.ok) {
         setActionMessage({
           type: 'ok',
-          text: `تم تصدير (${unsyncedOperations.length}) عملية محلية احتياطياً. يمكنك استيرادها بعد التحديث إذا تعذرت المزامنة قبل حذف النسخة القديمة.`,
+          text: t(
+            `تم تصدير (${unsyncedOperations.length}) عملية محلية احتياطياً. يمكنك استيرادها بعد التحديث إذا تعذرت المزامنة قبل حذف النسخة القديمة.`,
+            `Exported (${unsyncedOperations.length}) local operations as backup. You can import them after updating if sync failed beforehand.`
+          ),
         });
       } else {
-        setActionMessage({ type: 'err', text: res.error || 'تعذر تصدير النسخة الاحتياطية.' });
+        setActionMessage({ type: 'err', text: res.error || t('تعذر تصدير النسخة الاحتياطية.', 'Failed to export backup.') });
       }
     } finally {
       setBusyTransfer(false);
@@ -102,7 +108,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
       const raw = await file.text();
       const parsed = JSON.parse(raw);
       if (parsed?.format !== 'awlad_selim_pending_sync_v1' || !Array.isArray(parsed.operations)) {
-        setActionMessage({ type: 'err', text: 'صيغة ملف العمليات المعلقة غير صالحة.' });
+        setActionMessage({ type: 'err', text: t('صيغة ملف العمليات المعلقة غير صالحة.', 'Invalid pending operations file format.') });
         return;
       }
 
@@ -110,7 +116,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
       if (parsed.installationId && currentIid && parsed.installationId !== currentIid) {
         setActionMessage({
           type: 'err',
-          text: 'هذا الملف يخص قاعدة بيانات شركة أخرى ولا يمكن استيراده هنا.',
+          text: t('هذا الملف يخص قاعدة بيانات شركة أخرى ولا يمكن استيراده هنا.', 'This file belongs to another company database and cannot be imported here.'),
         });
         return;
       }
@@ -123,7 +129,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
       if (!sameOwner) {
         setActionMessage({
           type: 'err',
-          text: 'هذا الملف يخص حساب مستخدم آخر. يرجى تسجيل الدخول بنفس الحساب الأصلي أولاً.',
+          text: t('هذا الملف يخص حساب مستخدم آخر. يرجى تسجيل الدخول بنفس الحساب الأصلي أولاً.', 'This file belongs to another user account. Please sign in with the original account first.'),
         });
         return;
       }
@@ -152,11 +158,11 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
         type: 'ok',
         text:
           importedCount > 0
-            ? `تم استيراد (${importedCount}) عملية محلية بأمان وبدء المزامنة.`
-            : 'جميع العمليات الموجودة في الملف مسجلة أو متزامنة بالفعل.',
+            ? t(`تم استيراد (${importedCount}) عملية محلية بأمان وبدء المزامنة.`, `Safely imported (${importedCount}) local operations and started sync.`)
+            : t('جميع العمليات الموجودة في الملف مسجلة أو متزامنة بالفعل.', 'All operations in this file are already recorded or synced.'),
       });
     } catch {
-      setActionMessage({ type: 'err', text: 'تعذر قراءة ملف العمليات الاحتياطي.' });
+      setActionMessage({ type: 'err', text: t('تعذر قراءة ملف العمليات الاحتياطي.', 'Failed to read backup operations file.') });
     } finally {
       setBusyTransfer(false);
     }
@@ -171,22 +177,22 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
     const res = await resolveSyncConflict(conflictId, action, notesByConflict[conflictId] || '');
     setResolvingId(null);
     if (res.success) {
-      setActionMessage({ type: 'ok', text: 'تمت معالجة التعارض وتحديث المزامنة بنجاح.' });
+      setActionMessage({ type: 'ok', text: t('تمت معالجة التعارض وتحديث المزامنة بنجاح.', 'Conflict resolved and sync updated successfully.') });
     } else {
-      setActionMessage({ type: 'err', text: res.error || 'تعذر معالجة التعارض.' });
+      setActionMessage({ type: 'err', text: res.error || t('تعذر معالجة التعارض.', 'Could not resolve conflict.') });
     }
   };
 
   const getQueueBadge = (status: string) => {
     switch (status) {
       case 'synced':
-        return { label: 'تمت المزامنة', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: CheckCircle2 };
+        return { label: t('تمت المزامنة', 'Synced'), cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: CheckCircle2 };
       case 'needs_review':
-        return { label: 'تعارض للمراجعة', cls: 'bg-amber-50 text-amber-800 border-amber-200', icon: AlertTriangle };
+        return { label: t('تعارض للمراجعة', 'Needs Review'), cls: 'bg-amber-50 text-amber-800 border-amber-200', icon: AlertTriangle };
       case 'failed':
-        return { label: 'فشل مؤقت', cls: 'bg-red-50 text-red-700 border-red-200', icon: XCircle };
+        return { label: t('فشل مؤقت', 'Temporary Failure'), cls: 'bg-red-50 text-red-700 border-red-200', icon: XCircle };
       default:
-        return { label: 'بانتظار الإرسال', cls: 'bg-amber-50 text-amber-800 border-amber-200', icon: Clock };
+        return { label: t('بانتظار الإرسال', 'Pending Upload'), cls: 'bg-amber-50 text-amber-800 border-amber-200', icon: Clock };
     }
   };
 
@@ -194,8 +200,8 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="مركز المزامنة والعمل المحلي"
-      subtitle="مراقبة العمليات المسجلة بدون إنترنت ومعالجة تعارضات المزامنة"
+      title={t('مركز المزامنة والعمل المحلي', 'Sync & Offline Center')}
+      subtitle={t('مراقبة العمليات المسجلة بدون إنترنت ومعالجة تعارضات المزامنة', 'Monitor offline queued operations and resolve sync conflicts')}
       maxWidth="4xl"
     >
       <div className="space-y-2.5 text-xs">
@@ -214,18 +220,18 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
             <div>
               <p className="font-black text-slate-900">
                 {networkStatus === 'connected'
-                  ? 'متصل وجاهز للإرسال والاستلام'
+                  ? t('متصل وجاهز للإرسال والاستلام', 'Connected & Ready to Sync')
                   : networkStatus === 'synchronizing'
-                  ? 'جاري الإرسال والاستلام والمزامنة...'
+                  ? t('جاري الإرسال والاستلام والمزامنة...', 'Synchronizing data...')
                   : networkStatus === 'disconnected'
-                  ? 'وضع العمل المحلي دون اتصال'
+                  ? t('وضع العمل المحلي دون اتصال', 'Offline Local Mode')
                   : networkStatus === 'error'
-                  ? 'قاعدة البيانات غير متاحة مؤقتاً أو تعذرت المزامنة'
-                  : 'توجد عمليات معلقة أو تعارضات'}
+                  ? t('قاعدة البيانات غير متاحة مؤقتاً أو تعذرت المزامنة', 'Database temporarily unavailable or sync failed')
+                  : t('توجد عمليات معلقة أو تعارضات', 'Pending operations or conflicts detected')}
               </p>
               <p className="text-[11px] text-slate-500">
-                آخر مزامنة ناجحة:{' '}
-                {lastServerSyncAt ? new Date(lastServerSyncAt).toLocaleString('ar-EG') : 'لم تتم بعد'}
+                {t('آخر مزامنة ناجحة:', 'Last successful sync:')}{' '}
+                {lastServerSyncAt ? formatLocaleDateTime(lastServerSyncAt) : t('لم تتم بعد', 'Not yet synced')}
               </p>
             </div>
           </div>
@@ -237,7 +243,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
             className="min-h-[34px] px-3 rounded-lg bg-[#003589] hover:bg-[#011E58] text-white font-bold flex items-center gap-1.5 disabled:opacity-60 cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-            <span>{isSyncing ? 'جاري المزامنة...' : 'مزامنة الآن'}</span>
+            <span>{isSyncing ? t('جاري المزامنة...', 'Syncing...') : t('مزامنة الآن', 'Sync Now')}</span>
           </button>
         </div>
 
@@ -258,13 +264,19 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
             <div className="space-y-0.5">
               <p className="font-black">
                 {hasUnsyncedData
-                  ? `لا تحذف التطبيق الآن: توجد (${unsyncedOperations.length + unresolvedConflicts.length}) عملية محلية غير متزامنة`
-                  : 'الحالة آمنة للترقية: جميع العمليات مرسلة ومتزامنة بالكامل'}
+                  ? t(
+                      `لا تحذف التطبيق الآن: توجد (${unsyncedOperations.length + unresolvedConflicts.length}) عملية محلية غير متزامنة`,
+                      `Do not uninstall now: (${unsyncedOperations.length + unresolvedConflicts.length}) unsynced local operations remain`
+                    )
+                  : t('الحالة آمنة للترقية: جميع العمليات مرسلة ومتزامنة بالكامل', 'Safe to upgrade: all operations are fully synced')}
               </p>
               <p className="text-[11px] opacity-85">
                 {hasUnsyncedData
-                  ? 'اضغط "مزامنة الآن" لإرسالها، أو صدّر نسخة احتياطية آمنة قبل حذف النسخة القديمة ثم استوردها بعد تثبيت الإصدار الجديد.'
-                  : 'حسابك وبيانات شركتك محفوظة بالكامل ويمكنك تسجيل الدخول مباشرة بعد التحديث.'}
+                  ? t(
+                      'اضغط "مزامنة الآن" لإرسالها، أو صدّر نسخة احتياطية آمنة قبل حذف النسخة القديمة ثم استوردها بعد تثبيت الإصدار الجديد.',
+                      'Click "Sync Now" to send them, or export a safe backup before removing the old app and import it after installing the new version.'
+                    )
+                  : t('حسابك وبيانات شركتك محفوظة بالكامل ويمكنك تسجيل الدخول مباشرة بعد التحديث.', 'Your account and company data are fully preserved and you can log in right after updating.')}
               </p>
             </div>
           </div>
@@ -278,7 +290,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
                 className="min-h-[32px] px-2.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
                 <Download className="w-3.5 h-3.5" />
-                <span>تصدير المعلق</span>
+                <span>{t('تصدير المعلق', 'Export Pending')}</span>
               </button>
             )}
             <button
@@ -288,7 +300,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
               className="min-h-[32px] px-2.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-slate-800 font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
             >
               <Upload className="w-3.5 h-3.5" />
-              <span>استيراد نسخة معلقة</span>
+              <span>{t('استيراد نسخة معلقة', 'Import Pending Backup')}</span>
             </button>
             <input
               ref={importInputRef}
@@ -302,7 +314,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
 
         {lastError && (
           <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 font-bold">
-            {lastError}
+            {t(lastError)}
           </div>
         )}
 
@@ -321,15 +333,15 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
         {/* Counters Strip */}
         <div className="grid grid-cols-3 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden">
           <div className="bg-amber-50/70 px-3 py-1.5 text-center">
-            <p className="text-[10px] text-amber-800 font-bold">معلقة بالانتظار</p>
+            <p className="text-[10px] text-amber-800 font-bold">{t('معلقة بالانتظار', 'Pending')}</p>
             <p className="text-sm font-black text-amber-950 font-mono tabular-nums">{pendingSyncCount}</p>
           </div>
           <div className="bg-red-50/70 px-3 py-1.5 text-center">
-            <p className="text-[10px] text-red-800 font-bold">فشل إعادة الإرسال</p>
+            <p className="text-[10px] text-red-800 font-bold">{t('فشل إعادة الإرسال', 'Retry Failed')}</p>
             <p className="text-sm font-black text-red-950 font-mono tabular-nums">{failedSyncCount}</p>
           </div>
           <div className="bg-amber-50/70 px-3 py-1.5 text-center">
-            <p className="text-[10px] text-amber-800 font-bold">تعارضات للمراجعة</p>
+            <p className="text-[10px] text-amber-800 font-bold">{t('تعارضات للمراجعة', 'Conflicts to Review')}</p>
             <p className="text-sm font-black text-amber-950 font-mono tabular-nums">{conflictsCount}</p>
           </div>
         </div>
@@ -345,7 +357,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
                 : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
           >
-            سجل العمليات المحلية ({syncQueue.length})
+            {t(`سجل العمليات المحلية (${syncQueue.length})`, `Local Operations Log (${syncQueue.length})`)}
           </button>
           <button
             type="button"
@@ -356,7 +368,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
                 : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
           >
-            التعارضات ({unresolvedConflicts.length})
+            {t(`التعارضات (${unresolvedConflicts.length})`, `Conflicts (${unresolvedConflicts.length})`)}
           </button>
         </div>
 
@@ -365,7 +377,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
           syncQueue.length === 0 ? (
             <div className="py-6 text-center text-slate-500 space-y-1.5">
               <Server className="w-8 h-8 text-slate-300 mx-auto" />
-              <p className="font-bold">لا توجد عمليات محلية معلقة حالياً.</p>
+              <p className="font-bold">{t('لا توجد عمليات محلية معلقة حالياً.', 'No pending local operations currently.')}</p>
             </div>
           ) : (
             <div className="border border-slate-200 rounded-lg bg-white divide-y divide-slate-200 max-h-[45vh] overflow-y-auto">
@@ -380,12 +392,12 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
                       className="px-3 py-2 flex flex-wrap items-center justify-between gap-2 hover:bg-slate-50"
                     >
                       <div className="space-y-0.5 min-w-0 flex-1">
-                        <p className="font-black text-slate-900 truncate">{op.summaryAr}</p>
+                        <p className="font-black text-slate-900 truncate">{t(op.summaryAr)}</p>
                         <p className="text-[11px] text-slate-500 font-mono">
-                          {op.operationType} · {new Date(op.createdAt).toLocaleString('ar-EG')} · محاولات: {op.attempts}
+                          {op.operationType} · {formatLocaleDateTime(op.createdAt)} · {t('محاولات:', 'Attempts:')} {op.attempts}
                         </p>
                         {op.lastError && (
-                          <p className="text-[11px] text-red-700 font-bold">{op.lastError}</p>
+                          <p className="text-[11px] text-red-700 font-bold">{t(op.lastError)}</p>
                         )}
                       </div>
                       <span
@@ -402,10 +414,10 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
         ) : syncConflicts.length === 0 ? (
           <div className="py-6 text-center text-slate-500 space-y-1.5">
             <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
-            <p className="font-bold">لا توجد تعارضات مزامنة مسجلة.</p>
+            <p className="font-bold">{t('لا توجد تعارضات مزامنة مسجلة.', 'No sync conflicts recorded.')}</p>
           </div>
         ) : (
-          <div className="space-y-2 max-h-[45vh] overflow-y-auto pr-0.5">
+          <div className="space-y-2 max-h-[45vh] overflow-y-auto pe-0.5">
             {[...unresolvedConflicts, ...resolvedConflicts].map((cf) => {
               const isOpenConflict = cf.status === 'needs_review';
               return (
@@ -417,13 +429,13 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
                 >
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
-                      <p className="font-black text-slate-900">{cf.conflictReason}</p>
+                      <p className="font-black text-slate-900">{t(cf.conflictReason)}</p>
                       <p className="text-[11px] text-slate-500 font-mono">
-                        {cf.operationType} · {cf.userName || 'مستخدم'} · {new Date(cf.createdAt).toLocaleString('ar-EG')}
+                        {cf.operationType} · {cf.userName || t('مستخدم', 'User')} · {formatLocaleDateTime(cf.createdAt)}
                       </p>
                     </div>
                     <span className="text-[11px] font-bold text-slate-700">
-                      {isOpenConflict ? 'يحتاج قرار' : cf.status}
+                      {isOpenConflict ? t('يحتاج قرار', 'Decision Required') : t(cf.status)}
                     </span>
                   </div>
 
@@ -435,7 +447,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
                         onChange={(e) =>
                           setNotesByConflict((prev) => ({ ...prev, [cf.id]: e.target.value }))
                         }
-                        placeholder="ملاحظة قرار المعالجة (اختياري)..."
+                        placeholder={t('ملاحظة قرار المعالجة (اختياري)...', 'Resolution note (optional)...')}
                         className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs"
                       />
                       <div className="flex flex-wrap gap-1.5">
@@ -445,7 +457,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
                           onClick={() => handleResolve(cf.id, 'keep_server')}
                           className="min-h-[30px] px-2.5 py-1 rounded-lg bg-[#003589] hover:bg-[#011E58] text-white font-bold cursor-pointer disabled:opacity-50"
                         >
-                          اعتماد النسخة المعتمدة
+                          {t('اعتماد النسخة المعتمدة', 'Keep Server Version')}
                         </button>
                         <button
                           type="button"
@@ -453,7 +465,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
                           onClick={() => handleResolve(cf.id, 'apply_local')}
                           className="min-h-[30px] px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold cursor-pointer disabled:opacity-50"
                         >
-                          تطبيق التعديل المحلي
+                          {t('تطبيق التعديل المحلي', 'Apply Local Change')}
                         </button>
                         <button
                           type="button"
@@ -461,7 +473,7 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
                           onClick={() => handleResolve(cf.id, 'dismiss')}
                           className="min-h-[30px] px-2.5 py-1 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold cursor-pointer disabled:opacity-50"
                         >
-                          تجاهل
+                          {t('تجاهل', 'Dismiss')}
                         </button>
                       </div>
                     </>

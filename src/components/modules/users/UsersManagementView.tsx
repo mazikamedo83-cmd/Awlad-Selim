@@ -4,6 +4,8 @@ import {
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
+import { usePreferences } from '../../../context/PreferencesContext';
+import { formatLocaleDate, formatLocaleDateTime } from '../../../i18n/translator';
 import { AuditLogItem, IdentityEntityType, UnifiedIdentity, User, UserRole, UserPermissions } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
@@ -14,27 +16,27 @@ interface UsersManagementViewProps {
   initialTab?: 'users' | 'audit' | 'presets' | 'identities';
 }
 
-const REP_SAFE_PRESET_KEYS: Array<{ key: keyof UserPermissions; label: string; locked?: boolean }> = [
-  { key: 'canView', label: 'العرض والقراءة الأساسية للبوابة (إلزامي)', locked: true },
-  { key: 'canAdd', label: 'إضافة عملاء جدد وعروض وفواتير بيع' },
-  { key: 'canEdit', label: 'تعديل بيانات العملاء ومسوّدات فواتير الشراء الخاصة به' },
-  { key: 'canDelete', label: 'حذف مسوّدات الشراء الخاصة به فقط' },
-  { key: 'canPrint', label: 'طباعة الفواتير والإيصالات والتصدير PDF' },
-  { key: 'canExport', label: 'تصدير التقارير والبيانات إلى Excel / CSV' },
-  { key: 'canManageSales', label: 'إنشاء فواتير البيع ومرتجعات البيع والطلبات من عهدة السيارة' },
-  { key: 'canCreatePurchase', label: 'إنشاء فواتير شراء مسودة وإرسالها للإدارة' },
-  { key: 'canManageTransfers', label: 'نظام التحويل بالنصف والعهدة المالية للمندوب' },
-  { key: 'canCreateStockTransfer', label: 'إنشاء أوامر وطلبات تحويل أصناف' },
-  { key: 'canSend', label: 'إرسال البيانات والمزامنة (Send)' },
-  { key: 'canReceive', label: 'استلام المزامنة والبيانات فقط (Sync Receive — لا يمنح استلام مشتريات المخزن)' },
-  { key: 'canViewReports', label: 'عرض ملخصات مبيعات المندوب المسموحة (دون أرباح الشركة)' },
+const REP_SAFE_PRESET_KEYS: Array<{ key: keyof UserPermissions; labelAr: string; labelEn: string; locked?: boolean }> = [
+  { key: 'canView', labelAr: 'العرض والقراءة الأساسية للبوابة (إلزامي)', labelEn: 'Basic Portal View & Read Access (Mandatory)', locked: true },
+  { key: 'canAdd', labelAr: 'إضافة عملاء جدد وعروض وفواتير بيع', labelEn: 'Add New Customers, Offers & Sales Invoices' },
+  { key: 'canEdit', labelAr: 'تعديل بيانات العملاء ومسوّدات فواتير الشراء الخاصة به', labelEn: 'Edit Customer Details & Own Draft Purchase Invoices' },
+  { key: 'canDelete', labelAr: 'حذف مسوّدات الشراء الخاصة به فقط', labelEn: 'Delete Own Draft Purchase Invoices Only' },
+  { key: 'canPrint', labelAr: 'طباعة الفواتير والإيصالات والتصدير PDF', labelEn: 'Print Invoices, Receipts & Export PDF' },
+  { key: 'canExport', labelAr: 'تصدير التقارير والبيانات إلى Excel / CSV', labelEn: 'Export Reports & Data to Excel / CSV' },
+  { key: 'canManageSales', labelAr: 'إنشاء فواتير البيع ومرتجعات البيع والطلبات من عهدة السيارة', labelEn: 'Create Sales Invoices, Returns & Orders from Van Custody' },
+  { key: 'canCreatePurchase', labelAr: 'إنشاء فواتير شراء مسودة وإرسالها للإدارة', labelEn: 'Create & Submit Draft Purchase Invoices to Management' },
+  { key: 'canManageTransfers', labelAr: 'نظام التحويل بالنصف والعهدة المالية للمندوب', labelEn: 'Half-Transfer System & Rep Cash Custody' },
+  { key: 'canCreateStockTransfer', labelAr: 'إنشاء أوامر وطلبات تحويل أصناف', labelEn: 'Create Stock Transfer Requests & Orders' },
+  { key: 'canSend', labelAr: 'إرسال البيانات والمزامنة (Send)', labelEn: 'Send Data & Sync (Send)' },
+  { key: 'canReceive', labelAr: 'استلام المزامنة والبيانات فقط (Sync Receive — لا يمنح استلام مشتريات المخزن)', labelEn: 'Sync Receive Only (Does Not Grant Warehouse Purchase Receiving)' },
+  { key: 'canViewReports', labelAr: 'عرض ملخصات مبيعات المندوب المسموحة (دون أرباح الشركة)', labelEn: 'View Allowed Rep Sales Summaries (Excluding Company Profits)' },
 ];
 
-const CUSTOMER_SAFE_PRESET_KEYS: Array<{ key: keyof UserPermissions; label: string; locked?: boolean }> = [
-  { key: 'canView', label: 'عرض الكتالوج والطلبات والفواتير وكشف الحساب الشخصي (إلزامي)', locked: true },
-  { key: 'canPrint', label: 'طباعة الفواتير وكشف الحساب كملف PDF' },
-  { key: 'canExport', label: 'تصدير كشف الحساب الشخصي Excel / CSV' },
-  { key: 'canViewReports', label: 'عرض ملخص الرصيد وإجمالي المديونية والائتمان الشخصي' },
+const CUSTOMER_SAFE_PRESET_KEYS: Array<{ key: keyof UserPermissions; labelAr: string; labelEn: string; locked?: boolean }> = [
+  { key: 'canView', labelAr: 'عرض الكتالوج والطلبات والفواتير وكشف الحساب الشخصي (إلزامي)', labelEn: 'View Catalog, Orders, Invoices & Personal Statement (Mandatory)', locked: true },
+  { key: 'canPrint', labelAr: 'طباعة الفواتير وكشف الحساب كملف PDF', labelEn: 'Print Invoices & Statement as PDF' },
+  { key: 'canExport', labelAr: 'تصدير كشف الحساب الشخصي Excel / CSV', labelEn: 'Export Personal Statement as Excel / CSV' },
+  { key: 'canViewReports', labelAr: 'عرض ملخص الرصيد وإجمالي المديونية والائتمان الشخصي', labelEn: 'View Balance Summary, Total Debt & Personal Credit' },
 ];
 
 const ADMIN_ONLY_PERMISSION_KEYS = new Set<keyof UserPermissions>([
@@ -69,6 +71,7 @@ const CUSTOMER_ALLOWED_PERMISSION_KEYS = new Set<keyof UserPermissions>([
 ]);
 
 export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initialTab }) => {
+  const { t, language } = usePreferences();
   const {
     users,
     customers,
@@ -345,15 +348,15 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
     e.preventDefault();
     setFormError(null);
     if (!username.trim() || !fullName.trim()) {
-      setFormError('يرجى إدخال الاسم الكامل واسم الدخول.');
+      setFormError(t('يرجى إدخال الاسم الكامل واسم الدخول.', 'Please enter full name and username.'));
       return;
     }
     if (!editingUser && password.trim().length < 6) {
-      setFormError('يجب إدخال كلمة مرور لا تقل عن 6 أحرف للمستخدم الجديد.');
+      setFormError(t('يجب إدخال كلمة مرور لا تقل عن 6 أحرف للمستخدم الجديد.', 'Password must be at least 6 characters for new users.'));
       return;
     }
     if (editingUser && password.trim().length > 0 && password.trim().length < 6) {
-      setFormError('كلمة المرور الجديدة يجب ألا تقل عن 6 أحرف.');
+      setFormError(t('كلمة المرور الجديدة يجب ألا تقل عن 6 أحرف.', 'New password must be at least 6 characters.'));
       return;
     }
 
@@ -391,10 +394,13 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           applyRolePreset: !hasManualPermEdits,
         });
         if (!res.success) {
-          setFormError(res.error || 'تعذر تحديث بيانات المستخدم');
+          setFormError(res.error ? t(res.error) : t('تعذر تحديث بيانات المستخدم', 'Could not update user'));
           return;
         }
-        setStatusMessage({ type: 'success', text: `تم تحديث بيانات وصلاحيات (${fullName.trim()}) بنجاح.` });
+        setStatusMessage({
+          type: 'success',
+          text: t(`تم تحديث بيانات وصلاحيات (${fullName.trim()}) بنجاح.`, `Updated details and permissions for (${fullName.trim()}) successfully.`),
+        });
       } else {
         const res = await addUser({
           fullName: fullName.trim(),
@@ -415,17 +421,26 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           applyRolePreset: !hasManualPermEdits,
         });
         if (!res.success) {
-          setFormError(res.error || 'تعذر إنشاء المستخدم');
+          setFormError(res.error ? t(res.error) : t('تعذر إنشاء المستخدم', 'Could not create user'));
           return;
         }
         setStatusMessage({
           type: 'success',
           text:
             role === 'customer'
-              ? `تم إنشاء حساب العميل (${username.trim()}) وتفعيل صلاحياته وربطه بملف عميل تلقائياً بنجاح.`
+              ? t(
+                  `تم إنشاء حساب العميل (${username.trim()}) وتفعيل صلاحياته وربطه بملف عميل تلقائياً بنجاح.`,
+                  `Customer account (${username.trim()}) created, activated, and linked to a customer profile automatically.`
+                )
               : role === 'representative'
-              ? `تم إنشاء حساب المندوب (${username.trim()}) وتفعيل صلاحياته الميدانية وإنشاء ملف المندوب ومستودع السيارة تلقائياً بنجاح.`
-              : `تم إنشاء حساب (${username.trim()}) وربطه بالهوية الموحدة بنجاح.`,
+              ? t(
+                  `تم إنشاء حساب المندوب (${username.trim()}) وتفعيل صلاحياته الميدانية وإنشاء ملف المندوب ومستودع السيارة تلقائياً بنجاح.`,
+                  `Rep account (${username.trim()}) created with field permissions, rep profile, and van warehouse automatically.`
+                )
+              : t(
+                  `تم إنشاء حساب (${username.trim()}) وربطه بالهوية الموحدة بنجاح.`,
+                  `Account (${username.trim()}) created and linked to unified identity successfully.`
+                ),
         });
       }
       setIsAddModalOpen(false);
@@ -440,19 +455,22 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
     setResetError(null);
     if (!resetModalUser) return;
     if (resetNewPassword.trim().length < 6) {
-      setResetError('كلمة المرور يجب أن تكون 6 أحرف على الأقل.');
+      setResetError(t('كلمة المرور يجب أن تكون 6 أحرف على الأقل.', 'Password must be at least 6 characters.'));
       return;
     }
     setIsResettingPassword(true);
     try {
       const res = await updateUser(resetModalUser.id, { newPassword: resetNewPassword.trim() });
       if (!res.success) {
-        setResetError(res.error || 'فشل تغيير كلمة المرور');
+        setResetError(res.error ? t(res.error) : t('فشل تغيير كلمة المرور', 'Failed to reset password'));
         return;
       }
       setStatusMessage({
         type: 'success',
-        text: `تمت إعادة تعيين كلمة المرور للمستخدم (${resetModalUser.fullName}) بنجاح.`,
+        text: t(
+          `تمت إعادة تعيين كلمة المرور للمستخدم (${resetModalUser.fullName}) بنجاح.`,
+          `Password reset for (${resetModalUser.fullName}) succeeded.`
+        ),
       });
       setResetModalUser(null);
       setResetNewPassword('');
@@ -471,9 +489,12 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
     try {
       const res = await deleteUser(userToDelete.id);
       if (!res.success) {
-        setStatusMessage({ type: 'error', text: res.error || 'تعذر حذف المستخدم' });
+        setStatusMessage({ type: 'error', text: res.error ? t(res.error) : t('تعذر حذف المستخدم', 'Could not delete user') });
       } else {
-        setStatusMessage({ type: 'success', text: `تم حذف الحساب (${userToDelete.username}).` });
+        setStatusMessage({
+          type: 'success',
+          text: t(`تم حذف الحساب (${userToDelete.username}).`, `Account (${userToDelete.username}) deleted.`),
+        });
       }
       setUserToDelete(null);
     } finally {
@@ -513,10 +534,16 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
       if (res.success) {
         setStatusMessage({
           type: 'success',
-          text: 'تم حفظ قوالب الصلاحيات التلقائية (صلاحيات المندوب وصلاحيات العميل) وتطبيقها على كل تسجيل جديد.',
+          text: t(
+            'تم حفظ قوالب الصلاحيات التلقائية (صلاحيات المندوب وصلاحيات العميل) وتطبيقها على كل تسجيل جديد.',
+            'Default permission presets (Representative & Customer) saved and applied to new registrations.'
+          ),
         });
       } else {
-        setStatusMessage({ type: 'error', text: res.error || 'تعذر حفظ قوالب الصلاحيات التلقائية' });
+        setStatusMessage({
+          type: 'error',
+          text: res.error ? t(res.error) : t('تعذر حفظ قوالب الصلاحيات التلقائية', 'Could not save default permission presets'),
+        });
       }
     } finally {
       setIsSavingPresets(false);
@@ -564,10 +591,16 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
       if (res.success) {
         setStatusMessage({
           type: 'success',
-          text: 'تم تنفيذ تدقيق الهويات الموحدة وحفظ نسخة احتياطية آمنة بنجاح دون دمج تلقائي غير مؤكد.',
+          text: t(
+            'تم تنفيذ تدقيق الهويات الموحدة وحفظ نسخة احتياطية آمنة بنجاح دون دمج تلقائي غير مؤكد.',
+            'Unified identity audit completed with safe backup and no unconfirmed auto-merges.'
+          ),
         });
       } else {
-        setStatusMessage({ type: 'error', text: res.error || 'تعذر تنفيذ التدقيق الآمن للهويات' });
+        setStatusMessage({
+          type: 'error',
+          text: res.error ? t(res.error) : t('تعذر تنفيذ التدقيق الآمن للهويات', 'Could not run safe identity audit'),
+        });
       }
     } finally {
       setIsRunningAudit(false);
@@ -577,7 +610,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
   const handleManualIdentityLink = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!linkTargetId) {
-      setStatusMessage({ type: 'error', text: 'يرجى اختيار السجل المستهدف لربطه.' });
+      setStatusMessage({ type: 'error', text: t('يرجى اختيار السجل المستهدف لربطه.', 'Please select the target record to link.') });
       return;
     }
     setIsLinkingIdentity(true);
@@ -593,14 +626,17 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
       if (res.success) {
         setStatusMessage({
           type: 'success',
-          text: `تم ربط السجل بنجاح بالهوية الموحدة (${res.identityId || 'محدثة'}).`,
+          text: t(
+            `تم ربط السجل بنجاح بالهوية الموحدة (${res.identityId || 'محدثة'}).`,
+            `Record linked successfully to unified identity (${res.identityId || 'updated'}).`
+          ),
         });
         setLinkTargetId('');
         setLinkIdentityId('');
         setLinkEmployeeTargetId('');
         setLinkUserTargetId('');
       } else {
-        setStatusMessage({ type: 'error', text: res.error || 'تعذر ربط السجل بالهوية الموحدة' });
+        setStatusMessage({ type: 'error', text: res.error ? t(res.error) : t('تعذر ربط السجل بالهوية الموحدة', 'Could not link record to identity') });
       }
     } finally {
       setIsLinkingIdentity(false);
@@ -612,9 +648,14 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-white px-2.5 py-2 rounded-lg border border-slate-200">
         <div>
-          <h2 className="text-sm font-black text-slate-900 tracking-tight">إدارة المستخدمين والصلاحيات وسجل الأمان</h2>
+          <h2 className="text-sm font-black text-slate-900 tracking-tight">
+            {t('إدارة المستخدمين والصلاحيات وسجل الأمان', 'Users, Permissions & Security Audit Log')}
+          </h2>
           <p className="text-[11px] text-slate-500">
-            التحكم في حسابات الموظفين والعملاء، تحديد الصلاحيات على الخادم، ومراقبة سجل العمليات (Audit Log)
+            {t(
+              'التحكم في حسابات الموظفين والعملاء، تحديد الصلاحيات على الخادم، ومراقبة سجل العمليات (Audit Log)',
+              'Manage staff & customer accounts, enforce server permissions, and monitor the Audit Log.'
+            )}
           </p>
         </div>
 
@@ -624,7 +665,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
             className="h-8 flex items-center gap-1.5 px-2.5 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md text-xs font-black cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>إضافة مستخدم جديد</span>
+            <span>{t('إضافة مستخدم جديد', 'Add New User')}</span>
           </button>
         )}
       </div>
@@ -646,7 +687,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
             <span>{statusMessage.text}</span>
           </div>
           <button onClick={() => setStatusMessage(null)} className="underline text-[11px] cursor-pointer">
-            إغلاق
+            {t('إغلاق', 'Close')}
           </button>
         </div>
       )}
@@ -659,7 +700,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
             activeTab === 'users' ? 'border-[#003589] text-[#011E58]' : 'border-transparent text-slate-500'
           }`}
         >
-          حسابات المستخدمين ({users.length})
+          {t('حسابات المستخدمين', 'User Accounts')} ({users.length})
         </button>
         <button
           onClick={() => setActiveTab('presets')}
@@ -668,7 +709,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           }`}
         >
           <Shield className="w-3.5 h-3.5" />
-          <span>قوالب الصلاحيات التلقائية (المندوب / العميل)</span>
+          <span>{t('قوالب الصلاحيات التلقائية (المندوب / العميل)', 'Auto Permission Presets (Rep / Customer)')}</span>
         </button>
         <button
           onClick={() => {
@@ -681,7 +722,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           }`}
         >
           <GitMerge className="w-3.5 h-3.5" />
-          <span>الهويات الموحدة والتعارضات ({identities.length})</span>
+          <span>{t('الهويات الموحدة والتعارضات', 'Unified Identities & Conflicts')} ({identities.length})</span>
           {pendingConflictsCount > 0 && (
             <span className="px-1.5 py-0.5 rounded border border-amber-300 bg-amber-50 text-amber-800 text-[10px] font-black tabular-nums">
               {pendingConflictsCount}
@@ -694,7 +735,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
             activeTab === 'audit' ? 'border-[#003589] text-[#011E58]' : 'border-transparent text-slate-500'
           }`}
         >
-          سجل تدقيق العمليات ({auditLogs.length})
+          {t('سجل تدقيق العمليات', 'Audit Log')} ({auditLogs.length})
         </button>
       </div>
 
@@ -702,8 +743,8 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
       {activeTab === 'users' && (
         <UnifiedDataTable<User>
           compact
-          title="حسابات المستخدمين والصلاحيات"
-          subtitle={`المعروض: ${users.filter((u) => (roleFilter === 'all' || u.role === roleFilter) && (activeStatusFilter === 'all' || (activeStatusFilter === 'active' ? u.isActive : !u.isActive))).length} من ${users.length}`}
+          title={t('حسابات المستخدمين والصلاحيات', 'User Accounts & Permissions')}
+          subtitle={`${t('المعروض:', 'Showing:')} ${users.filter((u) => (roleFilter === 'all' || u.role === roleFilter) && (activeStatusFilter === 'all' || (activeStatusFilter === 'active' ? u.isActive : !u.isActive))).length} ${t('من', 'of')} ${users.length}`}
           data={users.filter((u) => {
             if (roleFilter !== 'all' && u.role !== roleFilter) return false;
             if (activeStatusFilter === 'active' && !u.isActive) return false;
@@ -712,45 +753,45 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           })}
           rowKey={(u) => u.id}
           onRowClick={(u) => handleOpenEdit(u)}
-          searchPlaceholder="بحث بالاسم أو اسم الدخول أو الدور أو الهاتف..."
+          searchPlaceholder={t('بحث بالاسم أو اسم الدخول أو الدور أو الهاتف...', 'Search by name, username, role, or phone...')}
           exportFilename="AWLAD_SELIM_Users"
-          pdfTitle="دليل المستخدمين والصلاحيات"
+          pdfTitle={t('دليل المستخدمين والصلاحيات', 'Users & Permissions Directory')}
           defaultPageSize={25}
-          emptyTitle="لا توجد حسابات مستخدمين"
+          emptyTitle={t('لا توجد حسابات مستخدمين', 'No user accounts found')}
           toolbarFilters={
             <div className="flex flex-nowrap items-center gap-1.5 shrink-0">
               <select
-                aria-label="تصفية حسب الدور"
+                aria-label={t('تصفية حسب الدور', 'Filter by role')}
                 value={roleFilter}
                 onChange={(e) => setRoleFilter(e.target.value)}
                 className="h-8 shrink-0 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC]"
               >
-                <option value="all">كل الأدوار ({users.length})</option>
-                <option value="admin">مالك / مدير عام</option>
-                <option value="manager">مدير</option>
-                <option value="accountant">محاسب</option>
-                <option value="sales">موظف مبيعات</option>
-                <option value="purchases">موظف مشتريات</option>
-                <option value="warehouse">أمين مستودع</option>
-                <option value="representative">مندوب مبيعات</option>
-                <option value="customer">عميل تطبيق</option>
+                <option value="all">{t('كل الأدوار', 'All Roles')} ({users.length})</option>
+                <option value="admin">{t('مالك / مدير عام', 'Owner / General Admin')}</option>
+                <option value="manager">{t('مدير', 'Manager')}</option>
+                <option value="accountant">{t('محاسب', 'Accountant')}</option>
+                <option value="sales">{t('موظف مبيعات', 'Sales Staff')}</option>
+                <option value="purchases">{t('موظف مشتريات', 'Purchases Staff')}</option>
+                <option value="warehouse">{t('أمين مستودع', 'Warehouse Keeper')}</option>
+                <option value="representative">{t('مندوب مبيعات', 'Sales Representative')}</option>
+                <option value="customer">{t('عميل تطبيق', 'App Customer')}</option>
               </select>
               <select
-                aria-label="تصفية حسب الحالة"
+                aria-label={t('تصفية حسب الحالة', 'Filter by status')}
                 value={activeStatusFilter}
                 onChange={(e) => setActiveStatusFilter(e.target.value as any)}
                 className="h-8 shrink-0 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC]"
               >
-                <option value="all">كل الحالات</option>
-                <option value="active">نشط فقط</option>
-                <option value="inactive">معطل فقط</option>
+                <option value="all">{t('كل الحالات', 'All Statuses')}</option>
+                <option value="active">{t('نشط فقط', 'Active Only')}</option>
+                <option value="inactive">{t('معطل فقط', 'Disabled Only')}</option>
               </select>
             </div>
           }
           columns={[
             {
               key: 'fullName',
-              header: 'الاسم الكامل والهوية',
+              header: t('الاسم الكامل والهوية', 'Full Name & Identity'),
               sortable: true,
               sortValue: (u) => u.fullName,
               exportValue: (u) => `${u.fullName}${u.identityId ? ` (${u.identityId})` : ''}`,
@@ -758,14 +799,14 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                 <div>
                   <div className="font-bold text-slate-900">{u.fullName}</div>
                   {u.identityId && (
-                    <div className="text-[10px] font-mono text-slate-500 mt-0.5">هوية: {u.identityId}</div>
+                    <div className="text-[10px] font-mono text-slate-500 mt-0.5">{t('هوية:', 'ID:')} {u.identityId}</div>
                   )}
                 </div>
               ),
             },
             {
               key: 'username',
-              header: 'اسم المستخدم',
+              header: t('اسم المستخدم', 'Username'),
               sortable: true,
               sortValue: (u) => u.username,
               exportValue: (u) => u.username,
@@ -773,7 +814,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
             },
             {
               key: 'role',
-              header: 'الدور / الأدوار المرتبطة',
+              header: t('الدور / الأدوار المرتبطة', 'Role / Linked Roles'),
               sortable: true,
               sortValue: (u) => u.role,
               exportValue: (u) => u.role,
@@ -785,34 +826,34 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                   <div className="flex flex-wrap items-center gap-1">
                     <span className="px-2 py-0.5 rounded border border-blue-200 bg-blue-50 text-blue-800 text-[10px] font-bold">
                       {u.role === 'admin'
-                        ? 'مالك / مدير عام'
+                        ? t('مالك / مدير عام', 'Owner / General Admin')
                         : u.role === 'manager'
-                        ? 'مدير'
+                        ? t('مدير', 'Manager')
                         : u.role === 'accountant'
-                        ? 'محاسب'
+                        ? t('محاسب', 'Accountant')
                         : u.role === 'purchases'
-                        ? 'موظف مشتريات'
+                        ? t('موظف مشتريات', 'Purchases Staff')
                         : u.role === 'representative'
-                        ? 'مندوب مبيعات'
+                        ? t('مندوب مبيعات', 'Sales Representative')
                         : u.role === 'customer'
-                        ? 'عميل - تطبيق العملاء'
+                        ? t('عميل - تطبيق العملاء', 'Customer - Customer App')
                         : u.role === 'warehouse'
-                        ? 'أمين مستودع'
-                        : 'موظف مبيعات'}
+                        ? t('أمين مستودع', 'Warehouse Keeper')
+                        : t('موظف مبيعات', 'Sales Staff')}
                     </span>
                     {linkedEmp && (
-                      <span className="px-2 py-0.5 rounded border border-[#DCE6F5] bg-[#EEF3FA] text-[#011E58] text-[10px] font-bold" title={`ملف موظف HR: ${linkedEmp.name}`}>
-                        موظف HR: {linkedEmp.code}
+                      <span className="px-2 py-0.5 rounded border border-[#DCE6F5] bg-[#EEF3FA] text-[#011E58] text-[10px] font-bold" title={`${t('ملف موظف HR:', 'HR Employee:')} ${linkedEmp.name}`}>
+                        {t('موظف HR:', 'HR Staff:')} {linkedEmp.code}
                       </span>
                     )}
                     {linkedRep && (
                       <span className="px-2 py-0.5 rounded border border-[#B8CAE8] bg-[#DCE6F5] text-[#002160] text-[10px] font-bold">
-                        ملف مندوب
+                        {t('ملف مندوب', 'Rep Profile')}
                       </span>
                     )}
                     {linkedCust && (
                       <span className="px-2 py-0.5 rounded border border-slate-300 bg-slate-100 text-slate-800 text-[10px] font-bold">
-                        عميل: {linkedCust.code}
+                        {t('عميل:', 'Customer:')} {linkedCust.code}
                       </span>
                     )}
                   </div>
@@ -821,15 +862,15 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
             },
             {
               key: 'jobTitle',
-              header: 'الوظيفة والقسم',
+              header: t('الوظيفة والقسم', 'Job Title & Department'),
               sortable: true,
               sortValue: (u) => `${u.jobTitle} ${u.department}`,
-              exportValue: (u) => `${u.jobTitle} - ${u.department}`,
-              render: (u) => <span className="text-slate-600">{u.jobTitle} - {u.department}</span>,
+              exportValue: (u) => `${t(u.jobTitle)} - ${t(u.department)}`,
+              render: (u) => <span className="text-slate-600">{t(u.jobTitle)} - {t(u.department)}</span>,
             },
             {
               key: 'phone',
-              header: 'رقم الهاتف',
+              header: t('رقم الهاتف', 'Phone'),
               sortable: true,
               sortValue: (u) => u.phone || '',
               exportValue: (u) => u.phone || '',
@@ -837,11 +878,11 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
             },
             {
               key: 'isActive',
-              header: 'الحالة',
+              header: t('الحالة', 'Status'),
               align: 'center',
               sortable: true,
               sortValue: (u) => (u.isActive ? 1 : 0),
-              exportValue: (u) => (u.isActive ? 'نشط' : 'معطل'),
+              exportValue: (u) => (u.isActive ? t('نشط', 'Active') : t('معطل', 'Disabled')),
               render: (u) => (
                 <button
                   type="button"
@@ -852,11 +893,13 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                     try {
                       const res = await updateUser(u.id, { isActive: !u.isActive });
                       if (!res.success) {
-                        setStatusMessage({ type: 'error', text: res.error || 'تعذر تغيير حالة الحساب' });
+                        setStatusMessage({ type: 'error', text: res.error ? t(res.error) : t('تعذر تغيير حالة الحساب', 'Could not update account status') });
                       } else {
                         setStatusMessage({
                           type: 'success',
-                          text: !u.isActive ? `تم تفعيل حساب (${u.fullName}).` : `تم إيقاف حساب (${u.fullName}).`,
+                          text: !u.isActive
+                            ? t(`تم تفعيل حساب (${u.fullName}).`, `Activated account (${u.fullName}).`)
+                            : t(`تم إيقاف حساب (${u.fullName}).`, `Suspended account (${u.fullName}).`),
                         });
                       }
                     } finally {
@@ -867,25 +910,25 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                     u.isActive ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'
                   }`}
                 >
-                  {togglingUserId === u.id ? '...' : u.isActive ? 'نشط' : 'معطل'}
+                  {togglingUserId === u.id ? '...' : u.isActive ? t('نشط', 'Active') : t('معطل', 'Disabled')}
                 </button>
               ),
             },
             {
               key: 'lastLogin',
-              header: 'آخر دخول',
+              header: t('آخر دخول', 'Last Login'),
               sortable: true,
               sortValue: (u) => u.lastLogin || '',
-              exportValue: (u) => (u.lastLogin ? new Date(u.lastLogin).toLocaleDateString('ar-EG') : 'لم يدخل بعد'),
+              exportValue: (u) => (u.lastLogin ? formatLocaleDate(u.lastLogin) : t('لم يدخل بعد', 'Never')),
               render: (u) => (
                 <span className="text-slate-500 text-[11px] tabular-nums">
-                  {u.lastLogin ? new Date(u.lastLogin).toLocaleDateString('ar-EG') : 'لم يدخل بعد'}
+                  {u.lastLogin ? formatLocaleDate(u.lastLogin) : t('لم يدخل بعد', 'Never')}
                 </span>
               ),
             },
             {
               key: 'actions',
-              header: 'الإجراءات',
+              header: t('الإجراءات', 'Actions'),
               align: 'center',
               exportValue: () => '',
               render: (u) => (
@@ -894,9 +937,9 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                     type="button"
                     onClick={() => handleOpenEdit(u)}
                     className="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 rounded-md font-bold text-[11px] cursor-pointer"
-                    title="تعديل الصلاحيات"
+                    title={t('تعديل الصلاحيات', 'Edit Permissions')}
                   >
-                    الصلاحيات
+                    {t('الصلاحيات', 'Permissions')}
                   </button>
                   <button
                     type="button"
@@ -906,7 +949,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                       setResetModalUser(u);
                     }}
                     className="p-1 text-slate-500 hover:text-blue-900 cursor-pointer"
-                    title="إعادة تعيين كلمة المرور"
+                    title={t('إعادة تعيين كلمة المرور', 'Reset Password')}
                   >
                     <KeyRound className="w-4 h-4" />
                   </button>
@@ -915,7 +958,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                       type="button"
                       onClick={() => handleDeleteUser(u)}
                       className="p-1 text-slate-400 hover:text-red-700 cursor-pointer"
-                      title="حذف المستخدم"
+                      title={t('حذف المستخدم', 'Delete User')}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -932,9 +975,12 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
         <div className="space-y-2 text-xs">
           <div className="px-2.5 py-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-950 flex flex-wrap items-center justify-between gap-2">
             <div className="space-y-0.5">
-              <h3 className="text-xs font-black">القوالب التلقائية عند إنشاء أو تسجيل حساب مندوب أو عميل</h3>
+              <h3 className="text-xs font-black">{t('القوالب التلقائية عند إنشاء أو تسجيل حساب مندوب أو عميل', 'Default Templates for New Rep or Customer Accounts')}</h3>
               <p className="text-[11px] text-blue-800 leading-snug">
-                يُطبق قالب «صلاحيات المندوب» أو «صلاحيات العميل» تلقائياً عند تسجيل الحساب من التطبيق أو لوحة الإدارة، مع إمكانية تعديل صلاحيات أي فرد لاحقاً.
+                {t(
+                  'يُطبق قالب «صلاحيات المندوب» أو «صلاحيات العميل» تلقائياً عند تسجيل الحساب من التطبيق أو لوحة الإدارة، مع إمكانية تعديل صلاحيات أي فرد لاحقاً.',
+                  'Representative or Customer permission templates apply automatically on new signups from app or admin panel, while remaining customizable per individual.'
+                )}
               </p>
             </div>
             <button
@@ -944,7 +990,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
               className="h-8 px-3 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-black flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
             >
               <Save className="w-3.5 h-3.5" />
-              <span>{isSavingPresets ? 'جاري الحفظ...' : 'حفظ قوالب الصلاحيات'}</span>
+              <span>{isSavingPresets ? t('جاري الحفظ...', 'Saving...') : t('حفظ قوالب الصلاحيات', 'Save Permission Presets')}</span>
             </button>
           </div>
 
@@ -953,8 +999,8 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
             <div className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-2">
               <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
                 <div>
-                  <h4 className="text-xs font-black text-[#011E58]">«صلاحيات المندوب» الافتراضية</h4>
-                  <p className="text-[11px] text-slate-500">الصلاحيات المسموحة والممنوحة تلقائياً لكل حساب مندوب جديد</p>
+                  <h4 className="text-xs font-black text-[#011E58]">{t('«صلاحيات المندوب» الافتراضية', 'Default Representative Permissions')}</h4>
+                  <p className="text-[11px] text-slate-500">{t('الصلاحيات المسموحة والممنوحة تلقائياً لكل حساب مندوب جديد', 'Allowed permissions automatically granted to every new rep account')}</p>
                 </div>
                 <button
                   type="button"
@@ -965,7 +1011,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                   className="px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
                 >
                   <RotateCcw className="w-3 h-3" />
-                  <span>استعادة الافتراضي</span>
+                  <span>{t('استعادة الافتراضي', 'Restore Defaults')}</span>
                 </button>
               </div>
               <div className="space-y-1">
@@ -988,12 +1034,15 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                       }
                       className="w-3.5 h-3.5 rounded text-blue-900"
                     />
-                    <span className="font-bold text-slate-800">{item.label}</span>
+                    <span className="font-bold text-slate-800">{language === 'en' ? item.labelEn : item.labelAr}</span>
                   </label>
                 ))}
               </div>
               <div className="p-2 rounded-md bg-amber-50 border border-amber-200 text-[11px] text-amber-900 font-bold">
-                ملاحظة أمنية: تظل صلاحيات الإدارة والمستخدمين والخزائن وأرباح الشركة والاعتماد النهائي محجوبة تماماً عن قالب المندوب على السيرفر.
+                {t(
+                  'ملاحظة أمنية: تظل صلاحيات الإدارة والمستخدمين والخزائن وأرباح الشركة والاعتماد النهائي محجوبة تماماً عن قالب المندوب على السيرفر.',
+                  'Security Note: Admin, Users, Cashbox management, Company profits, and Final approval permissions remain strictly blocked for representative templates on the server.'
+                )}
               </div>
             </div>
 
@@ -1001,8 +1050,8 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
             <div className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-2">
               <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
                 <div>
-                  <h4 className="text-xs font-black text-blue-950">«صلاحيات العميل» الافتراضية</h4>
-                  <p className="text-[11px] text-slate-500">الصلاحيات الممنوحة تلقائياً لكل حساب عميل بوابة جديد</p>
+                  <h4 className="text-xs font-black text-blue-950">{t('«صلاحيات العميل» الافتراضية', 'Default Customer Permissions')}</h4>
+                  <p className="text-[11px] text-slate-500">{t('الصلاحيات الممنوحة تلقائياً لكل حساب عميل بوابة جديد', 'Permissions automatically granted to every new customer portal account')}</p>
                 </div>
                 <button
                   type="button"
@@ -1013,7 +1062,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                   className="px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
                 >
                   <RotateCcw className="w-3 h-3" />
-                  <span>استعادة الافتراضي</span>
+                  <span>{t('استعادة الافتراضي', 'Restore Defaults')}</span>
                 </button>
               </div>
               <div className="space-y-1">
@@ -1036,12 +1085,15 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                       }
                       className="w-3.5 h-3.5 rounded text-blue-900"
                     />
-                    <span className="font-bold text-slate-800">{item.label}</span>
+                    <span className="font-bold text-slate-800">{language === 'en' ? item.labelEn : item.labelAr}</span>
                   </label>
                 ))}
               </div>
               <div className="p-2 rounded-md bg-blue-50 border border-blue-200 text-[11px] text-blue-900 font-bold">
-                ملاحظة أمنية: حساب العميل معزول بالكامل في بياناته وطلباته وفواتيره وكشف حسابه الشخصي ولا يمكنه الوصول لأي بيانات عملاء آخرين أو مالية الشركة.
+                {t(
+                  'ملاحظة أمنية: حساب العميل معزول بالكامل في بياناته وطلباته وفواتيره وكشف حسابه الشخصي ولا يمكنه الوصول لأي بيانات عملاء آخرين أو مالية الشركة.',
+                  'Security Note: Customer accounts are strictly isolated to their own data, orders, invoices, and statements, with zero access to other customers or company finances.'
+                )}
               </div>
             </div>
           </div>
@@ -1055,10 +1107,13 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
             <div>
               <h3 className="text-xs font-black text-slate-900 flex items-center gap-1.5">
                 <GitMerge className="w-4 h-4 text-blue-900" />
-                <span>سجل الهويات الموحدة وإدارة تداخل السجلات</span>
+                <span>{t('سجل الهويات الموحدة وإدارة تداخل السجلات', 'Unified Identity Registry & Conflict Management')}</span>
               </h3>
               <p className="text-[11px] text-slate-500">
-                يربط هذا النظام ملفات الموظفين والمستخدمين والمندوبين والعملاء والموردين تحت معرف هوية موحد مع الحفاظ على فصل القيود المالية والرواتب.
+                {t(
+                  'يربط هذا النظام ملفات الموظفين والمستخدمين والمندوبين والعملاء والموردين تحت معرف هوية موحد مع الحفاظ على فصل القيود المالية والرواتب.',
+                  'Links employees, users, representatives, customers, and suppliers under one unified identity while separating financial ledgers and payroll.'
+                )}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
@@ -1072,7 +1127,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                 className="h-8 px-2.5 rounded-md border border-slate-300 bg-white hover:bg-slate-50 font-bold text-slate-700 flex items-center gap-1.5 cursor-pointer"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isLoadingIdentities ? 'animate-spin' : ''}`} />
-                <span>تحديث</span>
+                <span>{t('تحديث', 'Refresh')}</span>
               </button>
               <button
                 type="button"
@@ -1081,7 +1136,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                 className="h-8 px-2.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
                 <UserCheck className="w-3.5 h-3.5" />
-                <span>{isRunningAudit ? 'جاري الفحص الآمن...' : 'تشغيل التدقيق الآمن للهويات'}</span>
+                <span>{isRunningAudit ? t('جاري الفحص الآمن...', 'Running Safe Audit...') : t('تشغيل التدقيق الآمن للهويات', 'Run Safe Identity Audit')}</span>
               </button>
             </div>
           </div>
@@ -1090,11 +1145,11 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           <form onSubmit={handleManualIdentityLink} className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-2">
             <h4 className="font-black text-slate-900 flex items-center gap-1.5">
               <Link2 className="w-3.5 h-3.5 text-[#003589]" />
-              <span>ربط يدوي مؤكد بين سجل وهوية أو موظف / مستخدم</span>
+              <span>{t('ربط يدوي مؤكد بين سجل وهوية أو موظف / مستخدم', 'Manual Confirmed Link Between Record and Identity / Staff / User')}</span>
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 items-end">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">نوع السجل الأساسي:</label>
+                <label className="block font-bold text-slate-700 mb-1">{t('نوع السجل الأساسي:', 'Primary Record Type:')}</label>
                 <select
                   value={linkTargetType}
                   onChange={(e) => {
@@ -1103,26 +1158,26 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                   }}
                   className="w-full h-[34px] border border-slate-300 rounded-md px-2 font-bold bg-white"
                 >
-                  <option value="user">حساب مستخدم</option>
-                  <option value="employee">ملف موظف (HR)</option>
-                  <option value="representative">مندوب مبيعات</option>
-                  <option value="customer">عميل</option>
-                  <option value="supplier">مورد</option>
+                  <option value="user">{t('حساب مستخدم', 'User Account')}</option>
+                  <option value="employee">{t('ملف موظف (HR)', 'HR Employee Profile')}</option>
+                  <option value="representative">{t('مندوب مبيعات', 'Sales Representative')}</option>
+                  <option value="customer">{t('عميل', 'Customer')}</option>
+                  <option value="supplier">{t('مورد', 'Supplier')}</option>
                 </select>
               </div>
               <div>
                 <SearchableFilterSelect
-                  label="السجل المطلوب ربطه"
+                  label={t('السجل المطلوب ربطه', 'Target Record to Link')}
                   value={linkTargetId || 'all'}
                   onChange={(val) => setLinkTargetId(val === 'all' ? '' : val)}
                   options={linkTargetOptions}
-                  allOptionLabel="-- اختر السجل --"
+                  allOptionLabel={t('-- اختر السجل --', '-- Select Record --')}
                   allOptionValue="all"
                 />
               </div>
               <div>
                 <SearchableFilterSelect
-                  label="ربط بهوية قائمة (اختياري)"
+                  label={t('ربط بهوية قائمة (اختياري)', 'Link to Existing Identity (Optional)')}
                   value={linkIdentityId || 'all'}
                   onChange={(val) => setLinkIdentityId(val === 'all' ? '' : val)}
                   options={identities.map((idn) => ({
@@ -1130,13 +1185,13 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                     label: idn.fullName,
                     subtitle: `${idn.id}${idn.phone ? ` • ${idn.phone}` : ''}`,
                   }))}
-                  allOptionLabel="تلقائي / إنشاء جديد"
+                  allOptionLabel={t('تلقائي / إنشاء جديد', 'Auto / Create New')}
                   allOptionValue="all"
                 />
               </div>
               <div>
                 <SearchableFilterSelect
-                  label="ربط بملف موظف (اختياري)"
+                  label={t('ربط بملف موظف (اختياري)', 'Link to Employee (Optional)')}
                   value={linkEmployeeTargetId || 'all'}
                   onChange={(val) => setLinkEmployeeTargetId(val === 'all' ? '' : val)}
                   options={employees.map((e) => ({
@@ -1144,14 +1199,14 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                     label: e.name,
                     subtitle: `${e.code} • ${e.jobTitle}`,
                   }))}
-                  allOptionLabel="بدون تغيير"
+                  allOptionLabel={t('بدون تغيير', 'No Change')}
                   allOptionValue="all"
                 />
               </div>
               <div className="flex items-end gap-2">
                 <div className="flex-1">
                   <SearchableFilterSelect
-                    label="ربط بمستخدم (اختياري)"
+                    label={t('ربط بمستخدم (اختياري)', 'Link to User (Optional)')}
                     value={linkUserTargetId || 'all'}
                     onChange={(val) => setLinkUserTargetId(val === 'all' ? '' : val)}
                     options={users.map((u) => ({
@@ -1159,7 +1214,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                       label: u.fullName,
                       subtitle: `@${u.username}`,
                     }))}
-                    allOptionLabel="بدون تغيير"
+                    allOptionLabel={t('بدون تغيير', 'No Change')}
                     allOptionValue="all"
                   />
                 </div>
@@ -1168,7 +1223,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                   disabled={isLinkingIdentity || !linkTargetId}
                   className="h-8 px-3 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-black disabled:opacity-50 shrink-0 cursor-pointer"
                 >
-                  {isLinkingIdentity ? '...' : 'ربط'}
+                  {isLinkingIdentity ? '...' : t('ربط', 'Link')}
                 </button>
               </div>
             </div>
@@ -1179,16 +1234,16 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
             <div className="px-2.5 py-2 border-b bg-amber-50/70 flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 font-black text-amber-950">
                 <AlertTriangle className="w-4 h-4 text-amber-600" />
-                <span>سجلات الاشتباه والتعارض ({identityConflicts.length})</span>
+                <span>{t('سجلات الاشتباه والتعارض', 'Suspected Duplicates & Conflicts')} ({identityConflicts.length})</span>
               </div>
               <span className="text-[11px] font-bold text-amber-800">
-                قيد المراجعة: {pendingConflictsCount}
+                {t('قيد المراجعة:', 'Pending Review:')} {pendingConflictsCount}
               </span>
             </div>
             <div className="divide-y divide-slate-100">
               {identityConflicts.length === 0 ? (
                 <div className="p-3 text-center text-slate-400 font-bold">
-                  لا توجد أي تعارضات أو اشتباهات مسجلة حالياً.
+                  {t('لا توجد أي تعارضات أو اشتباهات مسجلة حالياً.', 'No identity conflicts or suspected duplicates recorded.')}
                 </div>
               ) : (
                 identityConflicts.map((cf) => (
@@ -1201,7 +1256,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                         </span>
                         {cf.identifierKey && (
                           <span className="font-mono text-[11px] text-blue-900 bg-blue-50 px-2 py-0.5 rounded">
-                            المؤشر: {cf.identifierKey}
+                            {t('المؤشر:', 'Key:')} {cf.identifierKey}
                           </span>
                         )}
                         <span
@@ -1214,10 +1269,10 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                           }`}
                         >
                           {cf.status === 'pending_review'
-                            ? 'قيد المراجعة'
+                            ? t('قيد المراجعة', 'Pending Review')
                             : cf.status === 'resolved'
-                            ? 'تم الحل'
-                            : 'مستبعد'}
+                            ? t('تم الحل', 'Resolved')
+                            : t('مستبعد', 'Dismissed')}
                         </span>
                       </div>
                       <div className="flex flex-wrap gap-1">
@@ -1232,7 +1287,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                         ))}
                       </div>
                       {cf.resolutionNotes && (
-                        <div className="text-[11px] text-slate-600">ملاحظة المعالجة: {cf.resolutionNotes}</div>
+                        <div className="text-[11px] text-slate-600">{t('ملاحظة المعالجة:', 'Resolution Note:')} {cf.resolutionNotes}</div>
                       )}
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5 shrink-0">
@@ -1240,7 +1295,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                         type="text"
                         value={conflictNotesById[cf.id] ?? ''}
                         onChange={(e) => setConflictNotesById((prev) => ({ ...prev, [cf.id]: e.target.value }))}
-                        placeholder="ملاحظة قرار المراجعة..."
+                        placeholder={t('ملاحظة قرار المراجعة...', 'Review decision note...')}
                         className="h-8 w-44 border border-slate-300 rounded-md px-2 text-xs"
                       />
                       <button
@@ -1250,13 +1305,13 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                           setBusyConflictId(cf.id);
                           await resolveIdentityConflict(cf.id, {
                             status: 'resolved',
-                            resolutionNotes: conflictNotesById[cf.id] || 'تم التحقق واعتماد الربط من الإدارة',
+                            resolutionNotes: conflictNotesById[cf.id] || t('تم التحقق واعتماد الربط من الإدارة', 'Verified and approved by management'),
                           });
                           setBusyConflictId(null);
                         }}
                         className="h-8 px-2.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer disabled:opacity-50"
                       >
-                        تأكيد الحل
+                        {t('تأكيد الحل', 'Confirm Resolution')}
                       </button>
                       <button
                         type="button"
@@ -1265,13 +1320,13 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                           setBusyConflictId(cf.id);
                           await resolveIdentityConflict(cf.id, {
                             status: 'dismissed',
-                            resolutionNotes: conflictNotesById[cf.id] || 'شخصان مختلفان — مستبعد',
+                            resolutionNotes: conflictNotesById[cf.id] || t('شخصان مختلفان — مستبعد', 'Different persons — Dismissed'),
                           });
                           setBusyConflictId(null);
                         }}
                         className="h-8 px-2.5 rounded-md bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold cursor-pointer disabled:opacity-50"
                       >
-                        تجاهل
+                        {t('تجاهل', 'Dismiss')}
                       </button>
                     </div>
                   </div>
@@ -1282,22 +1337,22 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
 
           {/* Unified Identities Directory */}
           <UnifiedDataTable
-            title={`دليل الهويات الموحدة (${identities.length})`}
+            title={`${t('دليل الهويات الموحدة', 'Unified Identities Directory')} (${identities.length})`}
             data={filteredIdentities}
             rowKey={(idn) => idn.id}
             onRowClick={(idn) => setPreviewIdentity(idn)}
             searchValue={identitySearch}
             onSearchChange={setIdentitySearch}
-            searchPlaceholder="بحث بالاسم أو الهاتف أو الرقم القومي أو معرف الهوية..."
+            searchPlaceholder={t('بحث بالاسم أو الهاتف أو الرقم القومي أو معرف الهوية...', 'Search by name, phone, national ID, or identity ID...')}
             exportFilename="AWLAD_SELIM_UnifiedIdentities"
-            pdfTitle="دليل الهويات الموحدة"
+            pdfTitle={t('دليل الهويات الموحدة', 'Unified Identities Directory')}
             defaultPageSize={25}
             compact
-            emptyTitle="لا توجد هويات مطابقة"
+            emptyTitle={t('لا توجد هويات مطابقة', 'No matching identities')}
             columns={[
               {
                 key: 'id',
-                header: 'معرف الهوية',
+                header: t('معرف الهوية', 'Identity ID'),
                 sortable: true,
                 sortValue: (idn) => idn.id,
                 exportValue: (idn) => idn.id,
@@ -1305,7 +1360,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
               },
               {
                 key: 'fullName',
-                header: 'الاسم الكامل',
+                header: t('الاسم الكامل', 'Full Name'),
                 sortable: true,
                 sortValue: (idn) => idn.fullName,
                 exportValue: (idn) => idn.fullName,
@@ -1313,7 +1368,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
               },
               {
                 key: 'phone',
-                header: 'الهاتف',
+                header: t('الهاتف', 'Phone'),
                 sortable: true,
                 sortValue: (idn) => idn.phone || '',
                 exportValue: (idn) => idn.phone || '-',
@@ -1321,7 +1376,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
               },
               {
                 key: 'nationalId',
-                header: 'الرقم القومي',
+                header: t('الرقم القومي', 'National ID'),
                 sortable: true,
                 sortValue: (idn) => idn.nationalId || '',
                 exportValue: (idn) => idn.nationalId || '-',
@@ -1329,7 +1384,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
               },
               {
                 key: 'roles',
-                header: 'السجلات والأدوار المرتبطة',
+                header: t('السجلات والأدوار المرتبطة', 'Linked Records & Roles'),
                 exportValue: (idn) => {
                   const roles = idn.roles && idn.roles.length > 0 ? idn.roles : identityRoles.filter((r) => r.identityId === idn.id);
                   return roles.map((r) => `${r.linkedRecordType}:${r.linkedRecordId}`).join(', ');
@@ -1359,32 +1414,32 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
       {activeTab === 'audit' && (
         <UnifiedDataTable
           compact
-          title="سجل تدقيق العمليات"
-          subtitle={`إجمالي الأحداث المسجلة: ${auditLogs.length}`}
+          title={t('سجل تدقيق العمليات', 'Audit Log')}
+          subtitle={`${t('إجمالي الأحداث المسجلة:', 'Total Recorded Events:')} ${auditLogs.length}`}
           data={auditLogs}
           rowKey={(log) => log.id}
           onRowClick={(log) => setPreviewAuditLog(log)}
-          searchPlaceholder="بحث بالمستخدم أو الوحدة أو الإجراء أو التفاصيل..."
+          searchPlaceholder={t('بحث بالمستخدم أو الوحدة أو الإجراء أو التفاصيل...', 'Search by user, module, action, or details...')}
           exportFilename="AWLAD_SELIM_AuditLogs"
-          pdfTitle="سجل تدقيق العمليات"
+          pdfTitle={t('سجل تدقيق العمليات', 'Audit Log')}
           defaultPageSize={25}
-          emptyTitle="لا توجد سجلات بعد"
+          emptyTitle={t('لا توجد سجلات بعد', 'No logs recorded yet')}
           columns={[
             {
               key: 'timestamp',
-              header: 'التاريخ والوقت',
+              header: t('التاريخ والوقت', 'Date & Time'),
               sortable: true,
               sortValue: (log) => log.timestamp,
-              exportValue: (log) => new Date(log.timestamp).toLocaleString('ar-EG'),
+              exportValue: (log) => formatLocaleDateTime(log.timestamp),
               render: (log) => (
                 <span className="font-mono text-slate-500 tabular-nums">
-                  {new Date(log.timestamp).toLocaleString('ar-EG')}
+                  {formatLocaleDateTime(log.timestamp)}
                 </span>
               ),
             },
             {
               key: 'userName',
-              header: 'المستخدم',
+              header: t('المستخدم', 'User'),
               sortable: true,
               sortValue: (log) => log.userName,
               exportValue: (log) => log.userName,
@@ -1392,23 +1447,23 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
             },
             {
               key: 'module',
-              header: 'الوحدة / القسم',
+              header: t('الوحدة / القسم', 'Module / Section'),
               sortable: true,
               sortValue: (log) => log.module,
-              exportValue: (log) => log.module,
-              render: (log) => <span className="font-semibold text-blue-900">{log.module}</span>,
+              exportValue: (log) => t(log.module),
+              render: (log) => <span className="font-semibold text-blue-900">{t(log.module)}</span>,
             },
             {
               key: 'action',
-              header: 'الإجراء المنفذ',
+              header: t('الإجراء المنفذ', 'Action Executed'),
               sortable: true,
               sortValue: (log) => log.action,
-              exportValue: (log) => log.action,
-              render: (log) => <span className="font-bold">{log.action}</span>,
+              exportValue: (log) => t(log.action),
+              render: (log) => <span className="font-bold">{t(log.action)}</span>,
             },
             {
               key: 'details',
-              header: 'تفاصيل العملية',
+              header: t('تفاصيل العملية', 'Operation Details'),
               sortable: true,
               sortValue: (log) => log.details,
               exportValue: (log) => log.details,
@@ -1422,7 +1477,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
       <Modal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
-        title={editingUser ? `تعديل وصلاحيات: ${editingUser.fullName}` : 'إضافة حساب مستخدم جديد'}
+        title={editingUser ? `${t('تعديل وصلاحيات:', 'Edit & Permissions:')} ${editingUser.fullName}` : t('إضافة حساب مستخدم جديد', 'Add New User Account')}
         maxWidth="4xl"
       >
         <form onSubmit={handleSaveUser} className="space-y-2 text-xs">
@@ -1435,7 +1490,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-slate-50 p-2 rounded-lg border">
             <div>
-              <label className="block text-[11px] font-bold mb-0.5">الاسم الكامل:</label>
+              <label className="block text-[11px] font-bold mb-0.5">{t('الاسم الكامل:', 'Full Name:')}</label>
               <input
                 type="text"
                 required
@@ -1445,9 +1500,10 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
               />
             </div>
             <div>
-              <label className="block text-[11px] font-bold mb-0.5">اسم الدخول (Username):</label>
+              <label className="block text-[11px] font-bold mb-0.5">{t('اسم الدخول (Username):', 'Username:')}</label>
               <input
                 type="text"
+                dir="ltr"
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
@@ -1455,11 +1511,12 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
               />
             </div>
             <div>
-              <label className="block text-[11px] font-bold mb-0.5">كلمة المرور:</label>
+              <label className="block text-[11px] font-bold mb-0.5">{t('كلمة المرور:', 'Password:')}</label>
               <input
                 type="password"
+                dir="ltr"
                 required={!editingUser}
-                placeholder={editingUser ? 'اتركه فارغاً للإبقاء عليها' : '6 أحرف على الأقل'}
+                placeholder={editingUser ? t('اتركه فارغاً للإبقاء عليها', 'Leave empty to keep current') : t('6 أحرف على الأقل', 'At least 6 characters')}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full h-8 bg-white border rounded-md px-2 font-mono"
@@ -1469,7 +1526,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div>
-              <label className="block text-[11px] font-bold mb-0.5">نوع الحساب / الدور:</label>
+              <label className="block text-[11px] font-bold mb-0.5">{t('نوع الحساب / الدور:', 'Account Type / Role:')}</label>
               <select
                 value={role}
                 onChange={(e) => {
@@ -1484,18 +1541,18 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                 }}
                 className="w-full h-8 border rounded-md px-2 font-bold bg-white"
               >
-                <option value="admin">مالك / مدير عام (كامل الصلاحيات)</option>
-                <option value="manager">مدير فرع</option>
-                <option value="accountant">محاسب مالي</option>
-                <option value="sales">موظف مبيعات</option>
-                <option value="purchases">موظف مشتريات</option>
-                <option value="warehouse">أمين مستودع</option>
-                <option value="representative">مندوب مبيعات خارجي</option>
-                <option value="customer">عميل - تطبيق العملاء</option>
+                <option value="admin">{t('مالك / مدير عام (كامل الصلاحيات)', 'Owner / General Admin (Full Access)')}</option>
+                <option value="manager">{t('مدير فرع', 'Branch Manager')}</option>
+                <option value="accountant">{t('محاسب مالي', 'Financial Accountant')}</option>
+                <option value="sales">{t('موظف مبيعات', 'Sales Staff')}</option>
+                <option value="purchases">{t('موظف مشتريات', 'Purchases Staff')}</option>
+                <option value="warehouse">{t('أمين مستودع', 'Warehouse Keeper')}</option>
+                <option value="representative">{t('مندوب مبيعات خارجي', 'Field Sales Representative')}</option>
+                <option value="customer">{t('عميل - تطبيق العملاء', 'Customer - Customer App')}</option>
               </select>
             </div>
             <div>
-              <label className="block text-[11px] font-bold mb-0.5">المسمى الوظيفي:</label>
+              <label className="block text-[11px] font-bold mb-0.5">{t('المسمى الوظيفي:', 'Job Title:')}</label>
               <input
                 type="text"
                 value={jobTitle}
@@ -1504,9 +1561,10 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
               />
             </div>
             <div>
-              <label className="block text-[11px] font-bold mb-0.5">رقم الهاتف:</label>
+              <label className="block text-[11px] font-bold mb-0.5">{t('رقم الهاتف:', 'Phone Number:')}</label>
               <input
                 type="tel"
+                dir="ltr"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 className="w-full h-8 border rounded-md px-2 font-mono"
@@ -1516,7 +1574,9 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
 
           {role !== 'customer' && (
             <div className="p-2 rounded-lg bg-[#EEF3FA] border border-[#DCE6F5] space-y-1">
-              <label className="block text-[11px] font-bold text-[#011E58]">ربط بسجل الموظف (HR) — لمنع تكرار الموظف وتوحيد الهوية:</label>
+              <label className="block text-[11px] font-bold text-[#011E58]">
+                {t('ربط بسجل الموظف (HR) — لمنع تكرار الموظف وتوحيد الهوية:', 'Link to HR Employee Record — Prevent duplicates & unify identity:')}
+              </label>
               <select
                 value={linkedEmployeeId}
                 onChange={(e) => {
@@ -1534,7 +1594,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                 }}
                 className="w-full h-8 bg-white border border-[#B8CAE8] rounded-md px-2 font-bold"
               >
-                <option value="">-- بدون ربط بموظف / اختياري --</option>
+                <option value="">{t('-- بدون ربط بموظف / اختياري --', '-- No Employee Link / Optional --')}</option>
                 {employees
                   .filter((e) => {
                     const claimedByOtherUser = users.some(
@@ -1556,26 +1616,32 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
 
           {role === 'representative' && (
             <div className="p-2 rounded-md bg-[#EEF3FA] border border-[#DCE6F5] text-[#011E58] font-bold text-[11px] leading-snug">
-              سيتم تفعيل صلاحيات المندوب الأساسية تلقائياً (عرض وإضافة وتعديل العملاء، البيع من عهدة السيارة، إنشاء وإرسال فواتير شراء مسودة، التحويلات والمزامنة) وإنشاء ملف مندوب ومستودع سيارة 1:1 تلقائياً دون تكرار.
+              {t(
+                'سيتم تفعيل صلاحيات المندوب الأساسية تلقائياً (عرض وإضافة وتعديل العملاء، البيع من عهدة السيارة، إنشاء وإرسال فواتير شراء مسودة، التحويلات والمزامنة) وإنشاء ملف مندوب ومستودع سيارة 1:1 تلقائياً دون تكرار.',
+                'Basic rep permissions (customers, van-custody sales, draft purchases, transfers & sync) and a 1:1 rep profile + van warehouse will be auto-provisioned without duplicates.'
+              )}
             </div>
           )}
 
           {role === 'customer' && (
             <div className="p-2 rounded-lg bg-blue-50 border border-blue-200 space-y-1">
-              <label className="block text-[11px] font-bold text-blue-950">ربط هذا الحساب بملف العميل مباشرة (1:1):</label>
+              <label className="block text-[11px] font-bold text-blue-950">{t('ربط هذا الحساب بملف العميل مباشرة (1:1):', 'Link This Account Directly to Customer Profile (1:1):')}</label>
               {editingUser && (() => {
                 const alreadyLinked = customers.find((c) => c.userId === editingUser.id);
                 if (alreadyLinked) {
                   return (
                     <div className="p-1.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-900 font-bold">
-                      مربوط حالياً بملف العميل: {alreadyLinked.name}{' '}
+                      {t('مربوط حالياً بملف العميل:', 'Currently linked to customer profile:')} {alreadyLinked.name}{' '}
                       {alreadyLinked.shopName ? `(${alreadyLinked.shopName})` : ''} — {alreadyLinked.code}
                     </div>
                   );
                 }
                 return (
                   <div className="p-1.5 rounded-md bg-amber-50 border border-amber-200 text-amber-900 font-bold text-[11px]">
-                    تنبيه: حساب العميل غير مربوط بملف عميل حالياً — اختر عميلاً من القائمة أو احفظ لإنشاء وربط ملف عميل تلقائياً.
+                    {t(
+                      'تنبيه: حساب العميل غير مربوط بملف عميل حالياً — اختر عميلاً من القائمة أو احفظ لإنشاء وربط ملف عميل تلقائياً.',
+                      'Notice: Customer account is not linked yet — select an existing customer or save to auto-create and link one.'
+                    )}
                   </div>
                 );
               })()}
@@ -1586,7 +1652,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                   onChange={(e) => setLinkedCustomerId(e.target.value)}
                   className="w-full h-8 bg-white border border-blue-300 rounded-md px-2 font-bold"
                 >
-                  <option value="">-- إنشاء وربط ملف عميل جديد تلقائياً (مستحسن) --</option>
+                  <option value="">{t('-- إنشاء وربط ملف عميل جديد تلقائياً (مستحسن) --', '-- Auto-Create & Link New Customer Profile (Recommended) --')}</option>
                   {customers
                     .filter((c) => !c.userId)
                     .map((c) => (
@@ -1606,13 +1672,15 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
               onChange={(e) => setMustChangePassword(e.target.checked)}
               className="w-3.5 h-3.5 rounded text-blue-900"
             />
-            <span className="font-bold text-amber-900">إلزام المستخدم بتغيير كلمة المرور عند تسجيل الدخول القادم</span>
+            <span className="font-bold text-amber-900">
+              {t('إلزام المستخدم بتغيير كلمة المرور عند تسجيل الدخول القادم', 'Require user to change password on next login')}
+            </span>
           </label>
 
           {/* Granular Permissions Checkboxes */}
           <div className="space-y-1.5 border-t pt-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h4 className="font-black text-slate-800 text-xs">تخصيص الصلاحيات الفردية (Granular Permissions):</h4>
+              <h4 className="font-black text-slate-800 text-xs">{t('تخصيص الصلاحيات الفردية (Granular Permissions):', 'Individual Granular Permissions:')}</h4>
               <button
                 type="button"
                 onClick={() => {
@@ -1622,7 +1690,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                 className="px-2 py-1 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
               >
                 <RotateCcw className="w-3 h-3" />
-                <span>تطبيق القالب الافتراضي للدور</span>
+                <span>{t('تطبيق القالب الافتراضي للدور', 'Apply Default Role Preset')}</span>
               </button>
             </div>
             {(role === 'representative' || role === 'customer') && (
@@ -1630,52 +1698,58 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                 <Shield className="w-3.5 h-3.5 text-amber-700 shrink-0" />
                 <span>
                   {role === 'representative'
-                    ? 'حماية الدور: الصلاحيات الإدارية والمالية والحساسة مقفلة تلقائياً على دور المندوب ويتم تجريدها من الخادم أيضاً.'
-                    : 'حماية الدور: دور العميل يقتصر على صلاحيات العرض والطباعة والتصدير والتقارير الشخصية فقط، وجميع الصلاحيات الإدارية مقفلة.'}
+                    ? t(
+                        'حماية الدور: الصلاحيات الإدارية والمالية والحساسة مقفلة تلقائياً على دور المندوب ويتم تجريدها من الخادم أيضاً.',
+                        'Role Protection: Admin, financial, and sensitive permissions are automatically locked for representatives and stripped server-side.'
+                      )
+                    : t(
+                        'حماية الدور: دور العميل يقتصر على صلاحيات العرض والطباعة والتصدير والتقارير الشخصية فقط، وجميع الصلاحيات الإدارية مقفلة.',
+                        'Role Protection: Customer role is restricted to personal view, print, export, and statement reports only.'
+                      )}
                 </span>
               </div>
             )}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 p-2 bg-slate-50 rounded-lg border">
               {[
-                { key: 'canView', label: 'صلاحية العرض والقراءة' },
-                { key: 'canAdd', label: 'صلاحية الإضافة والإنشاء' },
-                { key: 'canEdit', label: 'صلاحية التعديل' },
-                { key: 'canDelete', label: 'صلاحية الحذف والإلغاء' },
-                { key: 'canPrint', label: 'صلاحية الطباعة' },
-                { key: 'canExport', label: 'صلاحية تصدير Excel' },
-                { key: 'canViewReports', label: 'الاطلاع على التقارير المالية' },
-                { key: 'canManageSales', label: 'إدارة المبيعات وفواتير البيع' },
-                { key: 'canManagePurchases', label: 'إدارة المشتريات والموردين (الاعتماد الكامل)' },
-                { key: 'canCreatePurchase', label: 'إنشاء وإرسال فواتير شراء مسودة (للمندوب/الموظف)' },
-                { key: 'canManageInventory', label: 'إدارة المخزون والأصناف' },
-                { key: 'canManageWarehouses', label: 'إدارة المستودعات والتحويلات' },
-                { key: 'canManageCashboxes', label: 'إدارة الخزائن والحسابات' },
-                { key: 'canManageTransfers', label: 'نظام طلب تحويل بالنصف' },
-                { key: 'canApprove', label: 'اعتماد العمليات والمستندات' },
-                { key: 'canReviewRepInvoices', label: 'مراجعة واعتماد فواتير المناديب' },
-                { key: 'canSend', label: 'صلاحية إرسال المزامنة Send' },
-                { key: 'canReceive', label: 'صلاحية استلام المزامنة فقط (Sync Receive)' },
-                { key: 'canManageEmployees', label: 'إدارة الموظفين والربط الوظيفي' },
-                { key: 'canManageUsers', label: 'إدارة حسابات المستخدمين' },
-                { key: 'canManageSettings', label: 'إعدادات النظام والنسخ الاحتياطي' },
-                { key: 'canAllowNegativeInventory', label: 'السماح بالبيع بالسالب عند نفاد الرصيد' },
-                { key: 'canViewPersonalAccounts', label: 'عرض الحسابات الشخصية للملاك' },
-                { key: 'canCreatePersonalTx', label: 'تسجيل سحب/إيداع في الحسابات الشخصية' },
-                { key: 'canEditPersonalTx', label: 'تعديل حركات الحسابات الشخصية' },
-                { key: 'canApprovePersonalAdjustment', label: 'اعتماد تسويات الحسابات الشخصية' },
-                { key: 'canCreateStockCount', label: 'إنشاء وتقديم جرد المخزن' },
-                { key: 'canApproveStockCount', label: 'اعتماد ورفض جرد المخزن' },
-                { key: 'canCreateStockTransfer', label: 'إنشاء أوامر تحويل الأصناف' },
-                { key: 'canApproveStockTransfer', label: 'اعتماد أوامر تحويل الأصناف' },
-                { key: 'canExecuteStockTransfer', label: 'تنفيذ وترحيل تحويلات الأصناف' },
-                { key: 'canViewDeletedInvoices', label: 'الاطلاع على الفواتير المحذوفة والملغاة' },
+                { key: 'canView', ar: 'صلاحية العرض والقراءة', en: 'View & Read Access' },
+                { key: 'canAdd', ar: 'صلاحية الإضافة والإنشاء', en: 'Add & Create Access' },
+                { key: 'canEdit', ar: 'صلاحية التعديل', en: 'Edit Access' },
+                { key: 'canDelete', ar: 'صلاحية الحذف والإلغاء', en: 'Delete & Cancel Access' },
+                { key: 'canPrint', ar: 'صلاحية الطباعة', en: 'Print Access' },
+                { key: 'canExport', ar: 'صلاحية تصدير Excel', en: 'Export to Excel' },
+                { key: 'canViewReports', ar: 'الاطلاع على التقارير المالية', en: 'View Financial Reports' },
+                { key: 'canManageSales', ar: 'إدارة المبيعات وفواتير البيع', en: 'Manage Sales & Invoices' },
+                { key: 'canManagePurchases', ar: 'إدارة المشتريات والموردين (الاعتماد الكامل)', en: 'Manage Purchases & Suppliers (Full Approval)' },
+                { key: 'canCreatePurchase', ar: 'إنشاء وإرسال فواتير شراء مسودة (للمندوب/الموظف)', en: 'Create & Submit Draft Purchase Invoices' },
+                { key: 'canManageInventory', ar: 'إدارة المخزون والأصناف', en: 'Manage Inventory & Products' },
+                { key: 'canManageWarehouses', ar: 'إدارة المستودعات والتحويلات', en: 'Manage Warehouses & Transfers' },
+                { key: 'canManageCashboxes', ar: 'إدارة الخزائن والحسابات', en: 'Manage Cashboxes & Accounts' },
+                { key: 'canManageTransfers', ar: 'نظام طلب تحويل بالنصف', en: 'Half-Transfer Request System' },
+                { key: 'canApprove', ar: 'اعتماد العمليات والمستندات', en: 'Approve Operations & Documents' },
+                { key: 'canReviewRepInvoices', ar: 'مراجعة واعتماد فواتير المناديب', en: 'Review & Approve Rep Invoices' },
+                { key: 'canSend', ar: 'صلاحية إرسال المزامنة Send', en: 'Sync Send Access' },
+                { key: 'canReceive', ar: 'صلاحية استلام المزامنة فقط (Sync Receive)', en: 'Sync Receive Only' },
+                { key: 'canManageEmployees', ar: 'إدارة الموظفين والربط الوظيفي', en: 'Manage Employees & HR Links' },
+                { key: 'canManageUsers', ar: 'إدارة حسابات المستخدمين', en: 'Manage User Accounts' },
+                { key: 'canManageSettings', ar: 'إعدادات النظام والنسخ الاحتياطي', en: 'System Settings & Backups' },
+                { key: 'canAllowNegativeInventory', ar: 'السماح بالبيع بالسالب عند نفاد الرصيد', en: 'Allow Negative Stock Sales' },
+                { key: 'canViewPersonalAccounts', ar: 'عرض الحسابات الشخصية للملاك', en: 'View Owner Personal Accounts' },
+                { key: 'canCreatePersonalTx', ar: 'تسجيل سحب/إيداع في الحسابات الشخصية', en: 'Record Personal Account Withdrawals/Deposits' },
+                { key: 'canEditPersonalTx', ar: 'تعديل حركات الحسابات الشخصية', en: 'Edit Personal Account Transactions' },
+                { key: 'canApprovePersonalAdjustment', ar: 'اعتماد تسويات الحسابات الشخصية', en: 'Approve Personal Account Adjustments' },
+                { key: 'canCreateStockCount', ar: 'إنشاء وتقديم جرد المخزن', en: 'Create & Submit Stock Count' },
+                { key: 'canApproveStockCount', ar: 'اعتماد ورفض جرد المخزن', en: 'Approve / Reject Stock Count' },
+                { key: 'canCreateStockTransfer', ar: 'إنشاء أوامر تحويل الأصناف', en: 'Create Stock Transfer Orders' },
+                { key: 'canApproveStockTransfer', ar: 'اعتماد أوامر تحويل الأصناف', en: 'Approve Stock Transfer Orders' },
+                { key: 'canExecuteStockTransfer', ar: 'تنفيذ وترحيل تحويلات الأصناف', en: 'Execute & Post Stock Transfers' },
+                { key: 'canViewDeletedInvoices', ar: 'الاطلاع على الفواتير المحذوفة والملغاة', en: 'View Deleted & Cancelled Invoices' },
               ].map((perm) => {
                 const permKey = perm.key as keyof UserPermissions;
                 const lockedForRole = isPermissionLockedForRole(permKey, role);
                 return (
                   <label
                     key={perm.key}
-                    title={lockedForRole ? 'صلاحية مقيدة لهذا الدور بموجب سياسة الأمان' : undefined}
+                    title={lockedForRole ? t('صلاحية مقيدة لهذا الدور بموجب سياسة الأمان', 'Permission restricted for this role by security policy') : undefined}
                     className={`flex items-center gap-1.5 px-2 py-1 rounded-md border ${
                       lockedForRole
                         ? 'bg-slate-100 border-slate-200 opacity-55 cursor-not-allowed'
@@ -1689,7 +1763,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                       onChange={() => togglePermission(permKey)}
                       className="w-3.5 h-3.5 rounded text-blue-900 focus:ring-blue-500 disabled:opacity-50"
                     />
-                    <span className="font-semibold text-slate-800">{perm.label}</span>
+                    <span className="font-semibold text-slate-800">{language === 'en' ? perm.en : perm.ar}</span>
                   </label>
                 );
               })}
@@ -1698,14 +1772,14 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
 
           <div className="flex justify-end gap-1.5 pt-2 border-t">
             <button type="button" onClick={() => setIsAddModalOpen(false)} className="h-8 px-2.5 border rounded-md font-bold cursor-pointer">
-              إلغاء
+              {t('إلغاء', 'Cancel')}
             </button>
             <button
               type="submit"
               disabled={isSaving}
               className="h-8 px-3 bg-blue-900 text-white rounded-md font-bold disabled:opacity-50 cursor-pointer"
             >
-              {isSaving ? 'جاري الحفظ...' : 'حفظ الحساب'}
+              {isSaving ? t('جاري الحفظ...', 'Saving...') : t('حفظ الحساب', 'Save Account')}
             </button>
           </div>
         </form>
@@ -1716,7 +1790,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
         <Modal
           isOpen={!!resetModalUser}
           onClose={() => setResetModalUser(null)}
-          title={`إعادة تعيين كلمة المرور لـ: ${resetModalUser.fullName}`}
+          title={`${t('إعادة تعيين كلمة المرور لـ:', 'Reset Password for:')} ${resetModalUser.fullName}`}
           maxWidth="sm"
         >
           <form onSubmit={handleResetPassword} className="space-y-2 text-xs">
@@ -1726,11 +1800,12 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
               </div>
             )}
             <div>
-              <label className="block text-[11px] font-bold mb-0.5">كلمة المرور الجديدة (6 أحرف على الأقل):</label>
+              <label className="block text-[11px] font-bold mb-0.5">{t('كلمة المرور الجديدة (6 أحرف على الأقل):', 'New Password (at least 6 characters):')}</label>
               <input
                 type="password"
+                dir="ltr"
                 required
-                placeholder="أدخل كلمة المرور الجديدة"
+                placeholder={t('أدخل كلمة المرور الجديدة', 'Enter new password')}
                 value={resetNewPassword}
                 onChange={(e) => setResetNewPassword(e.target.value)}
                 className="w-full h-8 border rounded-md px-2 font-mono"
@@ -1738,10 +1813,10 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
             </div>
             <div className="flex justify-end gap-1.5 pt-2 border-t">
               <button type="button" onClick={() => setResetModalUser(null)} className="h-8 px-2.5 border rounded-md font-bold cursor-pointer">
-                إلغاء
+                {t('إلغاء', 'Cancel')}
               </button>
               <button type="submit" disabled={isResettingPassword} className="h-8 px-3 bg-blue-900 text-white rounded-md font-bold cursor-pointer disabled:opacity-50">
-                {isResettingPassword ? 'جاري الحفظ...' : 'حفظ كلمة المرور'}
+                {isResettingPassword ? t('جاري الحفظ...', 'Saving...') : t('حفظ كلمة المرور', 'Save Password')}
               </button>
             </div>
           </form>
@@ -1754,16 +1829,23 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
         onConfirm={handleConfirmDeleteUser}
         variant="danger"
         isLoading={isDeletingUser}
-        title="تأكيد حذف حساب المستخدم"
-        message={userToDelete ? `هل أنت متأكد من حذف حساب المستخدم (${userToDelete.fullName} - ${userToDelete.username}) نهائياً؟` : ''}
-        confirmLabel="حذف الحساب"
+        title={t('تأكيد حذف حساب المستخدم', 'Confirm Delete User Account')}
+        message={
+          userToDelete
+            ? t(
+                `هل أنت متأكد من حذف حساب المستخدم (${userToDelete.fullName} - ${userToDelete.username}) نهائياً؟`,
+                `Are you sure you want to permanently delete user (${userToDelete.fullName} - ${userToDelete.username})?`
+              )
+            : ''
+        }
+        confirmLabel={t('حذف الحساب', 'Delete Account')}
       />
 
       {/* Unified Identity Details Modal */}
       <Modal
         isOpen={!!previewIdentity}
         onClose={() => setPreviewIdentity(null)}
-        title={previewIdentity ? `تفاصيل الهوية الموحدة: ${previewIdentity.fullName}` : 'تفاصيل الهوية'}
+        title={previewIdentity ? `${t('تفاصيل الهوية الموحدة:', 'Unified Identity Details:')} ${previewIdentity.fullName}` : t('تفاصيل الهوية', 'Identity Details')}
         subtitle={previewIdentity?.id}
         maxWidth="lg"
       >
@@ -1771,24 +1853,24 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
           <div className="space-y-3 text-xs">
             <div className="grid grid-cols-2 gap-2 p-2.5 rounded-lg bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C]">
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الاسم الكامل</span>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('الاسم الكامل', 'Full Name')}</span>
                 <strong>{previewIdentity.fullName}</strong>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الهاتف</span>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('الهاتف', 'Phone')}</span>
                 <strong className="font-mono tabular-nums">{previewIdentity.phone || '—'}</strong>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">الرقم القومي</span>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('الرقم القومي', 'National ID')}</span>
                 <strong className="font-mono tabular-nums">{previewIdentity.nationalId || '—'}</strong>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">معرف الهوية</span>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('معرف الهوية', 'Identity ID')}</span>
                 <strong className="font-mono">{previewIdentity.id}</strong>
               </div>
             </div>
             <div className="space-y-1">
-              <div className="font-bold text-slate-700 dark:text-[#A9BCD9]">السجلات المرتبطة بهذه الهوية:</div>
+              <div className="font-bold text-slate-700 dark:text-[#A9BCD9]">{t('السجلات المرتبطة بهذه الهوية:', 'Records Linked to This Identity:')}</div>
               <div className="flex flex-wrap gap-1.5">
                 {(previewIdentity.roles && previewIdentity.roles.length > 0
                   ? previewIdentity.roles
@@ -1809,7 +1891,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                 onClick={() => setPreviewIdentity(null)}
                 className="h-8 px-3 rounded-md border border-slate-300 dark:border-[#2A436E] font-bold cursor-pointer"
               >
-                إغلاق
+                {t('إغلاق', 'Close')}
               </button>
             </div>
           </div>
@@ -1820,40 +1902,40 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
       <Modal
         isOpen={!!previewAuditLog}
         onClose={() => setPreviewAuditLog(null)}
-        title="تفاصيل سجل التدقيق"
-        subtitle={previewAuditLog?.module}
+        title={t('تفاصيل سجل التدقيق', 'Audit Log Details')}
+        subtitle={previewAuditLog ? t(previewAuditLog.module) : undefined}
         maxWidth="md"
       >
         {previewAuditLog && (
           <div className="space-y-3 text-xs">
             <div className="grid grid-cols-2 gap-2 p-2.5 rounded-lg bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C]">
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">المستخدم</span>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('المستخدم', 'User')}</span>
                 <strong>{previewAuditLog.userName}</strong>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">التاريخ والوقت</span>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('التاريخ والوقت', 'Date & Time')}</span>
                 <strong className="font-mono tabular-nums">
-                  {new Date(previewAuditLog.timestamp).toLocaleString('ar-EG')}
+                  {formatLocaleDateTime(previewAuditLog.timestamp)}
                 </strong>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">القسم</span>
-                <strong>{previewAuditLog.module}</strong>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('القسم', 'Module')}</span>
+                <strong>{t(previewAuditLog.module)}</strong>
               </div>
               <div>
-                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">رقم السجل المرجعي</span>
+                <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('رقم السجل المرجعي', 'Reference Record ID')}</span>
                 <strong className="font-mono">{previewAuditLog.recordId || '—'}</strong>
               </div>
             </div>
             <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C] space-y-1">
               <div>
-                <span className="font-bold text-slate-600 dark:text-[#97AECE]">الإجراء: </span>
-                <strong>{previewAuditLog.action}</strong>
+                <span className="font-bold text-slate-600 dark:text-[#97AECE]">{t('الإجراء:', 'Action:')} </span>
+                <strong>{t(previewAuditLog.action)}</strong>
               </div>
               {previewAuditLog.details && (
                 <div>
-                  <span className="font-bold text-slate-600 dark:text-[#97AECE]">التفاصيل: </span>
+                  <span className="font-bold text-slate-600 dark:text-[#97AECE]">{t('التفاصيل:', 'Details:')} </span>
                   <span>{previewAuditLog.details}</span>
                 </div>
               )}
@@ -1864,7 +1946,7 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                 onClick={() => setPreviewAuditLog(null)}
                 className="h-8 px-3 rounded-md border border-slate-300 dark:border-[#2A436E] font-bold cursor-pointer"
               >
-                إغلاق
+                {t('إغلاق', 'Close')}
               </button>
             </div>
           </div>

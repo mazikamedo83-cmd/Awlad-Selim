@@ -27,6 +27,7 @@ let desktopState = {
   databaseState: null,
 };
 let isShuttingDown = false;
+let desktopLang = 'ar';
 
 // Ensure single instance on Windows so port 3000 & data directory never collide
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
@@ -71,25 +72,37 @@ function getEnvFileCandidates(appRoot) {
 }
 
 function showLanDialog() {
+  const isEn = desktopLang === 'en';
   const urls = (desktopState.lanUrls || []).map((u) => u.url);
   const urlListText = urls.length > 0
     ? urls.join('\n')
     : `http://127.0.0.1:${desktopState.port}`;
 
-  const detail = [
-    `يعمل خادم أولاد سليم حاليًا على المنفذ: ${desktopState.port}`,
-    '',
-    'عناوين الاتصال على الشبكة المحلية (للمندوبين وتطبيق العملاء):',
-    urlListText,
-    '',
-    `مجلد البيانات النشط:\n${desktopState.dataDir}`,
-  ].join('\n');
+  const detail = isEn
+    ? [
+        `AWLAD SELIM server is running on port: ${desktopState.port}`,
+        '',
+        'Local Network (LAN) URLs (for Representatives & Customer App):',
+        urlListText,
+        '',
+        `Active data directory:\n${desktopState.dataDir}`,
+      ].join('\n')
+    : [
+        `يعمل خادم أولاد سليم حاليًا على المنفذ: ${desktopState.port}`,
+        '',
+        'عناوين الاتصال على الشبكة المحلية (للمندوبين وتطبيق العملاء):',
+        urlListText,
+        '',
+        `مجلد البيانات النشط:\n${desktopState.dataDir}`,
+      ].join('\n');
 
-  const buttons = urls.length > 0 ? ['نسخ أول عنوان LAN', 'إغلاق'] : ['إغلاق'];
+  const buttons = urls.length > 0
+    ? [isEn ? 'Copy first LAN URL' : 'نسخ أول عنوان LAN', isEn ? 'Close' : 'إغلاق']
+    : [isEn ? 'Close' : 'إغلاق'];
   dialog.showMessageBox(mainWindow || undefined, {
     type: 'info',
-    title: 'اتصال الشبكة المحلية - AWLAD SELIM',
-    message: 'بيانات خادم أولاد سليم على الشبكة المحلية (LAN)',
+    title: isEn ? 'Local Network (LAN) - AWLAD SELIM' : 'اتصال الشبكة المحلية - AWLAD SELIM',
+    message: isEn ? 'AWLAD SELIM Local Network (LAN) Server Info' : 'بيانات خادم أولاد سليم على الشبكة المحلية (LAN)',
     detail,
     buttons,
     defaultId: 0,
@@ -100,26 +113,28 @@ function showLanDialog() {
   }).catch(() => {});
 }
 
-function buildApplicationMenu() {
+function buildApplicationMenu(lang = desktopLang) {
+  desktopLang = lang === 'en' ? 'en' : 'ar';
+  const isEn = desktopLang === 'en';
   const template = [
     {
-      label: 'ملف',
+      label: isEn ? 'File' : 'ملف',
       submenu: [
         {
-          label: 'فتح مجلد البيانات (%APPDATA%\\AWLAD SELIM\\data)',
+          label: isEn ? 'Open Data Folder (%APPDATA%\\AWLAD SELIM\\data)' : 'فتح مجلد البيانات (%APPDATA%\\AWLAD SELIM\\data)',
           click: () => {
             if (desktopState.dataDir) shell.openPath(desktopState.dataDir);
           },
         },
         {
-          label: 'فتح مجلد النسخ الاحتياطية',
+          label: isEn ? 'Open Backups Folder' : 'فتح مجلد النسخ الاحتياطية',
           click: () => {
             if (desktopState.backupsDir) shell.openPath(desktopState.backupsDir);
           },
         },
         { type: 'separator' },
         {
-          label: 'طباعة الصفحة الحالية',
+          label: isEn ? 'Print Current Page' : 'طباعة الصفحة الحالية',
           accelerator: 'CmdOrCtrl+P',
           click: () => {
             if (mainWindow && !mainWindow.isDestroyed()) {
@@ -129,43 +144,51 @@ function buildApplicationMenu() {
         },
         { type: 'separator' },
         {
-          label: 'خروج آمن وإغلاق الخادم',
+          label: isEn ? 'Safe Exit & Stop Server' : 'خروج آمن وإغلاق الخادم',
           accelerator: 'Alt+F4',
           click: () => app.quit(),
         },
       ],
     },
     {
-      label: 'عرض',
+      label: isEn ? 'View' : 'عرض',
       submenu: [
-        { label: 'إعادة تحميل', role: 'reload' },
-        { label: 'إعادة تحميل قسري (مسح الكاش)', role: 'forceReload' },
-        { label: 'تكبير', role: 'zoomIn' },
-        { label: 'تصغير', role: 'zoomOut' },
-        { label: 'الحجم الافتراضي', role: 'resetZoom' },
+        { label: isEn ? 'Reload' : 'إعادة تحميل', role: 'reload' },
+        { label: isEn ? 'Force Reload (Clear Cache)' : 'إعادة تحميل قسري (مسح الكاش)', role: 'forceReload' },
+        { label: isEn ? 'Zoom In' : 'تكبير', role: 'zoomIn' },
+        { label: isEn ? 'Zoom Out' : 'تصغير', role: 'zoomOut' },
+        { label: isEn ? 'Reset Zoom' : 'الحجم الافتراضي', role: 'resetZoom' },
         { type: 'separator' },
-        { label: 'ملء الشاشة', role: 'togglefullscreen' },
+        { label: isEn ? 'Toggle Fullscreen' : 'ملء الشاشة', role: 'togglefullscreen' },
       ],
     },
     {
-      label: 'الشبكة والبيانات',
+      label: isEn ? 'Network & Data' : 'الشبكة والبيانات',
       submenu: [
         {
-          label: 'عناوين الشبكة المحلية (للمندوبين والعملاء)',
+          label: isEn ? 'LAN Addresses (For Reps & Customers)' : 'عناوين الشبكة المحلية (للمندوبين والعملاء)',
           click: () => showLanDialog(),
         },
         {
-          label: 'معلومات نسخة البرنامج',
+          label: isEn ? 'Application Version Info' : 'معلومات نسخة البرنامج',
           click: () => {
             dialog.showMessageBox(mainWindow || undefined, {
               type: 'info',
               title: 'AWLAD SELIM Desktop',
-              message: `AWLAD SELIM للمحاسبة وإدارة الأعمال (${app.getVersion()})`,
-              detail: [
-                `مجلد البيانات: ${desktopState.dataDir}`,
-                `مجلد النسخ الاحتياطية: ${desktopState.backupsDir}`,
-                `منفذ الخادم: ${desktopState.port}`,
-              ].join('\n'),
+              message: isEn
+                ? `AWLAD SELIM Accounting & Business Management (${app.getVersion()})`
+                : `AWLAD SELIM للمحاسبة وإدارة الأعمال (${app.getVersion()})`,
+              detail: isEn
+                ? [
+                    `Data Folder: ${desktopState.dataDir}`,
+                    `Backups Folder: ${desktopState.backupsDir}`,
+                    `Server Port: ${desktopState.port}`,
+                  ].join('\n')
+                : [
+                    `مجلد البيانات: ${desktopState.dataDir}`,
+                    `مجلد النسخ الاحتياطية: ${desktopState.backupsDir}`,
+                    `منفذ الخادم: ${desktopState.port}`,
+                  ].join('\n'),
             });
           },
         },
@@ -218,6 +241,19 @@ function registerIpcHandlers() {
 
   ipcMain.handle('awlad:copy-text', (_event, text) => {
     clipboard.writeText(String(text || ''));
+    return { ok: true };
+  });
+
+  ipcMain.handle('awlad:set-language', (_event, lang) => {
+    const cleanLang = lang === 'en' ? 'en' : 'ar';
+    buildApplicationMenu(cleanLang);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setTitle(
+        cleanLang === 'en'
+          ? 'AWLAD SELIM - Accounting & Business Management'
+          : 'AWLAD SELIM - أولاد سليم للمحاسبة وإدارة الأعمال'
+      );
+    }
     return { ok: true };
   });
 

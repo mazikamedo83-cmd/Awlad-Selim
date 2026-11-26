@@ -43,6 +43,7 @@ import {
   SyncProgressUpdate,
   SyncRefreshSummary,
 } from '../services/syncEngine';
+import { formatLocaleTime, tr } from '../i18n/translator';
 import {
   Product,
   Customer,
@@ -1441,7 +1442,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { currentUser, isAuthenticated, handleServerAuthRevoked, refreshAuthContext } = useAuth();
   const [data, setData] = useState<DatabaseState>(() => getEmptyClientDatabaseState());
   const [networkStatus, setNetworkStatus] = useState<NetworkSyncStatus>('connected');
-  const [lastSyncTime, setLastSyncTime] = useState<string>(new Date().toLocaleTimeString('ar-EG'));
+  const [lastSyncTime, setLastSyncTime] = useState<string>(formatLocaleTime(new Date()));
   const [lastServerSyncAt, setLastServerSyncAt] = useState<string | null>(null);
   const [syncQueue, setSyncQueue] = useState<SyncQueueItem[]>([]);
   const [syncConflicts, setSyncConflicts] = useState<SyncConflictRecord[]>([]);
@@ -1703,7 +1704,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLastCacheTimestamp(null);
       const nowServerTime = pullData.serverTime || new Date().toISOString();
       setLastServerSyncAt(nowServerTime);
-      setLastSyncTime(new Date().toLocaleTimeString('ar-EG'));
+      setLastSyncTime(formatLocaleTime(new Date()));
 
       // Persist clean server baseline into multi-platform LocalDB (IndexedDB + Electron AES Vault / Capacitor Filesystem)
       const currentInstallationId = getStoredInstallationId();
@@ -1729,7 +1730,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Keep local auth permissions & active status synced with central DB
       if (pullData.user) {
         if (pullData.user.isActive === false) {
-          await handleServerAuthRevoked('تم إيقاف الحساب من الإدارة مركزيًا.');
+          await handleServerAuthRevoked(tr('تم إيقاف الحساب من الإدارة مركزيًا.', 'Account suspended centrally by administration.'));
           return;
         }
         await refreshCachedUserAuthorization({
@@ -5504,7 +5505,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       <div className="flex items-center justify-center min-h-screen bg-slate-900 text-white font-sans">
         <div className="text-center space-y-4">
           <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <p className="text-lg font-bold">جاري تحميل ومزامنة بيانات نظام أولاد سليم...</p>
+          <p className="text-lg font-bold">{tr('جاري تحميل ومزامنة بيانات نظام أولاد سليم...', 'Loading and syncing AWLAD SELIM system data...')}</p>
         </div>
       </div>
     );

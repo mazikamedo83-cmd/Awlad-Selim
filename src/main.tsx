@@ -9,6 +9,18 @@ import '@fontsource/cairo/900.css';
 import App from './App.tsx';
 import './index.css';
 import { initDeepLinkCapture } from './services/native';
+import { LANGUAGE_PREF_KEY, setActiveLanguageRuntime } from './i18n/translator';
+
+if (typeof window !== 'undefined') {
+  try {
+    const savedLang = window.localStorage?.getItem(LANGUAGE_PREF_KEY);
+    if (savedLang === 'en' || savedLang === 'ar') {
+      setActiveLanguageRuntime(savedLang);
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
 
 // Early Case A Google Maps Demo quota / auth failure capture BEFORE React renders
 if (typeof window !== 'undefined') {

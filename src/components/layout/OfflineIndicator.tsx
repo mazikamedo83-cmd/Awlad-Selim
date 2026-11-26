@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Wifi, WifiOff, RefreshCw, AlertCircle, Clock, AlertTriangle, ShieldAlert } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
+import { usePreferences } from '../../context/PreferencesContext';
 import { SyncCenterModal } from '../common/SyncCenterModal';
 
 interface OfflineIndicatorProps {
@@ -19,6 +20,7 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ variant = 'l
     hasTentativeLocalBalances,
     triggerSync,
   } = useData();
+  const { t } = usePreferences();
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
 
   const isDark = variant === 'dark';
@@ -31,7 +33,7 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ variant = 'l
           ? 'text-amber-100 bg-amber-500/25 border-amber-300/40'
           : 'text-amber-700 bg-amber-500/10 border-amber-500/30',
         dot: 'bg-amber-400',
-        label: `تعارض يحتاج مراجعة (${conflictsCount})`,
+        label: t(`تعارض يحتاج مراجعة (${conflictsCount})`, `Conflicts need review (${conflictsCount})`),
       };
     }
     switch (networkStatus) {
@@ -42,7 +44,7 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ variant = 'l
             ? 'text-emerald-100 bg-emerald-500/20 border-emerald-300/35'
             : 'text-emerald-600 bg-emerald-500/10 border-emerald-500/20',
           dot: 'bg-emerald-400',
-          label: 'متصل بالشبكة المركزية',
+          label: t('متصل بالشبكة المركزية'),
         };
       case 'disconnected':
         return {
@@ -53,8 +55,8 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ variant = 'l
           dot: 'bg-rose-400',
           label:
             pendingSyncCount > 0
-              ? `عمل محلي دون إنترنت (${pendingSyncCount} معلقة)`
-              : 'وضع العمل دون إنترنت (محلي)',
+              ? t(`عمل محلي دون إنترنت (${pendingSyncCount} معلقة)`, `Offline mode (${pendingSyncCount} pending)`)
+              : t('وضع العمل دون إنترنت (محلي)'),
         };
       case 'synchronizing':
         return {
@@ -63,7 +65,7 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ variant = 'l
             ? 'text-blue-100 bg-[#1659C8]/30 border-blue-300/40'
             : 'text-[#003589] bg-[#EEF3FA] border-[#DCE6F5]',
           dot: 'bg-blue-300 animate-ping',
-          label: 'جاري مزامنة البيانات...',
+          label: t('جاري مزامنة البيانات...'),
         };
       case 'pending':
         return {
@@ -72,7 +74,7 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ variant = 'l
             ? 'text-amber-100 bg-amber-500/25 border-amber-300/40'
             : 'text-amber-600 bg-amber-500/10 border-amber-500/20',
           dot: 'bg-amber-400',
-          label: `مزامنة معلقة (${pendingSyncCount})`,
+          label: t(`مزامنة معلقة (${pendingSyncCount})`, `Pending sync (${pendingSyncCount})`),
         };
       case 'error':
       default:
@@ -82,7 +84,9 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ variant = 'l
             ? 'text-rose-100 bg-rose-500/25 border-rose-300/40'
             : 'text-rose-600 bg-rose-500/10 border-rose-500/20',
           dot: 'bg-rose-400',
-          label: isDatabaseUnavailable ? 'قاعدة البيانات غير متاحة مؤقتًا' : 'تعذر المزامنة والإرسال والاستلام',
+          label: isDatabaseUnavailable
+            ? t('قاعدة البيانات غير متاحة مؤقتًا')
+            : t('تعذر المزامنة والإرسال والاستلام'),
         };
     }
   };
@@ -97,8 +101,8 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ variant = 'l
         <button
           type="button"
           onClick={() => setIsSyncModalOpen(true)}
-          title={`مركز المزامنة: ${config.label}${lastError ? ` | ${lastError}` : ''} | آخر فحص: ${lastSyncTime}${
-            hasTentativeLocalBalances ? ' | توجد عمليات غير متزامنة (أرصدة محلية مبدئية)' : ''
+          title={`${t('مركز المزامنة', 'Sync Center')}: ${config.label}${lastError ? ` | ${t(lastError)}` : ''} | ${t('آخر فحص', 'Last check')}: ${lastSyncTime}${
+            hasTentativeLocalBalances ? ` | ${t('توجد عمليات غير متزامنة (أرصدة محلية مبدئية)', 'Unsynced operations (tentative local balances)')}` : ''
           }`}
           className={`flex items-center gap-1 px-2 py-1 rounded-md border text-xs font-bold ${config.color} transition-all cursor-pointer hover:opacity-90 whitespace-nowrap`}
         >
@@ -119,19 +123,19 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ variant = 'l
           <button
             type="button"
             onClick={() => setIsSyncModalOpen(true)}
-            title="جلسة محلية موثقة — الصلاحيات المطبقة من آخر تحقق وقد تتحدث عند الاتصال"
+            title={t('جلسة محلية موثقة — الصلاحيات المطبقة من آخر تحقق وقد تتحدث عند الاتصال', 'Verified offline session — permissions are from last online check and may update on reconnect')}
             className="hidden xl:flex items-center gap-1 px-2 py-1 rounded-md bg-amber-400/20 border border-amber-300/40 text-amber-100 text-[10px] font-bold cursor-pointer whitespace-nowrap"
           >
             <ShieldAlert className="w-3 h-3 shrink-0" />
-            <span>صلاحيات محلية</span>
+            <span>{t('صلاحيات محلية')}</span>
           </button>
         )}
 
         <button
           type="button"
           onClick={() => triggerSync(true)}
-          title="تحديث ومزامنة فورية (إرسال واستلام)"
-          aria-label="تحديث ومزامنة"
+          title={t('تحديث ومزامنة فورية (إرسال واستلام)', 'Refresh & Instant Sync (Send & Receive)')}
+          aria-label={t('تحديث ومزامنة', 'Refresh & Sync')}
           className={`min-h-[32px] min-w-[32px] flex items-center justify-center rounded-md transition-colors cursor-pointer ${
             isDark
               ? 'bg-white/10 hover:bg-white/20 text-blue-100 hover:text-white'

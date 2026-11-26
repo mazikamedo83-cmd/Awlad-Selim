@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
+  ArrowLeft,
   ArrowRight,
   Barcode,
   ChevronDown,
@@ -8,6 +9,8 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
+import { usePreferences } from '../../../context/PreferencesContext';
+import { formatLocaleDate, formatLocaleNumber } from '../../../i18n/translator';
 import { ProductUnit } from '../../../types';
 import { exportHtmlToPdf } from '../../common/PdfExporter';
 
@@ -23,6 +26,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
   onSaved,
 }) => {
   const { products, categories, warehouses, settings, addProduct } = useData();
+  const { t, dir, isRtl } = usePreferences();
 
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
@@ -91,18 +95,18 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
   const handlePrintBarcode = (codeValue: string, unitLabel: string, priceVal: number | '') => {
     const bc = codeValue.trim() || generateBarcode();
     exportHtmlToPdf({
-      title: 'ملصق باركود صنف',
+      title: t('ملصق باركود صنف', 'Item Barcode Label'),
       companyName: settings.companyName,
       companySubtitle: settings.companySubtitle,
       docNumber: bc,
-      dateRangeText: new Date().toLocaleDateString('ar-EG'),
+      dateRangeText: formatLocaleDate(new Date()),
       meta: [
-        { label: 'الصنف', value: name.trim() || 'صنف جديد' },
-        { label: 'الوحدة', value: unitLabel || baseUnit.trim() || 'أساسي' },
-        ...(priceVal !== '' ? [{ label: 'السعر', value: `${Number(priceVal).toLocaleString()} ${settings.currency}` }] : []),
+        { label: t('الصنف', 'Item'), value: name.trim() || t('صنف جديد', 'New Item') },
+        { label: t('الوحدة', 'Unit'), value: unitLabel ? t(unitLabel) : baseUnit.trim() || t('أساسي', 'Base') },
+        ...(priceVal !== '' ? [{ label: t('السعر', 'Price'), value: `${formatLocaleNumber(Number(priceVal))} ${t(settings.currency)}` }] : []),
       ],
-      tableHeaders: ['الباركود', 'اسم الصنف', 'الوحدة'],
-      tableRows: [[bc, name.trim() || 'صنف جديد', unitLabel || baseUnit.trim() || '-']],
+      tableHeaders: [t('الباركود', 'Barcode'), t('اسم الصنف', 'Item Name'), t('الوحدة', 'Unit')],
+      tableRows: [[bc, name.trim() || t('صنف جديد', 'New Item'), unitLabel ? t(unitLabel) : baseUnit.trim() || '-']],
       summaryPairs: [],
     });
   };
@@ -136,17 +140,17 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
     setError(null);
 
     if (!name.trim()) {
-      setError('يرجى إدخال اسم المنتج بالمواصفات التفصيلية.');
+      setError(t('يرجى إدخال اسم المنتج بالمواصفات التفصيلية.', 'Please enter the product name with detailed specifications.'));
       return;
     }
     if (!baseUnit.trim()) {
-      setError('يرجى إدخال اسم الوحدة الأساسية (1).');
+      setError(t('يرجى إدخال اسم الوحدة الأساسية (1).', 'Please enter the base unit name (1).'));
       return;
     }
     const p1 = Number(purchasePrice1) || 0;
     const s1 = Number(sellingPrice1) || 0;
     if (p1 < 0 || s1 < 0) {
-      setError('لا يمكن أن تكون الأسعار سالبة.');
+      setError(t('لا يمكن أن تكون الأسعار سالبة.', 'Prices cannot be negative.'));
       return;
     }
 
@@ -154,7 +158,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
     if (unit2Name.trim()) {
       const f2 = Number(unit2Factor) || 0;
       if (f2 <= 0) {
-        setError('يرجى إدخال معامل تحويل صحيح للوحدة الثانية.');
+        setError(t('يرجى إدخال معامل تحويل صحيح للوحدة الثانية.', 'Please enter a valid conversion factor for the second unit.'));
         return;
       }
       extraUnits.push({
@@ -169,7 +173,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
     if (unit3Name.trim()) {
       const f3 = Number(unit3Factor) || 0;
       if (f3 <= 0) {
-        setError('يرجى إدخال معامل تحويل صحيح للوحدة الثالثة.');
+        setError(t('يرجى إدخال معامل تحويل صحيح للوحدة الثالثة.', 'Please enter a valid conversion factor for the third unit.'));
         return;
       }
       extraUnits.push({
@@ -212,25 +216,27 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
       onSaved?.(saved.name);
       onClose();
     } catch (err: any) {
-      setError(err?.message || 'تعذر حفظ الصنف');
+      setError(err?.message ? t(err.message) : t('تعذر حفظ الصنف', 'Unable to save item'));
     } finally {
       setIsSaving(false);
     }
   };
 
+  const BackIcon = isRtl ? ArrowRight : ArrowLeft;
+
   return (
-    <div className="fixed inset-0 z-50 bg-[#f5f7fb] flex flex-col overflow-hidden" dir="rtl">
+    <div className="fixed inset-0 z-50 bg-[#f5f7fb] flex flex-col overflow-hidden" dir={dir}>
       {/* Brand Top Bar */}
       <header className="awlad-brand-gradient text-white px-3 py-2 flex items-center justify-between gap-2 pt-safe shrink-0 shadow-sm">
         <button
           type="button"
           onClick={onClose}
           className="min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-white cursor-pointer"
-          aria-label="رجوع"
+          aria-label={t('رجوع', 'Back')}
         >
-          <ArrowRight className="w-4 h-4" />
+          <BackIcon className="w-4 h-4" />
         </button>
-        <h2 className="text-sm font-black tracking-tight flex-1 text-center">إضافة صنف جديد</h2>
+        <h2 className="text-sm font-black tracking-tight flex-1 text-center">{t('إضافة صنف جديد', 'Add New Item')}</h2>
         <div className="w-[36px]" aria-hidden="true" />
       </header>
 
@@ -244,11 +250,11 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
         {/* Core Product Fields */}
         <div className="bg-white rounded-lg border border-slate-200 p-2 space-y-1.5">
           <div>
-            <label className="block font-bold text-slate-700 mb-0.5">اسم المنتج بالمواصفات تفصيلي *</label>
+            <label className="block font-bold text-slate-700 mb-0.5">{t('اسم المنتج بالمواصفات تفصيلي *', 'Product Name & Specifications *')}</label>
             <input
               type="text"
               required
-              placeholder="أدخل اسم المنتج والمواصفات..."
+              placeholder={t('أدخل اسم المنتج والمواصفات...', 'Enter product name and specifications...')}
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full h-8 border border-slate-300 rounded-md px-2 font-bold bg-white focus:outline-hidden focus:border-[#003589]"
@@ -257,10 +263,10 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
             <div>
-              <label className="block font-bold text-slate-700 mb-0.5">ملاحظات على المنتج</label>
+              <label className="block font-bold text-slate-700 mb-0.5">{t('ملاحظات على المنتج', 'Product Notes')}</label>
               <input
                 type="text"
-                placeholder="ملاحظات اختيارية..."
+                placeholder={t('ملاحظات اختيارية...', 'Optional notes...')}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 className="w-full h-8 border border-slate-300 rounded-md px-2 bg-white focus:outline-hidden focus:border-[#003589]"
@@ -268,11 +274,11 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 mb-0.5">التصنيف</label>
+              <label className="block font-bold text-slate-700 mb-0.5">{t('التصنيف', 'Category')}</label>
               <input
                 type="text"
                 list="mobile-add-prod-categories"
-                placeholder="اختر أو اكتب التصنيف..."
+                placeholder={t('اختر أو اكتب التصنيف...', 'Select or enter category...')}
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
                 className="w-full h-8 border border-slate-300 rounded-md px-2 font-bold bg-white focus:outline-hidden focus:border-[#003589]"
@@ -287,7 +293,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
 
           <div className="grid grid-cols-2 gap-1.5">
             <div>
-              <label className="block font-bold text-slate-700 mb-0.5">الكمية المتاحة</label>
+              <label className="block font-bold text-slate-700 mb-0.5">{t('الكمية المتاحة', 'Available Quantity')}</label>
               <input
                 type="number"
                 min="0"
@@ -302,13 +308,13 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 mb-0.5">وحدة الإدخال</label>
+              <label className="block font-bold text-slate-700 mb-0.5">{t('وحدة الإدخال', 'Entry Unit')}</label>
               <select
                 value={qtyEntryUnit}
                 onChange={(e) => setQtyEntryUnit(e.target.value as '1' | '2' | '3')}
                 className="w-full h-8 border border-slate-300 rounded-md px-2 font-bold bg-white"
               >
-                <option value="1">{baseUnit.trim() || 'الوحدة الأساسية (1)'}</option>
+                <option value="1">{baseUnit.trim() || t('الوحدة الأساسية (1)', 'Base Unit (1)')}</option>
                 {unit2Name.trim() && <option value="2">{unit2Name.trim()}</option>}
                 {unit3Name.trim() && <option value="3">{unit3Name.trim()}</option>}
               </select>
@@ -316,15 +322,15 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
           </div>
 
           <div className="flex items-center justify-between px-2 py-1 rounded-md bg-slate-50 border border-slate-200 text-[11px]">
-            <span className="text-slate-600 font-bold">الكمية بالوحدة الأساسية:</span>
+            <span className="text-slate-600 font-bold">{t('الكمية بالوحدة الأساسية:', 'Quantity in Base Unit:')}</span>
             <span className="font-mono font-black text-[#011E58] tabular-nums">
-              {computedBaseQty.toLocaleString()} {baseUnit.trim() || 'وحدة'}
+              {formatLocaleNumber(computedBaseQty)} {baseUnit.trim() || t('وحدة', 'Unit')}
             </span>
           </div>
 
           {warehouses.length > 0 && (
             <div>
-              <label className="block font-bold text-slate-700 mb-0.5">المستودع</label>
+              <label className="block font-bold text-slate-700 mb-0.5">{t('المستودع', 'Warehouse')}</label>
               <select
                 value={selectedWarehouseId}
                 onChange={(e) => setSelectedWarehouseId(e.target.value)}
@@ -347,17 +353,17 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
             onClick={() => setUnit1Open((p) => !p)}
             className="w-full min-h-[34px] px-2.5 py-1 flex items-center justify-between bg-slate-50 border-b border-slate-200 font-black text-slate-900 cursor-pointer"
           >
-            <span>الوحدة الأساسية (1) *</span>
+            <span>{t('الوحدة الأساسية (1) *', 'Base Unit (1) *')}</span>
             {unit1Open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
           {unit1Open && (
             <div className="p-2 space-y-1.5">
               <div>
-                <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">اسم الوحدة الأساسية *</label>
+                <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">{t('اسم الوحدة الأساسية *', 'Base Unit Name *')}</label>
                 <input
                   type="text"
                   required
-                  placeholder="قطعة / كيس / كيلو / علبة"
+                  placeholder={t('قطعة / كيس / كيلو / علبة', 'Piece / Bag / Kg / Box')}
                   value={baseUnit}
                   onChange={(e) => setBaseUnit(e.target.value)}
                   className="w-full h-8 border border-slate-300 rounded-md px-2 font-bold"
@@ -365,11 +371,11 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">الباركود</label>
+                <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">{t('الباركود', 'Barcode')}</label>
                 <div className="flex items-center gap-1.5">
                   <input
                     type="text"
-                    placeholder="أدخل أو ولّد الباركود"
+                    placeholder={t('أدخل أو ولّد الباركود', 'Enter or generate barcode')}
                     value={barcode1}
                     onChange={(e) => setBarcode1(e.target.value)}
                     className="flex-1 h-8 border border-slate-300 rounded-md px-2 font-mono font-bold"
@@ -378,7 +384,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                     type="button"
                     onClick={() => setBarcode1(generateBarcode())}
                     className="h-8 w-8 rounded-md border border-slate-300 bg-slate-50 flex items-center justify-center text-slate-700 cursor-pointer"
-                    title="توليد باركود"
+                    title={t('توليد باركود', 'Generate Barcode')}
                   >
                     <RefreshCw className="w-4 h-4" />
                   </button>
@@ -386,7 +392,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                     type="button"
                     onClick={() => handlePrintBarcode(barcode1, baseUnit, sellingPrice1)}
                     className="h-8 w-8 rounded-md border border-slate-300 bg-slate-50 flex items-center justify-center text-[#003589] cursor-pointer"
-                    title="طباعة باركود"
+                    title={t('طباعة باركود', 'Print Barcode')}
                   >
                     <Printer className="w-4 h-4" />
                   </button>
@@ -395,7 +401,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
 
               <div className="grid grid-cols-2 gap-1.5">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">سعر الشراء</label>
+                  <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">{t('سعر الشراء', 'Purchase Price')}</label>
                   <input
                     type="number"
                     step="0.01"
@@ -409,7 +415,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">سعر البيع</label>
+                  <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">{t('سعر البيع', 'Selling Price')}</label>
                   <input
                     type="number"
                     step="0.01"
@@ -434,29 +440,29 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
             onClick={() => setUnit2Open((p) => !p)}
             className="w-full min-h-[34px] px-2.5 py-1 flex items-center justify-between bg-slate-50 border-b border-slate-200 font-black text-slate-800 cursor-pointer"
           >
-            <span>الوحدة الثانية (2)</span>
+            <span>{t('الوحدة الثانية (2)', 'Second Unit (2)')}</span>
             {unit2Open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
           {unit2Open && (
             <div className="p-2 space-y-1.5">
               <div className="grid grid-cols-2 gap-1.5">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">اسم الوحدة</label>
+                  <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">{t('اسم الوحدة', 'Unit Name')}</label>
                   <input
                     type="text"
-                    placeholder="كرتونة / باكت"
+                    placeholder={t('كرتونة / باكت', 'Carton / Pack')}
                     value={unit2Name}
                     onChange={(e) => setUnit2Name(e.target.value)}
                     className="w-full h-8 border border-slate-300 rounded-md px-2 font-bold"
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">تحتوي كم أساسي؟</label>
+                  <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">{t('تحتوي كم أساسي؟', 'Contains Base Units?')}</label>
                   <input
                     type="number"
                     min="1"
                     step="any"
-                    placeholder="مثال: 12"
+                    placeholder={t('مثال: 12', 'e.g. 12')}
                     value={unit2Factor}
                     onChange={(e) =>
                       setUnit2Factor(e.target.value === '' ? '' : Number(e.target.value))
@@ -468,7 +474,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
               <div className="flex items-center gap-1.5">
                 <input
                   type="text"
-                  placeholder="باركود الوحدة الثانية"
+                  placeholder={t('باركود الوحدة الثانية', 'Second unit barcode')}
                   value={barcode2}
                   onChange={(e) => setBarcode2(e.target.value)}
                   className="flex-1 h-8 border border-slate-300 rounded-md px-2 font-mono font-bold"
@@ -477,14 +483,14 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                   type="button"
                   onClick={() => setBarcode2(generateBarcode())}
                   className="h-8 w-8 rounded-md border border-slate-300 bg-slate-50 flex items-center justify-center text-slate-700 cursor-pointer"
-                  title="توليد باركود"
+                  title={t('توليد باركود', 'Generate Barcode')}
                 >
                   <Barcode className="w-4 h-4" />
                 </button>
               </div>
               <div className="grid grid-cols-2 gap-1.5">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">سعر الشراء</label>
+                  <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">{t('سعر الشراء', 'Purchase Price')}</label>
                   <input
                     type="number"
                     step="0.01"
@@ -498,7 +504,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">سعر البيع</label>
+                  <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">{t('سعر البيع', 'Selling Price')}</label>
                   <input
                     type="number"
                     step="0.01"
@@ -523,29 +529,29 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
             onClick={() => setUnit3Open((p) => !p)}
             className="w-full min-h-[34px] px-2.5 py-1 flex items-center justify-between bg-slate-50 border-b border-slate-200 font-black text-slate-800 cursor-pointer"
           >
-            <span>الوحدة الثالثة (3)</span>
+            <span>{t('الوحدة الثالثة (3)', 'Third Unit (3)')}</span>
             {unit3Open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
           {unit3Open && (
             <div className="p-2 space-y-1.5">
               <div className="grid grid-cols-2 gap-1.5">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">اسم الوحدة</label>
+                  <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">{t('اسم الوحدة', 'Unit Name')}</label>
                   <input
                     type="text"
-                    placeholder="بالة / طرد"
+                    placeholder={t('بالة / طرد', 'Bale / Parcel')}
                     value={unit3Name}
                     onChange={(e) => setUnit3Name(e.target.value)}
                     className="w-full h-8 border border-slate-300 rounded-md px-2 font-bold"
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">تحتوي كم أساسي؟</label>
+                  <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">{t('تحتوي كم أساسي؟', 'Contains Base Units?')}</label>
                   <input
                     type="number"
                     min="1"
                     step="any"
-                    placeholder="مثال: 48"
+                    placeholder={t('مثال: 48', 'e.g. 48')}
                     value={unit3Factor}
                     onChange={(e) =>
                       setUnit3Factor(e.target.value === '' ? '' : Number(e.target.value))
@@ -557,7 +563,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
               <div className="flex items-center gap-1.5">
                 <input
                   type="text"
-                  placeholder="باركود الوحدة الثالثة"
+                  placeholder={t('باركود الوحدة الثالثة', 'Third unit barcode')}
                   value={barcode3}
                   onChange={(e) => setBarcode3(e.target.value)}
                   className="flex-1 h-8 border border-slate-300 rounded-md px-2 font-mono font-bold"
@@ -566,14 +572,14 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                   type="button"
                   onClick={() => setBarcode3(generateBarcode())}
                   className="h-8 w-8 rounded-md border border-slate-300 bg-slate-50 flex items-center justify-center text-slate-700 cursor-pointer"
-                  title="توليد باركود"
+                  title={t('توليد باركود', 'Generate Barcode')}
                 >
                   <Barcode className="w-4 h-4" />
                 </button>
               </div>
               <div className="grid grid-cols-2 gap-1.5">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">سعر الشراء</label>
+                  <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">{t('سعر الشراء', 'Purchase Price')}</label>
                   <input
                     type="number"
                     step="0.01"
@@ -587,7 +593,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">سعر البيع</label>
+                  <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">{t('سعر البيع', 'Selling Price')}</label>
                   <input
                     type="number"
                     step="0.01"
@@ -612,7 +618,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
             disabled={isSaving}
             className="w-full h-9 rounded-lg bg-[#003589] hover:bg-[#011E58] text-white font-black text-xs sm:text-sm disabled:opacity-50 cursor-pointer"
           >
-            {isSaving ? 'جاري الحفظ...' : 'حفظ البيانات'}
+            {isSaving ? t('جاري الحفظ...', 'Saving...') : t('حفظ البيانات', 'Save Data')}
           </button>
         </div>
       </form>

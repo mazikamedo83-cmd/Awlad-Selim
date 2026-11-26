@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   Bell,
   ChevronLeft,
+  ChevronRight,
   ClipboardList,
   Globe,
   Heart,
@@ -27,6 +28,7 @@ import {
 import { useAuth } from '../../../context/AuthContext';
 import { useData } from '../../../context/DataContext';
 import { usePreferences } from '../../../context/PreferencesContext';
+import { formatLocaleNumber } from '../../../i18n/translator';
 import { CustomerLocationPickerModal, PickedCustomerLocation } from '../../common/CustomerLocationPickerModal';
 import { CustomerLocationViewerModal } from '../../common/CustomerLocationViewerModal';
 
@@ -55,7 +57,8 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
 }) => {
   const { currentUser, customerProfile, updatePassword } = useAuth();
   const data = useData();
-  const { themePreference, setThemePreference, language, setLanguage, t } = usePreferences();
+  const { themePreference, setThemePreference, language, setLanguage, isRtl, t } = usePreferences();
+  const NavChevron = isRtl ? ChevronLeft : ChevronRight;
 
   const customer = data.customers[0] || customerProfile || null;
 
@@ -90,9 +93,9 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
     setSavingProfile(false);
     if (res.success) {
       setIsEditingProfile(false);
-      setProfileMsg({ type: 'success', text: 'تم تحديث بيانات الحساب والمحل بنجاح.' });
+      setProfileMsg({ type: 'success', text: t('تم تحديث بيانات الحساب والمحل بنجاح.', 'Account & shop details updated successfully.') });
     } else {
-      setProfileMsg({ type: 'error', text: res.error || 'تعذر حفظ التعديلات.' });
+      setProfileMsg({ type: 'error', text: res.error ? t(res.error) : t('تعذر حفظ التعديلات.', 'Failed to save changes.') });
     }
   };
 
@@ -112,9 +115,9 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
     setSavingProfile(false);
     if (res.success) {
       setEditAddress(loc.address || editAddress);
-      setProfileMsg({ type: 'success', text: 'تم حفظ موقع المحل على الخريطة بنجاح.' });
+      setProfileMsg({ type: 'success', text: t('تم حفظ موقع المحل على الخريطة بنجاح.', 'Shop map location saved successfully.') });
     } else {
-      setProfileMsg({ type: 'error', text: res.error || 'تعذر حفظ الموقع.' });
+      setProfileMsg({ type: 'error', text: res.error ? t(res.error) : t('تعذر حفظ الموقع.', 'Failed to save location.') });
     }
   };
 
@@ -182,9 +185,9 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
                   : 'text-slate-900 dark:text-[#F3F7FC]'
               }`}
             >
-              {Math.abs(customer?.currentBalance || 0).toLocaleString()} {data.settings.currency}
+              {formatLocaleNumber(Math.abs(customer?.currentBalance || 0))} {t(data.settings.currency)}
               {' '}
-              {(customer?.currentBalance || 0) > 0 ? '(مدين)' : (customer?.currentBalance || 0) < 0 ? '(دائن)' : ''}
+              {(customer?.currentBalance || 0) > 0 ? t('(مدين)', '(Debit)') : (customer?.currentBalance || 0) < 0 ? t('(دائن)', '(Credit)') : ''}
             </strong>
           </div>
         )}
@@ -217,21 +220,22 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
               type="text"
               value={editShopName}
               onChange={(e) => setEditShopName(e.target.value)}
-              placeholder="اسم المحل / النشاط"
+              placeholder={t('اسم المحل / النشاط', 'Shop / Business Name')}
               className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] px-2"
             />
             <input
               type="tel"
+              dir="ltr"
               value={editPhone}
               onChange={(e) => setEditPhone(e.target.value)}
-              placeholder="رقم الهاتف"
+              placeholder={t('رقم الهاتف', 'Phone Number')}
               className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] px-2 font-mono"
             />
             <input
               type="text"
               value={editAddress}
               onChange={(e) => setEditAddress(e.target.value)}
-              placeholder="العنوان التفصيلي"
+              placeholder={t('العنوان التفصيلي', 'Detailed Address')}
               className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] px-2"
             />
             <button
@@ -239,7 +243,7 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
               disabled={savingProfile}
               className="w-full h-8 rounded-md bg-[var(--awlad-royal-700)] hover:bg-[var(--awlad-royal-600)] dark:bg-[#1659C8] dark:hover:bg-[#1F6BE6] text-white font-black cursor-pointer"
             >
-              {savingProfile ? 'جاري الحفظ...' : 'حفظ البيانات'}
+              {savingProfile ? t('جاري الحفظ...', 'Saving...') : t('حفظ البيانات', 'Save Changes')}
             </button>
           </form>
         )}
@@ -257,8 +261,8 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
             <span>{t('طلباتي وتتبع الشحنات', 'My Orders & Tracking')}</span>
           </span>
           <span className="flex items-center gap-1.5 text-slate-500 dark:text-[#97AECE] font-bold awlad-tabular">
-            <span>{ordersCount}</span>
-            <ChevronLeft className="w-3.5 h-3.5" />
+            <span>{formatLocaleNumber(ordersCount)}</span>
+            <NavChevron className="w-3.5 h-3.5" />
           </span>
         </button>
 
@@ -272,8 +276,8 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
             <span>{t('فواتيري المعتمدة', 'My Invoices')}</span>
           </span>
           <span className="flex items-center gap-1.5 text-slate-500 dark:text-[#97AECE] font-bold awlad-tabular">
-            <span>{invoicesCount}</span>
-            <ChevronLeft className="w-3.5 h-3.5" />
+            <span>{formatLocaleNumber(invoicesCount)}</span>
+            <NavChevron className="w-3.5 h-3.5" />
           </span>
         </button>
 
@@ -286,7 +290,7 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
             <Wallet className="w-4 h-4 text-[var(--awlad-royal-700)] dark:text-[#85B8FF]" />
             <span>{t('كشف الحساب التفصيلي', 'Account Statement')}</span>
           </span>
-          <ChevronLeft className="w-3.5 h-3.5 text-slate-400 dark:text-[#849BBF]" />
+          <NavChevron className="w-3.5 h-3.5 text-slate-400 dark:text-[#849BBF]" />
         </button>
 
         <button
@@ -299,8 +303,8 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
             <span>{t('المنتجات المفضلة', 'Favorites')}</span>
           </span>
           <span className="flex items-center gap-1.5 text-slate-500 dark:text-[#97AECE] font-bold awlad-tabular">
-            <span>{favoritesCount}</span>
-            <ChevronLeft className="w-3.5 h-3.5" />
+            <span>{formatLocaleNumber(favoritesCount)}</span>
+            <NavChevron className="w-3.5 h-3.5" />
           </span>
         </button>
       </div>
@@ -381,7 +385,7 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
             <Bell className="w-4 h-4 text-[var(--awlad-royal-700)] dark:text-[#85B8FF]" />
             <span>{t('التنبيهات والإشعارات', 'Notifications')}</span>
           </span>
-          <span className="text-slate-500 dark:text-[#97AECE] font-bold awlad-tabular">{data.unreadNotificationCount}</span>
+          <span className="text-slate-500 dark:text-[#97AECE] font-bold awlad-tabular">{formatLocaleNumber(data.unreadNotificationCount)}</span>
         </button>
 
         <button
@@ -393,7 +397,7 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
             <Server className="w-4 h-4 text-[var(--awlad-royal-700)] dark:text-[#85B8FF]" />
             <span>{t('السيرفر وإعدادات الاتصال', 'Server & Connection')}</span>
           </span>
-          <ChevronLeft className="w-3.5 h-3.5 text-slate-400 dark:text-[#849BBF]" />
+          <NavChevron className="w-3.5 h-3.5 text-slate-400 dark:text-[#849BBF]" />
         </button>
 
         <button
@@ -405,7 +409,7 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
             <RefreshCw className="w-4 h-4 text-[var(--awlad-royal-700)] dark:text-[#85B8FF]" />
             <span>{t('مركز المزامنة والعمليات المعلقة', 'Sync Center')}</span>
           </span>
-          <span className="text-slate-500 dark:text-[#97AECE] font-bold awlad-tabular">{data.pendingSyncCount + data.conflictsCount}</span>
+          <span className="text-slate-500 dark:text-[#97AECE] font-bold awlad-tabular">{formatLocaleNumber(data.pendingSyncCount + data.conflictsCount)}</span>
         </button>
 
         <button
@@ -420,7 +424,7 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
             <Lock className="w-4 h-4 text-[var(--awlad-royal-700)] dark:text-[#85B8FF]" />
             <span>{t('تغيير كلمة المرور', 'Change Password')}</span>
           </span>
-          <ChevronLeft className={`w-3.5 h-3.5 text-slate-400 dark:text-[#849BBF] transition-transform ${showPwdBox ? '-rotate-90' : ''}`} />
+          <NavChevron className={`w-3.5 h-3.5 text-slate-400 dark:text-[#849BBF] transition-transform ${showPwdBox ? (isRtl ? '-rotate-90' : 'rotate-90') : ''}`} />
         </button>
 
         {showPwdBox && (
@@ -429,11 +433,11 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
               e.preventDefault();
               setPwdMsg(null);
               if (newPwd.length < 4) {
-                setPwdMsg({ type: 'error', text: 'كلمة المرور يجب أن تكون 4 أحرف على الأقل.' });
+                setPwdMsg({ type: 'error', text: t('كلمة المرور يجب أن تكون 4 أحرف على الأقل.', 'Password must be at least 4 characters.') });
                 return;
               }
               if (newPwd !== confirmPwd) {
-                setPwdMsg({ type: 'error', text: 'تأكيد كلمة المرور غير مطابق.' });
+                setPwdMsg({ type: 'error', text: t('تأكيد كلمة المرور غير مطابق.', 'Password confirmation does not match.') });
                 return;
               }
               setSavingPwd(true);
@@ -443,9 +447,9 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
                 setCurrPwd('');
                 setNewPwd('');
                 setConfirmPwd('');
-                setPwdMsg({ type: 'success', text: 'تم تحديث كلمة المرور بنجاح.' });
+                setPwdMsg({ type: 'success', text: t('تم تحديث كلمة المرور بنجاح.', 'Password updated successfully.') });
               } else {
-                setPwdMsg({ type: 'error', text: res.error || 'تعذر تحديث كلمة المرور.' });
+                setPwdMsg({ type: 'error', text: res.error ? t(res.error) : t('تعذر تحديث كلمة المرور.', 'Failed to update password.') });
               }
             }}
             className="p-2.5 bg-slate-50 dark:bg-[#132544] space-y-1.5"
@@ -457,28 +461,31 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
             )}
             <input
               type="password"
+              dir="ltr"
               required
               value={currPwd}
               onChange={(e) => setCurrPwd(e.target.value)}
-              placeholder="كلمة المرور الحالية"
+              placeholder={t('كلمة المرور الحالية', 'Current Password')}
               className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] px-2.5 font-mono"
             />
             <input
               type="password"
+              dir="ltr"
               required
               minLength={4}
               value={newPwd}
               onChange={(e) => setNewPwd(e.target.value)}
-              placeholder="كلمة المرور الجديدة"
+              placeholder={t('كلمة المرور الجديدة', 'New Password')}
               className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] px-2.5 font-mono"
             />
             <input
               type="password"
+              dir="ltr"
               required
               minLength={4}
               value={confirmPwd}
               onChange={(e) => setConfirmPwd(e.target.value)}
-              placeholder="تأكيد كلمة المرور الجديدة"
+              placeholder={t('تأكيد كلمة المرور الجديدة', 'Confirm New Password')}
               className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] px-2.5 font-mono"
             />
             <button
@@ -486,7 +493,7 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
               disabled={savingPwd}
               className="w-full h-8 rounded-md bg-[var(--awlad-royal-700)] hover:bg-[var(--awlad-royal-600)] dark:bg-[#1659C8] dark:hover:bg-[#1F6BE6] text-white font-black cursor-pointer"
             >
-              {savingPwd ? 'جاري التحديث...' : 'حفظ كلمة المرور'}
+              {savingPwd ? t('جاري التحديث...', 'Updating...') : t('حفظ كلمة المرور', 'Save Password')}
             </button>
           </form>
         )}
@@ -500,7 +507,7 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
             <ShieldCheck className="w-4 h-4 text-[var(--awlad-royal-700)] dark:text-[#85B8FF]" />
             <span>{t('الخصوصية والأمان', 'Privacy Policy')}</span>
           </span>
-          <ChevronLeft className="w-3.5 h-3.5 text-slate-400 dark:text-[#849BBF]" />
+          <NavChevron className="w-3.5 h-3.5 text-slate-400 dark:text-[#849BBF]" />
         </button>
 
         <button
@@ -512,7 +519,7 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
             <HelpCircle className="w-4 h-4 text-[var(--awlad-royal-700)] dark:text-[#85B8FF]" />
             <span>{t('المساعدة والتواصل مع الشركة', 'Help & Contact')}</span>
           </span>
-          <ChevronLeft className="w-3.5 h-3.5 text-slate-400 dark:text-[#849BBF]" />
+          <NavChevron className="w-3.5 h-3.5 text-slate-400 dark:text-[#849BBF]" />
         </button>
 
         <button
@@ -570,14 +577,15 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-[#1B2F52] pb-1.5">
               <h3 className="text-xs font-black text-slate-900 dark:text-[#F3F7FC]">
                 {infoModal === 'privacy'
-                  ? 'سياسة الخصوصية وأمان الحساب'
+                  ? t('سياسة الخصوصية وأمان الحساب', 'Privacy Policy & Account Security')
                   : infoModal === 'help'
-                  ? 'التواصل والدعم الفني'
-                  : 'عن نظام أولاد سليم'}
+                  ? t('التواصل والدعم الفني', 'Contact & Support')
+                  : t('عن نظام أولاد سليم', 'About Awlad Selim')}
               </h3>
               <button
                 type="button"
                 onClick={() => setInfoModal(null)}
+                aria-label={t('إغلاق', 'Close')}
                 className="p-1 rounded-md bg-slate-100 dark:bg-[#132544] text-slate-600 dark:text-[#DCE6F5] cursor-pointer"
               >
                 <X className="w-4 h-4" />
@@ -585,20 +593,23 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
             </div>
             {infoModal === 'privacy' && (
               <p className="text-slate-600 dark:text-[#A9BCD9] leading-relaxed">
-                يتم حفظ بيانات حسابك وفواتيرك وموقع المحل بشكل مشفر ومرتبط مباشرة بسيرفر مؤسسة أولاد سليم. يتم استخدام إحداثيات الموقع فقط لتحديد عنوان التوصيل بدقة وتوجيه المندوبين، ولا تتم مشاركتها مع أي طرف خارجي.
+                {t(
+                  'يتم حفظ بيانات حسابك وفواتيرك وموقع المحل بشكل مشفر ومرتبط مباشرة بسيرفر مؤسسة أولاد سليم. يتم استخدام إحداثيات الموقع فقط لتحديد عنوان التوصيل بدقة وتوجيه المندوبين، ولا تتم مشاركتها مع أي طرف خارجي.',
+                  'Your account details, invoices, and shop location are encrypted and synced directly with the Awlad Selim server. Location coordinates are used solely to ensure accurate delivery and guide representatives, and are never shared with third parties.'
+                )}
               </p>
             )}
             {infoModal === 'help' && (
               <div className="space-y-2 text-slate-700 dark:text-[#DCE6F5]">
                 <p className="font-bold">{data.settings.companyName}</p>
-                {data.settings.address && <p>العنوان: {data.settings.address}</p>}
+                {data.settings.address && <p>{t('العنوان:', 'Address:')} {data.settings.address}</p>}
                 {data.settings.phone1 && (
-                  <p className="flex items-center gap-1.5 font-mono">
+                  <p className="flex items-center gap-1.5 font-mono" dir="ltr">
                     <Phone className="w-3.5 h-3.5 text-[var(--awlad-royal-700)] dark:text-[#85B8FF]" /> {data.settings.phone1}
                   </p>
                 )}
                 {data.settings.phone2 && (
-                  <p className="flex items-center gap-1.5 font-mono">
+                  <p className="flex items-center gap-1.5 font-mono" dir="ltr">
                     <Phone className="w-3.5 h-3.5 text-[var(--awlad-royal-700)] dark:text-[#85B8FF]" /> {data.settings.phone2}
                   </p>
                 )}
@@ -608,7 +619,7 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
               <div className="space-y-1.5 text-slate-600 dark:text-[#A9BCD9]">
                 <p className="font-black text-slate-900 dark:text-[#F3F7FC]">{data.settings.companyName}</p>
                 <p>{data.settings.companySubtitle}</p>
-                <p className="font-mono text-[11px]">الإصدار: v3.0.0</p>
+                <p className="font-mono text-[11px]">{t('الإصدار:', 'Version:')} v3.0.0</p>
               </div>
             )}
           </div>

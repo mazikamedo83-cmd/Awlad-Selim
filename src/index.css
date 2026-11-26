@@ -12,7 +12,14 @@
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
     color-scheme: light;
+  }
+
+  html[dir='rtl'] {
     direction: rtl;
+  }
+
+  html[dir='ltr'] {
+    direction: ltr;
   }
 
   html.dark {

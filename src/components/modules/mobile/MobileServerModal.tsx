@@ -31,6 +31,8 @@ import {
   type DiscoveredServerCandidate,
 } from '../../../services/discovery';
 import { useAuth } from '../../../context/AuthContext';
+import { usePreferences } from '../../../context/PreferencesContext';
+import { formatLocaleNumber } from '../../../i18n/translator';
 import { isNativeCapacitor } from '../../../services/native';
 import { QrScannerModal } from '../../common/QrScannerModal';
 import type { ConnectionMode, ConnectionProfilesConfig } from '../../../types';
@@ -44,40 +46,55 @@ interface MobileServerModalProps {
 const MODE_OPTIONS: Array<{
   key: ConnectionMode;
   shortLabel: string;
+  shortLabelEn: string;
   title: string;
+  titleEn: string;
   hint: string;
+  hintEn: string;
   icon: React.ElementType;
   placeholder: string;
 }> = [
   {
     key: 'local_network',
     shortLabel: 'الشبكة المحلية',
-    title: 'Local Network (IP + 3000)',
+    shortLabelEn: 'Local Network',
+    title: 'الشبكة المحلية (IP + 3000)',
+    titleEn: 'Local Network (IP + 3000)',
     hint: 'الاتصال المباشر بلابتوب المحل عبر شبكة الواي فاي المحلية (http://IP:3000).',
+    hintEn: 'Direct connection to the store laptop over local Wi-Fi (http://IP:3000).',
     icon: Wifi,
     placeholder: '192.168.1.100',
   },
   {
     key: 'free_remote',
     shortLabel: 'رابط مجاني',
-    title: 'Free Remote (Quick Tunnel)',
+    shortLabelEn: 'Free Remote',
+    title: 'رابط عن بُعد مجاني (Quick Tunnel)',
+    titleEn: 'Free Remote (Quick Tunnel)',
     hint: 'رابط Cloudflare Quick Tunnel المجاني بصيغة https://xxxx.trycloudflare.com.',
+    hintEn: 'Free Cloudflare Quick Tunnel URL in https://xxxx.trycloudflare.com format.',
     icon: Radio,
     placeholder: 'https://example-shop.trycloudflare.com',
   },
   {
     key: 'pro_remote',
     shortLabel: 'دومين احترافي',
-    title: 'Pro Remote (Named Tunnel)',
+    shortLabelEn: 'Pro Domain',
+    title: 'دومين احترافي (Named Tunnel)',
+    titleEn: 'Pro Remote (Named Tunnel)',
     hint: 'دومين ثابت بشهادة HTTPS مشفرة دون تغيير مع إعادة التشغيل.',
+    hintEn: 'Static domain with encrypted HTTPS that persists across restarts.',
     icon: Globe,
     placeholder: 'https://erp.yourdomain.com',
   },
   {
     key: 'cloud_vps',
     shortLabel: 'Cloud VPS',
-    title: 'Cloud VPS Connection',
+    shortLabelEn: 'Cloud VPS',
+    title: 'اتصال الخادم السحابي (Cloud VPS)',
+    titleEn: 'Cloud VPS Connection',
     hint: 'سيرفر سحابي دائم متصل بنفس قاعدة البيانات المركزية.',
+    hintEn: 'Always-on cloud server connected to the same central database.',
     icon: Cloud,
     placeholder: 'https://cloud-erp.yourdomain.com',
   },
@@ -89,6 +106,7 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
   onSaved,
 }) => {
   const { setPairingBanner } = useAuth();
+  const { t, dir } = usePreferences();
   const [profiles, setProfiles] = useState<ConnectionProfilesConfig>(() =>
     getStoredConnectionProfiles()
   );
@@ -149,9 +167,9 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
       const results = await discoverServerCandidates();
       setDiscoveredServers(results);
       if (results.length === 0) {
-        setDiscoveryNotice('لم يتم العثور على سيرفر يعمل على الشبكة الحالية تلقائياً. تأكد من الاتصال بنفس Wi-Fi أو استخدم رابط QR.');
+        setDiscoveryNotice(t('لم يتم العثور على سيرفر يعمل على الشبكة الحالية تلقائياً. تأكد من الاتصال بنفس Wi-Fi أو استخدم رابط QR.', 'No running server was auto-discovered on the current network. Make sure you are on the same Wi-Fi or use a QR link.'));
       } else {
-        setDiscoveryNotice(`تم اكتشاف (${results.length}) عنوان سيرفر متاح. اضغط على أي عنوان لتطبيقه فوراً.`);
+        setDiscoveryNotice(t(`تم اكتشاف (${results.length}) عنوان سيرفر متاح. اضغط على أي عنوان لتطبيقه فوراً.`, `Discovered ${formatLocaleNumber(results.length)} available server(s). Tap any address to apply immediately.`));
       }
     } finally {
       setDiscovering(false);
@@ -182,14 +200,14 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
     const res = await claimPairingInvitation(rawText, { clearExistingAuth: true });
     setClaimingQr(false);
     if (!res.ok) {
-      setFormError(res.error || 'تعذر ربط الجهاز عبر الرمز المدخل');
+      setFormError(res.error ? t(res.error) : t('تعذر ربط الجهاز عبر الرمز المدخل', 'Unable to pair device using the entered code'));
       return;
     }
     setPairingBanner({
       type: res.requiresAdminApproval ? 'warning' : 'success',
       message: res.requiresAdminApproval
-        ? `تم إعداد السيرفر (${res.companyName || ''}). هذا الجهاز بانتظار موافقة مدير النظام، وبعدها يمكنك تسجيل الدخول بحسابك.`
-        : `تم ربط الجهاز بسيرفر (${res.companyName || ''}) بنجاح (${res.endpointUrl}). أدخل اسم المستخدم وكلمة المرور للدخول.`,
+        ? t(`تم إعداد السيرفر (${res.companyName || ''}). هذا الجهاز بانتظار موافقة مدير النظام، وبعدها يمكنك تسجيل الدخول بحسابك.`, `Server (${res.companyName || ''}) configured. This device is awaiting admin approval before you can sign in.`)
+        : t(`تم ربط الجهاز بسيرفر (${res.companyName || ''}) بنجاح (${res.endpointUrl}). أدخل اسم المستخدم وكلمة المرور للدخول.`, `Device paired with (${res.companyName || ''}) (${res.endpointUrl}). Enter your username and password to sign in.`),
     });
     onClose();
     await onSaved();
@@ -213,7 +231,7 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
         profiles.enforceHttpsForRemote !== false
       );
       if (!check.valid) {
-        setFormError(check.error || 'عنوان السيرفر غير صالح');
+        setFormError(check.error ? t(check.error) : t('عنوان السيرفر غير صالح', 'Invalid server address'));
         return;
       }
     }
@@ -225,13 +243,13 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
       setTestResult({
         ok: true,
         httpsActive: res.httpsActive,
-        message: `متصل بالسيرفر المركزي (${res.latencyMs}ms)${res.httpsActive ? ' • HTTPS مشفر' : ''}${res.version ? ` — إصدار ${res.version}` : ''}`,
+        message: `${t('متصل بالسيرفر المركزي', 'Connected to central server')} (${res.latencyMs}ms)${res.httpsActive ? ` • ${t('HTTPS مشفر', 'Encrypted HTTPS')}` : ''}${res.version ? ` — ${t('إصدار', 'v')} ${res.version}` : ''}`,
         lanUrls: res.lanUrls,
       });
     } else {
       setTestResult({
         ok: false,
-        message: res.error || 'تعذر الاتصال بالسيرفر',
+        message: res.error ? t(res.error) : t('تعذر الاتصال بالسيرفر', 'Unable to connect to server'),
       });
     }
   };
@@ -258,7 +276,7 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
       profiles.enforceHttpsForRemote !== false
     );
     if (!check.valid) {
-      setFormError(check.error || 'يرجى التحقق من عنوان السيرفر');
+      setFormError(check.error ? t(check.error) : t('يرجى التحقق من عنوان السيرفر', 'Please check the server URL'));
       return;
     }
 
@@ -287,6 +305,7 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
 
   return (
     <div
+      dir={dir}
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/65 backdrop-blur-xs"
       onClick={onClose}
     >
@@ -295,25 +314,26 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
         onSubmit={handleSave}
-        className="w-full max-w-lg bg-white dark:bg-[#0E1C36] rounded-t-xl sm:rounded-lg p-2.5 shadow-2xl border border-slate-200 dark:border-[#21375C] space-y-2 text-right pb-safe max-h-[92vh] overflow-y-auto"
+        className="w-full max-w-lg bg-white dark:bg-[#0E1C36] rounded-t-xl sm:rounded-lg p-2.5 shadow-2xl border border-slate-200 dark:border-[#21375C] space-y-2 text-start pb-safe max-h-[92vh] overflow-y-auto"
       >
         <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
           <div className="flex items-center gap-2">
             <Server className="w-4 h-4 text-blue-900" />
             <div>
               <h3 className="text-xs font-black text-slate-900">
-                إعداد الاتصال بالسيرفر المركزي (4 أوضاع)
+                {t('إعداد الاتصال بالسيرفر المركزي (4 أوضاع)', 'Central Server Connection Setup (4 Modes)')}
               </h3>
               <p className="text-[10px] text-slate-500">
                 {useSameOrigin
-                  ? 'الوضع الحالي: الخادم المحلي المباشر (Same-Origin)'
-                  : `الوضع المحدد: ${getConnectionModeLabel(selectedMode)}`}
+                  ? t('الوضع الحالي: الخادم المحلي المباشر (Same-Origin)', 'Current mode: Direct Local Server (Same-Origin)')
+                  : `${t('الوضع المحدد:', 'Selected mode:')} ${t(getConnectionModeLabel(selectedMode))}`}
               </p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
+            aria-label={t('إغلاق', 'Close')}
             className="h-8 w-8 flex items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 cursor-pointer"
           >
             <X className="w-4 h-4" />
@@ -329,7 +349,7 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
             className="h-8 px-2.5 rounded-md bg-[#003589] hover:bg-[#011E58] text-white text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
           >
             {claimingQr ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <QrCode className="w-3.5 h-3.5" />}
-            <span>{claimingQr ? 'جاري الربط...' : 'مسح QR أو لصق رابط دعوة'}</span>
+            <span>{claimingQr ? t('جاري الربط...', 'Pairing...') : t('مسح QR أو لصق رابط دعوة', 'Scan QR or Paste Invite Link')}</span>
           </button>
           <button
             type="button"
@@ -338,7 +358,7 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
             className="h-8 px-2.5 rounded-md bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-800 text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
           >
             {discovering ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
-            <span>{discovering ? 'جاري البحث في الشبكة...' : 'اكتشاف السيرفر تلقائياً'}</span>
+            <span>{discovering ? t('جاري البحث في الشبكة...', 'Scanning network...') : t('اكتشاف السيرفر تلقائياً', 'Auto-Discover Server')}</span>
           </button>
         </div>
 
@@ -352,7 +372,7 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
                     key={srv.url}
                     type="button"
                     onClick={() => handleSelectDiscovered(srv)}
-                    className="w-full px-2.5 py-2 hover:bg-[#EEF3FA] flex items-center justify-between gap-2 text-right cursor-pointer"
+                    className="w-full px-2.5 py-2 hover:bg-[#EEF3FA] flex items-center justify-between gap-2 text-start cursor-pointer"
                   >
                     <div>
                       <div className="text-xs font-black text-slate-900">{srv.companyName || 'AWLAD SELIM Server'}</div>
@@ -390,7 +410,7 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
                 }`}
               >
                 <ModeIcon className="w-3.5 h-3.5" />
-                <span className="text-[11px] font-bold">{mode.shortLabel}</span>
+                <span className="text-[11px] font-bold">{t(mode.shortLabel, mode.shortLabelEn)}</span>
               </button>
             );
           })}
@@ -408,21 +428,21 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
               }}
               className="w-3.5 h-3.5 rounded text-blue-900"
             />
-            <span>اتصال تلقائي بنفس السيرفر المفتوح منه البرنامج (Same-Origin)</span>
+            <span>{t('اتصال تلقائي بنفس السيرفر المفتوح منه البرنامج (Same-Origin)', 'Auto-connect to current origin server (Same-Origin)')}</span>
           </label>
         )}
 
         {!useSameOrigin && (
           <div className="space-y-1.5 bg-slate-50/70 p-2 rounded-lg border border-slate-200">
-            <div className="text-xs font-black text-slate-900">{activeModeMeta.title}</div>
-            <p className="text-[11px] text-slate-600 leading-snug">{activeModeMeta.hint}</p>
+            <div className="text-xs font-black text-slate-900">{t(activeModeMeta.title, activeModeMeta.titleEn)}</div>
+            <p className="text-[11px] text-slate-600 leading-snug">{t(activeModeMeta.hint, activeModeMeta.hintEn)}</p>
 
             {selectedMode === 'local_network' ? (
               <div className="space-y-1.5">
                 <div className="grid grid-cols-3 gap-1.5">
                   <div className="col-span-2">
                     <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
-                      عنوان IP اللابتوب:
+                      {t('عنوان IP اللابتوب:', 'Host IP Address:')}
                     </label>
                     <input
                       type="text"
@@ -442,7 +462,7 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
                   </div>
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
-                      المنفذ (Port):
+                      {t('المنفذ (Port):', 'Port:')}
                     </label>
                     <input
                       type="number"
@@ -488,14 +508,14 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
                     }
                     className="px-2 py-1 rounded-md bg-white border border-slate-200 text-slate-700 text-[11px] font-mono cursor-pointer"
                   >
-                    10.0.2.2:3000 (محاكي)
+                    10.0.2.2:3000 ({t('محاكي', 'Emulator')})
                   </button>
                 </div>
               </div>
             ) : (
               <div className="space-y-1.5">
                 <label className="block text-[11px] font-bold text-slate-700">
-                  رابط الاتصال الآمن (HTTPS):
+                  {t('رابط الاتصال الآمن (HTTPS):', 'Secure Connection URL (HTTPS):')}
                 </label>
                 <input
                   type="url"
@@ -532,12 +552,12 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
                 />
                 {selectedMode === 'free_remote' && (
                   <p className="text-[10px] text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2 py-1 font-bold">
-                    تنبيه: رابط Quick Tunnel المجاني مؤقت وقد يتغير عند إعادة تشغيل النفق على اللابتوب؛ يمكنك إعادة الربط فوراً بالـ QR أو الرابط الجديد.
+                    {t('تنبيه: رابط Quick Tunnel المجاني مؤقت وقد يتغير عند إعادة تشغيل النفق على اللابتوب؛ يمكنك إعادة الربط فوراً بالـ QR أو الرابط الجديد.', 'Note: Quick Tunnel URLs are temporary and may change when restarting the tunnel; you can re-pair immediately via QR or the new link.')}
                   </p>
                 )}
                 <div className="flex items-center gap-1.5 text-[10px] text-slate-600">
                   <Lock className="w-3 h-3 text-emerald-700 shrink-0" />
-                  <span>يُشترط HTTPS لحماية جلسة الدخول والتوكنات عند الاتصال من خارج المحل.</span>
+                  <span>{t('يُشترط HTTPS لحماية جلسة الدخول والتوكنات عند الاتصال من خارج المحل.', 'HTTPS is required to protect login sessions and tokens when connecting remotely.')}</span>
                 </div>
               </div>
             )}
@@ -605,13 +625,13 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
             className="h-8 px-2.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
           >
             <Wifi className="w-3.5 h-3.5" />
-            <span>{testing ? 'جاري الفحص...' : 'اختبار الاتصال'}</span>
+            <span>{testing ? t('جاري الفحص...', 'Testing...') : t('اختبار الاتصال', 'Test Connection')}</span>
           </button>
           <button
             type="submit"
             className="h-8 flex-1 rounded-md bg-[#011E58] hover:bg-[#001A49] text-white text-xs font-black cursor-pointer"
           >
-            حفظ وتطبيق الوضع
+            {t('حفظ وتطبيق الوضع', 'Save & Apply Mode')}
           </button>
         </div>
       </form>

@@ -65,6 +65,10 @@ html.dark {
   background: linear-gradient(to left, var(--awlad-navy-950), var(--awlad-navy-900), var(--awlad-royal-700));
 }
 
+html[dir='ltr'] .awlad-brand-gradient {
+  background: linear-gradient(to right, var(--awlad-navy-950), var(--awlad-navy-900), var(--awlad-royal-700));
+}
+
 .pt-safe {
   padding-top: var(--awlad-safe-top);
 }

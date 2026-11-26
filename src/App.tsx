@@ -142,7 +142,7 @@ const MainAppContent: React.FC = () => {
     databaseUnavailableMessage,
   } = useAuth();
   const { networkStatus, lastError, triggerSync, isSyncing } = useData();
-  const { dir } = usePreferences();
+  const { dir, t } = usePreferences();
   const [currentPage, setCurrentPage] = useState<NavItemKey>('dashboard');
   const [reportProductId, setReportProductId] = useState<string | undefined>(undefined);
   const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() =>
@@ -210,7 +210,7 @@ const MainAppContent: React.FC = () => {
         if (/^(?:awladselim:\/\/|https?:\/\/[^/]+\/(?:pair|invite)\/)/i.test(cleanUrl)) {
           setPairingBanner({
             type: 'error',
-            message: 'رابط الدعوة غير مكتمل أو لا يحتوي على رمز ربط صالح.',
+            message: t('رابط الدعوة غير مكتمل أو لا يحتوي على رمز ربط صالح.'),
           });
         }
         return;
@@ -241,8 +241,8 @@ const MainAppContent: React.FC = () => {
           setPairingBanner({
             type: res.requiresAdminApproval ? 'warning' : 'success',
             message: res.requiresAdminApproval
-              ? `تم ربط الجهاز بسيرفر (${res.companyName || ''}). بانتظار اعتماد مدير النظام، ثم أدخل بيانات حسابك للدخول.`
-              : `تم إعداد الاتصال تلقائياً بسيرفر (${res.companyName || ''}). يرجى تسجيل الدخول باسم المستخدم وكلمة المرور المعتادة.`,
+              ? t(`تم ربط الجهاز بسيرفر (${res.companyName || ''}). بانتظار اعتماد مدير النظام، ثم أدخل بيانات حسابك للدخول.`)
+              : t(`تم إعداد الاتصال تلقائياً بسيرفر (${res.companyName || ''}). يرجى تسجيل الدخول باسم المستخدم وكلمة المرور المعتادة.`),
           });
           await refreshAuthContext();
         } else {
@@ -254,7 +254,7 @@ const MainAppContent: React.FC = () => {
           });
           setPairingBanner({
             type: 'error',
-            message: res.error || 'تعذر تفعيل رابط الربط',
+            message: t(res.error || 'تعذر تفعيل رابط الربط'),
           });
         }
         if (typeof window !== 'undefined' && window.history?.replaceState) {
@@ -323,7 +323,7 @@ const MainAppContent: React.FC = () => {
           });
           setPairingBanner({
             type: 'success',
-            message: `تم اكتشاف السيرفر المركزي تلقائياً على الشبكة المحلية (${first.url}). يرجى تسجيل الدخول بحسابك.`,
+            message: t(`تم اكتشاف السيرفر المركزي تلقائياً على الشبكة المحلية (${first.url}). يرجى تسجيل الدخول بحسابك.`),
           });
           await refreshAuthContext();
         } catch {
@@ -363,10 +363,10 @@ const MainAppContent: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen awlad-brand-gradient text-white font-sans">
+      <div dir={dir} className="flex items-center justify-center min-h-screen awlad-brand-gradient text-white font-sans">
         <div className="text-center space-y-3">
           <div className="w-12 h-12 border-4 border-white/80 border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <p className="text-sm font-bold text-blue-100">جاري تشغيل نظام أولاد سليم...</p>
+          <p className="text-sm font-bold text-blue-100">{t('جاري تشغيل نظام أولاد سليم...')}</p>
         </div>
       </div>
     );
@@ -394,13 +394,13 @@ const MainAppContent: React.FC = () => {
             ) : (
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
             )}
-            <span className="leading-relaxed">{pairingBanner.message}</span>
+            <span className="leading-relaxed">{t(pairingBanner.message)}</span>
           </div>
           <button
             type="button"
             onClick={clearPairingBanner}
             className="p-1 rounded-lg hover:bg-black/5 shrink-0 cursor-pointer"
-            aria-label="إغلاق"
+            aria-label={t('إغلاق')}
           >
             <X className="w-4 h-4" />
           </button>
@@ -414,14 +414,17 @@ const MainAppContent: React.FC = () => {
         <div className="flex items-center gap-2">
           <AlertCircle className="w-4 h-4 shrink-0 text-amber-700" />
           <span>
-            تم تجاوز حصة مفتاح الخرائط التجريبي مؤقتاً — يرجى تفعيل مشروع Google Cloud أو المحاولة لاحقاً عند استمرار تحميل الخرائط.
+            {t(
+              'تم تجاوز حصة مفتاح الخرائط التجريبي مؤقتاً — يرجى تفعيل مشروع Google Cloud أو المحاولة لاحقاً عند استمرار تحميل الخرائط.',
+              'Maps API quota temporarily exceeded — please check your Google Cloud project or try again later.'
+            )}
           </span>
         </div>
         <button
           type="button"
           onClick={() => setMapsQuotaWarning(null)}
           className="p-1 rounded-lg hover:bg-amber-200/60 shrink-0 cursor-pointer"
-          aria-label="إغلاق تنبيه الخرائط"
+          aria-label={t('إغلاق تنبيه الخرائط', 'Close maps warning')}
         >
           <X className="w-4 h-4" />
         </button>
@@ -450,13 +453,17 @@ const MainAppContent: React.FC = () => {
       return (
         <div className="bg-white dark:bg-[#0E1C36] rounded-lg border border-red-200 dark:border-red-500/35 p-4 text-center space-y-2 shadow-xs">
           <ShieldAlert className="w-8 h-8 text-red-500 dark:text-red-400 mx-auto" />
-          <h3 className="text-sm font-black text-slate-900 dark:text-[#F3F7FC]">غير مصرح لك بالوصول إلى هذه الشاشة</h3>
-          <p className="text-xs text-slate-500 dark:text-[#A9BCD9]">هذه الصلاحية مقيدة لحسابك. يرجى مراجعة المدير العام عند الحاجة.</p>
+          <h3 className="text-sm font-black text-slate-900 dark:text-[#F3F7FC]">
+            {t('غير مصرح لك بالوصول إلى هذه الشاشة', 'You are not authorized to access this screen')}
+          </h3>
+          <p className="text-xs text-slate-500 dark:text-[#A9BCD9]">
+            {t('هذه الصلاحية مقيدة لحسابك. يرجى مراجعة المدير العام عند الحاجة.', 'This permission is restricted for your account. Contact the general manager if needed.')}
+          </p>
           <button
             onClick={() => setCurrentPage('dashboard')}
             className="h-8 px-4 rounded-md bg-[var(--awlad-royal-700)] hover:bg-[var(--awlad-navy-900)] dark:bg-[#1659C8] dark:hover:bg-[#1F6BE6] text-white text-xs font-bold cursor-pointer"
           >
-            العودة إلى الرئيسية
+            {t('العودة إلى الرئيسية', 'Back to Dashboard')}
           </button>
         </div>
       );
@@ -645,9 +652,11 @@ const MainAppContent: React.FC = () => {
         <div className="flex items-center gap-2">
           <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
           <span>
-            {isDatabaseUnavailable
-              ? databaseUnavailableMessage || lastError
-              : lastError}
+            {t(
+              (isDatabaseUnavailable
+                ? databaseUnavailableMessage || lastError
+                : lastError) || ''
+            )}
           </span>
         </div>
         <button
@@ -659,7 +668,7 @@ const MainAppContent: React.FC = () => {
           }}
           className="px-2.5 py-1 rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors cursor-pointer"
         >
-          {isSyncing ? 'جاري الفحص...' : 'إعادة المحاولة'}
+          {isSyncing ? t('جاري الفحص...') : t('إعادة المحاولة')}
         </button>
       </div>
     ) : null;
@@ -690,6 +699,7 @@ const MainAppContent: React.FC = () => {
         </StaffMobileShell>
       ) : (
         <div
+          dir={dir}
           className={`${
             isWindowsDesktop ? 'h-screen overflow-hidden' : 'min-h-screen md:h-screen md:overflow-hidden'
           } print:h-auto print:overflow-visible bg-[var(--awlad-surface-page)] text-slate-800 dark:text-[#DCE6F5] flex flex-col font-sans antialiased pb-safe`}

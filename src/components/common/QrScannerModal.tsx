@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import jsQR from 'jsqr';
 import { Camera, Upload, Link2, X, AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react';
 import { requestCameraStreamForQr } from '../../services/native';
+import { usePreferences } from '../../context/PreferencesContext';
 
 interface QrScannerModalProps {
   isOpen: boolean;
@@ -16,6 +17,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
   onDetected,
   mode = 'qr',
 }) => {
+  const { t, dir } = usePreferences();
   const [tab, setTab] = useState<'camera' | 'paste'>('camera');
   const [manualInput, setManualInput] = useState('');
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -156,7 +158,12 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
         rafRef.current = requestAnimationFrame(scanFrame);
       } catch {
         if (!cancelled) {
-          setCameraError('تعذر تشغيل الكاميرا على هذا الجهاز. يمكنك رفع صورة رمز QR أو لصق رابط الدعوة.');
+          setCameraError(
+            t(
+              'تعذر تشغيل الكاميرا على هذا الجهاز. يمكنك رفع صورة رمز QR أو لصق رابط الدعوة.',
+              'Unable to start camera on this device. You can upload a QR image or paste the pairing link.'
+            )
+          );
         }
       }
     };
@@ -184,7 +191,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
         canvas.height = img.height;
         const ctx = canvas.getContext('2d');
         if (!ctx) {
-          setFileError('تعذر معالجة الصورة');
+          setFileError(t('تعذر معالجة الصورة', 'Could not process image'));
           return;
         }
         ctx.drawImage(img, 0, 0);
@@ -194,10 +201,10 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
           stopCamera();
           onDetected(decoded.data);
         } else {
-          setFileError('لم يتم العثور على رمز QR واضح داخل الصورة المختارة.');
+          setFileError(t('لم يتم العثور على رمز QR واضح داخل الصورة المختارة.', 'No clear QR code found inside the selected image.'));
         }
       };
-      img.onerror = () => setFileError('ملف الصورة غير صالح');
+      img.onerror = () => setFileError(t('ملف الصورة غير صالح', 'Invalid image file'));
       img.src = String(reader.result || '');
     };
     reader.readAsDataURL(file);
@@ -215,18 +222,20 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-slate-950/75 backdrop-blur-xs p-0 sm:p-2.5">
-      <div className="w-full max-w-md bg-white rounded-t-lg sm:rounded-lg border border-slate-200 overflow-hidden text-right pb-safe">
-        <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-slate-100">
+      <div dir={dir} className="w-full max-w-md bg-white dark:bg-[#0E1C36] rounded-t-lg sm:rounded-lg border border-slate-200 dark:border-[#21375C] overflow-hidden text-start pb-safe">
+        <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-slate-100 dark:border-[#21375C]">
           <div className="flex items-center gap-1.5">
-            <Camera className="w-4 h-4 text-[#003589] shrink-0" />
+            <Camera className="w-4 h-4 text-[#003589] dark:text-[#60A5FA] shrink-0" />
             <div>
-              <h3 className="text-xs font-black text-slate-900">
-                {mode === 'barcode' ? 'مسح باركود الصنف أو إدخال الكود' : 'مسح رمز QR أو إدخال رابط الربط'}
-              </h3>
-              <p className="text-[10px] text-slate-500">
+              <h3 className="text-xs font-black text-slate-900 dark:text-[#F3F7FC]">
                 {mode === 'barcode'
-                  ? 'وجّه الكاميرا نحو باركود المنتج للبحث الفوري'
-                  : 'وجّه الكاميرا نحو رمز QR الظاهر على شاشة الإدارة'}
+                  ? t('مسح باركود الصنف أو إدخال الكود', 'Scan Product Barcode or Enter Code')
+                  : t('مسح رمز QR أو إدخال رابط الربط', 'Scan QR Code or Enter Pairing Link')}
+              </h3>
+              <p className="text-[10px] text-slate-500 dark:text-[#A9BCD9]">
+                {mode === 'barcode'
+                  ? t('وجّه الكاميرا نحو باركود المنتج للبحث الفوري', 'Point the camera at the product barcode to search instantly')
+                  : t('وجّه الكاميرا نحو رمز QR الظاهر على شاشة الإدارة', 'Point the camera at the QR code shown on the admin screen')}
               </p>
             </div>
           </div>
@@ -236,33 +245,34 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
               stopCamera();
               onClose();
             }}
-            className="h-7 w-7 flex items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 cursor-pointer"
+            aria-label={t('إغلاق', 'Close')}
+            className="h-7 w-7 flex items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-[#1A3461] cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         <div className="p-2.5 space-y-2">
-          <div className="grid grid-cols-2 gap-1 p-0.5 rounded-md bg-slate-100 text-xs font-bold">
+          <div className="grid grid-cols-2 gap-1 p-0.5 rounded-md bg-slate-100 dark:bg-[#132544] text-xs font-bold">
             <button
               type="button"
               onClick={() => setTab('camera')}
               className={`h-8 rounded-md flex items-center justify-center gap-1 cursor-pointer ${
-                tab === 'camera' ? 'bg-white text-slate-900 border border-slate-200 font-black' : 'text-slate-600'
+                tab === 'camera' ? 'bg-white dark:bg-[#0E1C36] text-slate-900 dark:text-[#F3F7FC] border border-slate-200 dark:border-[#2A436E] font-black' : 'text-slate-600 dark:text-[#A9BCD9]'
               }`}
             >
               <Camera className="w-3.5 h-3.5" />
-              <span>مسح بالكاميرا / صورة</span>
+              <span>{t('مسح بالكاميرا / صورة', 'Scan Camera / Image')}</span>
             </button>
             <button
               type="button"
               onClick={() => setTab('paste')}
               className={`h-8 rounded-md flex items-center justify-center gap-1 cursor-pointer ${
-                tab === 'paste' ? 'bg-white text-slate-900 border border-slate-200 font-black' : 'text-slate-600'
+                tab === 'paste' ? 'bg-white dark:bg-[#0E1C36] text-slate-900 dark:text-[#F3F7FC] border border-slate-200 dark:border-[#2A436E] font-black' : 'text-slate-600 dark:text-[#A9BCD9]'
               }`}
             >
               <Link2 className="w-3.5 h-3.5" />
-              <span>{mode === 'barcode' ? 'إدخال رقم الباركود' : 'لصق رابط الدعوة'}</span>
+              <span>{mode === 'barcode' ? t('إدخال رقم الباركود', 'Enter Barcode') : t('لصق رابط الدعوة', 'Paste Pairing Link')}</span>
             </button>
           </div>
 
@@ -293,7 +303,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
                         className="h-8 px-2.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-bold flex items-center gap-1 cursor-pointer"
                       >
                         <RefreshCw className="w-3.5 h-3.5" />
-                        <span>إعادة المحاولة</span>
+                        <span>{t('إعادة المحاولة', 'Retry')}</span>
                       </button>
                       <button
                         type="button"
@@ -304,16 +314,16 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
                         className="h-8 px-2.5 rounded-md bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold flex items-center gap-1 cursor-pointer"
                       >
                         <Link2 className="w-3.5 h-3.5" />
-                        <span>لصق الرابط بدلاً من الكاميرا</span>
+                        <span>{t('لصق الرابط بدلاً من الكاميرا', 'Paste Link Instead')}</span>
                       </button>
                     </div>
                   </div>
                 )}
               </div>
 
-              <label className="w-full h-8 px-2.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer border border-slate-200">
-                <Upload className="w-3.5 h-3.5 text-slate-700" />
-                <span>أو اختيار صورة QR محفوظة من الجهاز</span>
+              <label className="w-full h-8 px-2.5 rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-[#132544] dark:hover:bg-[#1A3461] text-slate-800 dark:text-[#DCE6F5] text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer border border-slate-200 dark:border-[#21375C]">
+                <Upload className="w-3.5 h-3.5 text-slate-700 dark:text-[#A9BCD9]" />
+                <span>{t('أو اختيار صورة QR محفوظة من الجهاز', 'Or choose saved QR image from device')}</span>
                 <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
               </label>
 
@@ -327,18 +337,18 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
           ) : (
             <form onSubmit={handleManualSubmit} className="space-y-2">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-0.5">
+                <label className="block text-xs font-bold text-slate-700 dark:text-[#CBD9EE] mb-0.5">
                   {mode === 'barcode'
-                    ? 'اكتب رقم الباركود أو كود الصنف:'
-                    : 'الصق رابط الدعوة المرسل من الإدارة (WhatsApp أو رابط مباشر):'}
+                    ? t('اكتب رقم الباركود أو كود الصنف:', 'Enter barcode or item code:')
+                    : t('الصق رابط الدعوة المرسل من الإدارة (WhatsApp أو رابط مباشر):', 'Paste the pairing link sent by administration:')}
                 </label>
                 <textarea
                   rows={mode === 'barcode' ? 2 : 3}
                   dir="ltr"
                   value={manualInput}
                   onChange={(e) => setManualInput(e.target.value)}
-                  placeholder={mode === 'barcode' ? '6221000000000' : 'https://example.trycloudflare.com/pair/xxxxxx أو awladselim://pair?...'}
-                  className="w-full rounded-md border border-slate-300 p-2 text-xs font-mono text-left focus:border-[#003589] outline-hidden"
+                  placeholder={mode === 'barcode' ? '6221000000000' : 'https://example.trycloudflare.com/pair/xxxxxx | awladselim://pair?...'}
+                  className="w-full rounded-md border border-slate-300 dark:border-[#2A436E] p-2 text-xs font-mono text-left focus:border-[#003589] outline-hidden"
                 />
               </div>
               <button
@@ -347,7 +357,7 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
                 className="w-full h-8 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>{mode === 'barcode' ? 'بحث بالباركود' : 'تطبيق الربط تلقائياً'}</span>
+                <span>{mode === 'barcode' ? t('بحث بالباركود', 'Search by Barcode') : t('تطبيق الربط تلقائياً', 'Apply Pairing Automatically')}</span>
               </button>
             </form>
           )}
