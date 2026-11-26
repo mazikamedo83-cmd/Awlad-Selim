@@ -11,6 +11,7 @@ import {
 import type { ConnectionMode, ConnectionProfilesConfig } from '../types';
 import { logDiagnostic } from './diagnostics';
 import { removeSealedKey, SecureVaultError, sealJson, unsealJson } from './secureVault';
+import { tr } from '../i18n/translator';
 
 const TOKENS_KEY = 'awlad_selim_auth_tokens_v3';
 const VAULT_TOKENS_KEY = 'auth_tokens_v1';
@@ -58,6 +59,13 @@ export function triggerAuthExpired(message?: string): void {
 
 export const DEFAULT_DB_UNAVAILABLE_MESSAGE =
   'قاعدة البيانات المركزية (PostgreSQL) غير متاحة مؤقتًا. تم إيقاف العمليات لحماية البيانات ومنع انقسامها.';
+
+export function getDefaultDbUnavailableMessage(): string {
+  return tr(
+    DEFAULT_DB_UNAVAILABLE_MESSAGE,
+    'Central database (PostgreSQL) is temporarily unavailable. Operations are paused to protect data integrity.'
+  );
+}
 
 export function isDatabaseUnavailableError(err: any): boolean {
   const code = String(err?.code || '');
@@ -170,13 +178,13 @@ export async function initSecureTokenCache(): Promise<void> {
             inMemoryTokens = migrated;
             safeToPurgeLegacy = true;
           } else {
-            throw new SecureVaultError('تعذر التحقق من حفظ رموز الدخول بعد ترحيلها إلى المخزن الآمن.');
+            throw new SecureVaultError(tr('تعذر التحقق من حفظ رموز الدخول بعد ترحيلها إلى المخزن الآمن.', 'Failed to verify login tokens after migrating to the secure vault.'));
           }
         }
       }
     }
   } catch (err: any) {
-    const fallbackMsg = err?.message || 'تعذر الوصول إلى المخزن الآمن لاستعادة الجلسة أو ترحيلها.';
+    const fallbackMsg = err?.message ? tr(err.message) : tr('تعذر الوصول إلى المخزن الآمن لاستعادة الجلسة أو ترحيلها.', 'Failed to access the secure vault to restore or migrate the session.');
     lastVaultErrorMessage = fallbackMsg;
     logDiagnostic({
       category: 'auth',
@@ -277,7 +285,7 @@ function assertSafeHttpTransport(baseUrl: string): void {
     if (profiles.enforceHttpsForRemote !== false) {
       throw new ApiError(
         400,
-        'يُمنع الاتصال غير المشفر (HTTP) خارج الشبكة المحلية. يرجى استخدام رابط HTTPS آمن.',
+        tr('يُمنع الاتصال غير المشفر (HTTP) خارج الشبكة المحلية. يرجى استخدام رابط HTTPS آمن.', 'Unencrypted HTTP connections are not allowed outside the local network. Please use a secure HTTPS URL.'),
         'HTTPS_REQUIRED_FOR_REMOTE'
       );
     }
@@ -406,14 +414,14 @@ export function validateConnectionUrl(
     return {
       valid: false,
       normalizedUrl: '',
-      error: 'يرجى إدخال عنوان السيرفر أولاً.',
+      error: tr('يرجى إدخال عنوان السيرفر أولاً.', 'Please enter the server address first.'),
     };
   }
   if (/\s/.test(trimmedRaw)) {
     return {
       valid: false,
       normalizedUrl: '',
-      error: 'عنوان السيرفر يحتوي على مسافات غير صالحة.',
+      error: tr('عنوان السيرفر يحتوي على مسافات غير صالحة.', 'Server address contains invalid whitespace.'),
     };
   }
   const normalizedUrl = normalizeServerUrl(trimmedRaw);
@@ -421,7 +429,7 @@ export function validateConnectionUrl(
     return {
       valid: false,
       normalizedUrl: '',
-      error: 'يرجى إدخال عنوان السيرفر أولاً.',
+      error: tr('يرجى إدخال عنوان السيرفر أولاً.', 'Please enter the server address first.'),
     };
   }
   let parsed: URL;
@@ -431,14 +439,14 @@ export function validateConnectionUrl(
     return {
       valid: false,
       normalizedUrl,
-      error: 'صيغة عنوان السيرفر غير صالحة. تأكد من كتابة الرابط بشكل صحيح.',
+      error: tr('صيغة عنوان السيرفر غير صالحة. تأكد من كتابة الرابط بشكل صحيح.', 'Invalid server address format. Make sure the URL is typed correctly.'),
     };
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     return {
       valid: false,
       normalizedUrl,
-      error: 'يجب أن يبدأ عنوان السيرفر ببروتوكول http:// أو https:// فقط.',
+      error: tr('يجب أن يبدأ عنوان السيرفر ببروتوكول http:// أو https:// فقط.', 'Server address must start with http:// or https:// only.'),
     };
   }
   const rawHostCandidate = normalizedUrl
@@ -450,7 +458,7 @@ export function validateConnectionUrl(
     return {
       valid: false,
       normalizedUrl,
-      error: 'عنوان المضيف أو الـ IP غير مكتمل أو غير صالح.',
+      error: tr('عنوان المضيف أو الـ IP غير مكتمل أو غير صالح.', 'Hostname or IP address is incomplete or invalid.'),
     };
   }
   if (parsed.port) {
@@ -459,7 +467,7 @@ export function validateConnectionUrl(
       return {
         valid: false,
         normalizedUrl,
-        error: 'رقم المنفذ (Port) يجب أن يكون بين 1 و 65535.',
+        error: tr('رقم المنفذ (Port) يجب أن يكون بين 1 و 65535.', 'Port number must be between 1 and 65535.'),
       };
     }
   }
@@ -467,7 +475,10 @@ export function validateConnectionUrl(
     return {
       valid: false,
       normalizedUrl,
-      error: 'عنوان localhost أو 127.0.0.1 يشير إلى الهاتف نفسه. أدخل عنوان IP اللابتوب على شبكة Wi-Fi (مثل 192.168.1.100:3000) أو 10.0.2.2 لمحاكي أندرويد.',
+      error: tr(
+        'عنوان localhost أو 127.0.0.1 يشير إلى الهاتف نفسه. أدخل عنوان IP اللابتوب على شبكة Wi-Fi (مثل 192.168.1.100:3000) أو 10.0.2.2 لمحاكي أندرويد.',
+        'localhost or 127.0.0.1 points to the phone itself. Enter the laptop IP on the Wi-Fi network (e.g. 192.168.1.100:3000) or 10.0.2.2 for Android emulator.'
+      ),
     };
   }
   if (mode !== 'local_network') {
@@ -475,7 +486,7 @@ export function validateConnectionUrl(
       return {
         valid: false,
         normalizedUrl,
-        error: 'الاتصالات الخارجية تتطلب بروتوكول HTTPS المشفر لحماية البيانات والتوكنات.',
+        error: tr('الاتصالات الخارجية تتطلب بروتوكول HTTPS المشفر لحماية البيانات والتوكنات.', 'Remote connections require encrypted HTTPS protocol to protect data and tokens.'),
       };
     }
     const hostLower = parsed.hostname.toLowerCase();
@@ -491,7 +502,7 @@ export function validateConnectionUrl(
       return {
         valid: false,
         normalizedUrl,
-        error: 'يجب إدخال دومين أو عنوان خارجي صالح لوضع الاتصال البعيد.',
+        error: tr('يجب إدخال دومين أو عنوان خارجي صالح لوضع الاتصال البعيد.', 'Please enter a valid domain or external address for remote connection mode.'),
       };
     }
   }
@@ -570,19 +581,19 @@ export function getConnectionModeLabel(mode?: string): string {
   switch (mode) {
     case 'local_network':
     case 'lan':
-      return 'الشبكة المحلية (Local Network)';
+      return tr('الشبكة المحلية (Local Network)', 'Local Network');
     case 'free_remote':
-      return 'الاتصال الخارجي المجاني (Quick Tunnel)';
+      return tr('الاتصال الخارجي المجاني (Quick Tunnel)', 'Free Remote (Quick Tunnel)');
     case 'pro_remote':
     case 'reverse_proxy':
     case 'vpn':
-      return 'الاتصال الاحترافي (Named Tunnel + HTTPS)';
+      return tr('الاتصال الاحترافي (Named Tunnel + HTTPS)', 'Pro Remote (Named Tunnel + HTTPS)');
     case 'cloud_vps':
-      return 'السيرفر السحابي الدائم (Cloud VPS)';
+      return tr('السيرفر السحابي الدائم (Cloud VPS)', 'Cloud VPS Server');
     case 'offline_local':
-      return 'وضع عدم الاتصال (Offline Cache)';
+      return tr('وضع عدم الاتصال (Offline Cache)', 'Offline Cache Mode');
     default:
-      return 'الشبكة المحلية (Local Network)';
+      return tr('الشبكة المحلية (Local Network)', 'Local Network');
   }
 }
 
@@ -638,13 +649,13 @@ export async function saveStoredTokensAsync(tokens: StoredTokens | null): Promis
       verified.accessToken !== nextTokens.accessToken ||
       verified.refreshToken !== nextTokens.refreshToken
     ) {
-      throw new SecureVaultError('فشل التحقق من حفظ رموز الجلسة داخل المخزن الآمن.');
+      throw new SecureVaultError(tr('فشل التحقق من حفظ رموز الجلسة داخل المخزن الآمن.', 'Failed to verify session tokens inside the secure vault.'));
     }
     inMemoryTokens = nextTokens;
     lastVaultErrorMessage = null;
     purgeLegacyPlaintextTokens();
   } catch (err: any) {
-    lastVaultErrorMessage = err?.message || 'فشل تخزين بيانات الجلسة في المخزن الآمن الأصلي.';
+    lastVaultErrorMessage = err?.message ? tr(err.message) : tr('فشل تخزين بيانات الجلسة في المخزن الآمن الأصلي.', 'Failed to store session data in the native secure vault.');
     throw err;
   }
 }
@@ -770,7 +781,7 @@ export async function testServerHealth(baseUrl: string): Promise<{
     return {
       ok: false,
       latencyMs: 0,
-      error: 'يرجى إدخال عنوان السيرفر المركزي أولاً (مثل http://192.168.1.100:3000 أو رابط HTTPS).',
+      error: tr('يرجى إدخال عنوان السيرفر المركزي أولاً (مثل http://192.168.1.100:3000 أو رابط HTTPS).', 'Please enter the central server URL first (e.g. http://192.168.1.100:3000 or HTTPS URL).'),
     };
   }
   try {
@@ -779,7 +790,7 @@ export async function testServerHealth(baseUrl: string): Promise<{
     return {
       ok: false,
       latencyMs: 0,
-      error: err?.message || 'الاتصالات الخارجية تتطلب HTTPS.',
+      error: err?.message ? tr(err.message) : tr('الاتصالات الخارجية تتطلب HTTPS.', 'Remote connections require HTTPS.'),
     };
   }
 
@@ -793,7 +804,11 @@ export async function testServerHealth(baseUrl: string): Promise<{
         ok: false,
         latencyMs,
         mode: data?.mode,
-        error: data?.error || data?.postgres?.message || `السيرفر استجاب برمز خطأ (${res.status})`,
+        error: data?.error
+          ? tr(data.error)
+          : data?.postgres?.message
+          ? tr(data.postgres.message)
+          : tr(`السيرفر استجاب برمز خطأ (${res.status})`, `Server responded with error code (${res.status})`),
       };
     }
     return {
@@ -815,8 +830,8 @@ export async function testServerHealth(baseUrl: string): Promise<{
       latencyMs,
       error:
         err?.name === 'AbortError'
-          ? 'انتهت مهلة الاتصال بالسيرفر (7 ثوانٍ) — تأكد من عنوان السيرفر وتشغيل النفق أو الشبكة.'
-          : 'تعذر الوصول إلى السيرفر المركزي. تأكد من تشغيل البرنامج على اللابتوب ومن رابط الاتصال.',
+          ? tr('انتهت مهلة الاتصال بالسيرفر (7 ثوانٍ) — تأكد من عنوان السيرفر وتشغيل النفق أو الشبكة.', 'Server connection timed out (7s) — verify server address and tunnel/network status.')
+          : tr('تعذر الوصول إلى السيرفر المركزي. تأكد من تشغيل البرنامج على اللابتوب ومن رابط الاتصال.', 'Could not reach the central server. Ensure the desktop app is running and verify the connection URL.'),
     };
   }
 }
@@ -864,7 +879,7 @@ async function refreshAccessToken(allowCookieRefresh = false): Promise<RefreshAt
       });
       const data = await res.json().catch(() => null);
       if (res.status === 503 || data?.code === 'DATABASE_UNAVAILABLE') {
-        const message = data?.error || DEFAULT_DB_UNAVAILABLE_MESSAGE;
+        const message = data?.error ? tr(data.error) : getDefaultDbUnavailableMessage();
         notifyServerDbStatus(false, message);
         logDiagnostic({
           category: 'network_error',
@@ -880,32 +895,36 @@ async function refreshAccessToken(allowCookieRefresh = false): Promise<RefreshAt
       }
       if (!res.ok) {
         if (res.status >= 500) {
+          const transientMsg = data?.error
+            ? tr(data.error)
+            : tr(`خطأ مؤقت في الخادم (${res.status})`, `Temporary server error (${res.status})`);
           logDiagnostic({
             category: 'network_error',
             severity: 'error',
             source: 'api.refreshAccessToken',
-            message: data?.error || `خطأ مؤقت في الخادم (${res.status})`,
+            message: transientMsg,
             details: { status: res.status, code: data?.code },
           });
           return {
             tokens: null,
             transientError: new ApiError(
               res.status,
-              data?.error || `خطأ مؤقت في الخادم (${res.status})`,
+              transientMsg,
               data?.code || `HTTP_${res.status}`,
               data?.details
             ),
           };
         }
         saveStoredTokens(null);
+        const authErrMsg = data?.error ? tr(data.error) : tr('تعذر تجديد جلسة المصادقة', 'Could not refresh authentication session');
         logDiagnostic({
           category: 'auth',
           severity: 'warning',
           source: 'api.refreshAccessToken',
-          message: data?.error || 'تعذر تجديد جلسة المصادقة',
+          message: authErrMsg,
           details: { status: res.status, code: data?.code },
         });
-        return { tokens: null, authErrorMessage: data?.error };
+        return { tokens: null, authErrorMessage: data?.error ? tr(data.error) : undefined };
       }
       if (data?.ok && data.accessToken && data.refreshToken) {
         const nextTokens = { accessToken: data.accessToken, refreshToken: data.refreshToken };
@@ -917,7 +936,7 @@ async function refreshAccessToken(allowCookieRefresh = false): Promise<RefreshAt
     } catch {
       return {
         tokens: null,
-        networkError: new ApiError(0, 'تعذر الاتصال بالسيرفر، تحقق من الشبكة أو تشغيل الخادم', 'NETWORK_ERROR'),
+        networkError: new ApiError(0, tr('تعذر الاتصال بالسيرفر، تحقق من الشبكة أو تشغيل الخادم', 'Unable to connect to the server. Check network or ensure the server is running.'), 'NETWORK_ERROR'),
       };
     } finally {
       refreshPromise = null;
@@ -942,7 +961,7 @@ export async function apiRequest<T = any>(
   if (isNativeCapacitor() && !base) {
     const err = new ApiError(
       0,
-      'لم يتم تحديد عنوان السيرفر المركزي (لابتوب المحل) بعد. يرجى ضبط عنوان السيرفر أولاً أو مسح رمز QR.',
+      tr('لم يتم تحديد عنوان السيرفر المركزي (لابتوب المحل) بعد. يرجى ضبط عنوان السيرفر أولاً أو مسح رمز QR.', 'Central server URL is not configured yet. Please configure the server URL first or scan the QR code.'),
       'SERVER_URL_NOT_CONFIGURED'
     );
     logDiagnostic({
@@ -987,23 +1006,25 @@ export async function apiRequest<T = any>(
       );
     } catch (err: any) {
       if (err?.name === 'AbortError') {
+        const timeoutMsg = tr('انتهت مهلة الاتصال بالسيرفر، يرجى المحاولة مرة أخرى', 'Server connection timed out, please try again');
         logDiagnostic({
           category: 'network_error',
           severity: 'error',
           source: `api.${method}`,
-          message: 'انتهت مهلة الاتصال بالسيرفر، يرجى المحاولة مرة أخرى',
+          message: timeoutMsg,
           details: { path, code: 'TIMEOUT', timeoutMs: options.timeoutMs || 20000 },
         });
-        throw new ApiError(0, 'انتهت مهلة الاتصال بالسيرفر، يرجى المحاولة مرة أخرى', 'TIMEOUT');
+        throw new ApiError(0, timeoutMsg, 'TIMEOUT');
       }
+      const netMsg = tr('تعذر الاتصال بالسيرفر، تحقق من الشبكة أو تشغيل الخادم', 'Unable to connect to the server. Check network or ensure the server is running.');
       logDiagnostic({
         category: 'network_error',
         severity: 'error',
         source: `api.${method}`,
-        message: 'تعذر الاتصال بالسيرفر، تحقق من الشبكة أو تشغيل الخادم',
+        message: netMsg,
         details: { path, code: 'NETWORK_ERROR' },
       });
-      throw new ApiError(0, 'تعذر الاتصال بالسيرفر، تحقق من الشبكة أو تشغيل الخادم', 'NETWORK_ERROR');
+      throw new ApiError(0, netMsg, 'NETWORK_ERROR');
     }
   };
 
@@ -1033,7 +1054,7 @@ export async function apiRequest<T = any>(
       saveStoredTokens(null);
       if (onAuthExpiredHandler) {
         onAuthExpiredHandler(
-          refreshAuthErrorMessage || 'انتهت صلاحية جلسة الدخول، يرجى تسجيل الدخول مجدداً.'
+          refreshAuthErrorMessage || tr('انتهت صلاحية جلسة الدخول، يرجى تسجيل الدخول مجدداً.', 'Login session expired, please sign in again.')
         );
       }
     }
@@ -1055,14 +1076,17 @@ export async function apiRequest<T = any>(
   ) {
     saveStoredTokens(null);
     if (onAuthExpiredHandler) {
-      onAuthExpiredHandler(json?.error || 'تم إلغاء ربط هذا الجهاز من قِبل الإدارة.');
+      onAuthExpiredHandler(json?.error ? tr(json.error) : tr('تم إلغاء ربط هذا الجهاز من قِبل الإدارة.', 'This device was unlinked by administration.'));
     }
   }
 
   if (!res.ok || (json && json.ok === false)) {
     const isDb503 = res.status === 503 || json?.code === 'DATABASE_UNAVAILABLE';
-    const message =
-      json?.error || (isDb503 ? DEFAULT_DB_UNAVAILABLE_MESSAGE : `خطأ في الاستجابة (${res.status})`);
+    const message = json?.error
+      ? tr(json.error)
+      : isDb503
+      ? getDefaultDbUnavailableMessage()
+      : tr(`خطأ في الاستجابة (${res.status})`, `Response error (${res.status})`);
     const code = json?.code || (isDb503 ? 'DATABASE_UNAVAILABLE' : `HTTP_${res.status}`);
     if (isDb503) {
       notifyServerDbStatus(false, message);

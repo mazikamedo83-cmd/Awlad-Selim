@@ -529,7 +529,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
       docNumber: entry.docNumber,
       date: entry.date,
       badge: t(entry.label),
-      description: entry.description,
+      description: entry.description ? t(entry.description) : '',
       invoice: linkedInv,
       extraLines: linkedRet
         ? [
@@ -561,7 +561,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
       docNumber: entry.docNumber,
       date: entry.date,
       badge: t(entry.label),
-      description: entry.description,
+      description: entry.description ? t(entry.description) : '',
       invoice: linkedInv,
       extraLines: linkedRet
         ? [
@@ -801,7 +801,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               {t('مركز الحسابات والعملاء والموردين والخزائن', 'Accounts, Customers, Suppliers & Cashboxes Center')}
             </h2>
             <p className="text-[11px] text-slate-500 dark:text-[#97AECE]">
-              {t('كشوف الحسابات التفصيلية للعملاء والموردين، السيولة النقدية', 'Detailed customer & supplier statements, cash liquidity')} ({formatLocaleNumber(totalLiquidity)} {settings.currency})، {t('وسندات الصرف والقبض', 'and payment/receipt vouchers')}
+              {t('كشوف الحسابات التفصيلية للعملاء والموردين، السيولة النقدية', 'Detailed customer & supplier statements, cash liquidity')} ({formatLocaleNumber(totalLiquidity)} {t(settings.currency)}){t('، وسندات الصرف والقبض', ', and payment/receipt vouchers')}
             </p>
           </div>
         </div>

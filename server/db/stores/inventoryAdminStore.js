@@ -173,6 +173,7 @@ export async function getStaffBootstrapData(actor) {
       chRes,
       instRes,
       repRes,
+      repTargetsRes,
       rtRes,
       ritRes,
       ritItemRes,
@@ -212,6 +213,7 @@ export async function getStaffBootstrapData(actor) {
       canViewAllRepresentatives(actor)
         ? pool.query('SELECT * FROM representatives ORDER BY created_at ASC')
         : pool.query('SELECT * FROM representatives WHERE user_id = $1 ORDER BY created_at ASC', [actor.id]),
+      pool.query("SELECT id, name, warehouse_id, status FROM representatives WHERE status = 'active' ORDER BY created_at ASC"),
       pool.query('SELECT * FROM rep_transfers ORDER BY created_at DESC'),
       pool.query('SELECT * FROM rep_item_transfers ORDER BY created_at DESC'),
       pool.query('SELECT * FROM rep_item_transfer_items'),
@@ -514,6 +516,12 @@ export async function getStaffBootstrapData(actor) {
               status: r.status || 'active',
             }
       ),
+      repTransferTargets: (repTargetsRes?.rows || []).map((r) => ({
+        id: r.id,
+        name: r.name,
+        warehouseId: r.warehouse_id || undefined,
+        status: r.status || 'active',
+      })),
       repTransfers: rtRes.rows
         .filter((rt) => !isRep || (repProfile && (rt.representative_id === repProfile.id || rt.sender_id === repProfile.id || rt.receiver_id === repProfile.id)))
         .map((rt) => ({
@@ -527,8 +535,8 @@ export async function getStaffBootstrapData(actor) {
           receiverId: rt.receiver_id,
           receiverName: rt.receiver_name,
           amount: Number(rt.amount || 0),
-          cashboxId: rt.cashbox_id,
-          cashboxName: rt.cashbox_name,
+          cashboxId: rt.cashbox_id || '',
+          cashboxName: rt.cashbox_name || '',
           notes: rt.notes || '',
           status: rt.status,
           sentAt: rt.sent_at ? isoTimestamp(rt.sent_at) : isoTimestamp(rt.created_at),
@@ -539,13 +547,20 @@ export async function getStaffBootstrapData(actor) {
           auditTrail: rt.audit_trail || [],
         })),
       repItemTransfers: ritRes.rows
-        .filter((rit) => !isRep || (repProfile && rit.representative_id === repProfile.id))
+        .filter(
+          (rit) =>
+            !isRep ||
+            (repProfile &&
+              (rit.representative_id === repProfile.id || rit.sender_representative_id === repProfile.id))
+        )
         .map((rit) => ({
           id: rit.id,
           requestNumber: rit.request_number,
           date: isoDateOnly(rit.date),
           representativeId: rit.representative_id,
           representativeName: rit.representative_name,
+          senderRepresentativeId: rit.sender_representative_id || undefined,
+          senderRepresentativeName: rit.sender_representative_name || undefined,
           invoiceId: rit.invoice_id || undefined,
           invoiceNumber: rit.invoice_number || undefined,
           sourceWarehouseId: rit.source_warehouse_id,
@@ -804,11 +819,23 @@ export async function getStaffBootstrapData(actor) {
             currentBalance: Number(r.currentBalance || 0),
             status: r.status || 'active',
           })),
+    repTransferTargets: (db.representatives || [])
+      .filter((r) => (r.status || 'active') === 'active')
+      .map((r) => ({
+        id: r.id,
+        name: r.name,
+        warehouseId: r.warehouseId || undefined,
+        status: r.status || 'active',
+      })),
     repTransfers: isRep
       ? (repProfile ? (db.repTransfers || []).filter((rt) => rt.representativeId === repProfile.id || rt.senderId === repProfile.id || rt.receiverId === repProfile.id) : [])
       : db.repTransfers,
     repItemTransfers: isRep
-      ? (repProfile ? (db.repItemTransfers || []).filter((rit) => rit.representativeId === repProfile.id) : [])
+      ? (repProfile
+          ? (db.repItemTransfers || []).filter(
+              (rit) => rit.representativeId === repProfile.id || rit.senderRepresentativeId === repProfile.id
+            )
+          : [])
       : db.repItemTransfers,
     repCustodyOperations: isRep
       ? (repProfile ? (db.repCustodyOperations || []).filter((op) => op.representativeId === repProfile.id) : [])
@@ -1183,12 +1210,12 @@ export async function recordDamagedStock({ productId, warehouseId, quantity, rea
 // Rep Financial Transfers ("تحويل بالنصف") & Rep Item Transfers
 // ==============================================================================
 
-export async function createRepTransfer(payload, actor) {
+export async function createRepTransfer(payload, actor, idempotencyKey = '') {
   if (!actor || actor.role === 'customer') {
     throw new AppError(403, 'غير مصرح للعملاء بإنشاء تحويلات مناديب', 'FORBIDDEN');
   }
   const direction = String(payload?.direction || '').trim();
-  if (direction !== 'rep_to_owner' && direction !== 'owner_to_rep') {
+  if (direction !== 'rep_to_owner' && direction !== 'owner_to_rep' && direction !== 'rep_to_rep') {
     throw new AppError(400, 'اتجاه التحويل غير صالح', 'INVALID_TRANSFER_DIRECTION');
   }
   const repActor = actor.role === 'representative' ? await getRepresentativeByUserId(actor.id) : null;
@@ -1196,52 +1223,98 @@ export async function createRepTransfer(payload, actor) {
     if (!repActor) {
       throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
     }
-    if (direction !== 'rep_to_owner') {
-      throw new AppError(403, 'يمكن للمندوب إنشاء توريد نقدية للخزينة الرئيسية فقط', 'FORBIDDEN_REP_TRANSFER_DIRECTION');
+    if (direction === 'owner_to_rep') {
+      throw new AppError(403, 'صرف العهدة من الخزينة للمندوب متاح للإدارة فقط', 'FORBIDDEN_REP_TRANSFER_DIRECTION');
+    }
+    if (direction === 'rep_to_rep' && actor.permissions?.canManageTransfers === false) {
+      throw new AppError(403, 'ليس لديك صلاحية التحويل المباشر لمندوب آخر', 'FORBIDDEN_PERMISSION');
     }
   } else if (actor.role !== 'admin' && !actor.permissions?.canManageTransfers && !actor.permissions?.canManageReps) {
     throw new AppError(403, 'ليس لديك صلاحية إنشاء تحويل مندوب', 'FORBIDDEN_PERMISSION');
   }
 
   const amount = round2(payload.amount);
-  if (amount <= 0) throw new AppError(400, 'مبلغ التحويل يجب أن يكون أكبر من صفر', 'INVALID_AMOUNT');
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new AppError(400, 'مبلغ التحويل يجب أن يكون أكبر من صفر', 'INVALID_AMOUNT');
+  }
+  const cleanIdem = String(idempotencyKey || payload?.idempotencyKey || '').trim();
+  const endpoint = 'POST /api/inventory/rep-transfers';
+  const scopedIdem = buildScopedIdemKey(endpoint, actor, cleanIdem);
+
   const now = nowIso();
-  const dateStr = todayIso();
+  const dateStr = payload?.date || todayIso();
   const id = generateServerId('TRN');
-  const transferNumber = `TRN-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
-  const auditEntry = { timestamp: now, action: 'إنشاء طلب التحويل بالنصف وإرساله للطرف الآخر', user: actor.fullName, note: payload.notes || '' };
+  const transferNumber = `TRN-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}-${Math.floor(Math.random() * 90 + 10)}`;
+  const auditEntry = {
+    timestamp: now,
+    action: direction === 'rep_to_rep' ? 'إنشاء تحويل مالي بين المناديب وإرساله للمستلم' : 'إنشاء طلب التحويل بالنصف وإرساله للطرف الآخر',
+    user: actor.fullName,
+    note: payload.notes || '',
+  };
 
   if (await isPgMode()) {
     const created = await withTransaction(async (client) => {
+      const dup = await findPgIdempotency(client, scopedIdem);
+      if (dup) return { deduplicated: true, ...dup };
+
       let cb = null;
-      if (repActor) {
-        cb = (await client.query('SELECT id, name FROM cashboxes ORDER BY is_default DESC, id ASC LIMIT 1')).rows[0];
-      } else {
-        const reqCbId = String(payload.cashboxId || '').trim();
-        cb = reqCbId
-          ? (await client.query('SELECT id, name FROM cashboxes WHERE id = $1 LIMIT 1', [reqCbId])).rows[0]
-          : null;
+      if (direction !== 'rep_to_rep') {
+        if (repActor) {
+          cb = (await client.query('SELECT id, name FROM cashboxes ORDER BY is_default DESC, id ASC LIMIT 1')).rows[0];
+        } else {
+          const reqCbId = String(payload.cashboxId || '').trim();
+          cb = reqCbId
+            ? (await client.query('SELECT id, name FROM cashboxes WHERE id = $1 LIMIT 1', [reqCbId])).rows[0]
+            : null;
+        }
+        if (!cb) throw new AppError(404, 'الخزينة غير موجودة', 'CASHBOX_NOT_FOUND');
       }
-      if (!cb) throw new AppError(404, 'الخزينة غير موجودة', 'CASHBOX_NOT_FOUND');
 
+      let senderId = '';
+      let senderName = '';
+      let receiverId = '';
+      let receiverName = '';
       let repRow = repActor;
-      if (!repRow) {
-        const reqRepId = String(direction === 'rep_to_owner' ? (payload.senderId || payload.representativeId || '') : (payload.receiverId || payload.representativeId || '')).trim();
-        repRow = reqRepId
-          ? (await client.query('SELECT id, name FROM representatives WHERE id = $1 LIMIT 1', [reqRepId])).rows[0]
-          : null;
-        if (!repRow) throw new AppError(404, 'المندوب غير موجود', 'REPRESENTATIVE_NOT_FOUND');
+
+      if (direction === 'rep_to_rep') {
+        const reqSenderId = repActor
+          ? repActor.id
+          : String(payload.senderId || payload.senderRepresentativeId || '').trim();
+        const reqReceiverId = String(payload.receiverId || payload.representativeId || '').trim();
+        if (!reqSenderId || !reqReceiverId) {
+          throw new AppError(400, 'يجب تحديد المندوب المرسل والمندوب المستلم للتحويل', 'REP_TRANSFER_PARTIES_REQUIRED');
+        }
+        if (reqSenderId === reqReceiverId) {
+          throw new AppError(400, 'لا يمكن التحويل من المندوب إلى نفسه', 'SAME_REP_TRANSFER');
+        }
+        const sRow = (await client.query('SELECT id, name, status FROM representatives WHERE id = $1 LIMIT 1', [reqSenderId])).rows[0];
+        const rRow = (await client.query('SELECT id, name, status FROM representatives WHERE id = $1 LIMIT 1', [reqReceiverId])).rows[0];
+        if (!sRow || !rRow) throw new AppError(404, 'المندوب المرسل أو المستلم غير موجود', 'REPRESENTATIVE_NOT_FOUND');
+        senderId = sRow.id;
+        senderName = sRow.name;
+        receiverId = rRow.id;
+        receiverName = rRow.name;
+        repRow = rRow;
+      } else {
+        if (!repRow) {
+          const reqRepId = String(direction === 'rep_to_owner' ? (payload.senderId || payload.representativeId || '') : (payload.receiverId || payload.representativeId || '')).trim();
+          repRow = reqRepId
+            ? (await client.query('SELECT id, name FROM representatives WHERE id = $1 LIMIT 1', [reqRepId])).rows[0]
+            : null;
+          if (!repRow) throw new AppError(404, 'المندوب غير موجود', 'REPRESENTATIVE_NOT_FOUND');
+        }
+        senderId = direction === 'rep_to_owner' ? repRow.id : 'OWNER';
+        senderName = direction === 'rep_to_owner' ? repRow.name : 'الفرع الرئيسي (الخزينة)';
+        receiverId = direction === 'rep_to_owner' ? 'OWNER' : repRow.id;
+        receiverName = direction === 'rep_to_owner' ? 'الفرع الرئيسي (الخزينة)' : repRow.name;
       }
 
-      const senderId = direction === 'rep_to_owner' ? repRow.id : 'OWNER';
-      const senderName = direction === 'rep_to_owner' ? repRow.name : 'الفرع الرئيسي (الخزينة)';
-      const receiverId = direction === 'rep_to_owner' ? 'OWNER' : repRow.id;
-      const receiverName = direction === 'rep_to_owner' ? 'الفرع الرئيسي (الخزينة)' : repRow.name;
-
+      const cashboxIdVal = cb?.id || null;
+      const cashboxNameVal = cb?.name || 'تحويل مباشر بين المناديب';
       const actorCtx = await resolveActorIdentityPgTx(client, actor);
       await client.query(
-        `INSERT INTO rep_transfers (id, transfer_number, representative_id, representative_name, direction, sender_id, sender_name, receiver_id, receiver_name, type, amount, cashbox_id, cashbox_name, date, status, notes, sent_at, audit_trail, created_by, actor_identity_id, actor_employee_id, acting_role, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$5,$10,$11,$12,$13,'awaiting_receipt',$14,$15,$16,$17,$18,$19,$20,$15)`,
+        `INSERT INTO rep_transfers (id, transfer_number, representative_id, representative_name, direction, sender_id, sender_name, receiver_id, receiver_name, type, amount, cashbox_id, cashbox_name, date, status, notes, sent_at, audit_trail, idempotency_key, created_by, actor_identity_id, actor_employee_id, acting_role, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$5,$10,$11,$12,$13,'awaiting_receipt',$14,$15,$16,$17,$18,$19,$20,$21,$15)`,
         [
           id,
           transferNumber,
@@ -1253,19 +1326,20 @@ export async function createRepTransfer(payload, actor) {
           receiverId,
           receiverName,
           amount,
-          cb.id,
-          cb.name,
+          cashboxIdVal,
+          cashboxNameVal,
           dateStr,
           payload.notes || '',
           now,
           JSON.stringify([auditEntry]),
+          cleanIdem || null,
           actor.fullName,
           actorCtx.actorIdentityId || null,
           actorCtx.actorEmployeeId || null,
           actorCtx.actingRole || actor.role || null,
         ]
       );
-      return {
+      const out = {
         id,
         transferNumber,
         representativeId: repRow.id,
@@ -1278,8 +1352,8 @@ export async function createRepTransfer(payload, actor) {
         receiverId,
         receiverName,
         amount,
-        cashboxId: cb.id,
-        cashboxName: cb.name,
+        cashboxId: cashboxIdVal || '',
+        cashboxName: cashboxNameVal,
         notes: payload.notes || '',
         status: 'awaiting_receipt',
         sentAt: now,
@@ -1288,29 +1362,66 @@ export async function createRepTransfer(payload, actor) {
         actingRole: actorCtx.actingRole || actor.role || undefined,
         auditTrail: [auditEntry],
       };
+      await savePgIdempotency(client, scopedIdem, actor, endpoint, out);
+      return out;
     });
-    await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `إنشاء طلب تحويل بالنصف (${transferNumber})`, module: 'المندوبون', recordId: id });
+    if (!created.deduplicated) {
+      await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `إنشاء طلب تحويل (${created.transferNumber})`, module: 'المندوبون', recordId: created.id });
+    }
     return created;
   }
 
   const created = await withJsonTransaction(async (db) => {
-    const cb = repActor
-      ? ((db.cashboxes || []).find((c) => c.isDefault) || (db.cashboxes || [])[0])
-      : (db.cashboxes || []).find((c) => c.id === payload.cashboxId);
-    if (!cb) throw new AppError(404, 'الخزينة غير موجودة', 'CASHBOX_NOT_FOUND');
+    const dup = findJsonIdempotency(scopedIdem);
+    if (dup) return { deduplicated: true, ...dup };
 
-    let repRow = repActor;
-    if (!repRow) {
-      const reqRepId = String(direction === 'rep_to_owner' ? (payload.senderId || payload.representativeId || '') : (payload.receiverId || payload.representativeId || '')).trim();
-      repRow = (db.representatives || []).find((r) => r.id === reqRepId);
-      if (!repRow) throw new AppError(404, 'المندوب غير موجود', 'REPRESENTATIVE_NOT_FOUND');
+    let cb = null;
+    if (direction !== 'rep_to_rep') {
+      cb = repActor
+        ? ((db.cashboxes || []).find((c) => c.isDefault) || (db.cashboxes || [])[0])
+        : (db.cashboxes || []).find((c) => c.id === payload.cashboxId);
+      if (!cb) throw new AppError(404, 'الخزينة غير موجودة', 'CASHBOX_NOT_FOUND');
     }
 
-    const senderId = direction === 'rep_to_owner' ? repRow.id : 'OWNER';
-    const senderName = direction === 'rep_to_owner' ? repRow.name : 'الفرع الرئيسي (الخزينة)';
-    const receiverId = direction === 'rep_to_owner' ? 'OWNER' : repRow.id;
-    const receiverName = direction === 'rep_to_owner' ? 'الفرع الرئيسي (الخزينة)' : repRow.name;
+    let senderId = '';
+    let senderName = '';
+    let receiverId = '';
+    let receiverName = '';
+    let repRow = repActor;
 
+    if (direction === 'rep_to_rep') {
+      const reqSenderId = repActor
+        ? repActor.id
+        : String(payload.senderId || payload.senderRepresentativeId || '').trim();
+      const reqReceiverId = String(payload.receiverId || payload.representativeId || '').trim();
+      if (!reqSenderId || !reqReceiverId) {
+        throw new AppError(400, 'يجب تحديد المندوب المرسل والمندوب المستلم للتحويل', 'REP_TRANSFER_PARTIES_REQUIRED');
+      }
+      if (reqSenderId === reqReceiverId) {
+        throw new AppError(400, 'لا يمكن التحويل من المندوب إلى نفسه', 'SAME_REP_TRANSFER');
+      }
+      const sRow = (db.representatives || []).find((r) => r.id === reqSenderId);
+      const rRow = (db.representatives || []).find((r) => r.id === reqReceiverId);
+      if (!sRow || !rRow) throw new AppError(404, 'المندوب المرسل أو المستلم غير موجود', 'REPRESENTATIVE_NOT_FOUND');
+      senderId = sRow.id;
+      senderName = sRow.name;
+      receiverId = rRow.id;
+      receiverName = rRow.name;
+      repRow = rRow;
+    } else {
+      if (!repRow) {
+        const reqRepId = String(direction === 'rep_to_owner' ? (payload.senderId || payload.representativeId || '') : (payload.receiverId || payload.representativeId || '')).trim();
+        repRow = (db.representatives || []).find((r) => r.id === reqRepId);
+        if (!repRow) throw new AppError(404, 'المندوب غير موجود', 'REPRESENTATIVE_NOT_FOUND');
+      }
+      senderId = direction === 'rep_to_owner' ? repRow.id : 'OWNER';
+      senderName = direction === 'rep_to_owner' ? repRow.name : 'الفرع الرئيسي (الخزينة)';
+      receiverId = direction === 'rep_to_owner' ? 'OWNER' : repRow.id;
+      receiverName = direction === 'rep_to_owner' ? 'الفرع الرئيسي (الخزينة)' : repRow.name;
+    }
+
+    const cashboxIdVal = cb?.id || '';
+    const cashboxNameVal = cb?.name || 'تحويل مباشر بين المناديب';
     const actorCtxJson = resolveActorIdentityJsonTx(db, actor);
     const item = {
       id,
@@ -1325,24 +1436,28 @@ export async function createRepTransfer(payload, actor) {
       receiverId,
       receiverName,
       amount,
-      cashboxId: cb.id,
-      cashboxName: cb.name,
+      cashboxId: cashboxIdVal,
+      cashboxName: cashboxNameVal,
       notes: payload.notes || '',
       status: 'awaiting_receipt',
       sentAt: now,
+      idempotencyKey: cleanIdem || undefined,
       actorIdentityId: actorCtxJson.actorIdentityId,
       actorEmployeeId: actorCtxJson.actorEmployeeId,
       actingRole: actorCtxJson.actingRole,
       auditTrail: [auditEntry],
     };
     db.repTransfers.unshift(item);
+    saveJsonIdempotency(scopedIdem, endpoint, item);
     return item;
   });
-  await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `إنشاء طلب تحويل بالنصف (${transferNumber})`, module: 'المندوبون', recordId: id });
+  if (!created.deduplicated) {
+    await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `إنشاء طلب تحويل (${created.transferNumber})`, module: 'المندوبون', recordId: created.id });
+  }
   return created;
 }
 
-export async function confirmRepTransfer(transferId, { note = '' } = {}, actor) {
+export async function confirmRepTransfer(transferId, { note = '' } = {}, actor, idempotencyKey = '') {
   if (!actor || actor.role === 'customer') {
     throw new AppError(403, 'غير مصرح للعملاء باعتماد تحويلات المناديب', 'FORBIDDEN');
   }
@@ -1360,11 +1475,17 @@ export async function confirmRepTransfer(transferId, { note = '' } = {}, actor) 
     throw new AppError(403, 'ليس لديك صلاحية اعتماد تحويل المندوب', 'FORBIDDEN_PERMISSION');
   }
 
+  const cleanIdem = String(idempotencyKey || '').trim();
+  const endpoint = `POST /api/inventory/rep-transfers/${transferId}/confirm`;
+  const scopedIdem = buildScopedIdemKey(endpoint, actor, cleanIdem);
   const now = nowIso();
   const dateStr = todayIso();
 
   if (await isPgMode()) {
-    await withTransaction(async (client) => {
+    const out = await withTransaction(async (client) => {
+      const dup = await findPgIdempotency(client, scopedIdem);
+      if (dup) return { deduplicated: true, ...dup };
+
       const trRes = await client.query('SELECT * FROM rep_transfers WHERE id = $1 FOR UPDATE', [transferId]);
       const tr = trRes.rows[0];
       if (!tr) throw new AppError(404, 'طلب التحويل غير موجود', 'TRANSFER_NOT_FOUND');
@@ -1380,69 +1501,93 @@ export async function confirmRepTransfer(transferId, { note = '' } = {}, actor) 
             throw new AppError(403, 'غير مصرح لك بتأكيد استلام عهدة تخص مندوبًا آخر', 'FORBIDDEN_REP_TRANSFER_ACCESS');
           }
         }
+      } else if (tr.direction === 'rep_to_rep') {
+        if (actor.role === 'representative' && tr.receiver_id !== repActor.id) {
+          throw new AppError(403, 'تأكيد استلام التحويل بين المناديب مسموح للمندوب المستلم أو الإدارة فقط', 'FORBIDDEN_SELF_CONFIRM_TRANSFER');
+        }
       }
 
       if (tr.status === 'received') throw new AppError(409, 'تم تأكيد استلام التحويل مسبقًا', 'ALREADY_RECEIVED');
       if (tr.status === 'rejected' || tr.status === 'cancelled') throw new AppError(409, 'لا يمكن تأكيد تحويل مرفوض أو ملغى', 'INVALID_STATUS');
 
-      const cbRes = await client.query('SELECT * FROM cashboxes WHERE id = $1 FOR UPDATE', [tr.cashbox_id]);
-      if (!cbRes.rows[0]) throw new AppError(404, 'الخزينة غير موجودة', 'CASHBOX_NOT_FOUND');
-      const cb = cbRes.rows[0];
       const amount = Number(tr.amount || 0);
-      const repId = tr.direction === 'rep_to_owner' ? tr.sender_id : tr.receiver_id;
-
-      if (repId) {
-        const repRes = await client.query('SELECT * FROM representatives WHERE id = $1 FOR UPDATE', [repId]);
-        if (repRes.rows[0]) {
-          const curRepBal = Number(repRes.rows[0].current_balance || 0);
-          const nextRepBal = tr.direction === 'rep_to_owner' ? round2(curRepBal - amount) : round2(curRepBal + amount);
-          await client.query('UPDATE representatives SET current_balance = $1 WHERE id = $2', [nextRepBal, repId]);
+      if (tr.direction === 'rep_to_rep') {
+        const sRes = await client.query('SELECT * FROM representatives WHERE id = $1 FOR UPDATE', [tr.sender_id]);
+        const rRes = await client.query('SELECT * FROM representatives WHERE id = $1 FOR UPDATE', [tr.receiver_id]);
+        if (!sRes.rows[0] || !rRes.rows[0]) {
+          throw new AppError(404, 'المندوب المرسل أو المستلم غير موجود', 'REPRESENTATIVE_NOT_FOUND');
         }
+        const nextSenderBal = round2(Number(sRes.rows[0].current_balance || 0) - amount);
+        const nextReceiverBal = round2(Number(rRes.rows[0].current_balance || 0) + amount);
+        await client.query('UPDATE representatives SET current_balance = $1 WHERE id = $2', [nextSenderBal, tr.sender_id]);
+        await client.query('UPDATE representatives SET current_balance = $1 WHERE id = $2', [nextReceiverBal, tr.receiver_id]);
+      } else {
+        const cbRes = await client.query('SELECT * FROM cashboxes WHERE id = $1 FOR UPDATE', [tr.cashbox_id]);
+        if (!cbRes.rows[0]) throw new AppError(404, 'الخزينة غير موجودة', 'CASHBOX_NOT_FOUND');
+        const cb = cbRes.rows[0];
+        const repId = tr.direction === 'rep_to_owner' ? tr.sender_id : tr.receiver_id;
+
+        if (repId) {
+          const repRes = await client.query('SELECT * FROM representatives WHERE id = $1 FOR UPDATE', [repId]);
+          if (repRes.rows[0]) {
+            const curRepBal = Number(repRes.rows[0].current_balance || 0);
+            const nextRepBal = tr.direction === 'rep_to_owner' ? round2(curRepBal - amount) : round2(curRepBal + amount);
+            await client.query('UPDATE representatives SET current_balance = $1 WHERE id = $2', [nextRepBal, repId]);
+          }
+        }
+
+        const nextCb = tr.direction === 'rep_to_owner' ? round2(Number(cb.current_balance || 0) + amount) : round2(Number(cb.current_balance || 0) - amount);
+        await client.query('UPDATE cashboxes SET current_balance = $1 WHERE id = $2', [nextCb, cb.id]);
+
+        const txId = generateServerId('FT');
+        const actorCtx = await resolveActorIdentityPgTx(client, actor);
+        await client.query(
+          `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, notes, created_by_user_id, created_by, actor_identity_id, actor_employee_id, acting_role, created_at)
+           VALUES ($1,$2,$3,'rep_transfer',$4,$5,$6,$7,$8,$9,$10,'rep_transfer',$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+          [
+            txId,
+            `TRX-${Date.now().toString().slice(-6)}`,
+            dateStr,
+            amount,
+            cb.id,
+            cb.name,
+            nextCb,
+            tr.direction === 'rep_to_owner' ? 'توريد تحصيلات مندوب' : 'صرف عهدة ونقدية لمندوب',
+            repId || null,
+            tr.direction === 'rep_to_owner' ? tr.sender_name : tr.receiver_name,
+            tr.id,
+            tr.transfer_number,
+            `اعتماد طلب تحويل بالنصف رقم ${tr.transfer_number}`,
+            note || tr.notes || '',
+            actor.id,
+            actor.fullName,
+            actorCtx.actorIdentityId || null,
+            actorCtx.actorEmployeeId || null,
+            actorCtx.actingRole || actor.role || null,
+            now,
+          ]
+        );
       }
-
-      const nextCb = tr.direction === 'rep_to_owner' ? round2(Number(cb.current_balance || 0) + amount) : round2(Number(cb.current_balance || 0) - amount);
-      await client.query('UPDATE cashboxes SET current_balance = $1 WHERE id = $2', [nextCb, cb.id]);
-
-      const txId = generateServerId('FT');
-      const actorCtx = await resolveActorIdentityPgTx(client, actor);
-      await client.query(
-        `INSERT INTO financial_transactions (id, transaction_number, date, type, amount, cashbox_id, cashbox_name, balance_after, category, related_entity_id, related_entity_name, related_doc_type, related_doc_id, related_doc_number, description, notes, created_by_user_id, created_by, actor_identity_id, actor_employee_id, acting_role, created_at)
-         VALUES ($1,$2,$3,'rep_transfer',$4,$5,$6,$7,$8,$9,$10,'rep_transfer',$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
-        [
-          txId,
-          `TRX-${Date.now().toString().slice(-6)}`,
-          dateStr,
-          amount,
-          cb.id,
-          cb.name,
-          nextCb,
-          tr.direction === 'rep_to_owner' ? 'توريد تحصيلات مندوب' : 'صرف عهدة ونقدية لمندوب',
-          repId || null,
-          tr.direction === 'rep_to_owner' ? tr.sender_name : tr.receiver_name,
-          tr.id,
-          tr.transfer_number,
-          `اعتماد طلب تحويل بالنصف رقم ${tr.transfer_number}`,
-          note || tr.notes || '',
-          actor.id,
-          actor.fullName,
-          actorCtx.actorIdentityId || null,
-          actorCtx.actorEmployeeId || null,
-          actorCtx.actingRole || actor.role || null,
-          now,
-        ]
-      );
 
       const nextAudit = [...(tr.audit_trail || []), { timestamp: now, action: 'تأكيد الاستلام الفعلي واعتماد القيود', user: actor.fullName, note }];
       await client.query(
         `UPDATE rep_transfers SET status = 'received', confirmed_at = $1, confirmed_by = $2, audit_trail = $3 WHERE id = $4`,
         [now, actor.fullName, JSON.stringify(nextAudit), transferId]
       );
+      const resPayload = { ok: true, transferId, status: 'received', direction: tr.direction, amount };
+      await savePgIdempotency(client, scopedIdem, actor, endpoint, resPayload);
+      return { deduplicated: false, ...resPayload };
     });
-    await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `تأكيد استلام تحويل مندوب`, module: 'المندوبون', recordId: transferId });
-    return { ok: true };
+    if (!out.deduplicated) {
+      await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `تأكيد استلام تحويل مندوب`, module: 'المندوبون', recordId: transferId });
+    }
+    return out;
   }
 
-  await withJsonTransaction(async (db) => {
+  const out = await withJsonTransaction(async (db) => {
+    const dup = findJsonIdempotency(scopedIdem);
+    if (dup) return { deduplicated: true, ...dup };
+
     const tr = db.repTransfers.find((t) => t.id === transferId);
     if (!tr) throw new AppError(404, 'طلب التحويل غير موجود', 'TRANSFER_NOT_FOUND');
 
@@ -1457,55 +1602,72 @@ export async function confirmRepTransfer(transferId, { note = '' } = {}, actor) 
           throw new AppError(403, 'غير مصرح لك بتأكيد استلام عهدة تخص مندوبًا آخر', 'FORBIDDEN_REP_TRANSFER_ACCESS');
         }
       }
+    } else if (tr.direction === 'rep_to_rep') {
+      if (actor.role === 'representative' && tr.receiverId !== repActor.id) {
+        throw new AppError(403, 'تأكيد استلام التحويل بين المناديب مسموح للمندوب المستلم أو الإدارة فقط', 'FORBIDDEN_SELF_CONFIRM_TRANSFER');
+      }
     }
 
     if (tr.status === 'received') throw new AppError(409, 'تم تأكيد استلام التحويل مسبقًا', 'ALREADY_RECEIVED');
     if (tr.status === 'rejected' || tr.status === 'cancelled') throw new AppError(409, 'لا يمكن تأكيد تحويل مرفوض أو ملغى', 'INVALID_STATUS');
 
-    const cb = db.cashboxes.find((c) => c.id === tr.cashboxId);
-    if (!cb) throw new AppError(404, 'الخزينة غير موجودة', 'CASHBOX_NOT_FOUND');
-    const repId = tr.direction === 'rep_to_owner' ? tr.senderId : tr.receiverId;
-    const rep = db.representatives.find((r) => r.id === repId);
-    if (rep) {
-      rep.currentBalance = tr.direction === 'rep_to_owner' ? round2(rep.currentBalance - tr.amount) : round2(rep.currentBalance + tr.amount);
+    if (tr.direction === 'rep_to_rep') {
+      const sRep = db.representatives.find((r) => r.id === tr.senderId);
+      const rRep = db.representatives.find((r) => r.id === tr.receiverId);
+      if (!sRep || !rRep) throw new AppError(404, 'المندوب المرسل أو المستلم غير موجود', 'REPRESENTATIVE_NOT_FOUND');
+      sRep.currentBalance = round2(Number(sRep.currentBalance || 0) - Number(tr.amount || 0));
+      rRep.currentBalance = round2(Number(rRep.currentBalance || 0) + Number(tr.amount || 0));
+    } else {
+      const cb = db.cashboxes.find((c) => c.id === tr.cashboxId);
+      if (!cb) throw new AppError(404, 'الخزينة غير موجودة', 'CASHBOX_NOT_FOUND');
+      const repId = tr.direction === 'rep_to_owner' ? tr.senderId : tr.receiverId;
+      const rep = db.representatives.find((r) => r.id === repId);
+      if (rep) {
+        rep.currentBalance = tr.direction === 'rep_to_owner' ? round2(rep.currentBalance - tr.amount) : round2(rep.currentBalance + tr.amount);
+      }
+      cb.currentBalance = tr.direction === 'rep_to_owner' ? round2(cb.currentBalance + tr.amount) : round2(cb.currentBalance - tr.amount);
+      const actorCtxJson = resolveActorIdentityJsonTx(db, actor);
+      db.financialTransactions.unshift({
+        id: generateServerId('FT'),
+        transactionNumber: `TRX-${Date.now().toString().slice(-6)}`,
+        date: dateStr,
+        type: 'rep_transfer',
+        cashboxId: cb.id,
+        cashboxName: cb.name,
+        balanceAfter: cb.currentBalance,
+        amount: tr.amount,
+        category: tr.direction === 'rep_to_owner' ? 'توريد تحصيلات مندوب' : 'صرف عهدة ونقدية لمندوب',
+        relatedDocType: 'rep_transfer',
+        relatedDocId: tr.id,
+        relatedDocNumber: tr.transferNumber,
+        relatedEntityId: repId || undefined,
+        partyId: repId || undefined,
+        partyName: tr.direction === 'rep_to_owner' ? tr.senderName : tr.receiverName,
+        description: `اعتماد طلب تحويل بالنصف رقم ${tr.transferNumber}`,
+        notes: note || tr.notes || '',
+        createdByUserId: actor.id,
+        createdBy: actor.fullName,
+        actorIdentityId: actorCtxJson.actorIdentityId,
+        actorEmployeeId: actorCtxJson.actorEmployeeId,
+        actingRole: actorCtxJson.actingRole,
+        createdAt: now,
+      });
     }
-    cb.currentBalance = tr.direction === 'rep_to_owner' ? round2(cb.currentBalance + tr.amount) : round2(cb.currentBalance - tr.amount);
-    const actorCtxJson = resolveActorIdentityJsonTx(db, actor);
-    db.financialTransactions.unshift({
-      id: generateServerId('FT'),
-      transactionNumber: `TRX-${Date.now().toString().slice(-6)}`,
-      date: dateStr,
-      type: 'rep_transfer',
-      cashboxId: cb.id,
-      cashboxName: cb.name,
-      balanceAfter: cb.currentBalance,
-      amount: tr.amount,
-      category: tr.direction === 'rep_to_owner' ? 'توريد تحصيلات مندوب' : 'صرف عهدة ونقدية لمندوب',
-      relatedDocType: 'rep_transfer',
-      relatedDocId: tr.id,
-      relatedDocNumber: tr.transferNumber,
-      relatedEntityId: repId || undefined,
-      partyId: repId || undefined,
-      partyName: tr.direction === 'rep_to_owner' ? tr.senderName : tr.receiverName,
-      description: `اعتماد طلب تحويل بالنصف رقم ${tr.transferNumber}`,
-      notes: note || tr.notes || '',
-      createdByUserId: actor.id,
-      createdBy: actor.fullName,
-      actorIdentityId: actorCtxJson.actorIdentityId,
-      actorEmployeeId: actorCtxJson.actorEmployeeId,
-      actingRole: actorCtxJson.actingRole,
-      createdAt: now,
-    });
     tr.status = 'received';
     tr.confirmedAt = now;
     tr.confirmedBy = actor.fullName;
     tr.auditTrail = [...(tr.auditTrail || []), { timestamp: now, action: 'تأكيد الاستلام الفعلي واعتماد القيود', user: actor.fullName, note }];
+    const resPayload = { ok: true, transferId, status: 'received', direction: tr.direction, amount: Number(tr.amount || 0) };
+    saveJsonIdempotency(scopedIdem, endpoint, resPayload);
+    return { deduplicated: false, ...resPayload };
   });
-  await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `تأكيد استلام تحويل مندوب`, module: 'المندوبون', recordId: transferId });
-  return { ok: true };
+  if (!out.deduplicated) {
+    await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `تأكيد استلام تحويل مندوب`, module: 'المندوبون', recordId: transferId });
+  }
+  return out;
 }
 
-export async function rejectRepTransfer(transferId, { reason = '' } = {}, actor) {
+export async function rejectRepTransfer(transferId, { reason = '' } = {}, actor, idempotencyKey = '') {
   if (!actor || actor.role === 'customer') {
     throw new AppError(403, 'غير مصرح للعملاء برفض تحويلات المناديب', 'FORBIDDEN');
   }
@@ -1517,10 +1679,15 @@ export async function rejectRepTransfer(transferId, { reason = '' } = {}, actor)
     throw new AppError(403, 'ليس لديك صلاحية رفض التحويل', 'FORBIDDEN_PERMISSION');
   }
 
+  const cleanIdem = String(idempotencyKey || '').trim();
+  const endpoint = `POST /api/inventory/rep-transfers/${transferId}/reject`;
+  const scopedIdem = buildScopedIdemKey(endpoint, actor, cleanIdem);
   const now = nowIso();
   const cleanReason = String(reason || 'مرفوض').trim();
   if (await isPgMode()) {
-    await withTransaction(async (client) => {
+    const out = await withTransaction(async (client) => {
+      const dup = await findPgIdempotency(client, scopedIdem);
+      if (dup) return { deduplicated: true, ...dup };
       const trRes = await client.query('SELECT * FROM rep_transfers WHERE id = $1 FOR UPDATE', [transferId]);
       const tr = trRes.rows[0];
       if (!tr) throw new AppError(404, 'طلب التحويل غير موجود', 'TRANSFER_NOT_FOUND');
@@ -1538,11 +1705,18 @@ export async function rejectRepTransfer(transferId, { reason = '' } = {}, actor)
         JSON.stringify(nextAudit),
         transferId,
       ]);
+      const resPayload = { ok: true, transferId, status: 'rejected' };
+      await savePgIdempotency(client, scopedIdem, actor, endpoint, resPayload);
+      return { deduplicated: false, ...resPayload };
     });
-    await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `رفض طلب تحويل مندوب`, module: 'المندوبون', recordId: transferId, notes: cleanReason });
-    return { ok: true };
+    if (!out.deduplicated) {
+      await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `رفض طلب تحويل مندوب`, module: 'المندوبون', recordId: transferId, notes: cleanReason });
+    }
+    return out;
   }
-  await withJsonTransaction(async (db) => {
+  const out = await withJsonTransaction(async (db) => {
+    const dup = findJsonIdempotency(scopedIdem);
+    if (dup) return { deduplicated: true, ...dup };
     const tr = db.repTransfers.find((t) => t.id === transferId);
     if (!tr) throw new AppError(404, 'طلب التحويل غير موجود', 'TRANSFER_NOT_FOUND');
     if (actor.role === 'representative') {
@@ -1556,9 +1730,14 @@ export async function rejectRepTransfer(transferId, { reason = '' } = {}, actor)
     tr.rejectedAt = now;
     tr.rejectionReason = cleanReason;
     tr.auditTrail = [...(tr.auditTrail || []), { timestamp: now, action: 'رفض طلب التحويل', user: actor.fullName, note: cleanReason }];
+    const resPayload = { ok: true, transferId, status: 'rejected' };
+    saveJsonIdempotency(scopedIdem, endpoint, resPayload);
+    return { deduplicated: false, ...resPayload };
   });
-  await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `رفض طلب تحويل مندوب`, module: 'المندوبون', recordId: transferId, notes: cleanReason });
-  return { ok: true };
+  if (!out.deduplicated) {
+    await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `رفض طلب تحويل مندوب`, module: 'المندوبون', recordId: transferId, notes: cleanReason });
+  }
+  return out;
 }
 
 export async function ensureRepVanWarehouse(repName, actor, repId = null) {
@@ -1592,7 +1771,19 @@ export async function ensureRepVanWarehouse(repName, actor, repId = null) {
   return wh;
 }
 
-export async function createRepItemTransfer(payload, actor) {
+export async function createRepItemTransfer(payload, actor, idempotencyKey = '') {
+  const cleanIdem = String(idempotencyKey || payload?.idempotencyKey || '').trim();
+  const endpoint = 'POST /api/inventory/rep-item-transfers';
+  const scopedIdem = buildScopedIdemKey(endpoint, actor, cleanIdem);
+
+  if (await isPgMode()) {
+    const existingDup = await withTransaction((c) => findPgIdempotency(c, scopedIdem));
+    if (existingDup) return { deduplicated: true, ...existingDup };
+  } else {
+    const existingDup = findJsonIdempotency(scopedIdem);
+    if (existingDup) return { deduplicated: true, ...existingDup };
+  }
+
   const id = generateServerId('RTR');
   const requestNumber = `RTR-${Date.now().toString().slice(-5)}-${Math.floor(Math.random() * 90 + 10)}`;
   const now = nowIso();
@@ -1600,22 +1791,50 @@ export async function createRepItemTransfer(payload, actor) {
   const items = Array.isArray(payload.items) ? payload.items : [];
   if (!items.length) throw new AppError(400, 'يجب تحديد صنف واحد على الأقل للتحويل', 'EMPTY_ITEMS');
 
-  const transferMode = payload.transferMode === 'custody_dispatch' ? 'custody_dispatch' : 'transfer';
+  const transferMode =
+    payload.transferMode === 'custody_dispatch'
+      ? 'custody_dispatch'
+      : payload.transferMode === 'rep_to_rep'
+      ? 'rep_to_rep'
+      : 'transfer';
 
   let representativeId = payload.representativeId;
   let representativeName = payload.representativeName;
+  let senderRepresentativeId = payload.senderRepresentativeId || undefined;
+  let senderRepresentativeName = payload.senderRepresentativeName || undefined;
   let repTargetWhId = payload.targetWarehouseId;
   let repTargetWhName = payload.targetWarehouseName;
+  let srcWhId = payload.sourceWarehouseId;
+  let srcWhName = payload.sourceWarehouseName;
 
   if (actor.role === 'representative') {
     const repProfile = await getRepresentativeByUserId(actor.id);
     if (!repProfile) throw new AppError(403, 'حساب المندوب غير مربوط بملف مندوب مسجل', 'REP_PROFILE_REQUIRED');
-    representativeId = repProfile.id;
-    representativeName = repProfile.name;
     if (transferMode === 'custody_dispatch') {
       throw new AppError(403, 'صرف العهدة المباشر متاح للإدارة فقط', 'FORBIDDEN_CUSTODY_DISPATCH');
     }
-  } else if (transferMode === 'custody_dispatch' && (!repTargetWhId || !representativeName) && representativeId) {
+    if (transferMode === 'rep_to_rep') {
+      if (actor.permissions?.canManageTransfers === false) {
+        throw new AppError(403, 'ليس لديك صلاحية تحويل الأصناف بين المناديب', 'FORBIDDEN_PERMISSION');
+      }
+      senderRepresentativeId = repProfile.id;
+      senderRepresentativeName = repProfile.name;
+      if (!srcWhId) {
+        srcWhId = repProfile.warehouseId || (await ensureRepVanWarehouse(repProfile.name, actor, repProfile.id)).id;
+      }
+      if (!representativeId) {
+        throw new AppError(400, 'يجب تحديد المندوب المستلم للبضاعة', 'REP_NOT_FOUND');
+      }
+      if (representativeId === repProfile.id) {
+        throw new AppError(400, 'لا يمكن تحويل البضاعة لنفس المندوب', 'SAME_REP_TRANSFER');
+      }
+    } else {
+      representativeId = repProfile.id;
+      representativeName = repProfile.name;
+    }
+  }
+
+  if ((transferMode === 'custody_dispatch' || transferMode === 'rep_to_rep') && representativeId) {
     if (await isPgMode()) {
       const rRow = (await getPool().query('SELECT * FROM representatives WHERE id = $1 LIMIT 1', [representativeId])).rows[0];
       if (!rRow) throw new AppError(404, 'المندوب المحدد غير موجود', 'REP_NOT_FOUND');
@@ -1635,8 +1854,34 @@ export async function createRepItemTransfer(payload, actor) {
     }
   }
 
-  let srcWhId = payload.sourceWarehouseId;
-  let srcWhName = payload.sourceWarehouseName;
+  if (transferMode === 'rep_to_rep') {
+    if (!senderRepresentativeId) {
+      throw new AppError(400, 'يجب تحديد المندوب المرسل للتحويل', 'SENDER_REP_REQUIRED');
+    }
+    if (senderRepresentativeId === representativeId) {
+      throw new AppError(400, 'لا يمكن تحويل العهدة لنفس المندوب', 'SAME_REP_TRANSFER');
+    }
+    if (await isPgMode()) {
+      const sRow = (await getPool().query('SELECT * FROM representatives WHERE id = $1 LIMIT 1', [senderRepresentativeId])).rows[0];
+      if (!sRow) throw new AppError(404, 'المندوب المرسل غير موجود', 'REP_NOT_FOUND');
+      senderRepresentativeName = senderRepresentativeName || sRow.name;
+      srcWhId = srcWhId || sRow.warehouse_id;
+    } else {
+      const db = readJsonDatabase();
+      const sRow = (db.representatives || []).find((r) => r.id === senderRepresentativeId);
+      if (!sRow) throw new AppError(404, 'المندوب المرسل غير موجود', 'REP_NOT_FOUND');
+      senderRepresentativeName = senderRepresentativeName || sRow.name;
+      srcWhId = srcWhId || sRow.warehouseId;
+    }
+    if (!srcWhId) {
+      const sVan = await ensureRepVanWarehouse(senderRepresentativeName, actor, senderRepresentativeId);
+      srcWhId = sVan.id;
+      srcWhName = sVan.name;
+    }
+    if (srcWhId === repTargetWhId) {
+      throw new AppError(400, 'مخزن المصدر ومخزن الوجهة متطابقان', 'SAME_WAREHOUSE');
+    }
+  }
 
   if (await isPgMode()) {
     if (!srcWhName && srcWhId) {
@@ -1650,14 +1895,16 @@ export async function createRepItemTransfer(payload, actor) {
     await withTransaction(async (client) => {
       const actorCtx = await resolveActorIdentityPgTx(client, actor);
       await client.query(
-        `INSERT INTO rep_item_transfers (id, request_number, date, representative_id, representative_name, invoice_id, invoice_number, source_warehouse_id, source_warehouse_name, target_warehouse_id, target_warehouse_name, transfer_mode, status, notes, created_by, actor_identity_id, actor_employee_id, acting_role, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'pending',$13,$14,$15,$16,$17,$18)`,
+        `INSERT INTO rep_item_transfers (id, request_number, date, representative_id, representative_name, sender_representative_id, sender_representative_name, invoice_id, invoice_number, source_warehouse_id, source_warehouse_name, target_warehouse_id, target_warehouse_name, transfer_mode, status, notes, idempotency_key, created_by, actor_identity_id, actor_employee_id, acting_role, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'pending',$15,$16,$17,$18,$19,$20,$21)`,
         [
           id,
           requestNumber,
           dateStr,
           representativeId,
           representativeName,
+          senderRepresentativeId || null,
+          senderRepresentativeName || '',
           payload.invoiceId || null,
           payload.invoiceNumber || null,
           srcWhId,
@@ -1666,6 +1913,7 @@ export async function createRepItemTransfer(payload, actor) {
           repTargetWhName || '',
           transferMode,
           payload.notes || '',
+          cleanIdem || null,
           actor.fullName,
           actorCtx.actorIdentityId || null,
           actorCtx.actorEmployeeId || null,
@@ -1713,6 +1961,8 @@ export async function createRepItemTransfer(payload, actor) {
         ...payload,
         representativeId,
         representativeName,
+        senderRepresentativeId: senderRepresentativeId || undefined,
+        senderRepresentativeName: senderRepresentativeName || undefined,
         sourceWarehouseId: srcWhId,
         sourceWarehouseName: srcWhName || '',
         targetWarehouseId: repTargetWhId,
@@ -1722,6 +1972,7 @@ export async function createRepItemTransfer(payload, actor) {
         requestNumber,
         date: dateStr,
         status: 'pending',
+        idempotencyKey: cleanIdem || undefined,
         createdBy: actor.fullName,
         actorIdentityId: actorCtxJson.actorIdentityId,
         actorEmployeeId: actorCtxJson.actorEmployeeId,
@@ -1745,19 +1996,23 @@ export async function createRepItemTransfer(payload, actor) {
     action:
       transferMode === 'custody_dispatch'
         ? `إنشاء إرسال عهدة بضاعة للمندوب ${representativeName} (${requestNumber})`
+        : transferMode === 'rep_to_rep'
+        ? `إنشاء تحويل عهدة بضاعة من المندوب ${senderRepresentativeName} إلى ${representativeName} (${requestNumber})`
         : `إنشاء طلب تحويل أصناف للمندوب (${requestNumber})`,
     module: 'المندوبون',
     recordId: id,
   });
 
-  if (transferMode === 'custody_dispatch' && payload.autoDispatch === true) {
+  if ((transferMode === 'custody_dispatch' || transferMode === 'rep_to_rep') && payload.autoDispatch === true) {
     await updateRepItemTransferStatus(id, { status: 'executed', notes: payload.notes || '' }, actor);
   }
 
-  return {
+  const outObj = {
     ...payload,
     representativeId,
     representativeName,
+    senderRepresentativeId,
+    senderRepresentativeName,
     sourceWarehouseId: srcWhId,
     sourceWarehouseName: srcWhName || '',
     targetWarehouseId: repTargetWhId,
@@ -1766,27 +2021,39 @@ export async function createRepItemTransfer(payload, actor) {
     id,
     requestNumber,
     date: dateStr,
-    status: transferMode === 'custody_dispatch' && payload.autoDispatch === true ? 'executed' : 'pending',
-    dispatchedBy: transferMode === 'custody_dispatch' && payload.autoDispatch === true ? actor.fullName : undefined,
-    dispatchedAt: transferMode === 'custody_dispatch' && payload.autoDispatch === true ? nowIso() : undefined,
+    status: (transferMode === 'custody_dispatch' || transferMode === 'rep_to_rep') && payload.autoDispatch === true ? 'executed' : 'pending',
+    dispatchedBy: (transferMode === 'custody_dispatch' || transferMode === 'rep_to_rep') && payload.autoDispatch === true ? actor.fullName : undefined,
+    dispatchedAt: (transferMode === 'custody_dispatch' || transferMode === 'rep_to_rep') && payload.autoDispatch === true ? nowIso() : undefined,
     createdBy: actor.fullName,
     createdAt: now,
   };
+  if (cleanIdem) {
+    if (await isPgMode()) {
+      await withTransaction((c) => savePgIdempotency(c, scopedIdem, actor, endpoint, outObj));
+    } else {
+      await withJsonTransaction(() => saveJsonIdempotency(scopedIdem, endpoint, outObj));
+    }
+  }
+  return outObj;
 }
 
-export async function updateRepItemTransferStatus(requestId, { status, approvedItems, notes }, actor) {
+export async function updateRepItemTransferStatus(requestId, { status, approvedItems, notes }, actor, idempotencyKey = '') {
   const allowedStatuses = new Set(['approved', 'rejected', 'executed', 'received']);
   if (!allowedStatuses.has(status)) {
     throw new AppError(400, 'حالة طلب التحويل غير صالحة', 'INVALID_TRANSFER_STATUS');
   }
 
+  const cleanIdem = String(idempotencyKey || '').trim();
+  const endpoint = `POST /api/inventory/rep-item-transfers/${requestId}/status:${status}`;
+  const scopedIdem = buildScopedIdemKey(endpoint, actor, cleanIdem);
+
   const isRepActor = actor.role === 'representative';
   let repActorProfile = null;
   if (isRepActor) {
-    if (status !== 'received') {
+    if (status !== 'received' && status !== 'executed') {
       throw new AppError(
         403,
-        'غير مصرح للمندوب باعتماد أو تنفيذ أو رفض طلب تحويل الأصناف — يقتصر دوره على تأكيد الاستلام الفعلي فقط.',
+        'غير مصرح للمندوب باعتماد أو رفض طلب تحويل الأصناف.',
         'FORBIDDEN_REP_TRANSFER_APPROVAL'
       );
     }
@@ -1805,19 +2072,30 @@ export async function updateRepItemTransferStatus(requestId, { status, approvedI
   const dateStr = todayIso();
 
   if (await isPgMode()) {
-    await withTransaction(async (client) => {
+    const out = await withTransaction(async (client) => {
+      const dup = await findPgIdempotency(client, scopedIdem);
+      if (dup) return { deduplicated: true, ...dup };
+
       const rRes = await client.query('SELECT * FROM rep_item_transfers WHERE id = $1 FOR UPDATE', [requestId]);
       const req = rRes.rows[0];
       if (!req) throw new AppError(404, 'طلب التحويل غير موجود', 'NOT_FOUND');
 
       const isCustodyDispatch = req.transfer_mode === 'custody_dispatch';
+      const isRepToRep = req.transfer_mode === 'rep_to_rep';
+      const isTwoStageDispatch = isCustodyDispatch || isRepToRep;
 
       if (isRepActor) {
-        if (req.representative_id !== repActorProfile.id) {
-          throw new AppError(403, 'غير مصرح لك بتأكيد استلام تحويل يخص مندوباً آخر', 'FORBIDDEN_REP_TRANSFER_OWNER');
-        }
-        if (req.status !== 'executed') {
-          throw new AppError(409, 'لا يمكن تأكيد الاستلام قبل تنفيذ التحويل من الإدارة أولاً', 'TRANSFER_NOT_EXECUTED_YET');
+        if (status === 'executed') {
+          if (!isRepToRep || req.sender_representative_id !== repActorProfile.id || actor.permissions?.canManageTransfers === false) {
+            throw new AppError(403, 'غير مصرح للمندوب بتنفيذ هذا التحويل', 'FORBIDDEN_REP_TRANSFER_APPROVAL');
+          }
+        } else if (status === 'received') {
+          if (req.representative_id !== repActorProfile.id || (isRepToRep && req.sender_representative_id === repActorProfile.id)) {
+            throw new AppError(403, 'غير مصرح لك بتأكيد استلام تحويل يخص مندوباً آخر', 'FORBIDDEN_REP_TRANSFER_OWNER');
+          }
+          if (req.status !== 'executed') {
+            throw new AppError(409, 'لا يمكن تأكيد الاستلام قبل تنفيذ التحويل أولاً', 'TRANSFER_NOT_EXECUTED_YET');
+          }
         }
       } else {
         if (req.status === 'received') {
@@ -1861,9 +2139,8 @@ export async function updateRepItemTransferStatus(requestId, { status, approvedI
           if (srcQty < baseQty && !allowNeg) {
             throw new AppError(409, `الرصيد المتاح من (${prod.name}) بالمصدر (${srcQty}) أقل من (${baseQty})`, 'INSUFFICIENT_STOCK');
           }
-          // Custody dispatch holds items in-transit until rep confirms receipt; normal transfer moves immediately
           stockMap[req.source_warehouse_id] = round3(srcQty - baseQty);
-          if (!isCustodyDispatch) {
+          if (!isTwoStageDispatch) {
             stockMap[req.target_warehouse_id] = round3(dstQty + baseQty);
           }
           await client.query('UPDATE products SET stock_per_warehouse = $1 WHERE id = $2', [JSON.stringify(stockMap), prod.id]);
@@ -1900,7 +2177,7 @@ export async function updateRepItemTransferStatus(requestId, { status, approvedI
               prod.purchase_price,
               req.id,
               req.request_number,
-              isCustodyDispatch
+              isTwoStageDispatch
                 ? `صرف عهدة بضاعة مرسلة للمندوب ${req.representative_name} (بانتظار تأكيد الاستلام)`
                 : `تحويل عهدة بضاعة للمندوب ${req.representative_name}`,
               actor.id,
@@ -1914,8 +2191,7 @@ export async function updateRepItemTransferStatus(requestId, { status, approvedI
         }
       }
 
-      if (status === 'rejected' && isCustodyDispatch && req.status === 'executed') {
-        // Restore deducted source stock if dispatched custody is cancelled/rejected before rep receipt
+      if (status === 'rejected' && isTwoStageDispatch && req.status === 'executed') {
         for (const r of itemsRes.rows) {
           const qty = Number(r.executed_qty ?? r.approved_qty ?? r.requested_qty ?? 0);
           if (qty <= 0) continue;
@@ -1944,7 +2220,7 @@ export async function updateRepItemTransferStatus(requestId, { status, approvedI
         if (req.status === 'received') {
           throw new AppError(409, 'تم تأكيد استلام هذه العهدة مسبقاً', 'ALREADY_RECEIVED');
         }
-        if (isCustodyDispatch) {
+        if (isTwoStageDispatch) {
           for (const r of itemsRes.rows) {
             const qty = Number(r.executed_qty ?? r.approved_qty ?? r.requested_qty ?? 0);
             if (qty <= 0) continue;
@@ -2004,34 +2280,50 @@ export async function updateRepItemTransferStatus(requestId, { status, approvedI
                reviewed_by = $3,
                reviewed_at = $4,
                executed_at = CASE WHEN $1 = 'executed' THEN $4 ELSE executed_at END,
-               dispatched_by = CASE WHEN $1 = 'executed' AND transfer_mode = 'custody_dispatch' THEN $3 ELSE dispatched_by END,
-               dispatched_at = CASE WHEN $1 = 'executed' AND transfer_mode = 'custody_dispatch' THEN $4 ELSE dispatched_at END
+               dispatched_by = CASE WHEN $1 = 'executed' AND transfer_mode IN ('custody_dispatch', 'rep_to_rep') THEN $3 ELSE dispatched_by END,
+               dispatched_at = CASE WHEN $1 = 'executed' AND transfer_mode IN ('custody_dispatch', 'rep_to_rep') THEN $4 ELSE dispatched_at END
            WHERE id = $5`,
           [status, String(notes || ''), actor.fullName, now, requestId]
         );
       }
+      const resPayload = { ok: true, requestId, status };
+      await savePgIdempotency(client, scopedIdem, actor, endpoint, resPayload);
+      return { deduplicated: false, ...resPayload };
     });
-    await recordAuditLog({
-      userId: actor.id,
-      userName: actor.fullName,
-      action: `تحديث حالة طلب تحويل أصناف إلى (${status})`,
-      module: 'المندوبون',
-      recordId: requestId,
-    });
-    return { ok: true };
+    if (!out.deduplicated) {
+      await recordAuditLog({
+        userId: actor.id,
+        userName: actor.fullName,
+        action: `تحديث حالة طلب تحويل أصناف إلى (${status})`,
+        module: 'المندوبون',
+        recordId: requestId,
+      });
+    }
+    return out;
   }
 
-  await withJsonTransaction(async (db) => {
+  const out = await withJsonTransaction(async (db) => {
+    const dup = findJsonIdempotency(scopedIdem);
+    if (dup) return { deduplicated: true, ...dup };
+
     const req = db.repItemTransfers.find((r) => r.id === requestId);
     if (!req) throw new AppError(404, 'طلب التحويل غير موجود', 'NOT_FOUND');
     const isCustodyDispatch = req.transferMode === 'custody_dispatch';
+    const isRepToRep = req.transferMode === 'rep_to_rep';
+    const isTwoStageDispatch = isCustodyDispatch || isRepToRep;
 
     if (isRepActor) {
-      if (req.representativeId !== repActorProfile.id) {
-        throw new AppError(403, 'غير مصرح لك بتأكيد استلام تحويل يخص مندوباً آخر', 'FORBIDDEN_REP_TRANSFER_OWNER');
-      }
-      if (req.status !== 'executed') {
-        throw new AppError(409, 'لا يمكن تأكيد الاستلام قبل تنفيذ التحويل من الإدارة أولاً', 'TRANSFER_NOT_EXECUTED_YET');
+      if (status === 'executed') {
+        if (!isRepToRep || req.senderRepresentativeId !== repActorProfile.id || actor.permissions?.canManageTransfers === false) {
+          throw new AppError(403, 'غير مصرح للمندوب بتنفيذ هذا التحويل', 'FORBIDDEN_REP_TRANSFER_APPROVAL');
+        }
+      } else if (status === 'received') {
+        if (req.representativeId !== repActorProfile.id || (isRepToRep && req.senderRepresentativeId === repActorProfile.id)) {
+          throw new AppError(403, 'غير مصرح لك بتأكيد استلام تحويل يخص مندوباً آخر', 'FORBIDDEN_REP_TRANSFER_OWNER');
+        }
+        if (req.status !== 'executed') {
+          throw new AppError(409, 'لا يمكن تأكيد الاستلام قبل تنفيذ التحويل أولاً', 'TRANSFER_NOT_EXECUTED_YET');
+        }
       }
     } else if (req.status === 'received') {
       throw new AppError(409, 'تم استلام هذا التحويل بالفعل ولا يمكن تعديله', 'TRANSFER_ALREADY_RECEIVED');
@@ -2058,7 +2350,7 @@ export async function updateRepItemTransferStatus(requestId, { status, approvedI
           throw new AppError(409, `الرصيد المتاح من (${prod.name}) بالمصدر (${src}) أقل من (${baseQty})`, 'INSUFFICIENT_STOCK');
         }
         prod.stockPerWarehouse[req.sourceWarehouseId] = round3(src - baseQty);
-        if (!isCustodyDispatch) {
+        if (!isTwoStageDispatch) {
           prod.stockPerWarehouse[req.targetWarehouseId] = round3(dst + baseQty);
         }
         it.executedQty = qty;
@@ -2081,7 +2373,7 @@ export async function updateRepItemTransferStatus(requestId, { status, approvedI
           relatedDocType: 'rep_item_transfer',
           referenceId: req.id,
           referenceNumber: req.requestNumber,
-          notes: isCustodyDispatch
+          notes: isTwoStageDispatch
             ? `صرف عهدة بضاعة مرسلة للمندوب ${req.representativeName} (بانتظار تأكيد الاستلام)`
             : `تحويل عهدة بضاعة للمندوب ${req.representativeName}`,
           createdByUserId: actor.id,
@@ -2094,7 +2386,7 @@ export async function updateRepItemTransferStatus(requestId, { status, approvedI
       }
     }
 
-    if (status === 'rejected' && isCustodyDispatch && req.status === 'executed') {
+    if (status === 'rejected' && isTwoStageDispatch && req.status === 'executed') {
       for (const it of req.items || []) {
         const qty = Number(it.executedQty ?? it.approvedQty ?? it.requestedQty ?? 0);
         const prod = db.products.find((p) => p.id === it.productId);
@@ -2132,7 +2424,10 @@ export async function updateRepItemTransferStatus(requestId, { status, approvedI
       }
     }
 
-    if (status === 'received' && isCustodyDispatch) {
+    if (status === 'received' && isTwoStageDispatch) {
+      if (req.status === 'received') {
+        throw new AppError(409, 'تم تأكيد استلام هذه العهدة مسبقاً', 'ALREADY_RECEIVED');
+      }
       for (const it of req.items || []) {
         const qty = Number(it.executedQty ?? it.approvedQty ?? it.requestedQty ?? 0);
         const prod = db.products.find((p) => p.id === it.productId);
@@ -2182,22 +2477,27 @@ export async function updateRepItemTransferStatus(requestId, { status, approvedI
       req.reviewedAt = now;
       if (status === 'executed') {
         req.executedAt = now;
-        if (isCustodyDispatch) {
+        if (isTwoStageDispatch) {
           req.dispatchedBy = actor.fullName;
           req.dispatchedAt = now;
         }
       }
       if (approvedItems) req.items = approvedItems;
     }
+    const resPayload = { ok: true, requestId, status };
+    saveJsonIdempotency(scopedIdem, endpoint, resPayload);
+    return { deduplicated: false, ...resPayload };
   });
-  await recordAuditLog({
-    userId: actor.id,
-    userName: actor.fullName,
-    action: `تحديث حالة طلب تحويل أصناف إلى (${status})`,
-    module: 'المندوبون',
-    recordId: requestId,
-  });
-  return { ok: true };
+  if (!out.deduplicated) {
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `تحديث حالة طلب تحويل أصناف إلى (${status})`,
+      module: 'المندوبون',
+      recordId: requestId,
+    });
+  }
+  return out;
 }
 
 export async function getMobileNotifications(authContext) {

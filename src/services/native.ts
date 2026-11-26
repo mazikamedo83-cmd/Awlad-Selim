@@ -364,7 +364,7 @@ export async function reverseGeocodeCoords(
     if (!address) {
       return {
         ok: false,
-        error: 'لم تُرجع خدمة الخرائط عنواناً وصفياً لهذه الإحداثيات؛ يمكنك كتابة العنوان يدوياً.',
+        error: tr('لم تُرجع خدمة الخرائط عنواناً وصفياً لهذه الإحداثيات؛ يمكنك كتابة العنوان يدوياً.', 'The map service did not return a descriptive address for these coordinates; you can enter the address manually.'),
       };
     }
     const governorate =

@@ -37,6 +37,7 @@ import {
   IdentityConflict,
   SyncDispatchBatch,
   DispatchRecipientOption,
+  RepTransferTarget,
 } from '../types';
 
 const OFFLINE_ORDERS_QUEUE_KEY = 'awlad_selim_offline_orders_queue_v3';
@@ -54,6 +55,7 @@ export interface DatabaseState {
   cheques: Cheque[];
   installments: InstallmentSchedule[];
   representatives: Representative[];
+  repTransferTargets?: RepTransferTarget[];
   repTransfers: RepTransfer[];
   repItemTransfers?: RepItemTransferRequest[];
   repCustodyOperations?: RepCustodyOperation[];
@@ -100,6 +102,7 @@ export function getEmptyClientDatabaseState(): DatabaseState {
     cheques: [],
     installments: [],
     representatives: [],
+    repTransferTargets: [],
     repTransfers: [],
     repItemTransfers: [],
     repCustodyOperations: [],

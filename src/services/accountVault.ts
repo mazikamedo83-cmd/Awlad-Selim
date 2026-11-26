@@ -3,6 +3,7 @@ import { getKV, setKV } from './localDb';
 import { getOrCreatePersistentDeviceId, getPref, isElectronDesktop, isNativeCapacitor, setPref } from './native';
 import { normalizeServerOrigin } from './offlineAuth';
 import { removeSealedKey, sealJson, unsealJson } from './secureVault';
+import { tr } from '../i18n/translator';
 
 const VAULT_NAMESPACE = 'account_vault';
 const VAULT_RECORDS_KEY = 'saved_accounts_v1';
@@ -162,11 +163,11 @@ async function loadRawAccounts(): Promise<SavedDeviceAccount[]> {
       await sealJson(VAULT_TOKENS_SECRET_KEY, migratedTokens);
       const verified = await unsealJson<SealedAccountTokenMap>(VAULT_TOKENS_SECRET_KEY);
       if (!verified) {
-        throw new Error('فشل التحقق من ترحيل بيانات الحسابات إلى المخزن الآمن؛ لم تُحذف النسخ القديمة.');
+        throw new Error(tr('فشل التحقق من ترحيل بيانات الحسابات إلى المخزن الآمن؛ لم تُحذف النسخ القديمة.', 'Failed to verify account migration into secure vault; legacy copies were preserved.'));
       }
       for (const [uid, tok] of Object.entries(migratedTokens)) {
         if (tok.refreshToken && verified[uid]?.refreshToken !== tok.refreshToken) {
-          throw new Error('عدم تطابق رموز الحسابات بعد الترحيل؛ تم الإبقاء على السجلات القديمة.');
+          throw new Error(tr('عدم تطابق رموز الحسابات بعد الترحيل؛ تم الإبقاء على السجلات القديمة.', 'Account token mismatch after migration; legacy records were kept.'));
         }
       }
     } else {

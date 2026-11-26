@@ -76,6 +76,7 @@ export type ShortcutActionId =
   | 'nav:cheques'
   | 'nav:installments'
   | 'nav:reps'
+  | 'nav:refresh-sync'
   | 'nav:rep-transfers'
   | 'nav:rep-item-transfers'
   | 'nav:employees'
@@ -699,12 +700,19 @@ export type RepTransferStatus =
   | 'rejected'          // مرفوض
   | 'cancelled';        // ملغى
 
+export interface RepTransferTarget {
+  id: string;
+  name: string;
+  warehouseId?: string;
+  status: 'active' | 'inactive';
+}
+
 export interface RepTransfer {
   id: string;
   transferNumber: string; // ترقيم تسلسلي فريد
   date: string;
   timestamp: string;
-  direction: 'owner_to_rep' | 'rep_to_owner'; // اتجاه التحويل
+  direction: 'owner_to_rep' | 'rep_to_owner' | 'rep_to_rep'; // اتجاه التحويل
   senderId: string;
   senderName: string;
   receiverId: string;
@@ -997,6 +1005,8 @@ export interface RepItemTransferRequest {
   date: string;
   representativeId: string;
   representativeName: string;
+  senderRepresentativeId?: string;
+  senderRepresentativeName?: string;
   invoiceId?: string; // معرف الفاتورة الأصلية المرتبطة
   invoiceNumber?: string;
   sourceWarehouseId: string; // المستودع الرئيسي المصدر
@@ -1005,7 +1015,7 @@ export interface RepItemTransferRequest {
   targetWarehouseName: string;
   items: RepTransferItem[];
   status: RepItemTransferStatus;
-  transferMode?: 'transfer' | 'custody_dispatch';
+  transferMode?: 'transfer' | 'custody_dispatch' | 'rep_to_rep';
   rejectionReason?: string;
   notes?: string;
   createdBy: string;
@@ -1737,6 +1747,14 @@ export type SyncOperationType =
   | 'update_own_profile'
   | 'update_customer_favorites'
   | 'create_supplier'
+  | 'update_supplier'
+  | 'update_product'
+  | 'record_damaged_stock'
+  | 'transfer_stock'
+  | 'create_rep_transfer'
+  | 'confirm_rep_transfer'
+  | 'reject_rep_transfer'
+  | 'create_rep_item_transfer'
   | 'confirm_custody_receipt'
   | 'record_custody_delivery'
   | 'record_custody_return';

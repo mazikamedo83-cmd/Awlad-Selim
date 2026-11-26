@@ -148,6 +148,7 @@ export interface DataContextType extends DatabaseState {
   syncDispatchBatches: SyncDispatchBatch[];
   dispatchRecipients: DispatchRecipientOption[];
   incomingDispatchCount: number;
+  pendingSendReceiveCount: number;
   createAndSendDispatchBatch: (params: {
     selectedOperations: SyncQueueItem[];
     recipientUserId: string;
@@ -180,13 +181,13 @@ export interface DataContextType extends DatabaseState {
 
   // Products & Inventory
   addProduct: (product: Omit<Product, 'id' | 'createdAt'>) => Promise<Product>;
-  updateProduct: (id: string, updates: Partial<Product>) => Promise<void>;
+  updateProduct: (id: string, updates: Partial<Product>) => Promise<{ success?: boolean; queuedOffline?: boolean } | void>;
   deleteProduct: (id: string) => Promise<{ success: boolean; error?: string }>;
   deleteImportedProducts: (payload?: { batchId?: string; deleteAllImported?: boolean }) => Promise<{ success: boolean; deletedCount?: number; skippedCount?: number; skippedItems?: Array<{ id: string; name: string; code: string }>; error?: string }>;
   toggleProductStatus: (id: string) => Promise<{ success: boolean; error?: string }>;
-  transferStock: (productId: string, fromWarehouseId: string, toWarehouseId: string, quantity: number, notes: string) => Promise<{ success: boolean; error?: string }>;
+  transferStock: (productId: string, fromWarehouseId: string, toWarehouseId: string, quantity: number, notes: string) => Promise<{ success: boolean; queuedOffline?: boolean; error?: string }>;
   adjustStock: (productId: string, warehouseId: string, newQuantity: number, reason: string) => Promise<void>;
-  recordDamagedStock: (productId: string, warehouseId: string, quantity: number, reason: string) => Promise<void>;
+  recordDamagedStock: (productId: string, warehouseId: string, quantity: number, reason: string) => Promise<{ success?: boolean; queuedOffline?: boolean } | void>;
 
   // Categories
   categories: ProductCategory[];
@@ -211,7 +212,7 @@ export interface DataContextType extends DatabaseState {
   recordCustomerPayment: (customerId: string, amount: number, cashboxId: string, notes: string, paymentMethod?: 'cash' | 'bank' | 'cheque', invoiceId?: string) => Promise<{ success: boolean; queuedOffline?: boolean; collectionLocation?: string; error?: string }>;
 
   addSupplier: (supplier: Omit<Supplier, 'id' | 'createdAt' | 'currentBalance'>) => Promise<Supplier>;
-  updateSupplier: (id: string, updates: Partial<Supplier>) => Promise<void>;
+  updateSupplier: (id: string, updates: Partial<Supplier>) => Promise<{ success?: boolean; queuedOffline?: boolean } | void>;
   deleteSupplier: (id: string) => Promise<void>;
   recordSupplierPayment: (supplierId: string, amount: number, cashboxId: string, notes: string) => Promise<{ success: boolean; code?: string; isAdvancePayment?: boolean; advanceCreditBalance?: number; error?: string }>;
   settleSupplierAdvance: (supplierId: string, payload: { invoiceId: string; amount: number; notes?: string; date?: string }) => Promise<{ success: boolean; availableAdvanceAfter?: number; settledAmount?: number; error?: string }>;
@@ -287,18 +288,18 @@ export interface DataContextType extends DatabaseState {
   addRepresentative: (rep: Omit<Representative, 'id' | 'currentBalance'>) => Promise<void>;
   updateRepresentative: (id: string, updates: Partial<Representative>) => Promise<void>;
   createRepTransfer: (transfer: {
-    direction: 'owner_to_rep' | 'rep_to_owner';
+    direction: 'owner_to_rep' | 'rep_to_owner' | 'rep_to_rep';
     senderId: string;
     senderName: string;
     receiverId: string;
     receiverName: string;
     amount: number;
-    cashboxId: string;
+    cashboxId?: string;
     notes?: string;
-  }) => Promise<{ success: boolean; error?: string; transfer?: RepTransfer }>;
-  confirmRepTransferReceipt: (transferId: string, note?: string) => Promise<{ success: boolean; error?: string }>;
+  }) => Promise<{ success: boolean; queuedOffline?: boolean; error?: string; transfer?: RepTransfer }>;
+  confirmRepTransferReceipt: (transferId: string, note?: string) => Promise<{ success: boolean; queuedOffline?: boolean; error?: string }>;
   rejectRepTransfer: (transferId: string, reason: string) => Promise<{ success: boolean; error?: string }>;
-  createRepItemTransfer: (transferData: Omit<RepItemTransferRequest, 'id' | 'requestNumber' | 'createdAt' | 'status' | 'createdBy'>) => Promise<{ success: boolean; request?: RepItemTransferRequest; error?: string }>;
+  createRepItemTransfer: (transferData: Omit<RepItemTransferRequest, 'id' | 'requestNumber' | 'createdAt' | 'status' | 'createdBy'> & { autoDispatch?: boolean }) => Promise<{ success: boolean; queuedOffline?: boolean; request?: RepItemTransferRequest; error?: string }>;
   updateRepItemTransferStatus: (requestId: string, newStatus: RepItemTransferStatus, approvedItems?: RepTransferItem[], notes?: string) => Promise<{ success: boolean; queuedOffline?: boolean; error?: string }>;
   repCustodyOperations: RepCustodyOperation[];
   recordRepCustodyDelivery: (payload: { representativeId?: string; customerId?: string; customerName?: string; productId: string; quantity: number; unit?: string; unitFactor?: number; date?: string; notes?: string; idempotencyKey?: string }) => Promise<{ success: boolean; operation?: RepCustodyOperation; queuedOffline?: boolean; error?: string }>;
@@ -485,6 +486,7 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
   const salesReturnRequests = (base.salesReturnRequests || []).map((r) => ({ ...r }));
   const financialTransactions = [...(base.financialTransactions || [])];
   const expenseIncomes = [...(base.expenseIncomes || [])];
+  const repTransfers = (base.repTransfers || []).map((t) => ({ ...t }));
   const repItemTransfers = (base.repItemTransfers || []).map((t) => ({ ...t }));
   const repCustodyOperations = [...(base.repCustodyOperations || [])];
 
@@ -1415,6 +1417,141 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
       if (ids && customers[0]) {
         customers[0].favoriteProductIds = ids;
       }
+    } else if (op.operationType === 'update_product') {
+      const pid = p.productId || op.entityId;
+      const prod = products.find((pr) => pr.id === pid);
+      if (prod) {
+        Object.assign(prod, {
+          name: p.name ?? prod.name,
+          code: p.code ?? prod.code,
+          barcode: p.barcode ?? prod.barcode,
+          category: p.category ?? prod.category,
+          purchasePrice: p.purchasePrice !== undefined ? Number(p.purchasePrice) : prod.purchasePrice,
+          sellingPrice: p.sellingPrice !== undefined ? Number(p.sellingPrice) : prod.sellingPrice,
+          wholesalePrice: p.wholesalePrice !== undefined ? Number(p.wholesalePrice) : prod.wholesalePrice,
+          minStockAlert: p.minStockAlert !== undefined ? Number(p.minStockAlert) : prod.minStockAlert,
+          status: p.status ?? prod.status,
+          notes: p.notes ?? prod.notes,
+        });
+      }
+    } else if (op.operationType === 'update_supplier') {
+      const sid = p.supplierId || op.entityId;
+      const supp = suppliers.find((s) => s.id === sid);
+      if (supp) {
+        Object.assign(supp, {
+          name: p.name ?? supp.name,
+          phone: p.phone ?? supp.phone,
+          address: p.address ?? supp.address,
+          status: p.status ?? supp.status,
+          notes: p.notes ?? supp.notes,
+        });
+      }
+    } else if (op.operationType === 'transfer_stock') {
+      const qty = Number(p.quantity || 0);
+      const prod = products.find((pr) => pr.id === p.productId);
+      if (prod && qty > 0) {
+        if (p.fromWarehouseId) {
+          prod.stockPerWarehouse[p.fromWarehouseId] = Math.max(0, Number(prod.stockPerWarehouse[p.fromWarehouseId] || 0) - qty);
+        }
+        if (p.toWarehouseId) {
+          prod.stockPerWarehouse[p.toWarehouseId] = Number(prod.stockPerWarehouse[p.toWarehouseId] || 0) + qty;
+        }
+      }
+    } else if (op.operationType === 'record_damaged_stock') {
+      const qty = Number(p.quantity || 0);
+      const prod = products.find((pr) => pr.id === p.productId);
+      if (prod && qty > 0 && p.warehouseId) {
+        prod.stockPerWarehouse[p.warehouseId] = Math.max(0, Number(prod.stockPerWarehouse[p.warehouseId] || 0) - qty);
+      }
+    } else if (op.operationType === 'create_rep_transfer') {
+      const targetId = op.localId || op.entityId || op.operationId;
+      if (!repTransfers.some((t) => t.id === targetId)) {
+        const cb = cashboxes.find((c) => c.id === p.cashboxId);
+        repTransfers.unshift({
+          id: targetId,
+          transferNumber: `LOC-TRF-${op.operationId.slice(-5)}`,
+          date: op.createdAt.slice(0, 10),
+          timestamp: op.createdAt,
+          direction: p.direction || 'rep_to_owner',
+          senderId: p.senderId || '',
+          senderName: p.senderName || '',
+          receiverId: p.receiverId || '',
+          receiverName: p.receiverName || '',
+          amount: Number(p.amount || 0),
+          cashboxId: p.cashboxId || '',
+          cashboxName: cb?.name || (p.direction === 'rep_to_rep' ? 'تحويل بين مناديب' : ''),
+          notes: p.notes || '',
+          status: 'awaiting_receipt',
+          sentAt: op.createdAt,
+          auditTrail: [
+            {
+              timestamp: op.createdAt,
+              action: 'طلب تحويل مالي محلي (بانتظار الإرسال والاستلام)',
+              user: op.userId,
+              note: p.notes || '',
+            },
+          ],
+        });
+      }
+    } else if (op.operationType === 'confirm_rep_transfer') {
+      const trId = p.transferId || op.entityId;
+      const tr = repTransfers.find((t) => t.id === trId);
+      if (tr && tr.status === 'awaiting_receipt') {
+        tr.status = 'received';
+        tr.confirmedAt = op.createdAt;
+        const amt = Number(tr.amount || 0);
+        if (tr.direction === 'rep_to_rep') {
+          const sRep = representatives.find((r) => r.id === tr.senderId);
+          const rRep = representatives.find((r) => r.id === tr.receiverId);
+          if (sRep) sRep.currentBalance = Number(sRep.currentBalance || 0) - amt;
+          if (rRep) rRep.currentBalance = Number(rRep.currentBalance || 0) + amt;
+        } else {
+          const repId = tr.direction === 'rep_to_owner' ? tr.senderId : tr.receiverId;
+          const rep = representatives.find((r) => r.id === repId);
+          const cb = cashboxes.find((c) => c.id === tr.cashboxId);
+          if (rep) {
+            rep.currentBalance = tr.direction === 'rep_to_owner' ? Number(rep.currentBalance || 0) - amt : Number(rep.currentBalance || 0) + amt;
+          }
+          if (cb) {
+            cb.currentBalance = tr.direction === 'rep_to_owner' ? Number(cb.currentBalance || 0) + amt : Number(cb.currentBalance || 0) - amt;
+          }
+        }
+      }
+    } else if (op.operationType === 'create_rep_item_transfer') {
+      const targetId = op.localId || op.entityId || op.operationId;
+      if (!repItemTransfers.some((r) => r.id === targetId)) {
+        const isAuto = Boolean((p.transferMode === 'custody_dispatch' || p.transferMode === 'rep_to_rep') && p.autoDispatch);
+        repItemTransfers.unshift({
+          id: targetId,
+          requestNumber: `LOC-RIT-${op.operationId.slice(-5)}`,
+          date: p.date || op.createdAt.slice(0, 10),
+          representativeId: p.representativeId || '',
+          representativeName: p.representativeName || '',
+          senderRepresentativeId: p.senderRepresentativeId,
+          senderRepresentativeName: p.senderRepresentativeName,
+          invoiceId: p.invoiceId,
+          invoiceNumber: p.invoiceNumber,
+          sourceWarehouseId: p.sourceWarehouseId || '',
+          sourceWarehouseName: p.sourceWarehouseName || '',
+          targetWarehouseId: p.targetWarehouseId || '',
+          targetWarehouseName: p.targetWarehouseName || '',
+          items: Array.isArray(p.items) ? p.items : [],
+          status: isAuto ? 'executed' : 'pending',
+          transferMode: p.transferMode || 'transfer',
+          notes: p.notes || '',
+          createdBy: op.userId,
+          createdAt: op.createdAt,
+        });
+        if (isAuto && p.sourceWarehouseId) {
+          for (const it of p.items || []) {
+            const prod = products.find((pr) => pr.id === it.productId);
+            const qty = Number(it.approvedQty ?? it.requestedQty ?? 0);
+            if (prod && qty > 0) {
+              prod.stockPerWarehouse[p.sourceWarehouseId] = Math.max(0, Number(prod.stockPerWarehouse[p.sourceWarehouseId] || 0) - qty);
+            }
+          }
+        }
+      }
     }
   }
 
@@ -1433,6 +1570,7 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
     salesReturnRequests,
     financialTransactions,
     expenseIncomes,
+    repTransfers,
     repItemTransfers,
     repCustodyOperations,
   };
@@ -1529,8 +1667,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsServerReachable(true);
         setNetworkStatus('error');
         setLastError(
-          message ||
-            'قاعدة البيانات المركزية (PostgreSQL) غير متاحة مؤقتًا. تم إيقاف العمليات لحماية البيانات ومنع انقسامها.'
+          message
+            ? tr(message)
+            : tr(
+                'قاعدة البيانات المركزية (PostgreSQL) غير متاحة مؤقتًا. تم إيقاف العمليات لحماية البيانات ومنع انقسامها.',
+                'Central PostgreSQL database is temporarily unavailable. Operations are paused to protect data integrity.'
+              )
         );
       } else if (isDbUnavailableRef.current) {
         isDbUnavailableRef.current = false;
@@ -1886,7 +2028,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const networkDown = isNetworkFailure(err);
       setIsServerReachable(!networkDown);
       setNetworkStatus(networkDown ? 'disconnected' : 'error');
-      setLastError(err?.message || 'تعذر مزامنة البيانات حالياً');
+      setLastError(err?.message ? tr(err.message) : tr('تعذر مزامنة البيانات حالياً', 'Could not sync data right now'));
     } finally {
       isSyncingRef.current = false;
       setIsSyncing(false);
@@ -1925,7 +2067,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const networkDown = isNetworkFailure(err);
         setIsServerReachable(!networkDown);
         setNetworkStatus(networkDown ? 'disconnected' : 'error');
-        setLastError(err?.message || 'تعذر مزامنة البيانات حالياً');
+        setLastError(err?.message ? tr(err.message) : tr('تعذر مزامنة البيانات حالياً', 'Could not sync data right now'));
       } finally {
         isSyncingRef.current = false;
         setIsSyncing(false);
@@ -1938,16 +2080,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const syncSendOnly = useCallback(async (options?: { includeHeldBatches?: boolean }) => {
     if (!isAuthenticated || !currentUser) {
-      return { ok: false, count: 0, failedCount: 0, conflictCount: 0, error: 'المستخدم غير مسجل' };
+      return { ok: false, count: 0, failedCount: 0, conflictCount: 0, error: tr('المستخدم غير مسجل', 'User is not logged in') };
     }
     if (isSyncingRef.current) {
-      return { ok: false, count: 0, failedCount: 0, conflictCount: 0, error: 'توجد عملية مزامنة قيد التنفيذ حالياً' };
+      return { ok: false, count: 0, failedCount: 0, conflictCount: 0, error: tr('توجد عملية مزامنة قيد التنفيذ حالياً', 'A sync operation is already in progress') };
     }
     setNetworkStatus('synchronizing');
     isSyncingRef.current = true;
     setIsSyncing(true);
     setSendProgressPercent(10);
-    setSendProgressStage('جاري تجهيز العمليات للإرسال...');
+    setSendProgressStage(tr('جاري تجهيز العمليات للإرسال...', 'Preparing operations to send...'));
     try {
       const outcome = await runSyncCycle({
         userId: currentUser.id,
@@ -1988,7 +2130,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         error: outcome.error,
       };
     } catch (err: any) {
-      return { ok: false, count: 0, failedCount: 0, conflictCount: 0, error: err?.message || 'فشل الإرسال' };
+      return { ok: false, count: 0, failedCount: 0, conflictCount: 0, error: err?.message ? tr(err.message) : tr('فشل الإرسال', 'Send failed') };
     } finally {
       isSyncingRef.current = false;
       setIsSyncing(false);
@@ -2001,16 +2143,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const syncReceiveOnly = useCallback(async () => {
     if (!isAuthenticated || !currentUser) {
-      return { ok: false, count: 0, error: 'المستخدم غير مسجل' };
+      return { ok: false, count: 0, error: tr('المستخدم غير مسجل', 'User is not logged in') };
     }
     if (isSyncingRef.current) {
-      return { ok: false, count: 0, error: 'توجد عملية مزامنة قيد التنفيذ حالياً' };
+      return { ok: false, count: 0, error: tr('توجد عملية مزامنة قيد التنفيذ حالياً', 'A sync operation is already in progress') };
     }
     setNetworkStatus('synchronizing');
     isSyncingRef.current = true;
     setIsSyncing(true);
     setReceiveProgressPercent(10);
-    setReceiveProgressStage('جاري الاتصال لجلب التحديثات...');
+    setReceiveProgressStage(tr('جاري الاتصال لجلب التحديثات...', 'Connecting to fetch updates...'));
     try {
       const outcome = await runSyncCycle({
         userId: currentUser.id,
@@ -2036,9 +2178,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       setNetworkStatus(outcome.serverReachable ? 'error' : 'disconnected');
       if (outcome.error) setLastError(outcome.error);
-      return { ok: false, count: 0, error: outcome.error || 'تعذر الاستلام حالياً' };
+      return { ok: false, count: 0, error: outcome.error ? tr(outcome.error) : tr('تعذر الاستلام حالياً', 'Could not receive updates right now') };
     } catch (err: any) {
-      return { ok: false, count: 0, error: err?.message || 'تعذر الاستلام حالياً' };
+      return { ok: false, count: 0, error: err?.message ? tr(err.message) : tr('تعذر الاستلام حالياً', 'Could not receive updates right now') };
     } finally {
       isSyncingRef.current = false;
       setIsSyncing(false);
@@ -2218,7 +2360,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { ok: false, count: 0, failedCount: 0 };
       }
       if (isSyncingRef.current || isMandatoryRunningRef.current) {
-        return { ok: false, count: 0, failedCount: 0, error: 'جاري تنفيذ عملية مزامنة حالياً' };
+        return { ok: false, count: 0, failedCount: 0, error: tr('جاري تنفيذ عملية مزامنة حالياً', 'A sync operation is currently running') };
       }
       const localQueue = await localDb.listSyncQueue(currentUser.id);
       const localBatches = await localDb.listDispatchBatches(currentUser.id);
@@ -2250,7 +2392,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           ok: false,
           count: 0,
           failedCount: unsentOps.length,
-          error: 'لا يوجد اتصال — تم الاحتفاظ بالبيانات وسيعاد الإرسال الإجباري فور عودة الشبكة',
+          error: tr('لا يوجد اتصال — تم الاحتفاظ بالبيانات وسيعاد الإرسال الإجباري فور عودة الشبكة', 'Offline — data saved locally and mandatory dispatch will retry automatically when online'),
         };
       }
 
@@ -2260,7 +2402,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsSyncing(true);
       setNetworkStatus('synchronizing');
       setSendProgressPercent(12);
-      setSendProgressStage('جاري تنفيذ الإرسال الإجباري التلقائي...');
+      setSendProgressStage(tr('جاري تنفيذ الإرسال الإجباري التلقائي...', 'Running automatic mandatory dispatch...'));
 
       try {
         await flushQueuedConfirmedBatches().catch(() => false);
@@ -2510,7 +2652,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const triggerMandatorySendNow = useCallback(async () => {
     if (!triggerMandatorySendNowRef.current) {
-      return { ok: false, count: 0, failedCount: 0, error: 'المزامنة غير جاهزة حالياً' };
+      return { ok: false, count: 0, failedCount: 0, error: tr('المزامنة غير جاهزة حالياً', 'Sync is not ready right now') };
     }
     return triggerMandatorySendNowRef.current();
   }, []);
@@ -2563,8 +2705,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           sortKey: `0000-${cust.createdAt || ''}`,
           docNumber: cust.code || '-',
           type: 'opening_balance',
-          label: 'رصيد افتتاحي',
-          description: 'الرصيد الافتتاحي للحساب',
+          label: tr('رصيد افتتاحي', 'Opening Balance'),
+          description: tr('الرصيد الافتتاحي للحساب', 'Account Opening Balance'),
           debit: openBal > 0 ? openBal : 0,
           credit: openBal < 0 ? Math.abs(openBal) : 0,
           paidAmount: 0,
@@ -2581,8 +2723,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           sortKey: `${inv.date || ''}-${inv.createdAt || inv.id}`,
           docNumber: inv.invoiceNumber,
           type: 'sales_invoice',
-          label: `فاتورة مبيعات (${inv.items?.length || 0} صنف)`,
-          description: `إجمالي الفاتورة ${inv.grandTotal}`,
+          label: tr(`فاتورة مبيعات (${inv.items?.length || 0} صنف)`, `Sales Invoice (${inv.items?.length || 0} items)`),
+          description: tr(`إجمالي الفاتورة ${inv.grandTotal}`, `Invoice Total ${inv.grandTotal}`),
           debit: Number(inv.grandTotal || 0),
           credit: cashAtInv,
           paidAmount: Number(inv.paidAmount || 0),
@@ -2599,8 +2741,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           sortKey: `${tx.date || ''}-${tx.createdAt || tx.id}`,
           docNumber: tx.transactionNumber || tx.id,
           type: tx.relatedDocType === 'order_advance' ? 'order_advance' : 'customer_payment',
-          label: 'سند تحصيل / دفعة حساب',
-          description: tx.description || 'سداد نقدي من العميل',
+          label: tr('سند تحصيل / دفعة حساب', 'Collection / Payment Voucher'),
+          description: tx.description ? tr(tx.description) : tr('سداد نقدي من العميل', 'Cash Payment from Customer'),
           debit: 0,
           credit: Number(tx.amount || 0),
           paidAmount: Number(tx.amount || 0),
@@ -2616,8 +2758,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           sortKey: `${ret.date || ''}-${ret.createdAt || ret.id}`,
           docNumber: ret.returnNumber,
           type: 'sales_return',
-          label: 'مرتجع مبيعات',
-          description: ret.reason || `مرتجع على فاتورة ${ret.originalInvoiceNumber || '-'}`,
+          label: tr('مرتجع مبيعات', 'Sales Return'),
+          description: ret.reason || tr(`مرتجع على فاتورة ${ret.originalInvoiceNumber || '-'}`, `Return on Invoice ${ret.originalInvoiceNumber || '-'}`),
           debit: 0,
           credit: ret.refundType === 'balance' ? Number(ret.grandTotal || 0) : 0,
           paidAmount: ret.refundType === 'cash' ? Number(ret.grandTotal || 0) : 0,
@@ -2703,8 +2845,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           sortKey: `0000-${supp.createdAt || ''}`,
           docNumber: supp.code || '-',
           type: 'opening_balance',
-          label: 'رصيد افتتاحي للمورد',
-          description: openBal > 0 ? 'رصيد افتتاحي مستحق للمورد (علينا)' : 'رصيد افتتاحي مقدم عند المورد (لنا)',
+          label: tr('رصيد افتتاحي للمورد', 'Supplier Opening Balance'),
+          description: openBal > 0
+            ? tr('رصيد افتتاحي مستحق للمورد (علينا)', 'Opening Balance Payable to Supplier')
+            : tr('رصيد افتتاحي مقدم عند المورد (لنا)', 'Opening Advance Credit at Supplier'),
           credit: openBal > 0 ? openBal : 0,
           debit: openBal < 0 ? Math.abs(openBal) : 0,
           paidAmount: 0,
@@ -2723,8 +2867,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           sortKey: `${inv.date || ''}-${inv.createdAt || inv.id}`,
           docNumber: inv.invoiceNumber,
           type: 'purchase_invoice',
-          label: `فاتورة مشتريات (${inv.items?.length || 0} صنف)`,
-          description: `إجمالي المشتريات ${inv.grandTotal}`,
+          label: tr(`فاتورة مشتريات (${inv.items?.length || 0} صنف)`, `Purchase Invoice (${inv.items?.length || 0} items)`),
+          description: tr(`إجمالي المشتريات ${inv.grandTotal}`, `Total Purchases ${inv.grandTotal}`),
           credit: Number(inv.grandTotal || 0),
           debit: nonSettlePaid,
           paidAmount: Number(inv.paidAmount || 0),
@@ -2741,8 +2885,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           sortKey: `${tx.date || ''}-${tx.createdAt || tx.id}`,
           docNumber: tx.transactionNumber || tx.id,
           type: 'supplier_payment',
-          label: 'سند صرف / سداد للمورد',
-          description: tx.description || 'دفعة مسددة للمورد',
+          label: tr('سند صرف / سداد للمورد', 'Supplier Payment Voucher'),
+          description: tx.description ? tr(tx.description) : tr('دفعة مسددة للمورد', 'Payment Made to Supplier'),
           credit: 0,
           debit: Number(tx.amount || 0),
           paidAmount: Number(tx.amount || 0),
@@ -2758,8 +2902,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           sortKey: `${ret.date || ''}-${ret.createdAt || ret.id}`,
           docNumber: ret.returnNumber,
           type: 'purchase_return',
-          label: 'مرتجع مشتريات',
-          description: ret.reason || `مرتجع على فاتورة ${ret.originalInvoiceNumber || '-'}`,
+          label: tr('مرتجع مشتريات', 'Purchase Return'),
+          description: ret.reason || tr(`مرتجع على فاتورة ${ret.originalInvoiceNumber || '-'}`, `Return on Invoice ${ret.originalInvoiceNumber || '-'}`),
           credit: 0,
           debit: ret.refundType === 'balance' ? Number(ret.grandTotal || 0) : 0,
           paidAmount: ret.refundType === 'cash' ? Number(ret.grandTotal || 0) : 0,
@@ -2857,6 +3001,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     'record_order_advance',
     'create_customer',
     'update_customer',
+    'update_supplier',
+    'update_product',
+    'record_damaged_stock',
+    'transfer_stock',
+    'create_rep_transfer',
+    'confirm_rep_transfer',
+    'create_rep_item_transfer',
     'confirm_custody_receipt',
     'record_custody_delivery',
     'record_custody_return',
@@ -2871,7 +3022,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       summaryAr: string;
       payload: Record<string, any>;
     }) => {
-      if (!currentUser) throw new Error('المستخدم غير مسجل');
+      if (!currentUser) throw new Error(tr('المستخدم غير مسجل', 'User is not logged in'));
       const holdForDispatchBatch =
         currentUser.role === 'representative' && REP_BATCH_HOLD_OPS.has(params.operationType);
       const queued = await enqueueSyncOperation({
@@ -2951,7 +3102,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       notes?: string;
       existingDraftBatch?: SyncDispatchBatch;
     }) => {
-      if (!currentUser) return { success: false, error: 'المستخدم غير مسجل' };
+      if (!currentUser) return { success: false, error: tr('المستخدم غير مسجل', 'User is not logged in') };
       const recipient =
         dispatchRecipients.find((r) => r.id === params.recipientUserId) ||
         (params.existingDraftBatch
@@ -2962,17 +3113,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
           : undefined);
       if (!recipient) {
-        return { success: false, error: 'يرجى اختيار الموظف المستلم من القائمة' };
+        return { success: false, error: tr('يرجى اختيار الموظف المستلم من القائمة', 'Please select the receiving employee from the list') };
       }
       if (!Array.isArray(params.selectedOperations) || params.selectedOperations.length === 0) {
-        return { success: false, error: 'يرجى تحديد عملية واحدة على الأقل لإرسالها' };
+        return { success: false, error: tr('يرجى تحديد عملية واحدة على الأقل لإرسالها', 'Please select at least one operation to send') };
       }
       const repProfile = (data.representatives || []).find((r) => r.userId === currentUser.id);
       isSyncingRef.current = true;
       setIsSyncing(true);
       setNetworkStatus('synchronizing');
       setSendProgressPercent(10);
-      setSendProgressStage('جاري تجهيز الدفعة الرسمية للإرسال...');
+      setSendProgressStage(tr('جاري تجهيز الدفعة الرسمية للإرسال...', 'Preparing official batch to send...'));
       try {
         const res = await sendDispatchBatchToServer({
           userId: currentUser.id,
@@ -3051,7 +3202,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await refreshDispatches();
         return { success: true, batch: res.batch };
       } catch (err: any) {
-        return { success: false, error: err?.message || 'تعذر تحديث حالة قيد الاستلام' };
+        return { success: false, error: err?.message || tr('تعذر تحديث حالة قيد الاستلام', 'Could not update receiving status') };
       }
     },
     [refreshDispatches]
@@ -3090,7 +3241,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await loadRoleScopedData();
         return { success: true, batch: res.batch };
       } catch (err: any) {
-        return { success: false, error: err?.message || 'تعذر تأكيد استلام الدفعة' };
+        return { success: false, error: err?.message || tr('تعذر تأكيد استلام الدفعة', 'Could not confirm batch receipt') };
       }
     },
     [refreshDispatches, loadRoleScopedData]
@@ -3112,7 +3263,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await refreshDispatches();
         return { success: true, batch: res.batch };
       } catch (err: any) {
-        return { success: false, error: err?.message || 'تعذر تسجيل تعذر الاستلام' };
+        return { success: false, error: err?.message || tr('تعذر تسجيل تعذر الاستلام', 'Could not record receipt failure') };
       }
     },
     [refreshDispatches]
@@ -3131,7 +3282,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await triggerSync(false);
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر معالجة تعارض المزامنة' };
+      return { success: false, error: err?.message || tr('تعذر معالجة تعارض المزامنة', 'Could not resolve sync conflict') };
     }
   };
 
@@ -3158,7 +3309,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'ملف النسخة الاحتياطية غير صالح أو فشل الاستعادة' };
+      return { success: false, error: err?.message || tr('ملف النسخة الاحتياطية غير صالح أو فشل الاستعادة', 'Invalid backup file or restore failed') };
     }
   };
 
@@ -3177,8 +3328,24 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateProduct = async (id: string, updates: Partial<Product>) => {
-    await apiRequest(`/api/products/${id}`, { method: 'PUT', body: updates });
-    await loadRoleScopedData();
+    try {
+      await apiRequest(`/api/products/${id}`, { method: 'PUT', body: updates });
+      await loadRoleScopedData();
+      return { success: true };
+    } catch (err: any) {
+      if (isNetworkFailure(err) && currentUser) {
+        const existing = data.products.find((pr) => pr.id === id);
+        await queueOfflineOp({
+          operationType: 'update_product',
+          entityType: 'product',
+          entityId: id,
+          summaryAr: `تحديث بيانات الصنف محليًا: ${updates.name || existing?.name || id}`,
+          payload: { productId: id, ...updates },
+        });
+        return { success: true, queuedOffline: true };
+      }
+      throw err;
+    }
   };
 
   const deleteProduct = async (id: string) => {
@@ -3187,7 +3354,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر حذف الصنف' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر حذف الصنف', 'Could not delete item') };
     }
   };
 
@@ -3210,18 +3377,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         skippedItems: res.skippedItems || [],
       };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر حذف الأصناف المستوردة' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر حذف الأصناف المستوردة', 'Could not delete imported items') };
     }
   };
 
   const toggleProductStatus = async (id: string) => {
     const prod = data.products.find((p) => p.id === id);
-    if (!prod) return { success: false, error: 'الصنف غير موجود' };
+    if (!prod) return { success: false, error: tr('الصنف غير موجود', 'Item not found') };
     try {
       await updateProduct(id, { status: prod.status === 'active' ? 'archived' : 'active' });
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err?.message };
+      return { success: false, error: err?.message ? tr(err.message) : undefined };
     }
   };
 
@@ -3234,7 +3401,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر التحويل المخزني' };
+      if (isNetworkFailure(err) && currentUser) {
+        const prod = data.products.find((pr) => pr.id === productId);
+        await queueOfflineOp({
+          operationType: 'transfer_stock',
+          entityType: 'stock_transfer',
+          entityId: productId,
+          summaryAr: `تحويل مخزني محلي (${prod?.name || productId})`,
+          payload: { productId, fromWarehouseId, toWarehouseId, quantity, notes },
+        });
+        return { success: true, queuedOffline: true };
+      }
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر التحويل المخزني', 'Stock transfer failed') };
     }
   };
 
@@ -3247,11 +3425,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const recordDamagedStock = async (productId: string, warehouseId: string, quantity: number, reason: string) => {
-    await apiRequest('/api/inventory/damaged', {
-      method: 'POST',
-      body: { productId, warehouseId, quantity, reason },
-    });
-    await loadRoleScopedData();
+    try {
+      await apiRequest('/api/inventory/damaged', {
+        method: 'POST',
+        body: { productId, warehouseId, quantity, reason },
+      });
+      await loadRoleScopedData();
+      return { success: true };
+    } catch (err: any) {
+      if (isNetworkFailure(err) && currentUser) {
+        const prod = data.products.find((pr) => pr.id === productId);
+        await queueOfflineOp({
+          operationType: 'record_damaged_stock',
+          entityType: 'damaged_stock',
+          entityId: productId,
+          summaryAr: `تسجيل تالف مخزني محلي (${prod?.name || productId})`,
+          payload: { productId, warehouseId, quantity, reason },
+        });
+        return { success: true, queuedOffline: true };
+      }
+      throw err;
+    }
   };
 
   const addCategory = async (name: string, description = '') => {
@@ -3263,7 +3457,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, category: res.category };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر إضافة التصنيف' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر إضافة التصنيف', 'Could not add category') };
     }
   };
 
@@ -3288,7 +3482,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, warehouse: res.warehouse };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر إضافة المستودع' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر إضافة المستودع', 'Could not add warehouse') };
     }
   };
 
@@ -3299,7 +3493,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const toggleWarehouseStatus = async (id: string) => {
     const wh = data.warehouses.find((w) => w.id === id);
-    if (!wh) return { success: false, error: 'المستودع غير موجود' };
+    if (!wh) return { success: false, error: tr('المستودع غير موجود', 'Warehouse not found') };
     try {
       await updateWarehouse(id, { status: wh.status === 'suspended' ? 'active' : 'suspended' });
       return { success: true };
@@ -3429,7 +3623,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const mergedCustomer = myCustomer ? { ...myCustomer, ...updates, syncStatus: 'pending' as const } : undefined;
         return { success: true, customer: mergedCustomer, queuedOffline: true };
       }
-      return { success: false, error: err?.message || 'تعذر تحديث بيانات الملف الشخصي والمحل' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تحديث بيانات الملف الشخصي والمحل', 'Could not update profile & shop details') };
     }
   };
 
@@ -3439,7 +3633,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر حذف العميل' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر حذف العميل', 'Could not delete customer') };
     }
   };
 
@@ -3455,7 +3649,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, customer: res.customer, user: res.user };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'فشل ربط حساب العميل' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('فشل ربط حساب العميل', 'Failed to link customer account') };
     }
   };
 
@@ -3467,7 +3661,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, repairedCount: res.repairedCount || 0 };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر إصلاح حسابات العملاء غير المربوطة' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر إصلاح حسابات العملاء غير المربوطة', 'Could not repair unlinked customer accounts') };
     }
   };
 
@@ -3480,7 +3674,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, isActive: res.isActive };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر تحديث حالة حساب العميل' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تحديث حالة حساب العميل', 'Could not update customer account status') };
     }
   };
 
@@ -3513,7 +3707,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         return { success: true, queuedOffline: true };
       }
-      return { success: false, error: err?.message || 'فشل تسجيل التحصيل' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('فشل تسجيل التحصيل', 'Failed to record collection') };
     }
   };
 
@@ -3553,8 +3747,24 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateSupplier = async (id: string, updates: Partial<Supplier>) => {
-    await apiRequest(`/api/admin/suppliers/${id}`, { method: 'PUT', body: updates });
-    await loadRoleScopedData();
+    try {
+      await apiRequest(`/api/admin/suppliers/${id}`, { method: 'PUT', body: updates });
+      await loadRoleScopedData();
+      return { success: true };
+    } catch (err: any) {
+      if (isNetworkFailure(err) && currentUser) {
+        const existing = data.suppliers.find((s) => s.id === id);
+        await queueOfflineOp({
+          operationType: 'update_supplier',
+          entityType: 'supplier',
+          entityId: id,
+          summaryAr: `تحديث بيانات المورد محليًا: ${updates.name || existing?.name || id}`,
+          payload: { supplierId: id, ...updates },
+        });
+        return { success: true, queuedOffline: true };
+      }
+      throw err;
+    }
   };
 
   const deleteSupplier = async (id: string) => {
@@ -3576,7 +3786,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         advanceCreditBalance: res.advanceCreditBalance,
       };
     } catch (err: any) {
-      return { success: false, code: err?.code, error: err?.message || 'فشل سداد المورد' };
+      return { success: false, code: err?.code, error: err?.message ? tr(err.message) : tr('فشل سداد المورد', 'Failed to record supplier payment') };
     }
   };
 
@@ -3600,7 +3810,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         settledAmount: res.settledAmount,
       };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر تسوية الدفعة المقدمة للمورد' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تسوية الدفعة المقدمة للمورد', 'Could not settle supplier advance payment') };
     }
   };
 
@@ -3625,7 +3835,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (needed > avail) {
               return {
                 success: false,
-                error: `الرصيد المحلي المتاح للصنف (${item.productName}) في المخزن المحدد هو (${avail}) فقط ولا يكفي للكمية المطلوبة (${needed}).`,
+                error: tr(
+                  `الرصيد المحلي المتاح للصنف (${item.productName}) في المخزن المحدد هو (${avail}) فقط ولا يكفي للكمية المطلوبة (${needed}).`,
+                  `Available local stock for (${item.productName}) in selected warehouse is only (${avail}), insufficient for requested (${needed}).`
+                ),
               };
             }
           }
@@ -3669,7 +3882,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
         return { success: true, invoice: optimisticInvoice, queuedOffline: true };
       }
-      return { success: false, error: err?.message || 'تعذر إنشاء فاتورة المبيعات' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر إنشاء فاتورة المبيعات', 'Could not create sales invoice') };
     }
   };
 
@@ -3741,7 +3954,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
         return { success: true, invoice: optimisticPurchase, queuedOffline: true };
       }
-      return { success: false, error: err?.message || 'تعذر إنشاء فاتورة المشتريات' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر إنشاء فاتورة المشتريات', 'Could not create purchase invoice') };
     }
   };
 
@@ -3768,7 +3981,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         return { success: true, queuedOffline: true };
       }
-      return { success: false, error: err?.message || 'تعذر إرسال فاتورة الشراء' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر إرسال فاتورة الشراء', 'Could not send purchase invoice') };
     }
   };
 
@@ -3781,7 +3994,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, invoice: res.invoice };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر تسجيل استلام فاتورة الشراء' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تسجيل استلام فاتورة الشراء', 'Could not mark purchase invoice as received') };
     }
   };
 
@@ -3794,7 +4007,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, invoice: res.invoice };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر رفض فاتورة الشراء' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر رفض فاتورة الشراء', 'Could not reject purchase invoice') };
     }
   };
 
@@ -3815,7 +4028,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         return { success: true, queuedOffline: true };
       }
-      return { success: false, error: err?.message || 'تعذر حذف مسودة فاتورة الشراء' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر حذف مسودة فاتورة الشراء', 'Could not delete draft purchase invoice') };
     }
   };
 
@@ -3870,7 +4083,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
         return { success: true, invoice: optimisticQuote, queuedOffline: true };
       }
-      return { success: false, error: err?.message || 'تعذر إنشاء عرض السعر' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر إنشاء عرض السعر', 'Could not create price quote') };
     }
   };
 
@@ -3884,7 +4097,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, invoice: res.invoice };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر تحويل عرض السعر إلى فاتورة بيع' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تحويل عرض السعر إلى فاتورة بيع', 'Could not convert price quote to sales invoice') };
     }
   };
 
@@ -3897,13 +4110,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, invoice: res.invoice };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر تأكيد مراجعة الفاتورة' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تأكيد مراجعة الفاتورة', 'Could not confirm invoice review') };
     }
   };
 
   const confirmDraftInvoice = async (invoiceId: string) => {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      return { success: false, error: 'اعتماد الفواتير يتطلب اتصالاً بالسيرفر المركزي لحسم المخزون والرصيد المعتمد.' };
+      return { success: false, error: tr('اعتماد الفواتير يتطلب اتصالاً بالسيرفر المركزي لحسم المخزون والرصيد المعتمد.', 'Confirming invoices requires a connection to the central server to deduct inventory and post balances.') };
     }
     try {
       const res = await apiRequest<{ ok: boolean; invoice: Invoice }>(`/api/invoices/${invoiceId}/confirm`, {
@@ -3912,7 +4125,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, invoice: res.invoice };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر اعتماد الفاتورة' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر اعتماد الفاتورة', 'Could not confirm invoice') };
     }
   };
 
@@ -3925,7 +4138,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر إلغاء الفاتورة' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر إلغاء الفاتورة', 'Could not cancel invoice') };
     }
   };
 
@@ -3952,7 +4165,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         return { success: true, queuedOffline: true };
       }
-      return { success: false, error: err?.message || 'تعذر تسجيل الدفعة' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تسجيل الدفعة', 'Could not record payment') };
     }
   };
 
@@ -3977,7 +4190,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         return { success: true, queuedOffline: true };
       }
-      return { success: false, error: err?.message || 'تعذر تعديل الفاتورة' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تعديل الفاتورة', 'Could not edit invoice') };
     }
   };
 
@@ -4017,7 +4230,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         return { success: true, queuedOffline: true };
       }
-      return { success: false, error: err?.message || 'تعذر تعديل فاتورة المشتريات' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تعديل فاتورة المشتريات', 'Could not edit purchase invoice') };
     }
   };
 
@@ -4043,7 +4256,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         return { success: true, queuedOffline: true };
       }
-      return { success: false, error: err?.message || 'تعذر إنشاء المرتجع' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر إنشاء المرتجع', 'Could not create return') };
     }
   };
 
@@ -4081,7 +4294,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         return { success: true, queuedOffline: true };
       }
-      return { success: false, error: err?.message || 'تعذر تقديم طلب مرتجع المشتريات' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تقديم طلب مرتجع المشتريات', 'Could not submit purchase return request') };
     }
   };
 
@@ -4098,7 +4311,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, request: res.request, invoiceReturn: res.invoiceReturn };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر اعتماد طلب مرتجع المشتريات' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر اعتماد طلب مرتجع المشتريات', 'Could not approve purchase return request') };
     }
   };
 
@@ -4114,7 +4327,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, request: res.request };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر رفض طلب مرتجع المشتريات' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر رفض طلب مرتجع المشتريات', 'Could not reject purchase return request') };
     }
   };
 
@@ -4153,7 +4366,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         return { success: true, queuedOffline: true };
       }
-      return { success: false, error: err?.message || 'تعذر تقديم طلب مرتجع المبيعات النقدي' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تقديم طلب مرتجع المبيعات النقدي', 'Could not submit cash sales return request') };
     }
   };
 
@@ -4170,7 +4383,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, request: res.request, invoiceReturn: res.invoiceReturn };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر اعتماد طلب مرتجع المبيعات' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر اعتماد طلب مرتجع المبيعات', 'Could not approve sales return request') };
     }
   };
 
@@ -4186,7 +4399,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, request: res.request };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر رفض طلب مرتجع المبيعات' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر رفض طلب مرتجع المبيعات', 'Could not reject sales return request') };
     }
   };
 
@@ -4211,7 +4424,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر التحويل بين الخزائن' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر التحويل بين الخزائن', 'Could not transfer between cashboxes') };
     }
   };
 
@@ -4278,66 +4491,141 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const createRepTransfer = async (transferData: {
-    direction: 'owner_to_rep' | 'rep_to_owner';
+    direction: 'owner_to_rep' | 'rep_to_owner' | 'rep_to_rep';
     senderId: string;
     senderName: string;
     receiverId: string;
     receiverName: string;
     amount: number;
-    cashboxId: string;
+    cashboxId?: string;
     notes?: string;
   }) => {
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      return { success: false, error: 'التحويلات النقدية تتطلب اتصالاً بالسيرفر المركزي.' };
+    const idempotencyKey = generateId('RTRF');
+    const dirLabel =
+      transferData.direction === 'rep_to_owner'
+        ? 'توريد للفرع'
+        : transferData.direction === 'rep_to_rep'
+        ? 'تحويل بين مناديب'
+        : 'صرف عهدة لمندوب';
+    if (typeof navigator !== 'undefined' && navigator.onLine === false && currentUser) {
+      const localId = generateId('TRF-LOC');
+      await queueOfflineOp({
+        operationType: 'create_rep_transfer',
+        entityType: 'rep_transfer',
+        localId,
+        summaryAr: `طلب تحويل مالي محلي (${dirLabel}): ${Number(transferData.amount || 0).toFixed(2)} ج.م`,
+        payload: { ...transferData },
+      });
+      return { success: true, queuedOffline: true };
     }
     try {
       const res = await apiRequest<{ ok: boolean; transfer: RepTransfer }>('/api/inventory/rep-transfers', {
         method: 'POST',
         body: transferData,
+        idempotencyKey,
       });
       await loadRoleScopedData();
       return { success: true, transfer: res.transfer };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر إرسال طلب التحويل' };
+      if (isNetworkFailure(err) && currentUser) {
+        const localId = generateId('TRF-LOC');
+        await queueOfflineOp({
+          operationType: 'create_rep_transfer',
+          entityType: 'rep_transfer',
+          localId,
+          summaryAr: `طلب تحويل مالي محلي (${dirLabel}): ${Number(transferData.amount || 0).toFixed(2)} ج.م`,
+          payload: { ...transferData },
+        });
+        return { success: true, queuedOffline: true };
+      }
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر إرسال طلب التحويل', 'Could not send transfer request') };
     }
   };
 
   const confirmRepTransferReceipt = async (transferId: string, note?: string) => {
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      return { success: false, error: 'تأكيد الاستلام النقدي يتطلب اتصالاً بالسيرفر المركزي.' };
+    const idempotencyKey = generateId('CTRF');
+    const trObj = (data.repTransfers || []).find((t) => t.id === transferId);
+    if (typeof navigator !== 'undefined' && navigator.onLine === false && currentUser) {
+      await queueOfflineOp({
+        operationType: 'confirm_rep_transfer',
+        entityType: 'rep_transfer',
+        entityId: transferId,
+        summaryAr: `تأكيد استلام تحويل مالي محليًا (${trObj?.transferNumber || transferId})`,
+        payload: { transferId, note },
+      });
+      return { success: true, queuedOffline: true };
     }
     try {
-      await apiRequest(`/api/inventory/rep-transfers/${transferId}/confirm`, { method: 'POST', body: { note } });
+      await apiRequest(`/api/inventory/rep-transfers/${transferId}/confirm`, {
+        method: 'POST',
+        body: { note },
+        idempotencyKey,
+      });
       await loadRoleScopedData();
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر اعتماد التحويل' };
+      if (isNetworkFailure(err) && currentUser) {
+        await queueOfflineOp({
+          operationType: 'confirm_rep_transfer',
+          entityType: 'rep_transfer',
+          entityId: transferId,
+          summaryAr: `تأكيد استلام تحويل مالي محليًا (${trObj?.transferNumber || transferId})`,
+          payload: { transferId, note },
+        });
+        return { success: true, queuedOffline: true };
+      }
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر اعتماد التحويل', 'Could not approve transfer') };
     }
   };
 
   const rejectRepTransfer = async (transferId: string, reason: string) => {
     try {
-      await apiRequest(`/api/inventory/rep-transfers/${transferId}/reject`, { method: 'POST', body: { reason } });
+      await apiRequest(`/api/inventory/rep-transfers/${transferId}/reject`, {
+        method: 'POST',
+        body: { reason },
+        idempotencyKey: generateId('JTRF'),
+      });
       await loadRoleScopedData();
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر رفض التحويل' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر رفض التحويل', 'Could not reject transfer') };
     }
   };
 
-  const createRepItemTransfer = async (transferData: Omit<RepItemTransferRequest, 'id' | 'requestNumber' | 'createdAt' | 'status' | 'createdBy'>) => {
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      return { success: false, error: 'إرسال طلبات تحويل الأصناف يتطلب اتصالاً بالسيرفر المركزي.' };
+  const createRepItemTransfer = async (transferData: Omit<RepItemTransferRequest, 'id' | 'requestNumber' | 'createdAt' | 'status' | 'createdBy'> & { autoDispatch?: boolean }) => {
+    const idempotencyKey = generateId('RITF');
+    if (typeof navigator !== 'undefined' && navigator.onLine === false && currentUser) {
+      const localId = generateId('RIT-LOC');
+      await queueOfflineOp({
+        operationType: 'create_rep_item_transfer',
+        entityType: 'rep_item_transfer',
+        localId,
+        summaryAr: `طلب تحويل أصناف محلي (${transferData.representativeName || transferData.representativeId})`,
+        payload: { ...transferData },
+      });
+      return { success: true, queuedOffline: true };
     }
     try {
       const res = await apiRequest<{ ok: boolean; request: RepItemTransferRequest }>('/api/inventory/rep-item-transfers', {
         method: 'POST',
         body: transferData,
+        idempotencyKey,
       });
       await loadRoleScopedData();
       return { success: true, request: res.request };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر إرسال طلب تحويل الأصناف' };
+      if (isNetworkFailure(err) && currentUser) {
+        const localId = generateId('RIT-LOC');
+        await queueOfflineOp({
+          operationType: 'create_rep_item_transfer',
+          entityType: 'rep_item_transfer',
+          localId,
+          summaryAr: `طلب تحويل أصناف محلي (${transferData.representativeName || transferData.representativeId})`,
+          payload: { ...transferData },
+        });
+        return { success: true, queuedOffline: true };
+      }
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر إرسال طلب تحويل الأصناف', 'Could not send item transfer request') };
     }
   };
 
@@ -4361,7 +4649,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         return { success: true, queuedOffline: true };
       }
-      return { success: false, error: err?.message || 'تعذر تحديث طلب التحويل' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تحديث طلب التحويل', 'Could not update transfer request') };
     }
   };
 
@@ -4406,7 +4694,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         return { success: true, queuedOffline: true };
       }
-      return { success: false, error: err?.message || 'تعذر تسجيل التسليم من العهدة' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تسجيل التسليم من العهدة', 'Could not record custody delivery') };
     }
   };
 
@@ -4455,7 +4743,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         return { success: true, queuedOffline: true };
       }
-      return { success: false, error: err?.message || 'تعذر إرجاع الصنف للمخزن' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر إرجاع الصنف للمخزن', 'Could not return item to warehouse') };
     }
   };
 
@@ -4477,7 +4765,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, operation: res.operation };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر تسجيل تسوية العهدة' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تسجيل تسوية العهدة', 'Could not record custody adjustment') };
     }
   };
 
@@ -4492,7 +4780,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       );
       return { success: true, statement: res.statement };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر تحميل كشف عهدة المندوب' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تحميل كشف عهدة المندوب', 'Could not load representative custody statement') };
     }
   };
 
@@ -4519,7 +4807,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       );
       return { success: true, report: res.report };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر تحميل تقرير حركة الصنف' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تحميل تقرير حركة الصنف', 'Could not load item movement report') };
     }
   };
 
@@ -4583,7 +4871,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           queuedOffline: true,
         };
       }
-      return { success: false, error: err?.message || 'تعذر إرسال الطلب حالياً' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر إرسال الطلب حالياً', 'Could not send order right now') };
     }
   };
 
@@ -4596,7 +4884,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, order: res.order };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر بدء مراجعة الطلب' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر بدء مراجعة الطلب', 'Could not start order review') };
     }
   };
 
@@ -4609,7 +4897,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, order: res.order };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر قبول الطلب' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر قبول الطلب', 'Could not approve order') };
     }
   };
 
@@ -4622,7 +4910,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, order: res.order };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر رفض الطلب' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر رفض الطلب', 'Could not reject order') };
     }
   };
 
@@ -4635,7 +4923,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, order: res.order };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر تعيين مندوب التوصيل' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تعيين مندوب التوصيل', 'Could not assign delivery representative') };
     }
   };
 
@@ -4674,7 +4962,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         return { success: true, queuedOffline: true };
       }
-      return { success: false, error: err?.message || 'تعذر تحديث حالة التوصيل' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تحديث حالة التوصيل', 'Could not update delivery status') };
     }
   };
 
@@ -4698,7 +4986,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, order: res.order };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر تحديث مرحلة الطلب' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تحديث مرحلة الطلب', 'Could not update order stage') };
     }
   };
 
@@ -4739,7 +5027,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         return { success: true, queuedOffline: true };
       }
-      return { success: false, error: err?.message || 'تعذر تسجيل الدفعة المقدمة للطلب' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تسجيل الدفعة المقدمة للطلب', 'Could not record order advance payment') };
     }
   };
 
@@ -4756,15 +5044,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, order: res.order, invoice: res.invoice };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر تحويل الطلب إلى فاتورة مبيعات' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تحويل الطلب إلى فاتورة مبيعات', 'Could not convert order to sales invoice') };
     }
   };
 
   const updateCustomerItemOrder = async (id: string, status: CustomerItemOrderRequest['status'], reason?: string) => {
     if (status === 'under_review') return reviewCustomerItemOrder(id, reason);
     if (status === 'approved') return approveCustomerItemOrder(id, reason);
-    if (status === 'rejected') return rejectCustomerItemOrder(id, reason || 'لم يتم تحديد سبب');
-    return { success: false, error: 'استخدم تحويل الطلب إلى فاتورة لإكمال دورة الاعتماد' };
+    if (status === 'rejected') return rejectCustomerItemOrder(id, reason || tr('لم يتم تحديد سبب', 'No reason specified'));
+    return { success: false, error: tr('استخدم تحويل الطلب إلى فاتورة لإكمال دورة الاعتماد', 'Use Convert Order to Invoice to complete the approval cycle') };
   };
 
   const updateCustomerItemOrderContent = async (
@@ -4784,7 +5072,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, order: res.order };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر تعديل الطلب' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تعديل الطلب', 'Could not edit order') };
     }
   };
 
@@ -4797,7 +5085,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, order: res.order };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر إلغاء الطلب' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر إلغاء الطلب', 'Could not cancel order') };
     }
   };
 
@@ -4808,7 +5096,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر إضافة الموظف' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر إضافة الموظف', 'Could not add employee') };
     }
   };
 
@@ -4818,7 +5106,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر تحديث بيانات الموظف' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تحديث بيانات الموظف', 'Could not update employee') };
     }
   };
 
@@ -4857,7 +5145,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, presets: res.presets };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر حفظ قوالب الصلاحيات الافتراضية' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر حفظ قوالب الصلاحيات الافتراضية', 'Could not save default permission templates') };
     }
   };
 
@@ -4880,7 +5168,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       applyIdentityOverviewToState(res);
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر تحميل سجل الهويات الموحدة' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تحميل سجل الهويات الموحدة', 'Could not load unified identities log') };
     }
   };
 
@@ -4891,7 +5179,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, result: res.result };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر تنفيذ تدقيق الهويات الموحدة' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تنفيذ تدقيق الهويات الموحدة', 'Could not run unified identities audit') };
     }
   };
 
@@ -4908,7 +5196,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, identityId: res.result?.identityId };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر ربط السجل بالهوية الموحدة' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر ربط السجل بالهوية الموحدة', 'Could not link record to unified identity') };
     }
   };
 
@@ -4921,7 +5209,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       applyIdentityOverviewToState(res);
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر تحديث حالة التعارض' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تحديث حالة التعارض', 'Could not update conflict status') };
     }
   };
 
@@ -4953,7 +5241,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         linkedRepresentativeId: res.linkedRepresentativeId,
       };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر إنشاء المستخدم' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر إنشاء المستخدم', 'Could not create user') };
     }
   };
 
@@ -4982,7 +5270,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         linkedRepresentativeId: res.linkedRepresentativeId,
       };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر تحديث المستخدم' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تحديث المستخدم', 'Could not update user') };
     }
   };
 
@@ -4992,7 +5280,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر حذف المستخدم' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر حذف المستخدم', 'Could not delete user') };
     }
   };
 
@@ -5058,7 +5346,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } catch (err: any) {
         return {
           success: false,
-          error: err?.message || 'تعذر حفظ إعدادات الاتصال في السيرفر المركزي',
+          error: err?.message ? tr(err.message) : tr('تعذر حفظ إعدادات الاتصال في السيرفر المركزي', 'Could not save connection settings on central server'),
         };
       }
     }
@@ -5125,7 +5413,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, log: res.log };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر تنفيذ الترحيل' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تنفيذ الترحيل', 'Could not execute migration') };
     }
   };
 
@@ -5135,7 +5423,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر التراجع عن الترحيل' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر التراجع عن الترحيل', 'Could not roll back migration') };
     }
   };
 
@@ -5168,7 +5456,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         return { success: true, queuedOffline: true };
       }
-      return { success: false, error: err?.message || 'تعذر تنفيذ العملية النقدية' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تنفيذ العملية النقدية', 'Could not execute cash operation') };
     }
   };
 
@@ -5181,7 +5469,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر تعديل اسم التصنيف' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تعديل اسم التصنيف', 'Could not rename category') };
     }
   };
 
@@ -5195,7 +5483,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, account: res.account };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر إنشاء الحساب الشخصي' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر إنشاء الحساب الشخصي', 'Could not create personal account') };
     }
   };
 
@@ -5208,7 +5496,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, account: res.account };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر تحديث الحساب الشخصي' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تحديث الحساب الشخصي', 'Could not update personal account') };
     }
   };
 
@@ -5225,7 +5513,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, transaction: res.transaction, account: res.account };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر تسجيل الحركة الشخصية' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تسجيل الحركة الشخصية', 'Could not record personal transaction') };
     }
   };
 
@@ -5241,7 +5529,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, transaction: res.transaction };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر تعديل الحركة الشخصية' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تعديل الحركة الشخصية', 'Could not edit personal transaction') };
     }
   };
 
@@ -5255,7 +5543,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, count: res.count };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر إنشاء جلسة الجرد' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر إنشاء جلسة الجرد', 'Could not create stock count session') };
     }
   };
 
@@ -5268,7 +5556,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, count: res.count };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر حفظ تعديلات الجرد' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر حفظ تعديلات الجرد', 'Could not save stock count updates') };
     }
   };
 
@@ -5280,7 +5568,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, count: res.count };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر إرسال الجرد للاعتماد' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر إرسال الجرد للاعتماد', 'Could not submit stock count for approval') };
     }
   };
 
@@ -5297,7 +5585,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         success: false,
         code: err?.code,
         diverged: err?.details?.diverged,
-        error: err?.message || 'تعذر اعتماد الجرد',
+        error: err?.message ? tr(err.message) : tr('تعذر اعتماد الجرد', 'Could not approve stock count'),
       };
     }
   };
@@ -5311,7 +5599,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, count: res.count };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر رفض الجرد' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر رفض الجرد', 'Could not reject stock count') };
     }
   };
 
@@ -5337,7 +5625,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, transfer: res.transfer };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر إنشاء طلب التحويل' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر إنشاء طلب التحويل', 'Could not create transfer request') };
     }
   };
 
@@ -5349,7 +5637,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, transfer: res.transfer };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر إرسال طلب التحويل للاعتماد' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر إرسال طلب التحويل للاعتماد', 'Could not submit transfer request for approval') };
     }
   };
 
@@ -5362,7 +5650,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, transfer: res.transfer };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر اعتماد طلب التحويل' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر اعتماد طلب التحويل', 'Could not approve transfer request') };
     }
   };
 
@@ -5375,7 +5663,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, transfer: res.transfer };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر رفض طلب التحويل' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر رفض طلب التحويل', 'Could not reject transfer request') };
     }
   };
 
@@ -5387,7 +5675,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, transfer: res.transfer };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر تنفيذ التحويل المخزني' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تنفيذ التحويل المخزني', 'Could not execute stock transfer') };
     }
   };
 
@@ -5400,7 +5688,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setPublishedStorefront(res.published);
       return { success: true, draft: res.draft, published: res.published };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر تحميل إعدادات واجهة المتجر' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تحميل إعدادات واجهة المتجر', 'Could not load storefront settings') };
     }
   }, []);
 
@@ -5411,7 +5699,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setStorefrontPublishedAdmin(res.published);
       return { success: true, draft: res.draft };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر حفظ مسودة المتجر' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر حفظ مسودة المتجر', 'Could not save storefront draft') };
     }
   };
 
@@ -5424,14 +5712,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await loadRoleScopedData();
       return { success: true, draft: res.draft, published: res.published };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر نشر تحديثات المتجر' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر نشر تحديثات المتجر', 'Could not publish storefront updates') };
     }
   };
 
   const toggleCustomerFavorite = async (productId: string) => {
     const cleanId = String(productId || '').trim();
     if (!cleanId) {
-      return { success: false, favoriteProductIds: customerFavorites, isFavorite: false, error: 'معرف الصنف غير صالح' };
+      return { success: false, favoriteProductIds: customerFavorites, isFavorite: false, error: tr('معرف الصنف غير صالح', 'Invalid product ID') };
     }
     const prevList = customerFavorites;
     const exists = prevList.includes(cleanId);
@@ -5467,7 +5755,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         success: false,
         favoriteProductIds: prevList,
         isFavorite: exists,
-        error: err?.message || 'تعذر تحديث قائمة المفضلة',
+        error: err?.message ? tr(err.message) : tr('تعذر تحديث قائمة المفضلة', 'Could not update favorites list'),
       };
     }
   };
@@ -5500,6 +5788,37 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
   }).length;
 
+  const myRepProfileForCount =
+    currentUser?.role === 'representative'
+      ? (data.representatives || []).find((r) => r.userId && r.userId === currentUser.id)
+      : undefined;
+
+  const actionableCashCount = (data.repTransfers || []).filter((t) => {
+    if (t.status !== 'awaiting_receipt' || !currentUser || currentUser.role === 'customer') return false;
+    if (currentUser.role === 'representative') {
+      if (!myRepProfileForCount) return false;
+      return (t.direction === 'owner_to_rep' || t.direction === 'rep_to_rep') && t.receiverId === myRepProfileForCount.id && t.senderId !== myRepProfileForCount.id;
+    }
+    const p = currentUser.permissions || {};
+    return currentUser.role === 'admin' || currentUser.role === 'manager' || Boolean(p.canManageTransfers || p.canManageReps || p.canManageCashboxes || p.canApprove);
+  }).length;
+
+  const actionableItemTransferCount = (data.repItemTransfers || []).filter((r) => {
+    if (!currentUser || currentUser.role === 'customer') return false;
+    if (currentUser.role === 'representative') {
+      if (!myRepProfileForCount) return false;
+      return r.status === 'executed' && r.representativeId === myRepProfileForCount.id && r.senderRepresentativeId !== myRepProfileForCount.id;
+    }
+    const p = currentUser.permissions || {};
+    if (currentUser.role !== 'admin' && currentUser.role !== 'manager' && !p.canManageTransfers && !p.canManageReps && !p.canApprove) {
+      return false;
+    }
+    return r.status === 'pending' || r.status === 'executed';
+  }).length;
+
+  const pendingSendReceiveCount =
+    pendingSyncCount + conflictsCount + incomingDispatchCount + actionableCashCount + actionableItemTransferCount;
+
   if (!isInitialLoaded && isAuthenticated) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-900 text-white font-sans">
@@ -5515,6 +5834,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <DataContext.Provider
       value={{
         ...data,
+        repTransferTargets: data.repTransferTargets || [],
         auditLogs: data.auditLogs || [],
         orderAdvancePayments: data.orderAdvancePayments || [],
         syncConflicts,
@@ -5522,6 +5842,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         syncDispatchBatches,
         dispatchRecipients,
         incomingDispatchCount,
+        pendingSendReceiveCount,
         isServerReachable,
         isSyncing,
         pendingSyncCount,

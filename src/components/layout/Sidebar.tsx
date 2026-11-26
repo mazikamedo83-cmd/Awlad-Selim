@@ -136,7 +136,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   mobileDrawer = false,
 }) => {
   const { hasPermission, currentUser } = useAuth();
-  const { customerItemOrders = [], incomingDispatchCount = 0 } = useData();
+  const { customerItemOrders = [], pendingSendReceiveCount = 0 } = useData();
   const { dir, t, language } = usePreferences();
   const isLtr = dir === 'ltr';
   const pendingOrdersCount = customerItemOrders.filter((o) => o.status === 'pending').length;
@@ -271,25 +271,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
         icon: RepsFleetIcon,
         headerGradient: 'bg-[var(--awlad-blue-tint-50)] dark:bg-[#132544] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] border-[var(--awlad-blue-tint-100)] dark:border-[#21375C]',
         iconAccent: 'bg-white dark:bg-[#172E56] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E]',
-        permission: 'canManageReps',
+        permission: ['canManageReps', 'canManageTransfers'],
         items: [
           {
             key: 'refresh-sync',
-            label: t('REFRESH · إرسال واستلام المندوبين', 'REFRESH · Send & Receive'),
+            label: t('الإرسال والاستلام والتحويل', 'Send, Receive & Transfers'),
             permission: ['canManageReps', 'canManageTransfers', 'canManageSales', 'canManageAccounts', 'canApprove'],
-            badge: incomingDispatchCount > 0 ? `${incomingDispatchCount}` : undefined,
+            badge: pendingSendReceiveCount > 0 ? `${pendingSendReceiveCount}` : undefined,
           },
-          { key: 'reps', label: t('قائمة المناديب', 'Representatives List') },
-          {
-            key: 'rep-transfers',
-            label: t('طلب تحويل بالنصف (المالي)', 'Financial Transfer Requests'),
-            permission: 'canManageTransfers',
-          },
-          {
-            key: 'rep-item-transfers',
-            label: t('تحويل أصناف وعهدة (فاتورة)', 'Rep Stock & Custody Transfer'),
-            permission: 'canManageTransfers',
-          },
+          { key: 'reps', label: t('قائمة المناديب والعهد', 'Representatives & Custody'), permission: 'canManageReps' },
         ],
       },
       {

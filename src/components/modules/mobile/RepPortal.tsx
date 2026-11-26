@@ -3637,7 +3637,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       iconNode: <RefreshCloudIcon className="w-11 h-11" />,
       allowed: true,
       tone: 'bg-white text-slate-900 border-blue-200 hover:border-blue-400',
-      badgeCount: data.pendingSyncCount,
+      badgeCount: data.pendingSendReceiveCount || data.pendingSyncCount,
     },
     ...(!isRepRoleAccount
       ? [
@@ -3694,13 +3694,19 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   };
 
   const pendingCustodyDispatches = useMemo(
-    () => myItemTransfers.filter((t) => t.status === 'executed'),
-    [myItemTransfers]
+    () => myItemTransfers.filter((t) => t.status === 'executed' && (!rep || t.senderRepresentativeId !== rep.id)),
+    [myItemTransfers, rep]
   );
 
   const pendingCashReceipts = useMemo(
-    () => myCashTransfers.filter((t) => t.status === 'awaiting_receipt' && t.direction === 'owner_to_rep'),
-    [myCashTransfers]
+    () =>
+      myCashTransfers.filter(
+        (t) =>
+          t.status === 'awaiting_receipt' &&
+          (!rep || t.senderId !== rep.id) &&
+          (t.direction === 'owner_to_rep' || (t.direction === 'rep_to_rep' && (!rep || t.receiverId === rep.id)))
+      ),
+    [myCashTransfers, rep]
   );
 
   const activeAssignedOrders = useMemo(
@@ -3934,7 +3940,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   <span>{t('إرسال واستلام', 'Send & Receive')}</span>
                 </span>
                 <span className="font-mono text-[10px] bg-white/15 px-1.5 py-0.5 rounded tabular-nums">
-                  {t('معلق:', 'Pending:')} {formatLocaleNumber(data.pendingSyncCount)} · {t('استلام:', 'Incoming:')} {formatLocaleNumber(pendingCustodyDispatches.length + pendingCashReceipts.length)}
+                  {t('معلق:', 'Pending:')} {formatLocaleNumber(data.pendingSyncCount)} · {t('استلام:', 'Incoming:')} {formatLocaleNumber(pendingCustodyDispatches.length + pendingCashReceipts.length + data.incomingDispatchCount)}
                   {data.mandatorySendEnabled
                     ? ` · ${String(Math.floor(data.mandatorySendRemainingSeconds / 60)).padStart(2, '0')}:${String(data.mandatorySendRemainingSeconds % 60).padStart(2, '0')}`
                     : ''}
@@ -11494,7 +11500,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           <div>
                             <span className="font-black text-slate-900 block">{t(entry.label)}</span>
                             <span className="font-mono text-[10px] text-slate-500 block">{entry.docNumber} · {entry.date}</span>
-                            {entry.description && <span className="text-[10px] text-slate-500 block">{entry.description}</span>}
+                            {entry.description && <span className="text-[10px] text-slate-500 block">{t(entry.description)}</span>}
                           </div>
                         ),
                       },

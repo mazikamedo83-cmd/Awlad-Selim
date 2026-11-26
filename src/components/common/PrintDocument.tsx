@@ -9,7 +9,7 @@ import { isNativeCapacitor } from '../../services/native';
 export interface PrintData {
   title: string;
   docNumber: string;
-  docType: 'فاتورة مبيعات' | 'فاتورة مشتريات' | 'مرتجع مبيعات' | 'مرتجع مشتريات' | 'سند قبض' | 'سند صرف' | 'كشف حساب' | 'إيصال استلام' | 'عرض سعر';
+  docType: string;
   date: string;
   partyName?: string;
   partyPhone?: string;
@@ -37,7 +37,7 @@ export interface PrintData {
   previousBalance?: number;
   currentBalance?: number;
   notes?: string;
-  tableHeaders?: [string, string, string, string, string, string, string];
+  tableHeaders?: string[];
 }
 
 interface PrintDocumentProps {

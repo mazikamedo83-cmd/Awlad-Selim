@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, ArrowRight } from 'lucide-react';
+import { ArrowLeft, ArrowRight, History, ListChecks, PackageCheck, RefreshCw, Wallet } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { usePreferences } from '../../../context/PreferencesContext';
 import { formatLocaleNumber } from '../../../i18n/translator';
 import { formatCountdownMmSs, formatMobileSyncTimestamp } from '../../../services/syncEngine';
 import { syncNativeStatusBarStyle } from '../../../services/native';
+import { RefreshSyncScreen, UnifiedTransferSyncTab } from './RefreshSyncScreen';
 
 interface MobileSendReceiveScreenProps {
   onBack?: () => void;
@@ -16,6 +17,7 @@ export const MobileSendReceiveScreen: React.FC<MobileSendReceiveScreenProps> = (
   const [isSending, setIsSending] = useState(false);
   const [isReceiving, setIsReceiving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [fullCenterTab, setFullCenterTab] = useState<UnifiedTransferSyncTab | null>(null);
 
   useEffect(() => {
     syncNativeStatusBarStyle('dark-header');
@@ -26,12 +28,45 @@ export const MobileSendReceiveScreen: React.FC<MobileSendReceiveScreenProps> = (
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        onBack();
+        if (fullCenterTab) {
+          setFullCenterTab(null);
+        } else {
+          onBack();
+        }
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onBack]);
+  }, [onBack, fullCenterTab]);
+
+  if (fullCenterTab) {
+    return (
+      <div
+        dir={dir}
+        data-testid="mobile-send-receive-screen"
+        className="fixed inset-0 z-[55] bg-[var(--awlad-surface-page)] dark:bg-[#081326] text-slate-900 dark:text-[#EEF4FC] flex flex-col overflow-hidden pb-safe"
+      >
+        <header dir="ltr" className="w-full shrink-0 bg-[#1e3a8a] text-white pt-safe">
+          <div className="h-12 px-3 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              data-testid="mobile-send-receive-back-btn"
+              onClick={() => setFullCenterTab(null)}
+              aria-label={t('رجوع', 'Back')}
+              className="h-9 px-2.5 flex items-center gap-1.5 text-white rounded-md active:bg-white/15 cursor-pointer text-xs font-black"
+            >
+              {isRtl ? <ArrowLeft className="w-5 h-5" /> : <ArrowRight className="w-5 h-5" />}
+              <span>{t('الوضع السريع', 'Quick View')}</span>
+            </button>
+            <span className="text-xs font-black truncate">{t('الإرسال والاستلام والتحويل', 'Send, Receive & Transfers')}</span>
+          </div>
+        </header>
+        <main className="flex-1 overflow-y-auto p-2">
+          <RefreshSyncScreen initialTab={fullCenterTab} onBack={() => setFullCenterTab(null)} />
+        </main>
+      </div>
+    );
+  }
 
   const unsentCount = data.pendingSyncCount;
   const lastSendFmt = formatMobileSyncTimestamp(data.lastSendSummary?.at);
@@ -113,7 +148,7 @@ export const MobileSendReceiveScreen: React.FC<MobileSendReceiveScreenProps> = (
         dir="ltr"
         className="w-full shrink-0 bg-[#1e3a8a] dark:bg-[#1e3a8a] pt-safe"
       >
-        <div className="h-12 px-3 flex items-center justify-start">
+        <div className="h-12 px-3 flex items-center justify-between gap-2">
           <button
             type="button"
             data-testid="mobile-send-receive-back-btn"
@@ -122,6 +157,14 @@ export const MobileSendReceiveScreen: React.FC<MobileSendReceiveScreenProps> = (
             className="w-10 h-10 flex items-center justify-center text-white dark:text-white rounded-full active:bg-white/15 cursor-pointer"
           >
             <BackIcon className="w-6 h-6" strokeWidth={2.5} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setFullCenterTab('log')}
+            className="h-8 px-2.5 rounded-md bg-white/15 hover:bg-white/25 text-white text-xs font-black flex items-center gap-1.5 cursor-pointer"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>{t('المركز الشامل والتحويلات', 'Full Transfer Center')}</span>
           </button>
         </div>
       </header>
@@ -190,6 +233,42 @@ export const MobileSendReceiveScreen: React.FC<MobileSendReceiveScreenProps> = (
           className="mt-4 text-center text-[42px] leading-none font-bold text-black dark:text-black tabular-nums tracking-wide"
         >
           {countdownText}
+        </div>
+
+        {/* Compact Quick Jumps to Unified 6-Tab Center Sections */}
+        <div className="mt-5 pt-3 border-t border-slate-200 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => setFullCenterTab('financial-transfers')}
+            className="min-h-[40px] px-2.5 rounded-lg border border-slate-300 bg-slate-50 hover:bg-slate-100 text-[#011E58] text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer"
+          >
+            <Wallet className="w-3.5 h-3.5" />
+            <span>{t('تحويلات مالية', 'Financial Transfers')}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setFullCenterTab('stock-custody')}
+            className="min-h-[40px] px-2.5 rounded-lg border border-slate-300 bg-slate-50 hover:bg-slate-100 text-[#011E58] text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer"
+          >
+            <PackageCheck className="w-3.5 h-3.5" />
+            <span>{t('بضائع وعهد', 'Stock & Custody')}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setFullCenterTab('pending')}
+            className="min-h-[40px] px-2.5 rounded-lg border border-slate-300 bg-slate-50 hover:bg-slate-100 text-[#011E58] text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer"
+          >
+            <ListChecks className="w-3.5 h-3.5" />
+            <span>{t('المعلقة والتعارضات', 'Pending & Conflicts')}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setFullCenterTab('log')}
+            className="min-h-[40px] px-2.5 rounded-lg border border-slate-300 bg-slate-50 hover:bg-slate-100 text-[#011E58] text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer"
+          >
+            <History className="w-3.5 h-3.5" />
+            <span>{t('سجل العمليات', 'Operations Log')}</span>
+          </button>
         </div>
 
         {/* Minimal inline error line shown ONLY on actual error */}

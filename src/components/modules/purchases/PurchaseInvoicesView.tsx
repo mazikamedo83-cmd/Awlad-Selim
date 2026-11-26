@@ -557,8 +557,8 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
       docNumber: inv.invoiceNumber,
       docType: t('فاتورة مشتريات', 'Purchase Invoice'),
       date: inv.date,
-      partyName: t(inv.supplierName),
-      warehouseName: t(inv.warehouseName),
+      partyName: inv.supplierName ? t(inv.supplierName) : undefined,
+      warehouseName: inv.warehouseName ? t(inv.warehouseName) : undefined,
       grandTotal: inv.grandTotal,
       paidAmount: inv.paidAmount,
       remainingAmount: inv.remainingAmount,
@@ -935,7 +935,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
             exportValue: (inv) => inv.supplierName || '-',
             render: (inv) => (
               <div>
-                <div className="font-bold text-slate-800">{t(inv.supplierName)}</div>
+                <div className="font-bold text-slate-800">{inv.supplierName ? t(inv.supplierName) : '-'}</div>
                 {(inv.representativeName || inv.sentBy) && (
                   <div className="text-[10px] text-[#003589] font-bold mt-0.5">
                     {t('المندوب / المرسل:', 'Rep / Sender:')} {inv.representativeName || inv.sentBy}
@@ -2220,7 +2220,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                             />
                           </td>
                           <td className="p-2.5 text-center font-black text-blue-900">
-                            {formatLocaleNumber(computeLineTotal(item.quantity, item.unitPrice, item.discount || 0), locale)} {t(settings.currency)}
+                            {formatLocaleNumber(computeLineTotal(item.quantity, item.unitPrice, item.discount || 0))} {t(settings.currency)}
                           </td>
                           <td className="p-2.5 text-center">
                             <button

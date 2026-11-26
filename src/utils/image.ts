@@ -1,3 +1,5 @@
+import { tr } from '../i18n/translator';
+
 export function compressImageFileToDataUrl(
   file: File,
   maxDimension: number = 640,
@@ -5,15 +7,15 @@ export function compressImageFileToDataUrl(
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     if (!file || !file.type.startsWith('image/')) {
-      reject(new Error('الملف المختار ليس صورة صالحة'));
+      reject(new Error(tr('الملف المختار ليس صورة صالحة', 'Selected file is not a valid image')));
       return;
     }
 
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error('تعذر قراءة ملف الصورة'));
+    reader.onerror = () => reject(new Error(tr('تعذر قراءة ملف الصورة', 'Could not read image file')));
     reader.onload = () => {
       const img = new Image();
-      img.onerror = () => reject(new Error('تعذر معالجة الصورة المختارة'));
+      img.onerror = () => reject(new Error(tr('تعذر معالجة الصورة المختارة', 'Could not process selected image')));
       img.onload = () => {
         const ratio = Math.min(1, maxDimension / Math.max(img.width || 1, img.height || 1));
         const width = Math.max(1, Math.round(img.width * ratio));

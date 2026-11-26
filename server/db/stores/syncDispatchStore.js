@@ -367,12 +367,15 @@ function summarizeOperationOutcome(op, result, deduplicated = false) {
     result?.invoiceNumber ||
     result?.returnNumber ||
     result?.transactionNumber ||
+    result?.transferNumber ||
     result?.requestNumber ||
     result?.operationNumber ||
     result?.order?.requestNumber ||
     result?.invoice?.invoiceNumber ||
     p.invoiceNumber ||
     p.returnNumber ||
+    p.transferNumber ||
+    p.requestNumber ||
     p.localId ||
     op.localId ||
     undefined;
@@ -380,11 +383,16 @@ function summarizeOperationOutcome(op, result, deduplicated = false) {
   let customerName =
     result?.customerName ||
     result?.partyName ||
+    result?.receiverName ||
+    result?.representativeName ||
     result?.name ||
     result?.customer?.name ||
     p.customerName ||
     p.partyName ||
     p.supplierName ||
+    p.receiverName ||
+    p.representativeName ||
+    p.productName ||
     p.name ||
     undefined;
 
@@ -393,7 +401,14 @@ function summarizeOperationOutcome(op, result, deduplicated = false) {
   if (op.operationType === 'create_sales_invoice' || op.operationType === 'create_purchase_invoice') {
     amount = round2(result?.grandTotal ?? p.grandTotal ?? 0);
     paidAmount = round2(result?.paidAmount ?? p.paidAmount ?? 0);
-  } else if (op.operationType === 'record_customer_payment' || op.operationType === 'add_invoice_payment' || op.operationType === 'record_order_advance') {
+  } else if (
+    op.operationType === 'record_customer_payment' ||
+    op.operationType === 'add_invoice_payment' ||
+    op.operationType === 'record_order_advance' ||
+    op.operationType === 'create_rep_transfer' ||
+    op.operationType === 'confirm_rep_transfer' ||
+    op.operationType === 'execute_cash_operation'
+  ) {
     amount = round2(result?.amount ?? p.amount ?? 0);
     paidAmount = amount;
   } else if (op.operationType?.includes('return')) {
@@ -404,7 +419,7 @@ function summarizeOperationOutcome(op, result, deduplicated = false) {
     operationId: op.operationId,
     operationType: op.operationType,
     entityType: op.entityType || 'unknown',
-    entityId: op.entityId || result?.id || result?.invoice?.id || result?.order?.id || undefined,
+    entityId: op.entityId || result?.id || result?.transferId || result?.requestId || result?.invoice?.id || result?.order?.id || undefined,
     docNumber,
     customerName,
     amount,
@@ -560,22 +575,36 @@ export async function createAndSendDispatchBatch(body, authContext, deps) {
 
   for (const item of docSummary) {
     const t = item.operationType;
-    if (t === 'create_sales_invoice') {
+    if (t === 'create_sales_invoice' || t === 'edit_sales_invoice') {
       salesCount++;
       totalSalesAmount = round2(totalSalesAmount + Number(item.amount || 0));
       totalCashAmount = round2(totalCashAmount + Number(item.paidAmount || 0));
-    } else if (t === 'create_purchase_invoice' || t === 'send_purchase_invoice') {
+    } else if (t === 'create_purchase_invoice' || t === 'send_purchase_invoice' || t === 'edit_purchase_invoice') {
       purchasesCount++;
-    } else if (t === 'record_customer_payment' || t === 'add_invoice_payment' || t === 'record_order_advance') {
+    } else if (
+      t === 'record_customer_payment' ||
+      t === 'add_invoice_payment' ||
+      t === 'record_order_advance' ||
+      t === 'create_rep_transfer' ||
+      t === 'confirm_rep_transfer' ||
+      t === 'execute_cash_operation'
+    ) {
       collectionsCount++;
       totalCashAmount = round2(totalCashAmount + Number(item.amount || 0));
     } else if (t === 'create_invoice_return' || t === 'create_sales_return_request' || t === 'create_purchase_return_request' || t === 'create_purchase_return') {
       returnsCount++;
     } else if (t === 'create_order') {
       ordersCount++;
-    } else if (t === 'create_customer' || t === 'update_customer') {
+    } else if (t === 'create_customer' || t === 'update_customer' || t === 'create_supplier' || t === 'update_supplier') {
       customersCount++;
-    } else if (t === 'record_custody_delivery' || t === 'record_custody_return' || t === 'confirm_custody_receipt') {
+    } else if (
+      t === 'record_custody_delivery' ||
+      t === 'record_custody_return' ||
+      t === 'confirm_custody_receipt' ||
+      t === 'create_rep_item_transfer' ||
+      t === 'transfer_stock' ||
+      t === 'record_damaged_stock'
+    ) {
       custodyOpsCount++;
     }
   }

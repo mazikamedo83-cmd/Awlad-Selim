@@ -272,12 +272,11 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         items: [
           {
             key: 'refresh-sync',
-            label: t('إرسال واستلام', 'Send & Receive'),
+            label: t('الإرسال والاستلام والتحويل', 'Send, Receive & Transfers'),
+            badge: data.pendingSendReceiveCount > 0 ? `${data.pendingSendReceiveCount}` : undefined,
             permission: ['canManageReps', 'canManageTransfers', 'canManageSales', 'canManageAccounts', 'canApprove'],
           },
           { key: 'reps', label: t('قائمة المناديب والعهد', 'Representatives & Custody'), permission: 'canManageReps' },
-          { key: 'rep-transfers', label: t('طلب تحويل بالنصف (المالي)', 'Cash Custody Transfer'), permission: 'canManageTransfers' },
-          { key: 'rep-item-transfers', label: t('تحويل أصناف وعهدة للمناديب', 'Rep Stock Custody Transfer'), permission: 'canManageTransfers' },
         ],
       },
       {

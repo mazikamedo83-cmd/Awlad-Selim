@@ -103,8 +103,9 @@ router.post(
     if (u.role !== 'representative' && u.role !== 'admin' && !u.permissions?.canManageTransfers && !u.permissions?.canManageReps) {
       return res.status(403).json({ ok: false, code: 'FORBIDDEN', error: 'ليس لديك صلاحية إنشاء تحويل مندوب' });
     }
-    const transfer = await createRepTransfer(req.body || {}, u);
-    res.status(201).json({ ok: true, transfer });
+    const idemKey = String(req.get('idempotency-key') || req.body?.idempotencyKey || '').trim();
+    const transfer = await createRepTransfer(req.body || {}, u, idemKey);
+    res.status(transfer?.deduplicated ? 200 : 201).json({ ok: true, transfer });
   })
 );
 
@@ -115,8 +116,9 @@ router.post(
     if (u.role !== 'representative' && u.role !== 'admin' && !u.permissions?.canManageTransfers && !u.permissions?.canManageCashboxes) {
       return res.status(403).json({ ok: false, code: 'FORBIDDEN', error: 'ليس لديك صلاحية اعتماد التحويل' });
     }
-    await confirmRepTransfer(req.params.id, req.body || {}, u);
-    res.json({ ok: true });
+    const idemKey = String(req.get('idempotency-key') || req.body?.idempotencyKey || '').trim();
+    const result = await confirmRepTransfer(req.params.id, req.body || {}, u, idemKey);
+    res.json({ ok: true, ...result });
   })
 );
 
@@ -127,8 +129,9 @@ router.post(
     if (u.role !== 'representative' && u.role !== 'admin' && !u.permissions?.canManageTransfers) {
       return res.status(403).json({ ok: false, code: 'FORBIDDEN', error: 'ليس لديك صلاحية رفض التحويل' });
     }
-    await rejectRepTransfer(req.params.id, req.body || {}, u);
-    res.json({ ok: true });
+    const idemKey = String(req.get('idempotency-key') || req.body?.idempotencyKey || '').trim();
+    const result = await rejectRepTransfer(req.params.id, req.body || {}, u, idemKey);
+    res.json({ ok: true, ...result });
   })
 );
 
@@ -139,16 +142,18 @@ router.post(
     if (u.role !== 'representative' && u.role !== 'admin' && !u.permissions?.canManageTransfers && !u.permissions?.canManageReps) {
       return res.status(403).json({ ok: false, code: 'FORBIDDEN', error: 'غير مصرح بإنشاء طلب تحويل أصناف' });
     }
-    const request = await createRepItemTransfer(req.body || {}, u);
-    res.status(201).json({ ok: true, request });
+    const idemKey = String(req.get('idempotency-key') || req.body?.idempotencyKey || '').trim();
+    const request = await createRepItemTransfer(req.body || {}, u, idemKey);
+    res.status(request?.deduplicated ? 200 : 201).json({ ok: true, request });
   })
 );
 
 router.post(
   '/rep-item-transfers/:id/status',
   asyncHandler(async (req, res) => {
-    await updateRepItemTransferStatus(req.params.id, req.body || {}, req.auth.user);
-    res.json({ ok: true });
+    const idemKey = String(req.get('idempotency-key') || req.body?.idempotencyKey || '').trim();
+    const result = await updateRepItemTransferStatus(req.params.id, req.body || {}, req.auth.user, idemKey);
+    res.json({ ok: true, ...result });
   })
 );
 

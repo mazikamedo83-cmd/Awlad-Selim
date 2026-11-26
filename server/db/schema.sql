@@ -374,6 +374,7 @@ CREATE TABLE IF NOT EXISTS rep_transfers (
   rejected_at TIMESTAMPTZ,
   confirmed_by TEXT,
   audit_trail JSONB NOT NULL DEFAULT '[]'::jsonb,
+  idempotency_key VARCHAR(128),
   created_by VARCHAR(64) NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -385,6 +386,8 @@ CREATE TABLE IF NOT EXISTS rep_item_transfers (
   date DATE NOT NULL,
   representative_id VARCHAR(64) NOT NULL REFERENCES representatives(id) ON DELETE RESTRICT,
   representative_name TEXT NOT NULL,
+  sender_representative_id VARCHAR(64),
+  sender_representative_name TEXT DEFAULT '',
   invoice_id VARCHAR(64),
   invoice_number VARCHAR(64),
   source_warehouse_id VARCHAR(64) NOT NULL REFERENCES warehouses(id) ON DELETE RESTRICT,
@@ -403,7 +406,8 @@ CREATE TABLE IF NOT EXISTS rep_item_transfers (
   reviewed_at TIMESTAMPTZ,
   executed_at TIMESTAMPTZ,
   received_by VARCHAR(64),
-  received_at TIMESTAMPTZ
+  received_at TIMESTAMPTZ,
+  idempotency_key VARCHAR(128)
 );
 
 -- 18. بنود طلب تحويل الأصناف (Rep Item Transfer Items)

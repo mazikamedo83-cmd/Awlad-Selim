@@ -1711,7 +1711,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                               )}
                               {/* 17. ملاحظات */}
                               <td className="px-2 py-1.5 border-e border-slate-200 whitespace-nowrap text-slate-600">
-                                {r.notes || ''}
+                                {r.notes ? t(r.notes) : ''}
                               </td>
                               {/* 18. الخصم */}
                               <td className="px-2 py-1.5 border-e border-slate-200 text-center font-mono whitespace-nowrap text-amber-800">

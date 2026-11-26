@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import type { Customer, Representative, User } from '../types';
 import { getKV, removeKV, setKV } from './localDb';
+import { tr } from '../i18n/translator';
 
 const CRED_NAMESPACE = 'offline_auth_creds';
 const SESSION_NAMESPACE = 'offline_auth_session';
@@ -212,7 +213,7 @@ export async function verifyOfflineLogin(params: {
   const serverOrigin = normalizeServerOrigin(params.serverUrl);
   const installationId = String(params.installationId || '').trim();
   if (!usernameLower || !params.password) {
-    return { ok: false, error: 'يرجى إدخال اسم المستخدم وكلمة المرور.' };
+    return { ok: false, error: tr('يرجى إدخال اسم المستخدم وكلمة المرور.') };
   }
 
   let record = installationId
@@ -224,28 +225,28 @@ export async function verifyOfflineLogin(params: {
   if (!record) {
     return {
       ok: false,
-      error: 'لا توجد بيانات دخول محلية موثقة لهذا الحساب بدون إنترنت. يجب تسجيل الدخول مرة واحدة على الأقل أثناء الاتصال بالسيرفر.',
+      error: tr('لا توجد بيانات دخول محلية موثقة لهذا الحساب بدون إنترنت. يجب تسجيل الدخول مرة واحدة على الأقل أثناء الاتصال بالسيرفر.'),
     };
   }
 
   if (record.serverOrigin !== serverOrigin) {
     return {
       ok: false,
-      error: 'بيانات الدخول المحلية لا تطابق السيرفر الحالي.',
+      error: tr('بيانات الدخول المحلية لا تطابق السيرفر الحالي.'),
     };
   }
 
   if (installationId && record.installationId && record.installationId !== installationId) {
     return {
       ok: false,
-      error: 'بيانات الدخول المحلية تابعة لقاعدة بيانات شركة أخرى.',
+      error: tr('بيانات الدخول المحلية تابعة لقاعدة بيانات شركة أخرى.'),
     };
   }
 
   if (record.revoked || record.user?.isActive === false) {
     return {
       ok: false,
-      error: 'تم إيقاف هذا الحساب أو سحب صلاحيته من السيرفر المركزي.',
+      error: tr('تم إيقاف هذا الحساب أو سحب صلاحيته من السيرفر المركزي.'),
     };
   }
 
@@ -253,7 +254,7 @@ export async function verifyOfflineLogin(params: {
   if (Number.isFinite(verifiedAtMs) && Date.now() - verifiedAtMs > OFFLINE_SESSION_MAX_AGE_MS) {
     return {
       ok: false,
-      error: 'انتهت صلاحية الجلسة المحلية المؤقتة. يرجى الاتصال بالسيرفر لتجديد التحقق.',
+      error: tr('انتهت صلاحية الجلسة المحلية المؤقتة. يرجى الاتصال بالسيرفر لتجديد التحقق.'),
     };
   }
 
@@ -261,7 +262,7 @@ export async function verifyOfflineLogin(params: {
   if (record.verifierHex.startsWith('fb_')) {
     return {
       ok: false,
-      error: 'يرجى تسجيل الدخول أثناء الاتصال بالخادم لتحديث بيانات الأمان المحلية.',
+      error: tr('يرجى تسجيل الدخول أثناء الاتصال بالخادم لتحديث بيانات الأمان المحلية.'),
     };
   } else if (record.verifierHex.startsWith('$2')) {
     passwordVerified = await bcrypt.compare(params.password, record.verifierHex);
@@ -277,7 +278,7 @@ export async function verifyOfflineLogin(params: {
   }
 
   if (!passwordVerified) {
-    return { ok: false, error: 'اسم المستخدم أو كلمة المرور غير صحيحة.' };
+    return { ok: false, error: tr('اسم المستخدم أو كلمة المرور غير صحيحة.') };
   }
 
   await setKV<StoredLastVerifiedSession>(SESSION_NAMESPACE, ACTIVE_SESSION_KEY, {

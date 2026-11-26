@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { usePreferences } from '../../../context/PreferencesContext';
-import { formatLocaleDateTime, formatLocaleNumber } from '../../../i18n/translator';
+import { formatLocaleDateTime, formatLocaleNumber, tr } from '../../../i18n/translator';
 import {
   Product,
   StorefrontBanner,
@@ -80,7 +80,7 @@ function makeId(prefix: string): string {
 async function readImageFileAsCompressedDataUrl(file: File, maxDim = 1080): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error('تعذر قراءة ملف الصورة'));
+    reader.onerror = () => reject(new Error(tr('تعذر قراءة ملف الصورة', 'Could not read image file')));
     reader.onload = () => {
       const src = String(reader.result || '');
       if (!src.startsWith('data:image/')) {

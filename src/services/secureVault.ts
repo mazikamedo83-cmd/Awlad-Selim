@@ -1,5 +1,6 @@
 import { registerPlugin } from '@capacitor/core';
 import { isNativeCapacitor } from './native';
+import { tr } from '../i18n/translator';
 
 interface NativeSecureVaultPlugin {
   getItem(options: { key: string }): Promise<{ value: string | null }>;
@@ -150,13 +151,13 @@ async function sealWebSecret(key: string, jsonStr: string): Promise<void> {
 
   const db = await openVaultIdb();
   if (!db) {
-    throw new SecureVaultError('تعذر فتح قاعدة التشفير المحلية للمتصفح لحماية البيانات الحساسة.');
+    throw new SecureVaultError(tr('تعذر فتح قاعدة التشفير المحلية للمتصفح لحماية البيانات الحساسة.', 'Could not open local browser encryption database to protect sensitive data.'));
   }
 
   const cryptoKey = await getOrCreateWebCryptoKey();
   if (!cryptoKey || typeof crypto === 'undefined' || typeof crypto.getRandomValues !== 'function') {
     throw new SecureVaultError(
-      'تشفير WebCrypto AES-GCM غير متاح في هذه البيئة؛ يُمنع حفظ البيانات الحساسة بدون تشفير.'
+      tr('تشفير WebCrypto AES-GCM غير متاح في هذه البيئة؛ يُمنع حفظ البيانات الحساسة بدون تشفير.', 'WebCrypto AES-GCM encryption is unavailable in this environment; saving sensitive data unencrypted is prohibited.')
     );
   }
 
@@ -175,7 +176,7 @@ async function sealWebSecret(key: string, jsonStr: string): Promise<void> {
   };
   const saved = await idbVaultSet(STORE_SECRETS, key, payload);
   if (!saved) {
-    throw new SecureVaultError('فشل حفظ البيانات المشفرة في المخزن المحلي.');
+    throw new SecureVaultError(tr('فشل حفظ البيانات المشفرة في المخزن المحلي.', 'Failed to save encrypted data in local storage.'));
   }
 }
 
@@ -219,13 +220,13 @@ export async function sealJson(key: string, value: unknown): Promise<void> {
       res = await electronVault.setItem(key, jsonStr);
     } catch (err: any) {
       throw new SecureVaultError(
-        err?.message || 'فشل الوصول إلى المخزن الآمن لنظام التشغيل (safeStorage). يرجى إعادة المحاولة.',
+        err?.message || tr('فشل الوصول إلى المخزن الآمن لنظام التشغيل (safeStorage). يرجى إعادة المحاولة.', 'Failed to access OS secure vault (safeStorage). Please try again.'),
         'ELECTRON_VAULT_ERROR'
       );
     }
     if (!res?.ok) {
       throw new SecureVaultError(
-        (res as any)?.error || 'تعذر حفظ البيانات داخل المخزن الآمن لنظام التشغيل (safeStorage).',
+        (res as any)?.error || tr('تعذر حفظ البيانات داخل المخزن الآمن لنظام التشغيل (safeStorage).', 'Could not save data inside OS secure vault (safeStorage).'),
         'ELECTRON_VAULT_ERROR'
       );
     }
@@ -238,7 +239,7 @@ export async function sealJson(key: string, value: unknown): Promise<void> {
       return;
     } catch (err: any) {
       throw new SecureVaultError(
-        err?.message || 'فشل الحفظ داخل المخزن الآمن الأصلي للجهاز (Keystore/Keychain).',
+        err?.message || tr('فشل الحفظ داخل المخزن الآمن الأصلي للجهاز (Keystore/Keychain).', 'Failed to save inside native device secure vault (Keystore/Keychain).'),
         'NATIVE_VAULT_ERROR'
       );
     }
@@ -255,7 +256,7 @@ export async function unsealJson<T = unknown>(key: string): Promise<T | null> {
     const res = await electronVault.getItem(key);
     if (!res?.ok) {
       throw new SecureVaultError(
-        (res as any)?.error || 'فشل قراءة المخزن الآمن لنظام التشغيل (safeStorage).',
+        (res as any)?.error || tr('فشل قراءة المخزن الآمن لنظام التشغيل (safeStorage).', 'Failed to read OS secure vault (safeStorage).'),
         'ELECTRON_VAULT_ERROR'
       );
     }
@@ -266,7 +267,7 @@ export async function unsealJson<T = unknown>(key: string): Promise<T | null> {
       raw = typeof res?.value === 'string' ? res.value : null;
     } catch (err: any) {
       throw new SecureVaultError(
-        err?.message || 'فشل قراءة المخزن الآمن الأصلي للجهاز (Keystore/Keychain).',
+        err?.message || tr('فشل قراءة المخزن الآمن الأصلي للجهاز (Keystore/Keychain).', 'Failed to read native device secure vault (Keystore/Keychain).'),
         'NATIVE_VAULT_ERROR'
       );
     }

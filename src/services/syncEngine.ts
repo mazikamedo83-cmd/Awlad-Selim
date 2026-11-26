@@ -10,6 +10,7 @@ import { apiRequest } from './api';
 import { localDb } from './localDb';
 import { getOrCreatePersistentDeviceId } from './native';
 import { logDiagnostic } from './diagnostics';
+import { getActiveLanguage, tr } from '../i18n/translator';
 
 export type SyncCycleMode = 'full' | 'send_only' | 'receive_only';
 
@@ -60,6 +61,8 @@ const ARABIC_WEEKDAYS = [
   'السبت',
 ];
 
+const ENGLISH_WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
 export interface FormattedMobileSyncTimestamp {
   dateStr: string;
   weekdayStr: string;
@@ -72,12 +75,13 @@ export function formatMobileSyncTimestamp(iso?: string | null): FormattedMobileS
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
+  const isEn = getActiveLanguage() === 'en';
   const dd = String(d.getDate()).padStart(2, '0');
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const yyyy = d.getFullYear();
-  const weekdayStr = ARABIC_WEEKDAYS[d.getDay()] || '';
+  const weekdayStr = (isEn ? ENGLISH_WEEKDAYS : ARABIC_WEEKDAYS)[d.getDay()] || '';
   const hours24 = d.getHours();
-  const periodStr = hours24 < 12 ? 'ص' : 'م';
+  const periodStr = isEn ? (hours24 < 12 ? 'AM' : 'PM') : (hours24 < 12 ? 'ص' : 'م');
   const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
   const mins = String(d.getMinutes()).padStart(2, '0');
   const dateStr = `${dd}-${mm}-${yyyy}`;
@@ -275,7 +279,12 @@ async function executeSyncCycle(params: {
       const orderedOps = [...dueOperations].sort((a, b) =>
         String(a.createdAt).localeCompare(String(b.createdAt))
       );
-      report(15, `جاري تجهيز ${orderedOps.length} عملية للإرسال...`, 0, orderedOps.length);
+      report(
+        15,
+        tr(`جاري تجهيز ${orderedOps.length} عملية للإرسال...`, `Preparing ${orderedOps.length} operations to send...`),
+        0,
+        orderedOps.length
+      );
 
       try {
         const chunkSize = 50;
@@ -295,7 +304,10 @@ async function executeSyncCycle(params: {
           const pctStart = 20 + Math.round((offset / orderedOps.length) * 60);
           report(
             pctStart,
-            `جاري إرسال العمليات (${Math.min(offset + chunk.length, orderedOps.length)} / ${orderedOps.length})...`,
+            tr(
+              `جاري إرسال العمليات (${Math.min(offset + chunk.length, orderedOps.length)} / ${orderedOps.length})...`,
+              `Sending operations (${Math.min(offset + chunk.length, orderedOps.length)} / ${orderedOps.length})...`
+            ),
             offset,
             orderedOps.length
           );
@@ -318,7 +330,7 @@ async function executeSyncCycle(params: {
           }
         }
 
-        report(85, 'جاري تأكيد الاستلام وتحديث السجل المحلي...', orderedOps.length, orderedOps.length);
+        report(85, tr('جاري تأكيد الاستلام وتحديث السجل المحلي...', 'Confirming receipt and updating local log...'), orderedOps.length, orderedOps.length);
 
         const updatedQueue = [...queue];
         const newConflicts: SyncConflictRecord[] = [];
@@ -346,7 +358,7 @@ async function executeSyncCycle(params: {
               ...item,
               status: 'needs_review',
               attempts: (item.attempts || 0) + 1,
-              lastError: res.error || res.conflict?.conflictReason || 'تعارض يحتاج مراجعة يدوية',
+              lastError: res.error || res.conflict?.conflictReason || tr('تعارض يحتاج مراجعة يدوية', 'Conflict requires manual review'),
               conflictId: res.conflictId || res.conflict?.id || item.conflictId,
               nextRetryAt: undefined,
               updatedAt: updateTimestamp,
@@ -358,7 +370,7 @@ async function executeSyncCycle(params: {
               ...item,
               status: 'failed',
               attempts,
-              lastError: res.error || 'تعذر تنفيذ العملية على السيرفر',
+              lastError: res.error || tr('تعذر تنفيذ العملية على السيرفر', 'Could not execute operation on the server'),
               nextRetryAt: Date.now() + backoffMs,
               updatedAt: updateTimestamp,
             };
@@ -385,9 +397,9 @@ async function executeSyncCycle(params: {
           conflictCount,
           ok: failedCount === 0 && conflictCount === 0 && syncedCount > 0 ? true : failedCount === 0 && conflictCount === 0,
           isMandatory,
-          error: failedCount > 0 ? 'تعذر إرسال بعض العمليات وبقيت محفوظة لإعادة المحاولة.' : undefined,
+          error: failedCount > 0 ? tr('تعذر إرسال بعض العمليات وبقيت محفوظة لإعادة المحاولة.', 'Some operations could not be sent and were kept for retry.') : undefined,
         });
-        report(100, 'اكتمل الإرسال', orderedOps.length, orderedOps.length);
+        report(100, tr('اكتمل الإرسال', 'Sending completed'), orderedOps.length, orderedOps.length);
         if (failedCount > 0 || newConflicts.length > 0) {
           logDiagnostic({
             category: 'sync_issue',
@@ -395,13 +407,13 @@ async function executeSyncCycle(params: {
             source: 'syncEngine.push',
             message:
               failedCount > 0
-                ? `فشل إرسال (${failedCount}) عملية من طابور المزامنة وبقيت محفوظة لإعادة المحاولة`
-                : `تم رصد (${newConflicts.length}) تعارض مزامنة يحتاج مراجعة`,
+                ? tr(`فشل إرسال (${failedCount}) عملية من طابور المزامنة وبقيت محفوظة لإعادة المحاولة`, `Failed to send (${failedCount}) sync queue operation(s); kept for retry`)
+                : tr(`تم رصد (${newConflicts.length}) تعارض مزامنة يحتاج مراجعة`, `Detected (${newConflicts.length}) sync conflict(s) needing review`),
             details: { pushedCount, syncedCount, failedCount, conflictCount, mode, isMandatory },
           });
         }
       } catch (err: any) {
-        const errMsg = err?.message || 'تعذر مزامنة العمليات مع قاعدة البيانات المركزية';
+        const errMsg = err?.message ? tr(err.message) : tr('تعذر مزامنة العمليات مع قاعدة البيانات المركزية', 'Could not sync operations with the central database');
         logDiagnostic({
           category: isAuthRevokedError(err) ? 'auth' : 'sync_issue',
           severity: 'error',
@@ -441,7 +453,7 @@ async function executeSyncCycle(params: {
             syncedCount: 0,
             failedCount,
             conflictCount,
-            error: err?.message || 'الاتصال غير متاح حالياً — تم الاحتفاظ بالعمليات محلياً',
+            error: err?.message ? tr(err.message) : tr('الاتصال غير متاح حالياً — تم الاحتفاظ بالعمليات محلياً', 'Connection is currently unavailable — operations kept locally'),
           };
         }
         return {
@@ -457,7 +469,7 @@ async function executeSyncCycle(params: {
       }
     } else if (mode === 'send_only') {
       // Explicit send with 0 pending ops still verifies reachability cleanly
-      report(35, 'جاري التحقق من عدم وجود عمليات معلقة...');
+      report(35, tr('جاري التحقق من عدم وجود عمليات معلقة...', 'Checking for any pending operations...'));
       try {
         await apiRequest('/api/sync/push', {
           method: 'POST',
@@ -471,7 +483,7 @@ async function executeSyncCycle(params: {
           ok: true,
           isMandatory,
         });
-        report(100, 'اكتمل الإرسال');
+        report(100, tr('اكتمل الإرسال', 'Sending completed'));
       } catch (err: any) {
         if (isAuthRevokedError(err)) {
           return {
@@ -495,7 +507,7 @@ async function executeSyncCycle(params: {
           syncedCount: 0,
           failedCount,
           conflictCount,
-          error: err?.message || 'تعذر الاتصال بالنظام المركزي',
+          error: err?.message ? tr(err.message) : tr('تعذر الاتصال بالنظام المركزي', 'Unable to connect to the central system'),
         };
       }
     }
@@ -516,12 +528,12 @@ async function executeSyncCycle(params: {
   // 2. Pull fresh authoritative state from server
   try {
     if (mode === 'receive_only') {
-      report(20, 'جاري جلب التحديثات والفواتير والأرصدة...');
+      report(20, tr('جاري جلب التحديثات والفواتير والأرصدة...', 'Fetching updates, invoices, and balances...'));
     }
     const pullData = await apiRequest<any>('/api/sync/pull');
     const nowTime = pullData?.serverTime || new Date().toISOString();
     if (mode === 'receive_only') {
-      report(70, 'جاري تحديث قاعدة البيانات المحلية دون تكرار...');
+      report(70, tr('جاري تحديث قاعدة البيانات المحلية دون تكرار...', 'Updating local database without duplicates...'));
     }
     await localDb.setMeta(syncMetaKey('last_sync_at', userId), nowTime);
 
@@ -547,7 +559,7 @@ async function executeSyncCycle(params: {
       ok: true,
     });
     if (mode === 'receive_only') {
-      report(100, `تم استلام وتحديث ${receivedCount} سجل`, receivedCount, receivedCount);
+      report(100, tr(`تم استلام وتحديث ${receivedCount} سجل`, `Received and updated ${receivedCount} record(s)`), receivedCount, receivedCount);
     }
 
     return {
@@ -562,11 +574,12 @@ async function executeSyncCycle(params: {
       receivedCount,
     };
   } catch (err: any) {
+    const pullErr = err?.message ? tr(err.message) : tr('تعذر استلام أحدث البيانات', 'Failed to receive latest data');
     logDiagnostic({
       category: isAuthRevokedError(err) ? 'auth' : 'sync_issue',
       severity: 'error',
       source: 'syncEngine.pull',
-      message: err?.message || 'تعذر استلام أحدث البيانات',
+      message: pullErr,
       details: { status: err?.status, code: err?.code, mode },
     });
     if (isAuthRevokedError(err)) {
@@ -587,7 +600,7 @@ async function executeSyncCycle(params: {
       at: new Date().toISOString(),
       count: 0,
       ok: false,
-      error: err?.message || 'تعذر استلام أحدث البيانات',
+      error: pullErr,
     });
     return {
       ok: false,
@@ -597,7 +610,7 @@ async function executeSyncCycle(params: {
       syncedCount,
       failedCount,
       conflictCount,
-      error: err?.message || 'تعذر استلام أحدث البيانات',
+      error: pullErr,
     };
   }
 }
@@ -649,7 +662,10 @@ export async function sendDispatchBatchToServer(params: {
     existingDraftBatch,
     onProgress,
   } = params;
-  onProgress?.({ percent: 15, stage: `جاري تجهيز ${selectedOperations.length} عملية للإرسال...` });
+  onProgress?.({
+    percent: 15,
+    stage: tr(`جاري تجهيز ${selectedOperations.length} عملية للإرسال...`, `Preparing ${selectedOperations.length} operations to send...`),
+  });
   const deviceId = getOrCreatePersistentDeviceId();
   const now = new Date().toISOString();
   const randSuffix =
@@ -683,7 +699,9 @@ export async function sendDispatchBatchToServer(params: {
     } else if (
       op.operationType === 'record_customer_payment' ||
       op.operationType === 'add_invoice_payment' ||
-      op.operationType === 'record_order_advance'
+      op.operationType === 'record_order_advance' ||
+      op.operationType === 'create_rep_transfer' ||
+      op.operationType === 'confirm_rep_transfer'
     ) {
       collectionsCount += 1;
       totalCashAmount += Number(p.amount || 0);
@@ -693,7 +711,12 @@ export async function sendDispatchBatchToServer(params: {
       ordersCount += 1;
     } else if (op.operationType === 'create_customer' || op.operationType === 'update_customer') {
       customersCount += 1;
-    } else if (op.operationType.includes('custody')) {
+    } else if (
+      op.operationType.includes('custody') ||
+      op.operationType === 'create_rep_item_transfer' ||
+      op.operationType === 'transfer_stock' ||
+      op.operationType === 'record_damaged_stock'
+    ) {
       custodyOpsCount += 1;
     }
   }
@@ -758,7 +781,7 @@ export async function sendDispatchBatchToServer(params: {
   };
 
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-    const queuedMsg = 'طلب الإرسال مؤكد من المرسل — في انتظار المزامنة التلقائية فور عودة الاتصال.';
+    const queuedMsg = tr('طلب الإرسال مؤكد من المرسل — في انتظار المزامنة التلقائية فور عودة الاتصال.', 'Send request confirmed by sender — awaiting automatic sync once connection resumes.');
     const queuedDraft = await persistConfirmedOfflineQueue(queuedMsg);
     return {
       ok: false,
@@ -770,7 +793,7 @@ export async function sendDispatchBatchToServer(params: {
 
   // Persist sending draft locally FIRST so disconnects or crashes can resume idempotently
   await localDb.putDispatchBatch(userId, sendingDraft);
-  onProgress?.({ percent: 45, stage: 'جاري إرسال العمليات...' });
+  onProgress?.({ percent: 45, stage: tr('جاري إرسال العمليات...', 'Sending operations...') });
 
   try {
     const res = await apiRequest<{
@@ -796,7 +819,7 @@ export async function sendDispatchBatchToServer(params: {
       },
       idempotencyKey,
     });
-    onProgress?.({ percent: 85, stage: 'جاري تأكيد الوصول وتحديث السجل المحلي...' });
+    onProgress?.({ percent: 85, stage: tr('جاري تأكيد الوصول وتحديث السجل المحلي...', 'Confirming delivery and updating local log...') });
 
     const serverBatch: SyncDispatchBatch = {
       ...res.batch,
@@ -825,7 +848,7 @@ export async function sendDispatchBatchToServer(params: {
           ...q,
           status: 'needs_review' as const,
           conflictId: r.conflictId || r.conflict?.id || q.conflictId,
-          lastError: r.error || 'تعارض يحتاج مراجعة',
+          lastError: r.error || tr('تعارض يحتاج مراجعة', 'Conflict requires review'),
           dispatchStage: 'تعذر الاستلام' as SyncDispatchBatchStatus,
           updatedAt: new Date().toISOString(),
         };
@@ -834,7 +857,7 @@ export async function sendDispatchBatchToServer(params: {
         ...q,
         status: 'failed' as const,
         attempts: (q.attempts || 0) + 1,
-        lastError: r.error || 'تعذر تنفيذ العملية ضمن الدفعة',
+        lastError: r.error || tr('تعذر تنفيذ العملية ضمن الدفعة', 'Could not execute operation in the batch'),
         dispatchStage: 'فشل الإرسال' as SyncDispatchBatchStatus,
         updatedAt: new Date().toISOString(),
       };
@@ -857,7 +880,7 @@ export async function sendDispatchBatchToServer(params: {
       conflictCount: (res.opResults || []).filter((r) => r.status === 'needs_review').length,
       ok: true,
     });
-    onProgress?.({ percent: 100, stage: 'اكتمل الإرسال بنجاح' });
+    onProgress?.({ percent: 100, stage: tr('اكتمل الإرسال بنجاح', 'Sent successfully') });
 
     return { ok: true, batch: serverBatch };
   } catch (err: any) {
@@ -866,7 +889,7 @@ export async function sendDispatchBatchToServer(params: {
     const isNetworkUnreachable = !authRevoked && (!statusCode || statusCode === 502 || statusCode === 503 || statusCode === 504);
 
     if (isNetworkUnreachable) {
-      const queuedMsg = 'طلب الإرسال مؤكد من المرسل — في انتظار المزامنة التلقائية فور عودة الاتصال.';
+      const queuedMsg = tr('طلب الإرسال مؤكد من المرسل — في انتظار المزامنة التلقائية فور عودة الاتصال.', 'Send request confirmed by sender — awaiting automatic sync once connection resumes.');
       const queuedDraft = await persistConfirmedOfflineQueue(queuedMsg);
       return {
         ok: false,
@@ -876,7 +899,9 @@ export async function sendDispatchBatchToServer(params: {
       };
     }
 
-    const errMsg = err?.message || 'تعذر إرسال الدفعة — بقيت العمليات محفوظة محليًا ويمكن إعادة الإرسال دون فقد أو تكرار.';
+    const errMsg = err?.message
+      ? tr(err.message)
+      : tr('تعذر إرسال الدفعة — بقيت العمليات محفوظة محليًا ويمكن إعادة الإرسال دون فقد أو تكرار.', 'Could not send batch — operations remained saved locally and can be resent without loss or duplication.');
     const failedDraft: SyncDispatchBatch = {
       ...sendingDraft,
       sendStatus: 'فشل الإرسال',

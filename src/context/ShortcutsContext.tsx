@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useAuth } from './AuthContext';
 import { ShortcutActionId, ShortcutCategory, User, UserShortcutItem } from '../types';
+import { tr } from '../i18n/translator';
 
 export interface ShortcutDefinition {
   actionId: ShortcutActionId | string;
@@ -58,9 +59,10 @@ export const SHORTCUT_CATALOG: ShortcutDefinition[] = [
   { actionId: 'nav:personal-accounts', label: 'الحسابات الشخصية للملاك', category: 'العملاء والمالية', defaultCombo: '', permission: 'canViewPersonalAccounts', navigateTo: 'personal-accounts' },
   { actionId: 'nav:cheques', label: 'الشيكات (واردة / صادرة)', category: 'العملاء والمالية', defaultCombo: 'Alt+Q', permission: 'canManageAccounts', navigateTo: 'cheques' },
   { actionId: 'nav:installments', label: 'إدارة وجدولة الأقساط', category: 'العملاء والمالية', defaultCombo: '', permission: 'canManageAccounts', navigateTo: 'installments' },
-  { actionId: 'nav:reps', label: 'قائمة المناديب', category: 'العملاء والمالية', defaultCombo: 'Alt+M', permission: 'canManageReps', navigateTo: 'reps' },
-  { actionId: 'nav:rep-transfers', label: 'طلب تحويل بالنصف (المالي)', category: 'العملاء والمالية', defaultCombo: '', permission: 'canManageTransfers', navigateTo: 'rep-transfers' },
-  { actionId: 'nav:rep-item-transfers', label: 'تحويل أصناف وعهدة (فاتورة)', category: 'العملاء والمالية', defaultCombo: '', permission: 'canManageTransfers', navigateTo: 'rep-item-transfers' },
+  { actionId: 'nav:refresh-sync', label: 'الإرسال والاستلام والتحويل', category: 'العملاء والمالية', defaultCombo: '', permission: 'canManageTransfers', navigateTo: 'refresh-sync' },
+  { actionId: 'nav:reps', label: 'قائمة المناديب والعهد', category: 'العملاء والمالية', defaultCombo: 'Alt+M', permission: 'canManageReps', navigateTo: 'reps' },
+  { actionId: 'nav:rep-transfers', label: 'التحويلات المالية (المركز الموحد)', category: 'العملاء والمالية', defaultCombo: '', permission: 'canManageTransfers', navigateTo: 'rep-transfers' },
+  { actionId: 'nav:rep-item-transfers', label: 'تحويلات البضائع والعهد (المركز الموحد)', category: 'العملاء والمالية', defaultCombo: '', permission: 'canManageTransfers', navigateTo: 'rep-item-transfers' },
 
   // عام والموظفين والإعدادات
   { actionId: 'nav:employees', label: 'شئون الموظفين', category: 'عام', defaultCombo: 'Alt+E', permission: 'canManageEmployees', navigateTo: 'employees' },
@@ -312,14 +314,21 @@ export const ShortcutsProvider: React.FC<ShortcutsProviderProps> = ({ children, 
           const combo = normalizeComboString(item.keyCombo);
           if (item.enabled !== false && combo) {
             if (isReservedSystemCombo(combo)) {
-              const msg = `الاختصار (${combo}) محجوز لعمليات التحرير الأساسية بالنظام (نسخ/لصق/تحديد).`;
+              const msg = tr(
+                `الاختصار (${combo}) محجوز لعمليات التحرير الأساسية بالنظام (نسخ/لصق/تحديد).`,
+                `Shortcut (${combo}) is reserved for standard system editing actions (Copy/Paste/Select).`
+              );
               setSaveError(msg);
               return { success: false, error: msg };
             }
             const upper = combo.toUpperCase();
             const existing = seen.get(upper);
             if (existing) {
-              const msg = `الاختصار (${combo}) مستخدم بالفعل في الوظيفة: ${existing.label}`;
+              const existingLabel = tr(existing.label);
+              const msg = tr(
+                `الاختصار (${combo}) مستخدم بالفعل في الوظيفة: ${existingLabel}`,
+                `Shortcut (${combo}) is already assigned to: ${existingLabel}`
+              );
               setSaveError(msg);
               return { success: false, error: msg };
             }
@@ -333,8 +342,9 @@ export const ShortcutsProvider: React.FC<ShortcutsProviderProps> = ({ children, 
         }));
         const res = await updateUserShortcuts(cleanList);
         if (!res.success) {
-          setSaveError(res.error || 'تعذر حفظ الاختصارات');
-          return { success: false, error: res.error };
+          const errMsg = res.error ? tr(res.error) : tr('تعذر حفظ الاختصارات', 'Failed to save shortcuts');
+          setSaveError(errMsg);
+          return { success: false, error: errMsg };
         }
         return { success: true };
       } finally {

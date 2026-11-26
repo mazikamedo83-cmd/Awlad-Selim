@@ -574,10 +574,10 @@ const MainAppContent: React.FC = () => {
         return <RepTransferView initialTab="reps-list" />;
 
       case 'rep-transfers':
-        return <RepTransferView initialTab="cash-transfers" />;
+        return <RefreshSyncScreen initialTab="financial-transfers" />;
 
       case 'rep-item-transfers':
-        return <RepTransferView initialTab="item-transfers" />;
+        return <RefreshSyncScreen initialTab="stock-custody" />;
 
       case 'refresh-sync':
         return <RefreshSyncScreen />;
@@ -710,7 +710,7 @@ const MainAppContent: React.FC = () => {
             isSidebarOpen={isSectionsOpen}
             onToggleSidebar={() => setIsSectionsOpen((prev) => !prev)}
             onNavigate={(page) => setCurrentPage(page)}
-            onNavigateToTransfers={() => setCurrentPage('rep-transfers')}
+            onNavigateToTransfers={() => setCurrentPage('refresh-sync')}
           />
 
           <div className="flex-1 min-h-0 flex items-stretch min-w-0 print:block">

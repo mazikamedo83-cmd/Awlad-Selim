@@ -22,7 +22,7 @@ interface DashboardViewProps {
 export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   const {
     invoices, products, customers, suppliers, cashboxes,
-    repTransfers, expenseIncomes, settings,
+    repTransfers, expenseIncomes, settings, pendingSendReceiveCount = 0,
   } = useData();
   const { currentUser } = useAuth();
   const {
@@ -171,8 +171,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     return totalQty <= prod.minStockLevel;
   });
 
-  // Pending transfers count ("طلب تحويل بالنصف")
+  // Unified pending send/receive/transfer alerts count
   const pendingTransfers = repTransfers.filter(t => t.status === 'awaiting_receipt');
+  const unifiedPendingAlertCount = Math.max(pendingSendReceiveCount, pendingTransfers.length);
 
   // Visibility flags per financial group
   const salesHidden = isDashboardBalanceHidden('sales');
@@ -289,12 +290,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
       </div>
 
       {/* Operational Alerts Strip */}
-      {(pendingTransfers.length > 0 || lowStockProducts.length > 0) && (
+      {(unifiedPendingAlertCount > 0 || lowStockProducts.length > 0) && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-          {pendingTransfers.length > 0 && (
+          {unifiedPendingAlertCount > 0 && (
             <button
               type="button"
-              onClick={() => onNavigate('rep-transfers')}
+              onClick={() => onNavigate('refresh-sync')}
               className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-300 text-amber-950 text-start hover:bg-amber-100/70 transition-colors cursor-pointer"
             >
               <div className="flex items-center gap-2">
@@ -302,12 +303,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                 <div>
                   <div className="text-xs font-black">
                     {t(
-                      `${pendingTransfers.length} طلب تحويل بالنصف بانتظار تأكيد الاستلام`,
-                      `${pendingTransfers.length} rep transfer requests awaiting receipt confirmation`
+                      `${unifiedPendingAlertCount} عملية إرسال واستلام وتحويل بانتظار المراجعة`,
+                      `${unifiedPendingAlertCount} send, receive & transfer operations awaiting review`
                     )}
                   </div>
                   <div className="text-[11px] text-amber-800">
-                    {t('فتح شاشة التحويلات لمراجعة وتأكيد الاستلام', 'Open transfers screen to review and confirm receipt')}
+                    {t('فتح مركز الإرسال والاستلام والتحويل للمراجعة والتأكيد', 'Open Send, Receive & Transfer Center to review and confirm')}
                   </div>
                 </div>
               </div>

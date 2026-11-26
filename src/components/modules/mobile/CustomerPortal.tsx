@@ -1692,11 +1692,11 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                       {data.customerStatement!.entries.map((entry) => (
                         <tr key={entry.id} className="hover:bg-slate-50/70 dark:hover:bg-[#1A3461]">
                           <td className="px-2 py-1 whitespace-nowrap">
-                            <span className="font-bold text-slate-900 dark:text-[#F3F7FC] block">{entry.label}</span>
+                            <span className="font-bold text-slate-900 dark:text-[#F3F7FC] block">{t(entry.label)}</span>
                             <span className="font-mono text-[10px] text-slate-500 dark:text-[#97AECE]">{entry.docNumber} · {entry.date}</span>
                           </td>
                           <td className="px-2 py-1 text-[11px] text-slate-600 dark:text-[#A9BCD9]">
-                            {entry.description}
+                            {entry.description ? t(entry.description) : ''}
                           </td>
                           {allowPriceView && (
                             <>

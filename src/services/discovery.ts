@@ -26,6 +26,7 @@ import type {
   ConnectionMode,
   ConnectionProfilesConfig,
 } from '../types';
+import { tr } from '../i18n/translator';
 
 export interface DiscoveredServerCandidate {
   url: string;
@@ -246,7 +247,7 @@ export async function claimPairingInvitation(
   if (!parsed?.token) {
     return {
       ok: false,
-      error: 'رمز أو رابط الربط غير صالح. يرجى مسح رمز QR صحيح أو لصق رابط الدعوة كاملاً.',
+      error: tr('رمز أو رابط الربط غير صالح. يرجى مسح رمز QR صحيح أو لصق رابط الدعوة كاملاً.'),
     };
   }
 
@@ -259,7 +260,7 @@ export async function claimPairingInvitation(
   if (!targetBase) {
     return {
       ok: false,
-      error: 'لم يتم تحديد عنوان السيرفر داخل رابط الدعوة ولا يوجد سيرفر مضبوط مسبقاً.',
+      error: tr('لم يتم تحديد عنوان السيرفر داخل رابط الدعوة ولا يوجد سيرفر مضبوط مسبقاً.'),
     };
   }
 
@@ -272,7 +273,7 @@ export async function claimPairingInvitation(
   if (!urlCheck.valid || !urlCheck.normalizedUrl) {
     return {
       ok: false,
-      error: urlCheck.error || 'عنوان السيرفر في رابط الربط غير صالح.',
+      error: urlCheck.error || tr('عنوان السيرفر في رابط الربط غير صالح.'),
     };
   }
 
@@ -307,7 +308,7 @@ export async function claimPairingInvitation(
     if (!res.ok || data?.ok === false) {
       return {
         ok: false,
-        error: data?.error || `تعذر إتمام ربط الجهاز (${res.status})`,
+        error: data?.error || tr(`تعذر إتمام ربط الجهاز (${res.status})`, `Could not complete device pairing (${res.status})`),
       };
     }
 
@@ -315,7 +316,7 @@ export async function claimPairingInvitation(
       data.endpointUrl || data.serverBaseUrl || urlCheck.normalizedUrl
     );
     if (!effectiveEndpoint) {
-      return { ok: false, error: 'لم يرجع الخادم عنوان اتصال صالحاً.' };
+      return { ok: false, error: tr('لم يرجع الخادم عنوان اتصال صالحاً.') };
     }
 
     if (options.clearExistingAuth) {
@@ -346,8 +347,8 @@ export async function claimPairingInvitation(
       ok: false,
       error:
         err?.name === 'AbortError'
-          ? 'انتهت مهلة الاتصال بالسيرفر أثناء تفعيل رابط الربط.'
-          : 'تعذر الوصول إلى السيرفر المركزي لتفعيل رابط الربط. تحقق من الشبكة.',
+          ? tr('انتهت مهلة الاتصال بالسيرفر أثناء تفعيل رابط الربط.')
+          : tr('تعذر الوصول إلى السيرفر المركزي لتفعيل رابط الربط. تحقق من الشبكة.'),
     };
   }
 }

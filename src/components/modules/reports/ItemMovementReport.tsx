@@ -31,6 +31,29 @@ export interface ItemMovementReportProps {
 
 type SectionKey = keyof ItemMovementReportResponse['sections'];
 
+const DOC_TYPE_LABELS: Record<string, { ar: string; en: string }> = {
+  sales_invoice: { ar: 'فاتورة مبيعات', en: 'Sales Invoice' },
+  purchase_invoice: { ar: 'فاتورة مشتريات', en: 'Purchase Invoice' },
+  sales_return: { ar: 'مرتجع مبيعات', en: 'Sales Return' },
+  purchase_return: { ar: 'مرتجع مشتريات', en: 'Purchase Return' },
+  custody_sent: { ar: 'صرف عهدة مندوب', en: 'Rep Custody Dispatched' },
+  custody_received: { ar: 'استلام عهدة مندوب', en: 'Rep Custody Received' },
+  delivered_to_customer: { ar: 'تسليم من العهدة للعميل', en: 'Delivered from Custody' },
+  returned_to_warehouse: { ar: 'رد عهدة للمخزن', en: 'Returned Custody to Warehouse' },
+  transfer_in: { ar: 'تحويل مخزني وارد', en: 'Stock Transfer In' },
+  transfer_out: { ar: 'تحويل مخزني صادر', en: 'Stock Transfer Out' },
+  opening_balance: { ar: 'رصيد أول المدة', en: 'Opening Balance' },
+  adjustment: { ar: 'تسوية / جرد مخزني', en: 'Stock Adjustment / Count' },
+  damaged: { ar: 'تالف / منتهي الصلاحية', en: 'Damaged / Expired' },
+  custody_damaged: { ar: 'تالف عهدة مندوب', en: 'Rep Custody Damaged' },
+  custody_shortage: { ar: 'عجز عهدة مندوب', en: 'Rep Custody Shortage' },
+  custody_adjustment: { ar: 'تسوية عهدة مندوب', en: 'Rep Custody Adjustment' },
+  sale_edit: { ar: 'تعديل فاتورة مبيعات', en: 'Sales Invoice Edit' },
+  purchase_edit: { ar: 'تعديل فاتورة مشتريات', en: 'Purchase Invoice Edit' },
+  sale_cancel: { ar: 'إلغاء فاتورة مبيعات', en: 'Sales Invoice Cancel' },
+  purchase_cancel: { ar: 'إلغاء فاتورة مشتريات', en: 'Purchase Invoice Cancel' },
+};
+
 const SECTION_META: Array<{
   key: SectionKey;
   title: string;
@@ -140,6 +163,14 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
   const { t, isRtl } = usePreferences();
   const arrow = isRtl ? '⬅' : '→';
   const currency = t(settings.currency);
+  const formatDocTypeLabel = useCallback(
+    (docType?: string) => {
+      if (!docType) return '-';
+      const mapped = DOC_TYPE_LABELS[docType];
+      return mapped ? t(mapped.ar, mapped.en) : t(docType);
+    },
+    [t]
+  );
 
   const [productId, setProductId] = useState<string>(initialProductId || 'all');
   const [warehouseId, setWarehouseId] = useState<string>('all');
@@ -282,7 +313,7 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
       rows.push([`=== ${t(sec.title, sec.titleEn)} (${list.length}) ===`, '', '', '', '', '', '', '', '', '', '', '', '']);
       list.forEach((r) => {
         rows.push([
-          t(r.docType),
+          formatDocTypeLabel(r.docType),
           r.date,
           r.docNumber,
           r.productName,
@@ -478,7 +509,7 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
       const fallbackDocType: PrintData['docType'] =
         selectedRow.direction === 'in' ? 'إيصال استلام' : selectedRow.direction === 'out' ? 'سند صرف' : 'كشف حساب';
       setPrintData({
-        title: `${t('تفاصيل مستند حركة الصنف', 'Item Movement Document Details')} (${t(selectedRow.docType)})`,
+        title: `${t('تفاصيل مستند حركة الصنف', 'Item Movement Document Details')} (${formatDocTypeLabel(selectedRow.docType)})`,
         docNumber: selectedRow.docNumber,
         docType: fallbackDocType,
         date: selectedRow.date,
@@ -774,11 +805,11 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
                     header: t('المستند', 'Document'),
                     sortable: true,
                     sortValue: (r) => r.docNumber,
-                    exportValue: (r) => `${r.docNumber} (${t(r.docType)})`,
+                    exportValue: (r) => `${r.docNumber} (${formatDocTypeLabel(r.docType)})`,
                     render: (r) => (
                       <div>
                         <div className="font-mono font-bold text-blue-900">{r.docNumber}</div>
-                        <div className="text-[10px] text-slate-500">{t(r.docType)}</div>
+                        <div className="text-[10px] text-slate-500">{formatDocTypeLabel(r.docType)}</div>
                       </div>
                     ),
                   },
@@ -788,8 +819,8 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
                   secColumns.push({
                     key: 'docType',
                     header: t('نوع الحركة', 'Movement Type'),
-                    exportValue: (r) => t(r.docType),
-                    render: (r) => <span className="font-bold text-slate-700 whitespace-nowrap">{t(r.docType)}</span>,
+                    exportValue: (r) => formatDocTypeLabel(r.docType),
+                    render: (r) => <span className="font-bold text-slate-700 whitespace-nowrap">{formatDocTypeLabel(r.docType)}</span>,
                   });
                 }
 
@@ -1020,7 +1051,7 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
         isOpen={Boolean(selectedRow)}
         onClose={() => setSelectedRow(null)}
         title={selectedRow ? `${t('تفاصيل المستند:', 'Document Details:')} ${selectedRow.docNumber}` : ''}
-        subtitle={selectedRow ? `${t(selectedRow.docType)} · ${selectedRow.date}` : ''}
+        subtitle={selectedRow ? `${formatDocTypeLabel(selectedRow.docType)} · ${selectedRow.date}` : ''}
         maxWidth="2xl"
       >
         {selectedRow && (
@@ -1054,7 +1085,7 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
 
             {selectedRow.notes && (
               <div className="p-2 rounded-md bg-amber-50 border border-amber-200 text-amber-950">
-                <strong>{t('ملاحظات:', 'Notes:')}</strong> {selectedRow.notes}
+                <strong>{t('ملاحظات:', 'Notes:')}</strong> {t(selectedRow.notes)}
               </div>
             )}
 

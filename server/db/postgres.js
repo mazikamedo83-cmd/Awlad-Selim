@@ -1294,6 +1294,17 @@ export async function initializeSchema(customPool = null) {
           await txClient.query('ALTER TABLE employees DROP COLUMN basic_salary');
         }
       }
+
+      // v16 non-destructive transfer enhancements (idempotency + rep-to-rep sender metadata)
+      const v16Statements = [
+        'ALTER TABLE rep_transfers ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(128)',
+        'ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(128)',
+        'ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS sender_representative_id VARCHAR(64)',
+        "ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS sender_representative_name TEXT DEFAULT ''",
+      ];
+      for (const stmt of v16Statements) {
+        await txClient.query(stmt);
+      }
     }, currentPool);
 
     return { success: true, message: 'تم تطبيق هيكل الجداول والفهارس والتسلسلات في PostgreSQL بنجاح.' };

@@ -65,11 +65,10 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const { currentUser, logout, hasPermission, refreshAuthContext, setIsAccountSwitcherOpen, savedAccounts } = useAuth();
   const {
-    repTransfers,
     customerItemOrders = [],
     mobileNotifications = [],
     unreadNotificationCount = 0,
-    incomingDispatchCount = 0,
+    pendingSendReceiveCount = 0,
     markNotificationsRead,
     triggerManualSync,
   } = useData();
@@ -172,8 +171,7 @@ export const Header: React.FC<HeaderProps> = ({
     },
   ].filter((s) => s.allowed);
 
-  // Check pending transfers & new customer/rep orders
-  const pendingTransfersCount = repTransfers.filter((t) => t.status === 'awaiting_receipt').length;
+  // Check new customer/rep orders
   const pendingOrdersCount = customerItemOrders.filter((o) => o.status === 'pending').length;
 
   // Original Web Desktop Horizontal Sections Menu (never uses Sidebar; strict RBAC gating)
@@ -291,27 +289,17 @@ export const Header: React.FC<HeaderProps> = ({
       },
       {
         id: 'representatives',
-        title: t('المندوبون', 'Representatives'),
+        title: t('المندوبون والتحويلات', 'Representatives & Transfers'),
         icon: RepsFleetIcon,
-        permission: 'canManageReps',
+        permission: ['canManageReps', 'canManageTransfers'],
         items: [
           {
             key: 'refresh-sync',
-            label: t('REFRESH · إرسال واستلام المندوبين', 'REFRESH · Send & Receive'),
+            label: t('الإرسال والاستلام والتحويل', 'Send, Receive & Transfers'),
             permission: ['canManageReps', 'canManageTransfers', 'canManageSales', 'canManageAccounts', 'canApprove'],
-            badge: incomingDispatchCount > 0 ? `${incomingDispatchCount}` : undefined,
+            badge: pendingSendReceiveCount > 0 ? `${pendingSendReceiveCount}` : undefined,
           },
-          { key: 'reps', label: t('قائمة المناديب', 'Representatives List') },
-          {
-            key: 'rep-transfers',
-            label: t('طلب تحويل بالنصف (المالي)', 'Financial Transfer Requests'),
-            permission: 'canManageTransfers',
-          },
-          {
-            key: 'rep-item-transfers',
-            label: t('تحويل أصناف وعهدة (فاتورة)', 'Rep Stock & Custody Transfer'),
-            permission: 'canManageTransfers',
-          },
+          { key: 'reps', label: t('قائمة المناديب والعهد', 'Representatives & Custody'), permission: 'canManageReps' },
         ],
       },
       {
@@ -382,7 +370,7 @@ export const Header: React.FC<HeaderProps> = ({
         return { ...sec, items };
       })
       .filter((sec) => sec.items.length > 0);
-  }, [currentUser, pendingOrdersCount, incomingDispatchCount, language]);
+  }, [currentUser, pendingOrdersCount, pendingSendReceiveCount, language]);
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -521,36 +509,20 @@ export const Header: React.FC<HeaderProps> = ({
                 </button>
               )}
 
-              {pendingTransfersCount > 0 && onNavigateToTransfers && (
+              {pendingSendReceiveCount > 0 && canPerm(['canManageReps', 'canManageTransfers', 'canManageSales', 'canManageAccounts', 'canApprove']) && (
                 <button
                   type="button"
-                  onClick={onNavigateToTransfers}
+                  onClick={() => (onNavigateToTransfers ? onNavigateToTransfers() : onNavigate('refresh-sync'))}
                   title={t(
-                    `يوجد ${pendingTransfersCount} طلب تحويل معلق`,
-                    `${pendingTransfersCount} pending transfer requests`
-                  )}
-                  className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-md bg-amber-400/20 text-amber-100 border border-amber-300/40 text-[11px] font-bold hover:bg-amber-400/30 transition-colors cursor-pointer whitespace-nowrap shrink-0"
-                >
-                  <ArrowLeftRight className="w-3.5 h-3.5 shrink-0" />
-                  <span className="px-1.5 py-0.5 rounded bg-amber-300 text-amber-950 no-dark-surface text-[10px] font-mono tabular-nums">
-                    {pendingTransfersCount}
-                  </span>
-                </button>
-              )}
-
-              {incomingDispatchCount > 0 && canPerm(['canManageReps', 'canManageTransfers', 'canManageSales', 'canManageAccounts', 'canApprove']) && (
-                <button
-                  type="button"
-                  onClick={() => onNavigate('refresh-sync')}
-                  title={t(
-                    `يوجد ${incomingDispatchCount} دفعة إرسال من المندوبين بانتظار الاستلام`,
-                    `${incomingDispatchCount} incoming representative dispatches awaiting receipt`
+                    `يوجد ${pendingSendReceiveCount} عملية إرسال واستلام وتحويل بانتظار المراجعة`,
+                    `${pendingSendReceiveCount} send, receive & transfer operations awaiting review`
                   )}
                   className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-md bg-white/15 text-white border border-white/25 text-[11px] font-bold hover:bg-white/25 transition-colors cursor-pointer whitespace-nowrap shrink-0"
                 >
-                  <span>REFRESH</span>
+                  <ArrowLeftRight className="w-3.5 h-3.5 shrink-0" />
+                  <span className="hidden xl:inline">{t('الإرسال والتحويلات', 'Send & Transfers')}</span>
                   <span className="px-1.5 py-0.5 rounded bg-white text-blue-950 no-dark-surface text-[10px] font-mono tabular-nums font-black">
-                    {incomingDispatchCount}
+                    {pendingSendReceiveCount}
                   </span>
                 </button>
               )}

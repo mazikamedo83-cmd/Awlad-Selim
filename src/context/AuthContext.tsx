@@ -43,6 +43,7 @@ import {
 } from '../services/accountVault';
 import { logDiagnostic } from '../services/diagnostics';
 import { resetDashboardBalancesSessionStorage, usePreferences } from './PreferencesContext';
+import { tr } from '../i18n/translator';
 
 export interface PairingBannerMessage {
   type: 'success' | 'warning' | 'error';
@@ -162,7 +163,7 @@ export function createAuthExpiredCallback(
       category: 'auth',
       severity: 'warning',
       source: 'auth.sessionExpired',
-      message: message || 'انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً.',
+      message: message ? tr(message) : tr('انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً.', 'Session expired, please sign in again.'),
     });
     const uid = cleanup?.getCurrentUserId?.();
     if (uid && cleanup?.revokeOfflineUser) {
@@ -187,7 +188,7 @@ export function createAuthExpiredCallback(
     actions.setLastVerifiedAt(null);
     actions.setIsDatabaseUnavailable(false);
     actions.setDatabaseUnavailableMessage(null);
-    actions.setSessionExpiredMessage(message || 'انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً.');
+    actions.setSessionExpiredMessage(message ? tr(message) : tr('انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً.', 'Session expired, please sign in again.'));
     resetDashboardBalancesSessionStorage();
   };
 }
@@ -228,7 +229,7 @@ export async function executeAuthSessionCheck(params: {
     actions.setNeedsAdminSetup(setupNeeded);
     if (preserveDbAlert) {
       actions.setIsDatabaseUnavailable(true);
-      actions.setDatabaseUnavailableMessage(dbMessage || DEFAULT_DB_UNAVAILABLE_MESSAGE);
+      actions.setDatabaseUnavailableMessage(dbMessage ? tr(dbMessage) : tr(DEFAULT_DB_UNAVAILABLE_MESSAGE));
       actions.setSessionExpiredMessage(null);
     } else {
       actions.setIsDatabaseUnavailable(false);
@@ -239,7 +240,7 @@ export async function executeAuthSessionCheck(params: {
   };
 
   const handleDbUnavailable = async (dbMessage?: string | null) => {
-    const resolvedMessage = dbMessage || DEFAULT_DB_UNAVAILABLE_MESSAGE;
+    const resolvedMessage = dbMessage ? tr(dbMessage) : tr(DEFAULT_DB_UNAVAILABLE_MESSAGE);
     actions.setSessionExpiredMessage(null);
     actions.setIsOfflineSession(false);
     actions.setIsDatabaseUnavailable(true);
@@ -454,10 +455,10 @@ export async function executeAuthSessionCheck(params: {
         ) {
           actions.setSessionExpiredMessage(err.message);
         } else if (err?.status === 401) {
-          actions.setSessionExpiredMessage(err?.message || 'انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً.');
+          actions.setSessionExpiredMessage(err?.message ? tr(err.message) : tr('انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً.', 'Session expired, please sign in again.'));
         }
       } else if (isDatabaseUnavailableError(err)) {
-        await handleDbUnavailable(err?.message || DEFAULT_DB_UNAVAILABLE_MESSAGE);
+        await handleDbUnavailable(err?.message ? tr(err.message) : tr(DEFAULT_DB_UNAVAILABLE_MESSAGE));
       } else if (
         (err?.status === 0 || serverUnreachable) &&
         (deps.isNativeCapacitor() || deps.isElectronDesktop()) &&
@@ -660,7 +661,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!available) {
         isDatabaseUnavailableRef.current = true;
         setIsDatabaseUnavailable(true);
-        setDatabaseUnavailableMessage(message || DEFAULT_DB_UNAVAILABLE_MESSAGE);
+        setDatabaseUnavailableMessage(message ? tr(message) : tr(DEFAULT_DB_UNAVAILABLE_MESSAGE));
         setSessionExpiredMessage(null);
       } else if (isDatabaseUnavailableRef.current) {
         if (!isCheckingRef.current) {
@@ -717,12 +718,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ): Promise<{ success: boolean; needsPassword?: boolean; username?: string; error?: string }> => {
     const entry = await getSavedAccount(userId);
     if (!entry) {
-      return { success: false, error: 'الحساب غير موجود ضمن الحسابات المحفوظة على الجهاز.' };
+      return { success: false, error: tr('الحساب غير موجود ضمن الحسابات المحفوظة على الجهاز.', 'Account not found among saved accounts on this device.') };
     }
     if (entry.sessionStatus !== 'active' || !entry.refreshToken) {
       const webPasswordHint =
         !entry.refreshToken && entry.sessionStatus === 'active'
-          ? 'لحماية جلسة الويب وعدم حفظ التوكنات في المتصفح، يرجى إدخال كلمة المرور لتأكيد الدخول.'
+          ? tr('لحماية جلسة الويب وعدم حفظ التوكنات في المتصفح، يرجى إدخال كلمة المرور لتأكيد الدخول.', 'To protect your web session without storing tokens in the browser, please enter your password to confirm login.')
           : undefined;
       return {
         success: false,
@@ -731,10 +732,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         error:
           webPasswordHint ||
           (entry.sessionStatus === 'revoked'
-            ? entry.lastError || 'تم إيقاف الجلسة أو سحب صلاحية هذا الجهاز من الإدارة.'
+            ? (entry.lastError ? tr(entry.lastError) : tr('تم إيقاف الجلسة أو سحب صلاحية هذا الجهاز من الإدارة.', 'Session disabled or device access revoked by administration.'))
             : entry.sessionStatus === 'logged_out'
-            ? 'تم تسجيل الخروج من هذا الحساب سابقاً. أدخل كلمة المرور للدخول مجدداً.'
-            : 'انتهت صلاحية الجلسة المحفوظة. أدخل كلمة المرور لتأكيد الدخول.'),
+            ? tr('تم تسجيل الخروج من هذا الحساب سابقاً. أدخل كلمة المرور للدخول مجدداً.', 'Previously signed out of this account. Enter password to sign in again.')
+            : tr('انتهت صلاحية الجلسة المحفوظة. أدخل كلمة المرور لتأكيد الدخول.', 'Saved session expired. Enter password to confirm login.')),
       };
     }
 
@@ -760,7 +761,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } catch (vaultErr: any) {
         return {
           success: false,
-          error: vaultErr?.message || 'تعذر حفظ مفاتيح الجلسة في المخزن الآمن للنظام.',
+          error: vaultErr?.message ? tr(vaultErr.message) : tr('تعذر حفظ مفاتيح الجلسة في المخزن الآمن للنظام.', 'Failed to save session keys in the system secure vault.'),
         };
       }
 
@@ -825,14 +826,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           success: false,
           needsPassword: true,
           username: entry.username,
-          error: err?.message || 'انتهت صلاحية الجلسة المحفوظة، يرجى إدخال كلمة المرور.',
+          error: err?.message ? tr(err.message) : tr('انتهت صلاحية الجلسة المحفوظة، يرجى إدخال كلمة المرور.', 'Saved session expired, please enter your password.'),
         };
       }
 
       if (err?.status === 0 || isDatabaseUnavailableError(err)) {
         if (isDatabaseUnavailableError(err)) {
           setIsDatabaseUnavailable(true);
-          setDatabaseUnavailableMessage(err?.message || DEFAULT_DB_UNAVAILABLE_MESSAGE);
+          setDatabaseUnavailableMessage(err?.message ? tr(err.message) : tr(DEFAULT_DB_UNAVAILABLE_MESSAGE));
         }
         const offlineUserSession = await restoreOfflineSessionByUserId(
           userId,
@@ -863,7 +864,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return {
         success: false,
-        error: err?.message || 'تعذر فتح الحساب المحفوظ الآن.',
+        error: err?.message ? tr(err.message) : tr('تعذر فتح الحساب المحفوظ الآن.', 'Unable to open the saved account right now.'),
       };
     }
   };
@@ -884,8 +885,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
       } catch {
         serverRevoked = false;
-        warning =
-          'تمت إزالة الحساب محلياً، لكن تعذر إبلاغ السيرفر لإلغاء الجلسة عن بُعد بسبب عدم الاتصال.';
+        warning = tr(
+          'تمت إزالة الحساب محلياً، لكن تعذر إبلاغ السيرفر لإلغاء الجلسة عن بُعد بسبب عدم الاتصال.',
+          'Account removed locally, but could not notify the server to revoke the remote session due to offline status.'
+        );
       }
     }
     await removeSavedAccount(userId);
@@ -958,9 +961,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } catch (vaultErr: any) {
         return {
           success: false,
-          error:
-            vaultErr?.message ||
-            'تعذر حفظ بيانات الجلسة في المخزن الآمن للنظام. لم يتم تسجيل الدخول حفاظاً على أمان البيانات.',
+          error: vaultErr?.message
+            ? tr(vaultErr.message)
+            : tr('تعذر حفظ بيانات الجلسة في المخزن الآمن للنظام. لم يتم تسجيل الدخول حفاظاً على أمان البيانات.', 'Failed to save session data in the system secure vault. Sign-in aborted to protect data security.'),
         };
       }
 
@@ -1023,17 +1026,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       if (isDatabaseUnavailableError(err)) {
         setIsDatabaseUnavailable(true);
-        setDatabaseUnavailableMessage(err?.message || DEFAULT_DB_UNAVAILABLE_MESSAGE);
+        setDatabaseUnavailableMessage(err?.message ? tr(err.message) : tr(DEFAULT_DB_UNAVAILABLE_MESSAGE));
         setSessionExpiredMessage(null);
       }
+      const loginErr = err?.message ? tr(err.message) : tr('تعذر تسجيل الدخول', 'Failed to sign in');
       logDiagnostic({
         category: 'auth',
         severity: 'warning',
         source: 'auth.login',
-        message: err?.message || 'تعذر تسجيل الدخول',
+        message: loginErr,
         details: { username: username.trim(), status: err?.status, code: err?.code },
       });
-      return { success: false, error: err?.message || 'تعذر تسجيل الدخول' };
+      return { success: false, error: loginErr };
     }
   };
 
@@ -1099,9 +1103,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } catch (vaultErr: any) {
         return {
           success: false,
-          error:
-            vaultErr?.message ||
-            'تم إنشاء الحساب، لكن تعذر حفظ الجلسة في المخزن الآمن للنظام. يرجى إعادة المحاولة.',
+          error: vaultErr?.message
+            ? tr(vaultErr.message)
+            : tr('تم إنشاء الحساب، لكن تعذر حفظ الجلسة في المخزن الآمن للنظام. يرجى إعادة المحاولة.', 'Account created, but failed to save session in the system secure vault. Please try again.'),
         };
       }
 
@@ -1134,9 +1138,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (err: any) {
       if (isDatabaseUnavailableError(err)) {
         setIsDatabaseUnavailable(true);
-        setDatabaseUnavailableMessage(err?.message || DEFAULT_DB_UNAVAILABLE_MESSAGE);
+        setDatabaseUnavailableMessage(err?.message ? tr(err.message) : tr(DEFAULT_DB_UNAVAILABLE_MESSAGE));
       }
-      return { success: false, error: err?.message || 'تعذر إنشاء الحساب الجديد' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر إنشاء الحساب الجديد', 'Failed to create new account') };
     }
   };
 
@@ -1160,7 +1164,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر إنشاء حساب المدير' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر إنشاء حساب المدير', 'Failed to create administrator account') };
     }
   };
 
@@ -1176,8 +1180,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
     } catch {
       serverRevoked = false;
-      warning =
-        'تم تسجيل الخروج محلياً، لكن تعذر إبلاغ السيرفر لإلغاء الجلسة عن بُعد بسبب عدم توفر الاتصال.';
+      warning = tr(
+        'تم تسجيل الخروج محلياً، لكن تعذر إبلاغ السيرفر لإلغاء الجلسة عن بُعد بسبب عدم توفر الاتصال.',
+        'Signed out locally, but could not notify the server to revoke the remote session due to no connection.'
+      );
     }
     await clearLastVerifiedOfflineSession(uid).catch(() => {});
     if (uid) {
@@ -1211,11 +1217,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const handleServerAuthRevoked = useCallback(async (reason?: string) => {
     clearDashboardPrivacyMasks();
+    const revokeMsg = reason ? tr(reason) : tr('تم إيقاف الحساب أو سحب الصلاحية من السيرفر المركزي.', 'Account disabled or permission revoked by the central server.');
     logDiagnostic({
       category: 'auth',
       severity: 'error',
       source: 'auth.serverRevoked',
-      message: reason || 'تم إيقاف الحساب أو سحب الصلاحية من السيرفر المركزي.',
+      message: revokeMsg,
     });
     const uid = currentUserIdRef.current;
     if (uid) {
@@ -1240,7 +1247,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLastVerifiedAt(null);
     setIsDatabaseUnavailable(false);
     setDatabaseUnavailableMessage(null);
-    setSessionExpiredMessage(reason || 'تم إيقاف الحساب أو سحب الصلاحية من السيرفر المركزي.');
+    setSessionExpiredMessage(revokeMsg);
     setIsAccountSwitcherOpen(false);
     resetDashboardBalancesSessionStorage();
     resetDashboardBalancesVisibility();
@@ -1250,7 +1257,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     newPassword: string,
     currentPassword?: string
   ): Promise<{ success: boolean; error?: string }> => {
-    if (!currentUser) return { success: false, error: 'المستخدم غير مسجل' };
+    if (!currentUser) return { success: false, error: tr('المستخدم غير مسجل', 'User is not logged in') };
     try {
       await apiRequest('/api/auth/password', {
         method: 'PUT',
@@ -1276,14 +1283,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'فشل تحديث كلمة المرور' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('فشل تحديث كلمة المرور', 'Failed to update password') };
     }
   };
 
   const updateUserShortcuts = async (
     shortcuts: UserShortcutItem[]
   ): Promise<{ success: boolean; shortcuts?: UserShortcutItem[]; error?: string }> => {
-    if (!currentUser) return { success: false, error: 'المستخدم غير مسجل' };
+    if (!currentUser) return { success: false, error: tr('المستخدم غير مسجل', 'User is not logged in') };
     try {
       const res = await apiRequest<{ ok: boolean; shortcuts: UserShortcutItem[]; user?: User }>('/api/auth/shortcuts', {
         method: 'PUT',
@@ -1293,7 +1300,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setCurrentUser((prev) => (prev ? { ...prev, shortcuts: nextShortcuts } : null));
       return { success: true, shortcuts: nextShortcuts };
     } catch (err: any) {
-      return { success: false, error: err?.message || 'تعذر حفظ اختصارات لوحة المفاتيح' };
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر حفظ اختصارات لوحة المفاتيح', 'Failed to save keyboard shortcuts') };
     }
   };
 

@@ -764,7 +764,7 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
             {previewCheque.notes && (
               <div className="p-2 rounded-md bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C]">
                 <span className="font-bold text-slate-600 dark:text-[#97AECE]">{t('ملاحظات:', 'Notes:')} </span>
-                <span className="text-slate-900 dark:text-[#EEF4FC]">{previewCheque.notes}</span>
+                <span className="text-slate-900 dark:text-[#EEF4FC]">{t(previewCheque.notes)}</span>
               </div>
             )}
             <div className="flex justify-end gap-2 pt-2 border-t border-slate-200 dark:border-[#21375C]">

@@ -28,6 +28,7 @@ import {
   getRepresentativeByUserId,
   listCategories,
   listProducts,
+  updateProduct,
   getCustomerStatementData,
   getSystemSettingsSafe,
 } from '../db/stores/catalogStore.js';
@@ -60,10 +61,17 @@ import {
 import {
   getStaffBootstrapData,
   executeCashOperation,
+  createRepTransfer,
+  confirmRepTransfer,
+  rejectRepTransfer,
+  createRepItemTransfer,
   updateRepItemTransferStatus,
   recordRepCustodyDelivery,
   recordRepCustodyReturn,
+  recordDamagedStock,
+  transferStock,
   createSupplier,
+  updateSupplier,
 } from '../db/stores/inventoryAdminStore.js';
 import {
   listDispatchRecipients,
@@ -524,6 +532,32 @@ async function applySingleOperation(op, authContext, { ignoreVersionCheck = fals
     return createSupplier(payload, user);
   }
 
+  if (opType === 'update_supplier') {
+    if (user.role !== 'admin' && !user.permissions?.canManagePurchases && !user.permissions?.canCreatePurchase) {
+      throw new AppError(403, 'ليس لديك صلاحية تعديل الموردين', 'FORBIDDEN_PERMISSION');
+    }
+    const supplierId = payload.supplierId || op.entityId;
+    if (!supplierId) throw new AppError(400, 'معرّف المورد مطلوب', 'SUPPLIER_ID_REQUIRED');
+    return updateSupplier(supplierId, payload, user);
+  }
+
+  if (opType === 'update_product') {
+    assertStaffPermission(user, 'canManageInventory');
+    const productId = payload.productId || op.entityId;
+    if (!productId) throw new AppError(400, 'معرّف الصنف مطلوب', 'PRODUCT_ID_REQUIRED');
+    return updateProduct(productId, payload, user);
+  }
+
+  if (opType === 'record_damaged_stock') {
+    assertStaffPermission(user, 'canManageInventory');
+    return recordDamagedStock(payload, user);
+  }
+
+  if (opType === 'transfer_stock') {
+    assertStaffPermission(user, 'canManageInventory');
+    return transferStock(payload, user);
+  }
+
   if (opType === 'create_sales_quote') {
     assertStaffPermission(user, 'canManageSales');
     return createSalesQuote(
@@ -545,6 +579,34 @@ async function applySingleOperation(op, authContext, { ignoreVersionCheck = fals
     return createInvoiceReturn({ ...payload, type: 'purchase_return' }, user, opId);
   }
 
+  if (opType === 'create_rep_transfer') {
+    if (user.role !== 'representative' && user.role !== 'admin' && !user.permissions?.canManageTransfers && !user.permissions?.canManageReps) {
+      throw new AppError(403, 'ليس لديك صلاحية إنشاء تحويل مندوب', 'FORBIDDEN_PERMISSION');
+    }
+    return createRepTransfer(payload, user, opId);
+  }
+
+  if (opType === 'confirm_rep_transfer') {
+    if (user.role !== 'representative' && user.role !== 'admin' && !user.permissions?.canManageTransfers && !user.permissions?.canManageCashboxes && !user.permissions?.canManageAccounts) {
+      throw new AppError(403, 'ليس لديك صلاحية اعتماد التحويل', 'FORBIDDEN_PERMISSION');
+    }
+    return confirmRepTransfer(payload.transferId || op.entityId, payload, user, opId);
+  }
+
+  if (opType === 'reject_rep_transfer') {
+    if (user.role !== 'representative' && user.role !== 'admin' && !user.permissions?.canManageTransfers) {
+      throw new AppError(403, 'ليس لديك صلاحية رفض التحويل', 'FORBIDDEN_PERMISSION');
+    }
+    return rejectRepTransfer(payload.transferId || op.entityId, payload, user, opId);
+  }
+
+  if (opType === 'create_rep_item_transfer') {
+    if (user.role !== 'representative' && user.role !== 'admin' && !user.permissions?.canManageTransfers && !user.permissions?.canManageReps) {
+      throw new AppError(403, 'غير مصرح بإنشاء طلب تحويل أصناف', 'FORBIDDEN_PERMISSION');
+    }
+    return createRepItemTransfer(payload, user, opId);
+  }
+
   if (opType === 'confirm_custody_receipt') {
     if (user.role !== 'representative' && user.role !== 'admin' && !user.permissions?.canManageTransfers) {
       throw new AppError(403, 'ليس لديك صلاحية تأكيد استلام العهدة', 'FORBIDDEN');
@@ -552,7 +614,8 @@ async function applySingleOperation(op, authContext, { ignoreVersionCheck = fals
     return updateRepItemTransferStatus(
       payload.requestId || op.entityId,
       { status: 'received', notes: payload.notes || '' },
-      user
+      user,
+      opId
     );
   }
 

@@ -56,11 +56,15 @@ const REP_DEFAULT_PERMISSIONS: UserPermissions = {
 
 interface RepTransferViewProps {
   initialTab?: 'cash-transfers' | 'item-transfers' | 'reps-list' | 'rep-custody-statement';
+  embeddedMode?: boolean;
 }
 
-export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = 'cash-transfers' }) => {
+export const RepTransferView: React.FC<RepTransferViewProps> = ({
+  initialTab = 'cash-transfers',
+  embeddedMode = false,
+}) => {
   const { 
-    repTransfers, repItemTransfers = [], representatives, customers, products, warehouses, invoices, cashboxes, settings, 
+    repTransfers, repItemTransfers = [], representatives, repTransferTargets = [], customers, products, warehouses, invoices, cashboxes, settings, 
     createRepTransfer, confirmRepTransferReceipt, rejectRepTransfer,
     createRepItemTransfer, updateRepItemTransferStatus, addRepresentative, updateRepresentative, addUser,
     getRepCustodyStatement, recordRepCustodyDelivery, recordRepCustodyReturn, recordRepCustodyAdjustment,
@@ -96,7 +100,8 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
   const [activeTransferForAudit, setActiveTransferForAudit] = useState<RepTransfer | null>(null);
 
   // New cash transfer form state
-  const [direction, setDirection] = useState<'owner_to_rep' | 'rep_to_owner'>('rep_to_owner');
+  const [direction, setDirection] = useState<'owner_to_rep' | 'rep_to_owner' | 'rep_to_rep'>('rep_to_owner');
+  const [senderRepId, setSenderRepId] = useState<string>(representatives[0]?.id || '');
   const [selectedRepId, setSelectedRepId] = useState<string>(representatives[0]?.id || '');
   const [selectedCashboxId, setSelectedCashboxId] = useState<string>(cashboxes[0]?.id || '');
   const [amount, setAmount] = useState<number | ''>('');
@@ -111,11 +116,13 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
   // Rep Item Transfers (Custody linked to invoice) state
   const [isNewItemReqModalOpen, setIsNewItemReqModalOpen] = useState(false);
   const [activeItemReqDetail, setActiveItemReqDetail] = useState<RepItemTransferRequest | null>(null);
+  const [itemReqSenderRepId, setItemReqSenderRepId] = useState<string>(representatives[0]?.id || '');
   const [itemReqRepId, setItemReqRepId] = useState<string>(representatives[0]?.id || '');
   const [itemReqInvoiceId, setItemReqInvoiceId] = useState<string>('');
   const [itemReqSourceWhId, setItemReqSourceWhId] = useState<string>(warehouses[0]?.id || '');
   const [itemReqTargetWhId, setItemReqTargetWhId] = useState<string>(warehouses[1]?.id || warehouses[0]?.id || '');
-  const [itemReqTransferMode, setItemReqTransferMode] = useState<'transfer' | 'custody_dispatch'>('transfer');
+  const [itemReqTransferMode, setItemReqTransferMode] = useState<'transfer' | 'custody_dispatch' | 'rep_to_rep'>('transfer');
+  const [itemReqAutoDispatch, setItemReqAutoDispatch] = useState<boolean>(true);
   const [itemReqNotes, setItemReqNotes] = useState<string>('');
   const [selectedItemsForReq, setSelectedItemsForReq] = useState<Array<{
     productId: string;
@@ -173,11 +180,35 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
     );
   }, [representatives, currentUser, isRepUser]);
 
+  // Merge representatives and repTransferTargets so reps can transfer to peer reps
+  const allRepOptions = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; warehouseId?: string; currentBalance?: number; balanceHidden?: boolean }>();
+    for (const r of representatives) {
+      map.set(r.id, { id: r.id, name: r.name, warehouseId: r.warehouseId, currentBalance: r.currentBalance, balanceHidden: r.balanceHidden });
+    }
+    for (const tg of repTransferTargets) {
+      if (!map.has(tg.id)) {
+        map.set(tg.id, { id: tg.id, name: tg.name, warehouseId: tg.warehouseId, balanceHidden: true });
+      } else if (tg.warehouseId && !map.get(tg.id)!.warehouseId) {
+        map.get(tg.id)!.warehouseId = tg.warehouseId;
+      }
+    }
+    return Array.from(map.values());
+  }, [representatives, repTransferTargets]);
+
   // Sync defaults when async data arrives
   useEffect(() => {
     if (representatives.length > 0) {
-      if (!selectedRepId) setSelectedRepId(representatives[0].id);
-      if (!itemReqRepId) setItemReqRepId(representatives[0].id);
+      if (!selectedRepId) {
+        const peer = allRepOptions.find((r) => !myRepProfile || r.id !== myRepProfile.id);
+        setSelectedRepId((direction === 'rep_to_rep' && peer ? peer.id : representatives[0].id));
+      }
+      if (!senderRepId) setSenderRepId(myRepProfile?.id || representatives[0].id);
+      if (!itemReqSenderRepId) setItemReqSenderRepId(myRepProfile?.id || representatives[0].id);
+      if (!itemReqRepId) {
+        const peer = allRepOptions.find((r) => !myRepProfile || r.id !== myRepProfile.id);
+        setItemReqRepId((itemReqTransferMode === 'rep_to_rep' && peer ? peer.id : representatives[0].id));
+      }
       if (isRepUser && myRepProfile) {
         setCustodyRepId(myRepProfile.id);
       } else if (!custodyRepId) {
@@ -192,7 +223,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
       if (!itemReqTargetWhId) setItemReqTargetWhId((warehouses[1] || warehouses[0]).id);
       if (!custodyOpTargetWhId) setCustodyOpTargetWhId(warehouses[0].id);
     }
-  }, [representatives, cashboxes, warehouses, selectedRepId, itemReqRepId, custodyRepId, selectedCashboxId, itemReqSourceWhId, itemReqTargetWhId, custodyOpTargetWhId, isRepUser, myRepProfile]);
+  }, [representatives, allRepOptions, cashboxes, warehouses, selectedRepId, senderRepId, itemReqSenderRepId, itemReqRepId, custodyRepId, selectedCashboxId, itemReqSourceWhId, itemReqTargetWhId, custodyOpTargetWhId, isRepUser, myRepProfile, direction, itemReqTransferMode]);
 
   const loadCustodyStatement = useCallback(async (targetRepId?: string) => {
     const rid = targetRepId || custodyRepId;
@@ -231,7 +262,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
   const filteredItemTransfers = useMemo(() => {
     return repItemTransfers.filter(r => {
       if (isRepUser && myRepProfile) {
-        if (r.representativeId !== myRepProfile.id) return false;
+        if (r.representativeId !== myRepProfile.id && r.senderRepresentativeId !== myRepProfile.id) return false;
       }
       return true;
     });
@@ -247,36 +278,53 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
       return;
     }
 
-    const rep = representatives.find(r => r.id === selectedRepId);
-    if (!rep) {
-      setError(t('يرجى اختيار المندوب المعني', 'Please select the representative'));
-      return;
-    }
-
-    const cb = cashboxes.find(c => c.id === selectedCashboxId);
-    if (!cb) {
-      setError(t('يرجى تحديد الخزينة', 'Please select the cashbox'));
-      return;
-    }
-
-    setIsSubmitting(true);
-
     let senderId = '';
     let senderName = '';
     let receiverId = '';
     let receiverName = '';
+    let cbId = selectedCashboxId;
 
-    if (direction === 'rep_to_owner') {
-      senderId = rep.id;
-      senderName = rep.name;
-      receiverId = 'OWNER';
-      receiverName = 'الفرع الرئيسي (الخزينة)';
+    if (direction === 'rep_to_rep') {
+      const sRep = isRepUser && myRepProfile ? myRepProfile : allRepOptions.find(r => r.id === senderRepId);
+      const rRep = allRepOptions.find(r => r.id === selectedRepId);
+      if (!sRep || !rRep) {
+        setError(t('يرجى تحديد المندوب المرسل والمندوب المستلم', 'Please select sender and receiver representatives'));
+        return;
+      }
+      if (sRep.id === rRep.id) {
+        setError(t('لا يمكن التحويل من المندوب إلى نفسه', 'Cannot transfer from a representative to themselves'));
+        return;
+      }
+      senderId = sRep.id;
+      senderName = sRep.name;
+      receiverId = rRep.id;
+      receiverName = rRep.name;
+      cbId = '';
     } else {
-      senderId = 'OWNER';
-      senderName = 'الفرع الرئيسي (الخزينة)';
-      receiverId = rep.id;
-      receiverName = rep.name;
+      const rep = allRepOptions.find(r => r.id === selectedRepId) || representatives[0];
+      if (!rep) {
+        setError(t('يرجى اختيار المندوب المعني', 'Please select the representative'));
+        return;
+      }
+      const cb = cashboxes.find(c => c.id === selectedCashboxId);
+      if (!cb) {
+        setError(t('يرجى تحديد الخزينة', 'Please select the cashbox'));
+        return;
+      }
+      if (direction === 'rep_to_owner') {
+        senderId = rep.id;
+        senderName = rep.name;
+        receiverId = 'OWNER';
+        receiverName = 'الفرع الرئيسي (الخزينة)';
+      } else {
+        senderId = 'OWNER';
+        senderName = 'الفرع الرئيسي (الخزينة)';
+        receiverId = rep.id;
+        receiverName = rep.name;
+      }
     }
+
+    setIsSubmitting(true);
 
     const res = await createRepTransfer({
       direction,
@@ -285,7 +333,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
       receiverId,
       receiverName,
       amount: numAmt,
-      cashboxId: selectedCashboxId,
+      cashboxId: cbId,
       notes,
     });
 
@@ -295,7 +343,12 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
       setIsNewCashModalOpen(false);
       setAmount('');
       setNotes('');
-      if (res.transfer) {
+      if (res.queuedOffline) {
+        setStatusBanner({
+          type: 'success',
+          text: t('تم حفظ طلب التحويل المالي محلياً وسيتم إرساله عند المزامنة.', 'Cash transfer saved locally and will sync when sent.'),
+        });
+      } else if (res.transfer) {
         handlePrintTransfer(res.transfer);
       }
     } else {
@@ -426,29 +479,55 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
       return;
     }
 
-    const rep = representatives.find(r => r.id === itemReqRepId);
-    if (!rep) {
-      setItemReqError(t('يرجى اختيار المندوب', 'Please select a representative'));
+    const targetRep = allRepOptions.find(r => r.id === itemReqRepId) || representatives[0];
+    if (!targetRep) {
+      setItemReqError(t('يرجى اختيار المندوب المستلم', 'Please select the receiving representative'));
       return;
     }
 
-    const sourceWh = warehouses.find(w => w.id === itemReqSourceWhId);
-    const targetWh = warehouses.find(w => w.id === itemReqTargetWhId) || warehouses[0];
+    const senderRep =
+      itemReqTransferMode === 'rep_to_rep'
+        ? (isRepUser && myRepProfile ? myRepProfile : allRepOptions.find(r => r.id === itemReqSenderRepId))
+        : undefined;
+
+    if (itemReqTransferMode === 'rep_to_rep') {
+      if (!senderRep) {
+        setItemReqError(t('يرجى اختيار المندوب المرسل', 'Please select the sending representative'));
+        return;
+      }
+      if (senderRep.id === targetRep.id) {
+        setItemReqError(t('لا يمكن تحويل البضاعة من المندوب إلى نفسه', 'Cannot transfer goods to the same representative'));
+        return;
+      }
+    }
+
+    const sourceWh =
+      itemReqTransferMode === 'rep_to_rep' && senderRep
+        ? warehouses.find(w => w.id === senderRep.warehouseId) || { id: senderRep.warehouseId || `VAN-${senderRep.id}`, name: `سيارة ${senderRep.name}` }
+        : warehouses.find(w => w.id === itemReqSourceWhId);
+    const targetWh =
+      itemReqTransferMode === 'rep_to_rep'
+        ? warehouses.find(w => w.id === targetRep.warehouseId) || { id: targetRep.warehouseId || `VAN-${targetRep.id}`, name: `سيارة ${targetRep.name}` }
+        : warehouses.find(w => w.id === itemReqTargetWhId) || warehouses[0];
 
     const linkedInv = invoices.find(i => i.id === itemReqInvoiceId);
+    const autoDispatchFlag = itemReqTransferMode === 'rep_to_rep' ? true : itemReqTransferMode === 'custody_dispatch' ? itemReqAutoDispatch : false;
 
     setIsSubmittingItemReq(true);
     const res = await createRepItemTransfer({
       date: new Date().toISOString().split('T')[0],
-      representativeId: rep.id,
-      representativeName: rep.name,
+      representativeId: targetRep.id,
+      representativeName: targetRep.name,
+      senderRepresentativeId: senderRep?.id,
+      senderRepresentativeName: senderRep?.name,
       invoiceId: linkedInv?.id,
       invoiceNumber: linkedInv?.invoiceNumber,
       sourceWarehouseId: sourceWh?.id || 'WH-01',
       sourceWarehouseName: sourceWh?.name || 'المستودع الرئيسي',
-      targetWarehouseId: targetWh?.id || 'WH-VAN',
-      targetWarehouseName: targetWh?.name || `سيارة المندوب (${rep.name})`,
+      targetWarehouseId: targetWh?.id || `VAN-${targetRep.id}`,
+      targetWarehouseName: targetWh?.name || `سيارة المندوب (${targetRep.name})`,
       transferMode: itemReqTransferMode,
+      autoDispatch: autoDispatchFlag,
       items: selectedItemsForReq.map(it => ({
         ...it,
         approvedQty: it.requestedQty,
@@ -464,10 +543,13 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
       setItemReqTransferMode('transfer');
       setStatusBanner({
         type: 'success',
-        text:
-          itemReqTransferMode === 'custody_dispatch'
-            ? t('تم صرف العهدة من المخزن الرئيسي — بانتظار تأكيد استلام المندوب.', 'Custody dispatched from main warehouse — awaiting representative confirmation.')
-            : t('تم إرسال طلب تحويل الأصناف للمراجعة بنجاح.', 'Item transfer request submitted for review.'),
+        text: res.queuedOffline
+          ? t('تم حفظ طلب تحويل الأصناف محلياً وسيتم إرساله عند المزامنة.', 'Item transfer saved locally and will sync when sent.')
+          : itemReqTransferMode === 'rep_to_rep'
+          ? t('تم شحن تحويل البضاعة بين المناديب — بانتظار تأكيد استلام المندوب المستلم.', 'Rep-to-rep goods transfer dispatched — awaiting receiving rep confirmation.')
+          : itemReqTransferMode === 'custody_dispatch' && autoDispatchFlag
+          ? t('تم صرف العهدة من المخزن الرئيسي — بانتظار تأكيد استلام المندوب.', 'Custody dispatched from main warehouse — awaiting representative confirmation.')
+          : t('تم إرسال طلب تحويل الأصناف للمراجعة بنجاح.', 'Item transfer request submitted for review.'),
       });
     } else {
       setItemReqError(t(res.error || 'فشل إرسال طلب التحويل', res.error || 'Failed to submit transfer request'));
@@ -847,68 +929,99 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
 
   return (
     <div className="space-y-2">
-      {/* Top Header Card */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-white dark:bg-[#0E1C36] px-2.5 py-2 rounded-lg border border-slate-200 dark:border-[#21375C]">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm font-black text-slate-900 dark:text-[#F3F7FC] tracking-tight">
-              {t('إدارة المندوبين والتحويلات والعهد', 'Representatives, Transfers & Custody Management')}
-            </h2>
-            <span className="bg-blue-50 dark:bg-[#16366B] text-blue-800 dark:text-[#85B8FF] text-[10px] font-bold px-2 py-0.5 rounded border border-blue-200 dark:border-[#2A436E]">
-              {t('ربط الفواتير والتحصيل', 'Invoice & Collection Link')}
-            </span>
+      {/* Top Header Card (Full standalone mode) or Compact Action Strip (Embedded mode inside unified screen) */}
+      {!embeddedMode ? (
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-white dark:bg-[#0E1C36] px-2.5 py-2 rounded-lg border border-slate-200 dark:border-[#21375C]">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-black text-slate-900 dark:text-[#F3F7FC] tracking-tight">
+                {t('إدارة المندوبين والتحويلات والعهد', 'Representatives, Transfers & Custody Management')}
+              </h2>
+              <span className="bg-blue-50 dark:bg-[#16366B] text-blue-800 dark:text-[#85B8FF] text-[10px] font-bold px-2 py-0.5 rounded border border-blue-200 dark:border-[#2A436E]">
+                {t('ربط الفواتير والتحصيل', 'Invoice & Collection Link')}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-[#97AECE] mt-0.5">
+              {t(
+                'متابعة عهدة البضاعة في سيارات المناديب، التحويلات النقدية بالنصف، وطلبات تحويل الأصناف المرتبطة بالفواتير',
+                'Track van inventory custody, two-way cash transfers, and invoice-linked stock transfer requests'
+              )}
+            </p>
           </div>
-          <p className="text-[11px] text-slate-500 dark:text-[#97AECE] mt-0.5">
-            {t(
-              'متابعة عهدة البضاعة في سيارات المناديب، التحويلات النقدية بالنصف، وطلبات تحويل الأصناف المرتبطة بالفواتير',
-              'Track van inventory custody, two-way cash transfers, and invoice-linked stock transfer requests'
+
+          <div className="flex items-center gap-2">
+            {activeTab === 'cash-transfers' && (
+              <button
+                onClick={() => setIsNewCashModalOpen(true)}
+                className="h-8 flex items-center gap-1.5 px-2.5 bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-black rounded-md transition-colors cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>{t('طلب تحويل مالي جديد', 'New Cash Transfer')}</span>
+              </button>
             )}
-          </p>
+
+            {activeTab === 'item-transfers' && (
+              <button
+                onClick={() => setIsNewItemReqModalOpen(true)}
+                className="h-8 flex items-center gap-1.5 px-2.5 bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-black rounded-md transition-colors cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>{t('طلب تحويل أصناف وعهدة (+)', 'New Item & Custody Transfer (+)')}</span>
+              </button>
+            )}
+
+            {activeTab === 'reps-list' && (
+              <button
+                onClick={() => {
+                  setEditingRep(null);
+                  setRepFormError(null);
+                  setRepName('');
+                  setRepPhone('');
+                  setRepVehicle('');
+                  setRepOpening('');
+                  setRepUsername('');
+                  setRepPassword('');
+                  setCreateRepAccount(true);
+                  setIsAddRepModalOpen(true);
+                }}
+                className="h-8 flex items-center gap-1.5 px-2.5 bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-black rounded-md transition-colors cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>{t('إضافة مندوب جديد', 'Add New Representative')}</span>
+              </button>
+            )}
+          </div>
         </div>
-
-        <div className="flex items-center gap-2">
-          {activeTab === 'cash-transfers' && (
-            <button
-              onClick={() => setIsNewCashModalOpen(true)}
-              className="h-8 flex items-center gap-1.5 px-2.5 bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-black rounded-md transition-colors cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>{t('طلب تحويل مالي جديد (نصف)', 'New Two-Way Cash Transfer')}</span>
-            </button>
-          )}
-
-          {activeTab === 'item-transfers' && (
-            <button
-              onClick={() => setIsNewItemReqModalOpen(true)}
-              className="h-8 flex items-center gap-1.5 px-2.5 bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-black rounded-md transition-colors cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>{t('طلب تحويل أصناف وعهدة (+)', 'New Item & Custody Transfer (+)')}</span>
-            </button>
-          )}
-
-          {activeTab === 'reps-list' && (
-            <button
-              onClick={() => {
-                setEditingRep(null);
-                setRepFormError(null);
-                setRepName('');
-                setRepPhone('');
-                setRepVehicle('');
-                setRepOpening('');
-                setRepUsername('');
-                setRepPassword('');
-                setCreateRepAccount(true);
-                setIsAddRepModalOpen(true);
-              }}
-              className="h-8 flex items-center gap-1.5 px-2.5 bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-black rounded-md transition-colors cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>{t('إضافة مندوب جديد', 'Add New Representative')}</span>
-            </button>
-          )}
-        </div>
-      </div>
+      ) : (
+        (activeTab === 'cash-transfers' || activeTab === 'item-transfers') && (
+          <div className="flex flex-wrap items-center justify-between gap-2 bg-white dark:bg-[#0E1C36] px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-[#21375C]">
+            <span className="text-xs font-black text-slate-900 dark:text-[#EEF4FC]">
+              {activeTab === 'cash-transfers'
+                ? t('التحويلات المالية (إدارة ↔ مندوب · مندوب ↔ مندوب)', 'Financial Transfers (Admin ↔ Rep · Rep ↔ Rep)')
+                : t('تحويلات البضائع وعهد السيارات', 'Goods & Van Custody Transfers')}
+            </span>
+            {activeTab === 'cash-transfers' ? (
+              <button
+                type="button"
+                onClick={() => setIsNewCashModalOpen(true)}
+                className="h-8 flex items-center gap-1.5 px-2.5 bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-black rounded-md transition-colors cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>{t('طلب تحويل مالي جديد', 'New Cash Transfer')}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsNewItemReqModalOpen(true)}
+                className="h-8 flex items-center gap-1.5 px-2.5 bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-black rounded-md transition-colors cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>{t('طلب تحويل أصناف وعهدة (+)', 'New Item & Custody Transfer (+)')}</span>
+              </button>
+            )}
+          </div>
+        )
+      )}
 
       {statusBanner && (
         <div
@@ -926,6 +1039,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
       )}
 
       {/* Tabs Switcher */}
+      {!embeddedMode && (
       <div className="flex items-center gap-1 p-1 bg-slate-200/80 dark:bg-[#132544] border border-transparent dark:border-[#21375C] rounded-lg overflow-x-auto text-xs font-bold no-print">
         <button
           onClick={() => setActiveTab('cash-transfers')}
@@ -936,7 +1050,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
           }`}
         >
           <CashTransferIcon className="w-4 h-4 shrink-0" />
-          <span>{t('التحويل المالي والنقدي (طلب تحويل بالنصف)', 'Cash Transfers (Two-Way)')}</span>
+          <span>{t('التحويل المالي والنقدي', 'Cash Transfers')}</span>
         </button>
 
         <button
@@ -946,7 +1060,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
           }`}
         >
           <StockTransfersIcon className="w-4 h-4 shrink-0" />
-          <span>{t('طلبات تحويل الأصناف والعهد (مرتبطة بالفاتورة)', 'Item & Custody Transfers (Invoice-Linked)')}</span>
+          <span>{t('تحويلات الأصناف والعهد', 'Item & Custody Transfers')}</span>
           {repItemTransfers.filter(r => r.status === 'pending').length > 0 && (
             <span className="bg-amber-600 text-white px-1.5 py-0.5 rounded text-[10px] tabular-nums">
               {formatLocaleNumber(repItemTransfers.filter(r => r.status === 'pending').length)}
@@ -974,6 +1088,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
           <span>{t('كشف حساب وعهدة المندوب', 'Rep Account & Custody Statement')}</span>
         </button>
       </div>
+      )}
 
       {/* TAB 1: Cash Transfers (Two-way) */}
       {activeTab === 'cash-transfers' && (
@@ -1038,15 +1153,21 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               exportValue: (tr) =>
                 tr.direction === 'rep_to_owner'
                   ? t('توريد تحصيل (من مندوب لفرع)', 'Collection Deposit (Rep to Branch)')
+                  : tr.direction === 'rep_to_rep'
+                  ? t('تحويل بين مناديب', 'Rep-to-Rep Transfer')
                   : t('صرف عهدة (من فرع لمندوب)', 'Custody Issue (Branch to Rep)'),
               render: (tr) => (
                 <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
                   tr.direction === 'rep_to_owner'
                     ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                    : tr.direction === 'rep_to_rep'
+                    ? 'bg-indigo-50 text-indigo-900 border border-indigo-200'
                     : 'bg-blue-50 text-blue-800 border border-blue-200'
                 }`}>
                   {tr.direction === 'rep_to_owner'
                     ? t('توريد تحصيل (من مندوب لفرع)', 'Collection Deposit (Rep to Branch)')
+                    : tr.direction === 'rep_to_rep'
+                    ? t('تحويل بين مناديب', 'Rep-to-Rep Transfer')
                     : t('صرف عهدة (من فرع لمندوب)', 'Custody Issue (Branch to Rep)')}
                 </span>
               ),
@@ -1085,8 +1206,12 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               header: t('الخزينة المتأثرة', 'Affected Cashbox'),
               sortable: true,
               sortValue: (tr) => tr.cashboxName,
-              exportValue: (tr) => tr.cashboxName,
-              render: (tr) => <span className="text-slate-600">{tr.cashboxName}</span>,
+              exportValue: (tr) => tr.cashboxName || (tr.direction === 'rep_to_rep' ? t('تحويل بين عهد المناديب', 'Rep Custody Only') : ''),
+              render: (tr) => (
+                <span className="text-slate-600">
+                  {tr.cashboxName || (tr.direction === 'rep_to_rep' ? t('تحويل عهدة (بدون خزينة)', 'Rep-to-Rep (No Cashbox)') : '—')}
+                </span>
+              ),
             },
             {
               key: 'status',
@@ -1101,10 +1226,20 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               key: 'actions',
               header: t('الإجراءات', 'Actions'),
               align: 'center',
-              render: (tr) => (
+              render: (tr) => {
+                const canConfirmCash =
+                  tr.status === 'awaiting_receipt' &&
+                  (!isRepUser ||
+                    (Boolean(myRepProfile) &&
+                      (tr.direction === 'owner_to_rep' || tr.direction === 'rep_to_rep') &&
+                      tr.receiverId === myRepProfile!.id &&
+                      tr.senderId !== myRepProfile!.id));
+                const canRejectCash =
+                  tr.status === 'awaiting_receipt' &&
+                  (!isRepUser || (Boolean(myRepProfile) && (tr.receiverId === myRepProfile!.id || tr.senderId === myRepProfile!.id)));
+                return (
                 <div className="flex items-center justify-center gap-1.5">
-                  {tr.status === 'awaiting_receipt' && (
-                    <>
+                  {canConfirmCash && (
                       <button
                         onClick={() => handleConfirmReceipt(tr)}
                         className="px-2.5 py-1 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-bold text-[11px] cursor-pointer"
@@ -1112,6 +1247,8 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                       >
                         {t('تأكيد الاستلام', 'Confirm Receipt')}
                       </button>
+                  )}
+                  {canRejectCash && (
                       <button
                         onClick={() => handleRejectTransfer(tr)}
                         className="px-2.5 py-1 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg font-bold text-[11px] cursor-pointer"
@@ -1119,7 +1256,6 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                       >
                         {t('رفض', 'Reject')}
                       </button>
-                    </>
                   )}
                   <button
                     onClick={() => handlePrintTransfer(tr)}
@@ -1136,7 +1272,8 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                     <History className="w-4 h-4" />
                   </button>
                 </div>
-              ),
+                );
+              },
             },
           ]}
         />
@@ -1190,6 +1327,11 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                         {t('صرف عهدة مباشر', 'Direct Custody Dispatch')}
                       </span>
                     )}
+                    {req.transferMode === 'rep_to_rep' && (
+                      <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-900 border border-indigo-200 text-[9px] font-sans font-bold">
+                        {t('تحويل بين مناديب', 'Rep-to-Rep Transfer')}
+                      </span>
+                    )}
                   </div>
                 ),
               },
@@ -1203,11 +1345,18 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               },
               {
                 key: 'representativeName',
-                header: t('المندوب', 'Representative'),
+                header: t('المندوب المستلم', 'Receiving Rep'),
                 sortable: true,
                 sortValue: (req) => req.representativeName,
                 exportValue: (req) => req.representativeName,
-                render: (req) => <span className="font-bold text-slate-800">{req.representativeName}</span>,
+                render: (req) => (
+                  <div>
+                    <span className="font-bold text-slate-800">{req.representativeName}</span>
+                    {req.senderRepresentativeName && (
+                      <div className="text-[10px] text-slate-500">{t('المرسل:', 'From:')} {req.senderRepresentativeName}</div>
+                    )}
+                  </div>
+                ),
               },
               {
                 key: 'invoiceNumber',
@@ -1264,7 +1413,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                       <Eye className="w-3.5 h-3.5" />
                       <span>{t('فحص الأصناف', 'Inspect Items')}</span>
                     </button>
-                    {req.status === 'pending' && (currentUser?.role === 'admin' || hasPermission('canManageTransfers')) && (
+                    {req.status === 'pending' && (!isRepUser) && (currentUser?.role === 'admin' || hasPermission('canManageTransfers')) && (
                       <button
                         onClick={() => handleExecuteItemTransfer(req)}
                         className="px-2.5 py-1 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-bold text-[11px] cursor-pointer"
@@ -1273,7 +1422,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                         {t('اعتماد وصرف', 'Approve & Dispatch')}
                       </button>
                     )}
-                    {req.status === 'executed' && (
+                    {req.status === 'executed' && !(isRepUser && (req.senderRepresentativeId === myRepProfile?.id || req.representativeId !== myRepProfile?.id)) && (
                       <button
                         onClick={() => handleConfirmCustodyReceipt(req)}
                         className="px-2.5 py-1 bg-[#011E58] hover:bg-[#003589] text-white rounded-md font-bold text-[11px] cursor-pointer"
@@ -1776,7 +1925,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
 
             <div>
               <label className="block font-bold mb-1">{t('اتجاه التحويل:', 'Transfer Direction:')}</label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <button
                   type="button"
                   onClick={() => setDirection('rep_to_owner')}
@@ -1784,7 +1933,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                     direction === 'rep_to_owner' ? 'bg-[#003589] text-white border-[#003589]' : 'bg-slate-50 text-slate-700 border-slate-300'
                   }`}
                 >
-                  {t('توريد من مندوب إلى الفرع', 'Deposit from Rep to Branch')}
+                  {t('من مندوب إلى الفرع', 'Rep to Branch')}
                 </button>
                 <button
                   type="button"
@@ -1793,11 +1942,63 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                     direction === 'owner_to_rep' ? 'bg-[#011E58] text-white border-[#011E58]' : 'bg-slate-50 text-slate-700 border-slate-300'
                   }`}
                 >
-                  {t('صرف عهدة نقدية للمندوب', 'Issue Cash Custody to Rep')}
+                  {t('من الفرع إلى مندوب', 'Branch to Rep')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDirection('rep_to_rep');
+                    const sId = (isRepUser && myRepProfile?.id) || senderRepId || allRepOptions[0]?.id || '';
+                    setSenderRepId(sId);
+                    if (selectedRepId === sId || !selectedRepId) {
+                      const peer = allRepOptions.find(r => r.id !== sId);
+                      if (peer) setSelectedRepId(peer.id);
+                    }
+                  }}
+                  className={`h-8 px-2.5 rounded-md border text-center font-bold cursor-pointer transition-all ${
+                    direction === 'rep_to_rep' ? 'bg-[#003589] text-white border-[#003589]' : 'bg-slate-50 text-slate-700 border-slate-300'
+                  }`}
+                >
+                  {t('من مندوب إلى مندوب', 'Rep to Rep')}
                 </button>
               </div>
             </div>
 
+            {direction === 'rep_to_rep' ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block font-bold mb-1">{t('المندوب المرسل:', 'Sending Representative:')}</label>
+                  <select
+                    disabled={isRepUser && Boolean(myRepProfile)}
+                    value={isRepUser && myRepProfile ? myRepProfile.id : senderRepId}
+                    onChange={(e) => setSenderRepId(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white disabled:bg-slate-100"
+                  >
+                    {allRepOptions.map(r => (
+                      <option key={r.id} value={r.id}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold mb-1">{t('المندوب المستلم:', 'Receiving Representative:')}</label>
+                  <select
+                    value={selectedRepId}
+                    onChange={(e) => setSelectedRepId(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
+                  >
+                    {allRepOptions
+                      .filter(r => r.id !== (isRepUser && myRepProfile ? myRepProfile.id : senderRepId))
+                      .map(r => (
+                        <option key={r.id} value={r.id}>
+                          {r.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              </div>
+            ) : (
             <div>
               <label className="block font-bold mb-1">{t('المندوب المعني:', 'Representative:')}</label>
               <select
@@ -1805,16 +2006,17 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 onChange={(e) => setSelectedRepId(e.target.value)}
                 className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
               >
-                {representatives.map(r => (
+                {allRepOptions.map(r => (
                   <option key={r.id} value={r.id}>
                     {r.name} ({t('رصيد عهدته:', 'Custody balance:')} {r.balanceHidden || r.currentBalance === undefined ? t('محجوب', 'Hidden') : `${formatLocaleNumber(r.currentBalance)} ${settings.currency}`})
                   </option>
                 ))}
               </select>
             </div>
+            )}
 
             <div className="grid grid-cols-2 gap-2.5">
-              <div>
+              <div className={direction === 'rep_to_rep' ? 'col-span-2' : ''}>
                 <label className="block font-bold mb-1">{t('المبلغ المحول', 'Transferred Amount')} ({settings.currency}):</label>
                 <input
                   type="number"
@@ -1827,6 +2029,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 />
               </div>
 
+              {direction !== 'rep_to_rep' && (
               <div>
                 <label className="block font-bold mb-1">{t('الخزينة المتأثرة للفرع:', 'Affected Branch Cashbox:')}</label>
                 <select
@@ -1841,6 +2044,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                   ))}
                 </select>
               </div>
+              )}
             </div>
 
             <div>
@@ -1874,12 +2078,12 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
         </Modal>
       )}
 
-      {/* New Item Transfer Request Modal (Linked to Invoice) */}
+      {/* New Item Transfer Request Modal (Linked to Invoice / Custody / Rep-to-Rep) */}
       {isNewItemReqModalOpen && (
         <Modal
           isOpen={isNewItemReqModalOpen}
           onClose={() => setIsNewItemReqModalOpen(false)}
-          title={t('طلب تحويل أصناف وعهدة مخزنية (مرتبط بفاتورة مبيعات)', 'Item Transfer & Inventory Custody Request (Linked to Invoice)')}
+          title={t('طلب تحويل أصناف وعهدة مخزنية', 'Item Transfer & Inventory Custody Request')}
         >
           <form onSubmit={handleSubmitItemTransferRequest} className="space-y-3 text-xs">
             {itemReqError && (
@@ -1891,48 +2095,90 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
 
             <div>
               <label className="block font-bold mb-1">{t('نوع الإذن / المسار:', 'Request Type / Flow:')}</label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <button
                   type="button"
                   onClick={() => setItemReqTransferMode('transfer')}
-                  className={`h-8 px-2.5 rounded-md border font-bold cursor-pointer ${
+                  className={`h-8 px-2 rounded-md border font-bold cursor-pointer ${
                     itemReqTransferMode === 'transfer' ? 'bg-[#011E58] text-white border-[#011E58]' : 'bg-slate-50 text-slate-700 border-slate-300'
                   }`}
                 >
-                  {t('تحويل عادي / طلب سحب', 'Standard Transfer / Pull Request')}
+                  {t('تحويل عادي / سحب', 'Standard / Pull')}
                 </button>
                 <button
                   type="button"
                   onClick={() => setItemReqTransferMode('custody_dispatch')}
-                  className={`h-8 px-2.5 rounded-md border font-bold cursor-pointer ${
+                  className={`h-8 px-2 rounded-md border font-bold cursor-pointer ${
                     itemReqTransferMode === 'custody_dispatch' ? 'bg-[#003589] text-white border-[#003589]' : 'bg-slate-50 text-slate-700 border-slate-300'
                   }`}
                 >
-                  {t('صرف عهدة مباشرة من المخزن للمندوب', 'Direct Custody Dispatch from Warehouse to Rep')}
+                  {t('صرف عهدة للمندوب', 'Custody Dispatch')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setItemReqTransferMode('rep_to_rep');
+                    const sId = (isRepUser && myRepProfile?.id) || itemReqSenderRepId || allRepOptions[0]?.id || '';
+                    setItemReqSenderRepId(sId);
+                    if (itemReqRepId === sId || !itemReqRepId) {
+                      const peer = allRepOptions.find(r => r.id !== sId);
+                      if (peer) setItemReqRepId(peer.id);
+                    }
+                  }}
+                  className={`h-8 px-2 rounded-md border font-bold cursor-pointer ${
+                    itemReqTransferMode === 'rep_to_rep' ? 'bg-[#003589] text-white border-[#003589]' : 'bg-slate-50 text-slate-700 border-slate-300'
+                  }`}
+                >
+                  {t('تحويل بين مناديب', 'Rep to Rep')}
                 </button>
               </div>
               <p className="text-[10px] text-slate-500 mt-1">
-                {t(
-                  'في وضع صرف العهدة المباشر يُخصم المخزن الرئيسي فوراً ولا تُضاف البضاعة لرصيد سيارة المندوب إلا بعد تأكيد الاستلام.',
-                  'In Direct Custody Dispatch mode, main warehouse stock is deducted immediately and van stock is credited only after receipt confirmation.'
-                )}
+                {itemReqTransferMode === 'rep_to_rep'
+                  ? t(
+                      'تُخصم الكمية من سيارة المندوب المرسل عند الصرف ولا تدخل عهدة المندوب المستلم إلا بعد تأكيد استلامه الفعلي.',
+                      'Stock is deducted from the sending rep van upon dispatch and credited to the receiving rep only after receipt confirmation.'
+                    )
+                  : t(
+                      'في وضع صرف العهدة المباشر يُخصم المخزن الرئيسي فوراً ولا تُضاف البضاعة لرصيد سيارة المندوب إلا بعد تأكيد الاستلام.',
+                      'In Direct Custody Dispatch mode, main warehouse stock is deducted immediately and van stock is credited only after receipt confirmation.'
+                    )}
               </p>
             </div>
 
             <div className="grid grid-cols-2 gap-2.5">
+              {itemReqTransferMode === 'rep_to_rep' && (
+                <div>
+                  <label className="block font-bold mb-1">{t('المندوب المرسل:', 'Sending Rep:')}</label>
+                  <select
+                    disabled={isRepUser && Boolean(myRepProfile)}
+                    value={isRepUser && myRepProfile ? myRepProfile.id : itemReqSenderRepId}
+                    onChange={(e) => setItemReqSenderRepId(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white disabled:bg-slate-100"
+                  >
+                    {allRepOptions.map(r => (
+                      <option key={r.id} value={r.id}>{r.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div>
-                <label className="block font-bold mb-1">{t('المندوب:', 'Representative:')}</label>
+                <label className="block font-bold mb-1">{t('المندوب المستلم:', 'Receiving Rep:')}</label>
                 <select
                   value={itemReqRepId}
                   onChange={(e) => setItemReqRepId(e.target.value)}
                   className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
                 >
-                  {representatives.map(r => (
+                  {(itemReqTransferMode === 'rep_to_rep'
+                    ? allRepOptions.filter(r => r.id !== (isRepUser && myRepProfile ? myRepProfile.id : itemReqSenderRepId))
+                    : allRepOptions
+                  ).map(r => (
                     <option key={r.id} value={r.id}>{r.name}</option>
                   ))}
                 </select>
               </div>
 
+              {itemReqTransferMode !== 'rep_to_rep' && (
               <div>
                 <label className="block font-bold mb-1">{t('الفاتورة المرتبطة (إن وجدت):', 'Linked Invoice (if any):')}</label>
                 <select
@@ -1948,8 +2194,22 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                   ))}
                 </select>
               </div>
+              )}
             </div>
 
+            {itemReqTransferMode === 'custody_dispatch' && (
+              <label className="flex items-center gap-2 font-bold text-slate-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={itemReqAutoDispatch}
+                  onChange={(e) => setItemReqAutoDispatch(e.target.checked)}
+                  className="w-4 h-4 accent-[#003589]"
+                />
+                <span>{t('صرف فوري من المخزن بانتظار تأكيد استلام المندوب', 'Dispatch immediately awaiting rep receipt')}</span>
+              </label>
+            )}
+
+            {itemReqTransferMode !== 'rep_to_rep' && (
             <div className="grid grid-cols-2 gap-2.5">
               <div>
                 <label className="block font-bold mb-1">{t('المستودع المصدر (المقر الرئيسي):', 'Source Warehouse (Main Branch):')}</label>
@@ -1977,6 +2237,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                 </select>
               </div>
             </div>
+            )}
 
             {/* Item Selector Box */}
             <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
@@ -2128,7 +2389,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
               <div>{getItemReqStatusBadge(activeItemReqDetail.status)}</div>
 
               <div className="flex items-center gap-2">
-                {activeItemReqDetail.status === 'pending' && (currentUser?.role === 'admin' || hasPermission('canManageTransfers')) && (
+                {activeItemReqDetail.status === 'pending' && !isRepUser && (currentUser?.role === 'admin' || hasPermission('canManageTransfers')) && (
                   <>
                     <button
                       type="button"
@@ -2146,7 +2407,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({ initialTab = '
                     </button>
                   </>
                 )}
-                {activeItemReqDetail.status === 'executed' && (
+                {activeItemReqDetail.status === 'executed' && !(isRepUser && (activeItemReqDetail.senderRepresentativeId === myRepProfile?.id || activeItemReqDetail.representativeId !== myRepProfile?.id)) && (
                   <button
                     type="button"
                     onClick={() => handleConfirmCustodyReceipt(activeItemReqDetail)}
