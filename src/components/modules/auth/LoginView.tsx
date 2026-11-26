@@ -628,7 +628,6 @@ export const LoginView: React.FC = () => {
                     type="text"
                     value={companyName}
                     onChange={(e) => setCompanyName(e.target.value)}
-                    placeholder={t('أدخل اسم الشركة أو المؤسسة', 'Enter company or business name')}
                     className="w-full h-8 sm:h-9 rounded-md border border-slate-300 dark:border-[#2A436E] dark:bg-[#10203D] dark:text-[#F3F7FC] px-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-start"
                   />
                 </div>
@@ -641,7 +640,6 @@ export const LoginView: React.FC = () => {
                     required
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    placeholder={t('أدخل الاسم الكامل للمالك أو المدير العام', 'Enter owner or general manager full name')}
                     className="w-full h-8 sm:h-9 rounded-md border border-slate-300 dark:border-[#2A436E] dark:bg-[#10203D] dark:text-[#F3F7FC] px-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-start"
                   />
                 </div>
@@ -674,7 +672,6 @@ export const LoginView: React.FC = () => {
                       required
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
-                      placeholder={authMode === 'register_customer' ? t('اسم العميل أو المسؤول', 'Customer or contact name') : t('اسم المندوب الثلاثي', 'Representative full name')}
                       className="w-full h-8 rounded-md border border-slate-300 bg-white dark:bg-[#10203D] dark:border-[#2A436E] dark:text-[#F3F7FC] px-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-start"
                     />
                   </div>
@@ -736,7 +733,6 @@ export const LoginView: React.FC = () => {
                         type="text"
                         value={address}
                         onChange={(e) => setAddress(e.target.value)}
-                        placeholder={t('العنوان التفصيلي', 'Detailed Address')}
                         className="flex-1 min-w-[160px] h-8 rounded-md border border-slate-300 bg-white dark:bg-[#10203D] dark:border-[#2A436E] dark:text-[#F3F7FC] px-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-[var(--awlad-royal-700)] outline-hidden text-start"
                       />
                       {authMode === 'register_customer' && (
@@ -770,7 +766,6 @@ export const LoginView: React.FC = () => {
                   required
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder={t('أدخل اسم المستخدم', 'Enter username')}
                   className="w-full h-8 sm:h-9 rounded-md border border-slate-300 dark:border-[#2A436E] dark:bg-[#10203D] dark:text-[#F3F7FC] ps-8 pe-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-start"
                 />
                 <User className="w-3.5 h-3.5 text-slate-400 absolute start-2.5 top-2.5 pointer-events-none" />
@@ -800,7 +795,6 @@ export const LoginView: React.FC = () => {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder={t('أدخل كلمة المرور', 'Enter password')}
                   className="w-full h-8 sm:h-9 rounded-md border border-slate-300 dark:border-[#2A436E] dark:bg-[#10203D] dark:text-[#F3F7FC] ps-8 pe-8 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-start"
                 />
                 <Lock className="w-3.5 h-3.5 text-slate-400 absolute start-2.5 top-2.5 pointer-events-none" />
@@ -825,7 +819,6 @@ export const LoginView: React.FC = () => {
                   required
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder={t('أعد إدخال كلمة المرور', 'Re-enter password')}
                   className="w-full h-8 sm:h-9 rounded-md border border-slate-300 dark:border-[#2A436E] dark:bg-[#10203D] dark:text-[#F3F7FC] px-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-start"
                 />
               </div>

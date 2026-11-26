@@ -2093,7 +2093,6 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                 type="text"
                 value={custPayNotes}
                 onChange={(e) => setCustPayNotes(e.target.value)}
-                placeholder={t('تحصيل نقدي من حساب العميل...', 'Cash collection from customer account...')}
                 className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1"
               />
             </div>
@@ -2211,7 +2210,6 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                 type="text"
                 value={suppPayNotes}
                 onChange={(e) => setSuppPayNotes(e.target.value)}
-                placeholder={t('سداد دفعة من حساب المورد...', 'Payment to supplier account...')}
                 className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1"
               />
             </div>

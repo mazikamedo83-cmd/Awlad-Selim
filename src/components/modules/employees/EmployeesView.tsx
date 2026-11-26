@@ -468,7 +468,6 @@ export const EmployeesView: React.FC = () => {
               <input
                 type="text"
                 required
-                placeholder={t('أدخل المسمى الوظيفي', 'Enter job title')}
                 value={empJob}
                 onChange={(e) => setEmpJob(e.target.value)}
                 className="w-full h-8 border border-slate-300 rounded-md px-2"
@@ -479,7 +478,6 @@ export const EmployeesView: React.FC = () => {
               <input
                 type="text"
                 required
-                placeholder={t('أدخل القسم', 'Enter department')}
                 value={empDept}
                 onChange={(e) => setEmpDept(e.target.value)}
                 className="w-full h-8 border border-slate-300 rounded-md px-2"

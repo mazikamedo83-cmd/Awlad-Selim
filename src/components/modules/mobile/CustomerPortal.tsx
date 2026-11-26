@@ -1321,20 +1321,22 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                     type="text"
                     value={orderNotes}
                     onChange={(e) => setOrderNotes(e.target.value)}
-                    placeholder={t('مواعيد استلام مفضلة أو ملاحظات...', 'Preferred delivery times or notes...')}
                     className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] px-2"
                   />
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-1.5">
-                <input
-                  type="text"
-                  dir="ltr"
-                  value={checkoutGeo}
-                  onChange={(e) => setCheckoutGeo(e.target.value)}
-                  placeholder={t('إحداثيات الموقع (اختياري)', 'Location coordinates (optional)')}
-                  className="flex-1 min-w-[140px] h-8 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] px-2 font-mono text-start"
-                />
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">
+                  {t('إحداثيات الموقع (اختياري)', 'Location Coordinates (Optional)')}
+                </label>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <input
+                    type="text"
+                    dir="ltr"
+                    value={checkoutGeo}
+                    onChange={(e) => setCheckoutGeo(e.target.value)}
+                    className="flex-1 min-w-[140px] h-8 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] px-2 font-mono text-start"
+                  />
                 <button
                   type="button"
                   onClick={() => setIsLocationPickerOpen(true)}
@@ -1352,6 +1354,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
                   <MapPin className="w-3.5 h-3.5" />
                   <span>{isLocating ? t('تحديد...', 'Locating...') : 'GPS'}</span>
                 </button>
+                </div>
               </div>
 
               {allowPriceView && cartEstimatedTotal > 0 && (

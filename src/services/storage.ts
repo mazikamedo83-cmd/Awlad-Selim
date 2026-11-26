@@ -21,6 +21,7 @@ import {
   ServerConnectionSettings,
   ProductGroup,
   ProductCategory,
+  UnitCatalogItem,
   CustomerItemOrderRequest,
   MigrationLogEntry,
   OwnerPersonalAccount,
@@ -68,6 +69,7 @@ export interface DatabaseState {
   stockMovements: StockMovement[];
   productGroups?: ProductGroup[];
   categories?: ProductCategory[];
+  productUnits?: UnitCatalogItem[];
   ownerAccounts?: OwnerPersonalAccount[];
   ownerTransactions?: OwnerPersonalTransaction[];
   stockCounts?: StockCountSession[];
@@ -116,6 +118,7 @@ export function getEmptyClientDatabaseState(): DatabaseState {
     stockMovements: [],
     productGroups: [],
     categories: [],
+    productUnits: [],
     ownerAccounts: [],
     ownerTransactions: [],
     stockCounts: [],

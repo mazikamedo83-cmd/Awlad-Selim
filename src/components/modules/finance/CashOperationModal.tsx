@@ -344,7 +344,6 @@ export const CashOperationModal: React.FC<CashOperationModalProps> = ({
                 type="text"
                 value={recipientOrPayer}
                 onChange={(e) => setRecipientOrPayer(e.target.value)}
-                placeholder={t('اسم الشخص أو الجهة...', 'Person or party name...')}
                 className="w-full h-8 bg-white border border-slate-300 rounded-md px-2.5 py-1 font-bold"
               />
             </div>
@@ -368,7 +367,6 @@ export const CashOperationModal: React.FC<CashOperationModalProps> = ({
               rows={2}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder={t('أدخل تفاصيل أو سبب العملية للتوثيق في سجل الحركات...', 'Enter details or reason for audit logging...')}
               className="w-full bg-white border border-slate-300 rounded-md p-2"
             />
           </div>

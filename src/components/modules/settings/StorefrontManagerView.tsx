@@ -186,7 +186,7 @@ export const StorefrontManagerView: React.FC = () => {
   const [offerProductId, setOfferProductId] = useState('');
   const [offerUnit, setOfferUnit] = useState('');
   const [offerPromoPrice, setOfferPromoPrice] = useState('');
-  const [offerBadgeText, setOfferBadgeText] = useState('عرض عشانك');
+  const [offerBadgeText, setOfferBadgeText] = useState('');
   const [offerStartsAt, setOfferStartsAt] = useState('');
   const [offerEndsAt, setOfferEndsAt] = useState('');
   const [offerProductSearch, setOfferProductSearch] = useState('');
@@ -375,7 +375,7 @@ export const StorefrontManagerView: React.FC = () => {
     updateDraft((prev) => ({ ...prev, offers: [...prev.offers, nextOffer] }));
     setOfferTitle('');
     setOfferPromoPrice('');
-    setOfferBadgeText('عرض عشانك');
+    setOfferBadgeText('');
     setOfferStartsAt('');
     setOfferEndsAt('');
   };
@@ -719,7 +719,6 @@ export const StorefrontManagerView: React.FC = () => {
                         dir="ltr"
                         value={bannerImageUrl}
                         onChange={(e) => setBannerImageUrl(e.target.value)}
-                        placeholder={t('https://... أو ارفع صورة', 'https://... or upload image')}
                         className="flex-1 min-h-[32px] h-8 px-2.5 rounded-md border border-slate-300 text-xs"
                       />
                       <label className="min-h-[32px] h-8 px-2.5 rounded-md bg-[#EEF3FA] border border-[#DCE6F5] text-[#011E58] text-xs font-black flex items-center gap-1 cursor-pointer shrink-0">
@@ -871,7 +870,6 @@ export const StorefrontManagerView: React.FC = () => {
                   type="text"
                   value={draft.offersSectionTitle || ''}
                   onChange={(e) => updateDraft((prev) => ({ ...prev, offersSectionTitle: e.target.value }))}
-                  placeholder={t('عروض مخصصة عشانك', 'Special Offers For You')}
                   className="w-full min-h-[32px] h-8 px-2.5 rounded-md border border-slate-300 text-xs font-bold"
                 />
               </div>
@@ -938,7 +936,6 @@ export const StorefrontManagerView: React.FC = () => {
                         min="0"
                         value={offerPromoPrice}
                         onChange={(e) => setOfferPromoPrice(e.target.value)}
-                        placeholder={t('أدخل سعر العرض', 'Enter promo price')}
                         className="w-full min-h-[32px] h-8 px-2.5 rounded-md border border-slate-300 text-xs font-black awlad-tabular"
                       />
                     </div>
@@ -952,7 +949,6 @@ export const StorefrontManagerView: React.FC = () => {
                       type="text"
                       value={offerTitle}
                       onChange={(e) => setOfferTitle(e.target.value)}
-                      placeholder={t('اختياري (يملأ تلقائياً باسم الصنف)', 'Optional (auto-filled from item name)')}
                       className="w-full min-h-[32px] h-8 px-2.5 rounded-md border border-slate-300 text-xs font-bold"
                     />
                   </div>
@@ -962,7 +958,6 @@ export const StorefrontManagerView: React.FC = () => {
                       type="text"
                       value={offerBadgeText}
                       onChange={(e) => setOfferBadgeText(e.target.value)}
-                      placeholder={t('عرض عشانك', 'Special Offer')}
                       className="w-full min-h-[32px] h-8 px-2.5 rounded-md border border-slate-300 text-xs font-bold"
                     />
                   </div>
@@ -1215,7 +1210,6 @@ export const StorefrontManagerView: React.FC = () => {
                   type="text"
                   value={draft.categoriesSectionTitle || ''}
                   onChange={(e) => updateDraft((prev) => ({ ...prev, categoriesSectionTitle: e.target.value }))}
-                  placeholder={t('الأقسام المصورة', 'Visual Categories')}
                   className="w-full min-h-[32px] h-8 px-2.5 rounded-md border border-slate-300 text-xs font-bold"
                 />
               </div>
@@ -1254,7 +1248,6 @@ export const StorefrontManagerView: React.FC = () => {
                           type="text"
                           value={ov?.displayName ?? ''}
                           onChange={(e) => upsertImageCategorySetting(cat.id, { displayName: e.target.value, sortOrder: ov?.sortOrder ?? cat._idx + 1 })}
-                          placeholder={`${t('افتراضي:', 'Default:')} ${cat.name}`}
                           className="w-full min-h-[34px] px-2 rounded-lg border border-slate-300 bg-white text-xs font-bold"
                         />
                       );
@@ -1272,7 +1265,6 @@ export const StorefrontManagerView: React.FC = () => {
                             dir="ltr"
                             value={ov?.imageUrl ?? ''}
                             onChange={(e) => upsertImageCategorySetting(cat.id, { imageUrl: e.target.value, sortOrder: ov?.sortOrder ?? cat._idx + 1 })}
-                            placeholder={t('رابط الصورة أو ارفع...', 'Image URL or upload...')}
                             className="flex-1 min-w-[130px] min-h-[34px] px-2 rounded-lg border border-slate-300 bg-white text-xs"
                           />
                           <label className="min-h-[34px] px-2.5 rounded-lg bg-[#EEF3FA] border border-[#DCE6F5] text-[#011E58] text-xs font-black flex items-center cursor-pointer">
@@ -1333,7 +1325,6 @@ export const StorefrontManagerView: React.FC = () => {
                         dir="ltr"
                         value={dispImageUrl}
                         onChange={(e) => setDispImageUrl(e.target.value)}
-                        placeholder={t('رابط الصورة أو ارفع...', 'Image URL or upload...')}
                         className="flex-1 min-h-[32px] h-8 px-2.5 rounded-md border border-slate-300 text-xs"
                       />
                       <label className="min-h-[32px] h-8 px-2.5 rounded-md bg-[#EEF3FA] border border-[#DCE6F5] text-[#011E58] text-xs font-black flex items-center gap-1 cursor-pointer">
@@ -1452,13 +1443,15 @@ export const StorefrontManagerView: React.FC = () => {
                 paginated={false}
                 title={t('ترتيب وظهور أقسام الصفحة الرئيسية', 'Homepage Section Order & Visibility')}
                 headerActions={
-                  <input
-                    type="text"
-                    value={draft.featuredSectionTitle || ''}
-                    onChange={(e) => updateDraft((prev) => ({ ...prev, featuredSectionTitle: e.target.value }))}
-                    placeholder={t('عنوان الأصناف المقترحة', 'Featured Products Title')}
-                    className="min-h-[34px] px-3 rounded-xl border border-slate-300 text-xs font-bold bg-white text-slate-900"
-                  />
+                  <div className="flex items-center gap-2">
+                    <label className="text-[11px] font-bold text-slate-600">{t('عنوان الأصناف المقترحة:', 'Featured Section Title:')}</label>
+                    <input
+                      type="text"
+                      value={draft.featuredSectionTitle || ''}
+                      onChange={(e) => updateDraft((prev) => ({ ...prev, featuredSectionTitle: e.target.value }))}
+                      className="min-h-[34px] px-3 rounded-xl border border-slate-300 text-xs font-bold bg-white text-slate-900"
+                    />
+                  </div>
                 }
                 data={[...draft.sections].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0)).map((sec, idx, arr) => ({ ...sec, _idx: idx, _total: arr.length }))}
                 rowKey={(sec) => sec.key}

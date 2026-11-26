@@ -19,6 +19,7 @@ import { ProductSearchSelect } from '../../common/ProductSearchSelect';
 import {
   filterProductsByGroupCategory,
   LinkedGroupCategoryFilter,
+  resolveGroupCategoryCascade,
 } from '../../common/LinkedGroupCategoryFilter';
 import { QuantityInput } from '../../common/QuantityInput';
 import { computeLineTotal, roundCurrency } from '../../../utils/quantity';
@@ -537,7 +538,12 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     } else if (paymentType === 'credit') {
       setPaidAmount('');
     } else {
-      setPaidAmount('');
+      setPaidAmount((prev) => {
+        if (prev === '' || prev === undefined) return '';
+        const n = Number(prev);
+        if (!Number.isFinite(n) || n < 0) return '';
+        return n > maxCashAtInvoice ? maxCashAtInvoice : prev;
+      });
     }
   }, [paymentType, maxCashAtInvoice]);
 
@@ -627,7 +633,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
           remainingAmount: Math.max(0, roundCurrency(grandTotal - totalPaidOnInvoice)),
           paymentType,
           paymentMethod: 'cash' as const,
-          cashboxId: selectedCashboxId,
+          cashboxId: paymentType === 'credit' || effectivePaidAtInvoice <= 0 ? '' : (selectedCashboxId || cashboxes[0]?.id || ''),
           status: invoiceStatusMode,
           notes: notes.trim(),
           linkedRepTransferId: linkedTransferId,
@@ -822,8 +828,24 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
             categories={categories}
             selectedGroupId={itemGroupFilter}
             selectedCategoryId={itemCategoryFilter}
-            onGroupChange={setItemGroupFilter}
-            onCategoryChange={setItemCategoryFilter}
+            onFilterChange={(nextGroupId, nextCategoryId) => {
+              setItemGroupFilter(nextGroupId);
+              setItemCategoryFilter(nextCategoryId);
+              const { clearSelectedProduct } = resolveGroupCategoryCascade(
+                products,
+                productGroups,
+                categories,
+                nextGroupId,
+                nextCategoryId,
+                selectedProductId
+              );
+              if (clearSelectedProduct) {
+                setSelectedProductId('');
+                setSelectedUnitName('');
+                setInputQuantity('');
+                setInputUnitPrice('');
+              }
+            }}
           />
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
             <form onSubmit={handleBarcodeSubmit} className="sm:col-span-4">
@@ -1071,7 +1093,10 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setPaymentType('partial')}
+                    onClick={() => {
+                      if (paymentType === 'cash') setPaidAmount('');
+                      setPaymentType('partial');
+                    }}
                     className={`h-8 rounded border cursor-pointer ${
                       paymentType === 'partial'
                         ? 'bg-[#003589] text-white border-[#003589]'
@@ -1131,8 +1156,9 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                 </label>
                 <select
                   value={selectedCashboxId}
+                  disabled={paymentType === 'credit' || maxCashAtInvoice <= 0}
                   onChange={(e) => setSelectedCashboxId(e.target.value)}
-                  className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-xs font-bold"
+                  className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-xs font-bold disabled:bg-slate-100 disabled:text-slate-400"
                 >
                   {cashboxes.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -1181,7 +1207,6 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                 type="text"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder={t('ملاحظات إضافية على الفاتورة...', 'Optional invoice notes...')}
                 className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-xs"
               />
             </div>

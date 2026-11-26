@@ -6,12 +6,16 @@ import {
   updateProductGroup,
   deleteProductGroup,
   listCategories,
+  listProductUnits,
   createProduct,
   updateProduct,
   deleteProduct,
   createCategory,
   updateCategory,
   deleteCategory,
+  createProductUnit,
+  updateProductUnit,
+  deleteProductUnit,
   getSystemSettingsSafe,
   deleteImportedProductsBatch,
   checkProductDuplicate,
@@ -123,6 +127,60 @@ router.delete(
   requirePermission('canManageInventory'),
   asyncHandler(async (req, res) => {
     await deleteCategory(req.params.id, req.auth.user);
+    res.json({ ok: true });
+  })
+);
+
+router.get(
+  '/units',
+  asyncHandler(async (req, res) => {
+    const rawSearch = String(req.query?.search || '').trim();
+    const allUnits = await listProductUnits();
+    if (!rawSearch) {
+      return res.json({ ok: true, productUnits: allUnits });
+    }
+    const norm = (s) =>
+      String(s || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[\u064B-\u065F\u0670]/g, '')
+        .replace(/[أإآ]/g, 'ا')
+        .replace(/ى/g, 'ي')
+        .replace(/ة/g, 'ه')
+        .replace(/ـ/g, '')
+        .replace(/\s+/g, ' ');
+    const q = norm(rawSearch);
+    const productUnits = allUnits.filter((u) => norm(`${u.name} ${u.shortCode || ''} ${u.notes || ''}`).includes(q));
+    res.json({ ok: true, productUnits });
+  })
+);
+
+router.post(
+  '/units',
+  requireStaff,
+  requirePermission('canManageInventory'),
+  asyncHandler(async (req, res) => {
+    const productUnit = await createProductUnit(req.body || {}, req.auth.user);
+    res.status(201).json({ ok: true, productUnit });
+  })
+);
+
+router.put(
+  '/units/:id',
+  requireStaff,
+  requirePermission('canManageInventory'),
+  asyncHandler(async (req, res) => {
+    const productUnit = await updateProductUnit(req.params.id, req.body || {}, req.auth.user);
+    res.json({ ok: true, productUnit });
+  })
+);
+
+router.delete(
+  '/units/:id',
+  requireStaff,
+  requirePermission('canManageInventory'),
+  asyncHandler(async (req, res) => {
+    await deleteProductUnit(req.params.id, req.auth.user);
     res.json({ ok: true });
   })
 );

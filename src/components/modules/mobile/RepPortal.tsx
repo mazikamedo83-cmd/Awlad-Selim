@@ -50,8 +50,10 @@ import {
   LinkedGroupCategoryFilter,
   filterProductsByGroupCategory,
   getScopedCategoriesForGroup,
+  resolveGroupCategoryCascade,
 } from '../../common/LinkedGroupCategoryFilter';
 import { SearchableFilterSelect, type SearchableFilterOption } from '../../common/SearchableFilterSelect';
+import { SearchableTaxonomySelect } from '../../common/SearchableTaxonomySelect';
 
 const roundQty3 = (val: number): number => Math.round((Number(val || 0) + Number.EPSILON) * 1000) / 1000;
 import { CustomerLocationPickerModal, PickedCustomerLocation } from '../../common/CustomerLocationPickerModal';
@@ -422,6 +424,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [newPurProdGroupId, setNewPurProdGroupId] = useState('');
   const [newPurProdCategoryId, setNewPurProdCategoryId] = useState('');
   const [newPurProdCategory, setNewPurProdCategory] = useState('');
+  const [newPurProdUnitId, setNewPurProdUnitId] = useState('');
   const [newPurProdBaseUnit, setNewPurProdBaseUnit] = useState('');
   const [newPurProdQty, setNewPurProdQty] = useState<number | ''>('');
   const [newPurProdBuyPrice, setNewPurProdBuyPrice] = useState<number | ''>('');
@@ -1994,7 +1997,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       const chosenGroup = productGroups.find((g) => g.id === newPurProdGroupId);
       const chosenCat = productCategories.find((c) => c.id === newPurProdCategoryId);
       const cleanCategory = (chosenCat?.name || newPurProdCategory).trim();
-      const cleanUnit = newPurProdBaseUnit.trim() || 'قطعة';
+      const cleanUnit = newPurProdBaseUnit.trim();
+      if (!cleanUnit) {
+        setFeedback({
+          type: 'error',
+          text: t('يرجى اختيار أو كتابة الوحدة للصنف الجديد.', 'Please select or enter a unit for the new product.'),
+        });
+        return;
+      }
+      const catalogUnits = data.productUnits || [];
+      const matchedCatalogUnit =
+        (newPurProdUnitId ? catalogUnits.find((u) => u.id === newPurProdUnitId) : undefined) ||
+        catalogUnits.find((u) => normalizeRepProdDupText(u.name) === normalizeRepProdDupText(cleanUnit));
       const cleanBarcode = newPurProdBarcode.trim();
       const cleanCode = newPurProdCode.trim();
       setPurItems((prev) => [
@@ -2003,7 +2017,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           productId: '',
           productName: cleanName,
           barcode: cleanBarcode || cleanCode,
-          unit: cleanUnit,
+          unit: matchedCatalogUnit?.name || cleanUnit,
           unitFactor: 1,
           quantity: qtyNum,
           unitPrice: buyPrice,
@@ -2022,7 +2036,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             groupName: chosenGroup?.name,
             categoryId: chosenCat?.id,
             category: cleanCategory,
-            baseUnit: cleanUnit,
+            unitId: matchedCatalogUnit?.id || (newPurProdUnitId || undefined),
+            baseUnit: matchedCatalogUnit?.name || cleanUnit,
             purchasePrice: buyPrice,
             sellingPrice: sellPrice,
           },
@@ -2043,6 +2058,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     setNewPurProdGroupId('');
     setNewPurProdCategoryId('');
     setNewPurProdCategory('');
+    setNewPurProdUnitId('');
     setNewPurProdBaseUnit('');
     setNewPurProdQty('');
     setNewPurProdBuyPrice('');
@@ -4650,7 +4666,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   step="0.01"
                   value={actualDrawerCash}
                   onChange={(e) => setActualDrawerCash(e.target.value)}
-                  placeholder={t('أدخل النقدية المعدودة فعلياً...', 'Enter actual counted cash...')}
                   className="w-full h-8 rounded-md border border-slate-300 px-2 font-mono font-bold text-center"
                 />
               </div>
@@ -4962,35 +4977,47 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     {repPwdMsg.text}
                   </p>
                 )}
-                <input
-                  type="password"
-                  dir="ltr"
-                  required
-                  value={repCurrPwd}
-                  onChange={(e) => setRepCurrPwd(e.target.value)}
-                  placeholder={t('كلمة المرور الحالية', 'Current Password')}
-                  className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] px-2 bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-500 dark:placeholder:text-[#8CA3C7] font-mono text-start"
-                />
-                <input
-                  type="password"
-                  dir="ltr"
-                  required
-                  minLength={4}
-                  value={repNewPwd}
-                  onChange={(e) => setRepNewPwd(e.target.value)}
-                  placeholder={t('كلمة المرور الجديدة', 'New Password')}
-                  className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] px-2 bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-500 dark:placeholder:text-[#8CA3C7] font-mono text-start"
-                />
-                <input
-                  type="password"
-                  dir="ltr"
-                  required
-                  minLength={4}
-                  value={repConfirmPwd}
-                  onChange={(e) => setRepConfirmPwd(e.target.value)}
-                  placeholder={t('تأكيد كلمة المرور الجديدة', 'Confirm New Password')}
-                  className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] px-2 bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-500 dark:placeholder:text-[#8CA3C7] font-mono text-start"
-                />
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">
+                    {t('كلمة المرور الحالية:', 'Current Password:')}
+                  </label>
+                  <input
+                    type="password"
+                    dir="ltr"
+                    required
+                    value={repCurrPwd}
+                    onChange={(e) => setRepCurrPwd(e.target.value)}
+                    className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] px-2 bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] font-mono text-start"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">
+                    {t('كلمة المرور الجديدة:', 'New Password:')}
+                  </label>
+                  <input
+                    type="password"
+                    dir="ltr"
+                    required
+                    minLength={4}
+                    value={repNewPwd}
+                    onChange={(e) => setRepNewPwd(e.target.value)}
+                    className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] px-2 bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] font-mono text-start"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">
+                    {t('تأكيد كلمة المرور الجديدة:', 'Confirm New Password:')}
+                  </label>
+                  <input
+                    type="password"
+                    dir="ltr"
+                    required
+                    minLength={4}
+                    value={repConfirmPwd}
+                    onChange={(e) => setRepConfirmPwd(e.target.value)}
+                    className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] px-2 bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] font-mono text-start"
+                  />
+                </div>
                 <button
                   type="submit"
                   disabled={repSavingPwd}
@@ -5490,8 +5517,24 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 categories={productCategories}
                 selectedGroupId={invGroupFilter}
                 selectedCategoryId={invCatFilter}
-                onGroupChange={setInvGroupFilter}
-                onCategoryChange={setInvCatFilter}
+                onFilterChange={(nextGroupId, nextCategoryId) => {
+                  const res = resolveGroupCategoryCascade(
+                    filteredInvoiceProducts,
+                    productGroups,
+                    productCategories,
+                    nextGroupId,
+                    nextCategoryId,
+                    invProductId
+                  );
+                  setInvGroupFilter(nextGroupId);
+                  setInvCatFilter(res.nextCategoryId);
+                  if (res.clearSelectedProduct) {
+                    setInvProductId('');
+                    setInvUnitName('');
+                    setInvQty('');
+                    setInvPrice('');
+                  }
+                }}
               />
               <div>
                 <label className="block text-[10px] font-bold text-slate-700 mb-0.5">
@@ -5985,11 +6028,21 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('المجموعة:', 'Group:')}</label>
-                    <select
-                      value={newPurProdGroupId}
-                      onChange={(e) => {
-                        const gid = e.target.value;
+                    <SearchableTaxonomySelect
+                      label={t('المجموعة', 'Group')}
+                      compact
+                      items={productGroups
+                        .filter((g) => g.status !== 'suspended' || g.id === newPurProdGroupId)
+                        .map((g) => ({ id: g.id, name: g.name, status: g.status }))}
+                      valueId={newPurProdGroupId}
+                      allowClear
+                      emptyDisplayText={t('-- اختر المجموعة --', '-- Select Group --')}
+                      clearLabel={t('بدون مجموعة', 'No Group')}
+                      createLabel={t('إضافة مجموعة جديدة', 'Add New Group')}
+                      searchPlaceholder={t('بحث باسم المجموعة...', 'Search group...')}
+                      triggerClassName="h-7 !min-h-[28px] !py-0.5 rounded-md text-[11px]"
+                      onChange={({ id }) => {
+                        const gid = id || '';
                         setNewPurProdGroupId(gid);
                         const valid = getScopedCategoriesForGroup(productCategories, gid, false);
                         if (!valid.some((c) => c.id === newPurProdCategoryId)) {
@@ -5997,45 +6050,111 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           setNewPurProdCategory('');
                         }
                       }}
-                      className="w-full h-7 border border-slate-300 rounded-md px-1.5 font-semibold bg-white text-[11px]"
-                    >
-                      <option value="">{t('-- اختر المجموعة --', '-- Select Group --')}</option>
-                      {productGroups.filter((g) => g.status !== 'suspended').map((g) => (
-                        <option key={g.id} value={g.id}>{g.name}</option>
-                      ))}
-                    </select>
+                      onCreate={async (name) => {
+                        const res = await data.addProductGroup(name);
+                        if (res.success && res.productGroup) {
+                          return { success: true, item: { id: res.productGroup.id, name: res.productGroup.name } };
+                        }
+                        return { success: false, error: res.error ? t(res.error) : t('تعذر إضافة المجموعة', 'Unable to add group') };
+                      }}
+                      onRename={async (id, newName) => {
+                        const res = await data.updateProductGroup(id, { name: newName });
+                        return res.success
+                          ? { success: true }
+                          : { success: false, error: res.error ? t(res.error) : t('تعذر تعديل المجموعة', 'Unable to rename group') };
+                      }}
+                    />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('التصنيف:', 'Category:')}</label>
-                    <select
-                      value={newPurProdCategoryId}
-                      onChange={(e) => {
-                        const cid = e.target.value;
+                    <SearchableTaxonomySelect
+                      label={t('التصنيف', 'Category')}
+                      compact
+                      items={scopedNewPurCategories.map((c) => ({
+                        id: c.id,
+                        name: t(c.name),
+                        subtitle: !newPurProdGroupId ? c.groupName : undefined,
+                        status: c.status,
+                      }))}
+                      valueId={newPurProdCategoryId}
+                      valueText={newPurProdCategory}
+                      allowClear
+                      emptyDisplayText={
+                        newPurProdGroupId && scopedNewPurCategories.length === 0
+                          ? t('لا توجد تصنيفات بالمجموعة', 'No categories in group')
+                          : t('-- اختر التصنيف --', '-- Select Category --')
+                      }
+                      clearLabel={t('بدون تصنيف', 'No Category')}
+                      createLabel={t('إضافة تصنيف جديد', 'Add New Category')}
+                      searchPlaceholder={t('بحث باسم التصنيف...', 'Search category...')}
+                      triggerClassName="h-7 !min-h-[28px] !py-0.5 rounded-md text-[11px]"
+                      onChange={({ id, name }) => {
+                        const cid = id || '';
                         setNewPurProdCategoryId(cid);
-                        const matchedCat = productCategories.find((c) => c.id === cid);
-                        setNewPurProdCategory(matchedCat?.name || '');
+                        const matchedCat = cid ? productCategories.find((c) => c.id === cid) : undefined;
+                        setNewPurProdCategory(matchedCat?.name || name || '');
                         if (matchedCat?.groupId && !newPurProdGroupId) {
                           setNewPurProdGroupId(matchedCat.groupId);
                         }
                       }}
-                      className="w-full h-7 border border-slate-300 rounded-md px-1.5 font-semibold bg-white text-[11px]"
-                    >
-                      <option value="">{t('-- اختر التصنيف --', '-- Select Category --')}</option>
-                      {scopedNewPurCategories.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {t(c.name)}
-                          {!newPurProdGroupId && c.groupName ? ` (${c.groupName})` : ''}
-                        </option>
-                      ))}
-                    </select>
+                      onCreate={async (name) => {
+                        const res = await data.addCategory(name, '', newPurProdGroupId || '');
+                        if (res.success && res.category) {
+                          const cat = res.category;
+                          if (cat.groupId && !newPurProdGroupId) setNewPurProdGroupId(cat.groupId);
+                          return { success: true, item: { id: cat.id, name: cat.name } };
+                        }
+                        return { success: false, error: res.error ? t(res.error) : t('تعذر إضافة التصنيف', 'Unable to add category') };
+                      }}
+                      onRename={async (id, newName) => {
+                        try {
+                          await data.updateCategory(id, { name: newName });
+                          if (newPurProdCategoryId === id) setNewPurProdCategory(newName);
+                          return { success: true };
+                        } catch (err: any) {
+                          return { success: false, error: err?.message ? t(err.message) : t('تعذر تعديل التصنيف', 'Unable to rename category') };
+                        }
+                      }}
+                    />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('الوحدة:', 'Unit:')}</label>
-                    <input
-                      type="text"
-                      value={newPurProdBaseUnit}
-                      onChange={(e) => setNewPurProdBaseUnit(e.target.value)}
-                      className="w-full h-7 border border-slate-300 rounded-md px-2 font-semibold bg-white text-[11px]"
+                    <SearchableTaxonomySelect
+                      label={t('الوحدة', 'Unit')}
+                      required
+                      compact
+                      items={(data.productUnits || [])
+                        .filter((u) => u.status !== 'suspended' || u.id === newPurProdUnitId)
+                        .map((u) => ({
+                          id: u.id,
+                          name: u.name,
+                          subtitle: u.shortCode || undefined,
+                          status: u.status,
+                        }))}
+                      valueId={newPurProdUnitId}
+                      valueText={newPurProdBaseUnit}
+                      allowManualText
+                      emptyDisplayText={t('-- اختر أو اكتب الوحدة --', '-- Select or Type Unit --')}
+                      createLabel={t('إضافة وحدة جديدة', 'Add New Unit')}
+                      searchPlaceholder={t('بحث باسم الوحدة أو كتابتها...', 'Search or type unit...')}
+                      triggerClassName="h-7 !min-h-[28px] !py-0.5 rounded-md text-[11px]"
+                      onChange={({ id, name }) => {
+                        setNewPurProdUnitId(id || '');
+                        setNewPurProdBaseUnit(name);
+                      }}
+                      onCreate={async (name) => {
+                        const res = await data.addProductUnit(name);
+                        if (res.success && res.productUnit) {
+                          return { success: true, item: { id: res.productUnit.id, name: res.productUnit.name } };
+                        }
+                        return { success: false, error: res.error ? t(res.error) : t('تعذر إضافة الوحدة', 'Unable to add unit') };
+                      }}
+                      onRename={async (id, newName) => {
+                        const res = await data.updateProductUnit(id, { name: newName });
+                        if (res.success) {
+                          if (newPurProdUnitId === id) setNewPurProdBaseUnit(newName);
+                          return { success: true };
+                        }
+                        return { success: false, error: res.error ? t(res.error) : t('تعذر تعديل الوحدة', 'Unable to rename unit') };
+                      }}
                     />
                   </div>
                   <div>
@@ -6050,7 +6169,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('سعر الشراء: *', 'Buy Price: *')}</label>
+                    <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('سعر شراء الوحدة: *', 'Unit Buy Price: *')}</label>
                     <input
                       type="number"
                       step="0.5"
@@ -6061,7 +6180,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('سعر البيع المقترح:', 'Suggested Sell Price:')}</label>
+                    <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('سعر بيع الوحدة:', 'Unit Sell Price:')}</label>
                     <input
                       type="number"
                       step="0.5"
@@ -6135,8 +6254,24 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     categories={productCategories}
                     selectedGroupId={purGroupFilter}
                     selectedCategoryId={purCatFilter}
-                    onGroupChange={setPurGroupFilter}
-                    onCategoryChange={setPurCatFilter}
+                    onFilterChange={(nextGroupId, nextCategoryId) => {
+                      const res = resolveGroupCategoryCascade(
+                        activeProducts,
+                        productGroups,
+                        productCategories,
+                        nextGroupId,
+                        nextCategoryId,
+                        purProductId
+                      );
+                      setPurGroupFilter(nextGroupId);
+                      setPurCatFilter(res.nextCategoryId);
+                      if (res.clearSelectedProduct) {
+                        setPurProductId('');
+                        setPurUnitName('');
+                        setPurQty('');
+                        setPurPrice('');
+                      }
+                    }}
                   />
                   <div>
                     <label className="block text-[10px] font-bold text-slate-700 mb-0.5">
@@ -6451,8 +6586,23 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               categories={productCategories}
               selectedGroupId={sRetGroupFilter}
               selectedCategoryId={sRetCatFilter}
-              onGroupChange={setSRetGroupFilter}
-              onCategoryChange={setSRetCatFilter}
+              onFilterChange={(nextGroupId, nextCategoryId) => {
+                const res = resolveGroupCategoryCascade(
+                  activeProducts,
+                  productGroups,
+                  productCategories,
+                  nextGroupId,
+                  nextCategoryId,
+                  sRetProductId
+                );
+                setSRetGroupFilter(nextGroupId);
+                setSRetCatFilter(res.nextCategoryId);
+                if (res.clearSelectedProduct) {
+                  setSRetProductId('');
+                  setSRetQty('');
+                  setSRetPrice('');
+                }
+              }}
             />
             <select
               value={sRetProductId}
@@ -6619,18 +6769,20 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             </div>
           ))}
 
-          <input
-            type="text"
-            value={sRetReason}
-            onChange={(e) => setSRetReason(e.target.value)}
-            required={sRetSettlement === 'cash' && (isRepRoleAccount || !canCashOps)}
-            placeholder={
-              sRetSettlement === 'cash' && (isRepRoleAccount || !canCashOps)
-                ? t('سبب طلب مرتجع المبيعات النقدي (إلزامي)...', 'Reason for cash sales return request (required)...')
-                : t('سبب المرتجع...', 'Return reason...')
-            }
-            className="w-full h-8 rounded-md border border-slate-300 px-2"
-          />
+          <div>
+            <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+              {sRetSettlement === 'cash' && (isRepRoleAccount || !canCashOps)
+                ? t('سبب طلب مرتجع المبيعات النقدي: *', 'Cash Sales Return Request Reason: *')
+                : t('سبب المرتجع:', 'Return Reason:')}
+            </label>
+            <input
+              type="text"
+              value={sRetReason}
+              onChange={(e) => setSRetReason(e.target.value)}
+              required={sRetSettlement === 'cash' && (isRepRoleAccount || !canCashOps)}
+              className="w-full h-8 rounded-md border border-slate-300 px-2"
+            />
+          </div>
 
           <button
             type="submit"
@@ -6843,8 +6995,23 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   categories={productCategories}
                   selectedGroupId={pRetGroupFilter}
                   selectedCategoryId={pRetCatFilter}
-                  onGroupChange={setPRetGroupFilter}
-                  onCategoryChange={setPRetCatFilter}
+                  onFilterChange={(nextGroupId, nextCategoryId) => {
+                    const res = resolveGroupCategoryCascade(
+                      activeProducts,
+                      productGroups,
+                      productCategories,
+                      nextGroupId,
+                      nextCategoryId,
+                      pRetProductId
+                    );
+                    setPRetGroupFilter(nextGroupId);
+                    setPRetCatFilter(res.nextCategoryId);
+                    if (res.clearSelectedProduct) {
+                      setPRetProductId('');
+                      setPRetQty('');
+                      setPRetPrice('');
+                    }
+                  }}
                 />
                 <select
                   value={pRetProductId}
@@ -7014,18 +7181,20 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             )}
           </div>
 
-          <input
-            type="text"
-            value={pRetReason}
-            onChange={(e) => setPRetReason(e.target.value)}
-            required={isRepRoleAccount || !canPurchases}
-            placeholder={
-              isRepRoleAccount || !canPurchases
-                ? t('سبب طلب مرتجع الشراء (إلزامي)...', 'Purchase return request reason (required)...')
-                : t('سبب مرتجع الشراء...', 'Purchase return reason...')
-            }
-            className="w-full h-8 rounded-md border border-slate-300 px-2"
-          />
+          <div>
+            <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+              {isRepRoleAccount || !canPurchases
+                ? t('سبب طلب مرتجع الشراء: *', 'Purchase Return Request Reason: *')
+                : t('سبب مرتجع الشراء:', 'Purchase Return Reason:')}
+            </label>
+            <input
+              type="text"
+              value={pRetReason}
+              onChange={(e) => setPRetReason(e.target.value)}
+              required={isRepRoleAccount || !canPurchases}
+              className="w-full h-8 rounded-md border border-slate-300 px-2"
+            />
+          </div>
 
           <button
             type="submit"
@@ -7215,7 +7384,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       setDepAmount(Math.max(0, Number(raw)));
                     }
                   }}
-                  placeholder={t(`أدخل المبلغ (${currency})`, `Enter amount (${currency})`)}
                   className="w-full h-9 rounded-md border border-slate-300 px-2.5 font-mono text-sm font-black text-center text-[#011E58] bg-white tabular-nums"
                 />
               </div>
@@ -7265,7 +7433,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   type="text"
                   value={depNotes}
                   onChange={(e) => setDepNotes(e.target.value)}
-                  placeholder={t('ملاحظات (اختياري) - تظهر في إيصال الدفع', 'Notes (optional) - shown on payment receipt')}
                   className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white"
                 />
               </div>
@@ -7309,51 +7476,62 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           <form onSubmit={handleSubmitCashWithdrawal} className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-1.5 text-xs">
             <h3 className="text-xs sm:text-sm font-black text-amber-900">{t('سحب نقدي / تسجيل مصروف', 'Cash Withdrawal / Expense')}</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-              <select
-                value={wdCashboxId}
-                onChange={(e) => setWdCashboxId(e.target.value)}
-                className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold bg-white"
-              >
-                {data.cashboxes.map((cb) => (
-                  <option key={cb.id} value={cb.id}>
-                    {t(cb.name)}
-                    {typeof cb.currentBalance === 'number' && !cb.balanceHidden
-                      ? ` (${t('رصيد:', 'Balance:')} ${formatLocaleNumber(cb.currentBalance)})`
-                      : ''}
-                  </option>
-                ))}
-              </select>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الخزينة:', 'Cashbox:')}</label>
+                <select
+                  value={wdCashboxId}
+                  onChange={(e) => setWdCashboxId(e.target.value)}
+                  className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold bg-white"
+                >
+                  {data.cashboxes.map((cb) => (
+                    <option key={cb.id} value={cb.id}>
+                      {t(cb.name)}
+                      {typeof cb.currentBalance === 'number' && !cb.balanceHidden
+                        ? ` (${t('رصيد:', 'Balance:')} ${formatLocaleNumber(cb.currentBalance)})`
+                        : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('البند / التصنيف:', 'Category / Expense Item:')}</label>
+                <input
+                  type="text"
+                  value={wdCategory}
+                  onChange={(e) => setWdCategory(e.target.value)}
+                  className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('المستفيد (اختياري):', 'Beneficiary (Optional):')}</label>
+                <input
+                  type="text"
+                  value={wdBeneficiary}
+                  onChange={(e) => setWdBeneficiary(e.target.value)}
+                  className="w-full h-8 rounded-md border border-slate-300 px-2"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('مبلغ السحب', 'Withdrawal Amount')} ({t(data.settings.currency)}):</label>
+                <input
+                  type="number"
+                  min={1}
+                  step="0.01"
+                  value={wdAmount === '' ? '' : wdAmount}
+                  onChange={(e) => setWdAmount(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                  className="w-full h-8 rounded-md border border-slate-300 px-2 font-mono font-black text-center text-red-700"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('بيان السحب / المصروف:', 'Withdrawal / Expense Description:')}</label>
               <input
                 type="text"
-                value={wdCategory}
-                onChange={(e) => setWdCategory(e.target.value)}
-                placeholder={t('البند / التصنيف', 'Category / Expense Item')}
-                className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold"
-              />
-              <input
-                type="text"
-                value={wdBeneficiary}
-                onChange={(e) => setWdBeneficiary(e.target.value)}
-                placeholder={t('المستفيد (اختياري)', 'Beneficiary (optional)')}
+                value={wdNotes}
+                onChange={(e) => setWdNotes(e.target.value)}
                 className="w-full h-8 rounded-md border border-slate-300 px-2"
               />
-              <input
-                type="number"
-                min={1}
-                step="0.01"
-                value={wdAmount || ''}
-                onChange={(e) => setWdAmount(Math.max(0, Number(e.target.value)))}
-                placeholder={t(`مبلغ السحب (${t(data.settings.currency)})`, `Withdrawal amount (${t(data.settings.currency)})`)}
-                className="w-full h-8 rounded-md border border-slate-300 px-2 font-mono font-black text-center text-red-700"
-              />
             </div>
-            <input
-              type="text"
-              value={wdNotes}
-              onChange={(e) => setWdNotes(e.target.value)}
-              placeholder={t('بيان السحب / المصروف...', 'Withdrawal / expense description...')}
-              className="w-full h-8 rounded-md border border-slate-300 px-2"
-            />
             <button
               type="submit"
               disabled={isSubmittingWithdrawal}
@@ -7396,7 +7574,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   required
                   value={newCustName}
                   onChange={(e) => setNewCustName(e.target.value)}
-                  placeholder={t('الاسم الكامل للعميل أو صاحب المحل', 'Full name of customer or owner')}
                   className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold"
                 />
               </div>
@@ -7473,7 +7650,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     setNewCustAddress(e.target.value);
                     if (custMapNotice) setCustMapNotice(null);
                   }}
-                  placeholder={t('الشارع، المنطقة، علامة مميزة...', 'Street, area, landmark...')}
                   className="flex-1 h-8 rounded-md border border-slate-300 px-2 font-bold"
                 />
                 <button
@@ -7521,7 +7697,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   type="text"
                   value={newCustArea}
                   onChange={(e) => setNewCustArea(e.target.value)}
-                  placeholder={t('المنطقة / الحي / خط السير', 'Area / District / Route')}
                   className="w-full h-8 rounded-md border border-slate-300 px-2 font-semibold"
                 />
               </div>
@@ -7586,12 +7761,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         <input
                           type="tel"
                           dir="ltr"
+                          aria-label={t('رقم إضافي', 'Additional Phone')}
                           value={extra.phone}
                           onChange={(e) => {
                             const v = e.target.value;
                             setNewCustExtraPhones((prev) => prev.map((row, i) => (i === idx ? { ...row, phone: v } : row)));
                           }}
-                          placeholder={t('رقم إضافي...', 'Additional number...')}
                           className="flex-1 min-w-[110px] h-8 rounded-md border border-slate-300 px-2 font-mono font-bold bg-white text-start"
                         />
                         <select
@@ -7663,20 +7838,24 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
             {/* 8. Notes & 9. Opening Balance (optional) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-              <input
-                type="text"
-                value={newCustNotes}
-                onChange={(e) => setNewCustNotes(e.target.value)}
-                placeholder={t('ملاحظات عن المحل أو المواعيد (اختياري)', 'Notes about shop or schedule (optional)')}
-                className="h-8 rounded-md border border-slate-300 px-2"
-              />
-              <input
-                type="number"
-                value={newCustOpening || ''}
-                onChange={(e) => setNewCustOpening(Number(e.target.value))}
-                placeholder={t(`رصيد افتتاحي (${t(data.settings.currency)}) - اختياري`, `Opening balance (${t(data.settings.currency)}) - optional`)}
-                className="h-8 rounded-md border border-slate-300 px-2 font-mono font-bold"
-              />
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('ملاحظات (اختياري):', 'Notes (Optional):')}</label>
+                <input
+                  type="text"
+                  value={newCustNotes}
+                  onChange={(e) => setNewCustNotes(e.target.value)}
+                  className="w-full h-8 rounded-md border border-slate-300 px-2"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('رصيد افتتاحي', 'Opening Balance')} ({t(data.settings.currency)}) - {t('اختياري', 'Optional')}:</label>
+                <input
+                  type="number"
+                  value={newCustOpening === '' ? '' : newCustOpening}
+                  onChange={(e) => setNewCustOpening(e.target.value === '' ? '' : Number(e.target.value))}
+                  className="w-full h-8 rounded-md border border-slate-300 px-2 font-mono font-bold"
+                />
+              </div>
             </div>
 
             {/* 10. Save Customer */}
@@ -7699,24 +7878,29 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           <form onSubmit={handleSaveNewSupplier} className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-2 text-xs">
             <h3 className="text-xs sm:text-sm font-black text-[#011E58]">{t('إضافة مورد جديد', 'Add New Supplier')}</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-              <input
-                type="text"
-                required
-                value={newSupName}
-                onChange={(e) => setNewSupName(e.target.value)}
-                placeholder={t('اسم المورد *', 'Supplier Name *')}
-                className="h-8 rounded-md border border-slate-300 px-2 font-bold"
-              />
-              <input
-                type="text"
-                value={newSupCompany}
-                onChange={(e) => setNewSupCompany(e.target.value)}
-                placeholder={t('اسم الشركة / المصنع', 'Company / Factory Name')}
-                className="h-8 rounded-md border border-slate-300 px-2 font-bold"
-              />
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('اسم المورد *', 'Supplier Name *')}</label>
+                <input
+                  type="text"
+                  required
+                  value={newSupName}
+                  onChange={(e) => setNewSupName(e.target.value)}
+                  className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('اسم الشركة / المصنع:', 'Company / Factory Name:')}</label>
+                <input
+                  type="text"
+                  value={newSupCompany}
+                  onChange={(e) => setNewSupCompany(e.target.value)}
+                  className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold"
+                />
+              </div>
             </div>
 
             <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('رقم الهاتف *', 'Phone Number *')}</label>
               <div className="flex items-center gap-1.5">
                 <input
                   type="tel"
@@ -7727,7 +7911,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     setNewSupPhone(e.target.value);
                     if (supPhoneNotice) setSupPhoneNotice(null);
                   }}
-                  placeholder={t('رقم الهاتف *', 'Phone Number *')}
                   className="flex-1 h-8 rounded-md border border-slate-300 px-2 font-mono font-bold text-start"
                 />
                 {supPhoneValid ? (
@@ -7757,20 +7940,24 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-              <input
-                type="text"
-                value={newSupAddress}
-                onChange={(e) => setNewSupAddress(e.target.value)}
-                placeholder={t('عنوان المورد', 'Supplier Address')}
-                className="h-8 rounded-md border border-slate-300 px-2"
-              />
-              <input
-                type="number"
-                value={newSupOpening || ''}
-                onChange={(e) => setNewSupOpening(Number(e.target.value))}
-                placeholder={t(`رصيد افتتاحي (${t(data.settings.currency)})`, `Opening Balance (${t(data.settings.currency)})`)}
-                className="h-8 rounded-md border border-slate-300 px-2 font-mono font-bold"
-              />
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('عنوان المورد:', 'Supplier Address:')}</label>
+                <input
+                  type="text"
+                  value={newSupAddress}
+                  onChange={(e) => setNewSupAddress(e.target.value)}
+                  className="w-full h-8 rounded-md border border-slate-300 px-2"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('رصيد افتتاحي', 'Opening Balance')} ({t(data.settings.currency)}):</label>
+                <input
+                  type="number"
+                  value={newSupOpening === '' ? '' : newSupOpening}
+                  onChange={(e) => setNewSupOpening(e.target.value === '' ? '' : Number(e.target.value))}
+                  className="w-full h-8 rounded-md border border-slate-300 px-2 font-mono font-bold"
+                />
+              </div>
             </div>
 
             <button
@@ -7813,51 +8000,65 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               <form onSubmit={handleAddCheque} className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-1.5">
                 <h4 className="text-xs sm:text-sm font-black text-slate-900">{t('تسجيل شيك جديد', 'Record New Cheque')}</h4>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                  <select
-                    value={chqType}
-                    onChange={(e) => setChqType(e.target.value as 'incoming' | 'outgoing')}
-                    className="h-8 rounded-md border border-slate-300 px-2 font-bold bg-white"
-                  >
-                    <option value="incoming">{t('شيك وارد (تحصيل)', 'Incoming Cheque (Collection)')}</option>
-                    <option value="outgoing">{t('شيك صادر (سداد)', 'Outgoing Cheque (Payment)')}</option>
-                  </select>
-                  <input
-                    type="text"
-                    dir="ltr"
-                    value={chqNumber}
-                    onChange={(e) => setChqNumber(e.target.value)}
-                    placeholder={t('رقم الشيك', 'Cheque No.')}
-                    className="h-8 rounded-md border border-slate-300 px-2 font-mono font-bold text-start"
-                  />
-                  <input
-                    type="text"
-                    value={chqPartyName}
-                    onChange={(e) => setChqPartyName(e.target.value)}
-                    placeholder={t('اسم العميل / المورد', 'Customer / Supplier Name')}
-                    className="h-8 rounded-md border border-slate-300 px-2 font-bold col-span-2 sm:col-span-1"
-                  />
-                  <input
-                    type="text"
-                    value={chqBank}
-                    onChange={(e) => setChqBank(e.target.value)}
-                    placeholder={t('اسم البنك', 'Bank Name')}
-                    className="h-8 rounded-md border border-slate-300 px-2"
-                  />
-                  <input
-                    type="number"
-                    min={1}
-                    value={chqAmount || ''}
-                    onChange={(e) => setChqAmount(Number(e.target.value))}
-                    placeholder={t('المبلغ', 'Amount')}
-                    className="h-8 rounded-md border border-slate-300 px-2 font-mono font-bold"
-                  />
-                  <input
-                    type="date"
-                    dir="ltr"
-                    value={chqDueDate}
-                    onChange={(e) => setChqDueDate(e.target.value)}
-                    className="h-8 rounded-md border border-slate-300 px-2 font-mono"
-                  />
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('نوع الشيك:', 'Cheque Type:')}</label>
+                    <select
+                      value={chqType}
+                      onChange={(e) => setChqType(e.target.value as 'incoming' | 'outgoing')}
+                      className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold bg-white"
+                    >
+                      <option value="incoming">{t('شيك وارد (تحصيل)', 'Incoming Cheque (Collection)')}</option>
+                      <option value="outgoing">{t('شيك صادر (سداد)', 'Outgoing Cheque (Payment)')}</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('رقم الشيك:', 'Cheque No.:')}</label>
+                    <input
+                      type="text"
+                      dir="ltr"
+                      value={chqNumber}
+                      onChange={(e) => setChqNumber(e.target.value)}
+                      className="w-full h-8 rounded-md border border-slate-300 px-2 font-mono font-bold text-start"
+                    />
+                  </div>
+                  <div className="col-span-2 sm:col-span-1">
+                    <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('اسم العميل / المورد:', 'Customer / Supplier Name:')}</label>
+                    <input
+                      type="text"
+                      value={chqPartyName}
+                      onChange={(e) => setChqPartyName(e.target.value)}
+                      className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('اسم البنك:', 'Bank Name:')}</label>
+                    <input
+                      type="text"
+                      value={chqBank}
+                      onChange={(e) => setChqBank(e.target.value)}
+                      className="w-full h-8 rounded-md border border-slate-300 px-2"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('المبلغ:', 'Amount:')}</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={chqAmount === '' ? '' : chqAmount}
+                      onChange={(e) => setChqAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                      className="w-full h-8 rounded-md border border-slate-300 px-2 font-mono font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('تاريخ الاستحقاق:', 'Due Date:')}</label>
+                    <input
+                      type="date"
+                      dir="ltr"
+                      value={chqDueDate}
+                      onChange={(e) => setChqDueDate(e.target.value)}
+                      className="w-full h-8 rounded-md border border-slate-300 px-2 font-mono"
+                    />
+                  </div>
                 </div>
                 <button
                   type="submit"
@@ -7989,8 +8190,24 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 categories={productCategories}
                 selectedGroupId={quoteGroupFilter}
                 selectedCategoryId={quoteCatFilter}
-                onGroupChange={setQuoteGroupFilter}
-                onCategoryChange={setQuoteCatFilter}
+                onFilterChange={(nextGroupId, nextCategoryId) => {
+                  const res = resolveGroupCategoryCascade(
+                    activeProducts,
+                    productGroups,
+                    productCategories,
+                    nextGroupId,
+                    nextCategoryId,
+                    quoteProductId
+                  );
+                  setQuoteGroupFilter(nextGroupId);
+                  setQuoteCatFilter(res.nextCategoryId);
+                  if (res.clearSelectedProduct) {
+                    setQuoteProductId('');
+                    setQuoteUnitName('');
+                    setQuoteQty('');
+                    setQuotePrice('');
+                  }
+                }}
               />
               <select
                 value={quoteProductId}
@@ -8054,13 +8271,15 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               />
             )}
 
-            <input
-              type="text"
-              value={quoteNotes}
-              onChange={(e) => setQuoteNotes(e.target.value)}
-              placeholder={t('صلاحية العرض وملاحظات...', 'Quote validity & notes...')}
-              className="w-full h-8 rounded-md border border-slate-300 px-2"
-            />
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('صلاحية العرض وملاحظات:', 'Quote Validity & Notes:')}</label>
+              <input
+                type="text"
+                value={quoteNotes}
+                onChange={(e) => setQuoteNotes(e.target.value)}
+                className="w-full h-8 rounded-md border border-slate-300 px-2"
+              />
+            </div>
 
             <button
               type="submit"
@@ -8835,43 +9054,54 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             >
               <h4 className="text-xs sm:text-sm font-black text-slate-900">{t('تسليم جزئي من عهدة السيارة إلى عميل', 'Partial Delivery from Van Custody to Customer')}</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                <select
-                  value={delivCustomerId}
-                  onChange={(e) => setDelivCustomerId(e.target.value)}
-                  className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-bold"
-                >
-                  <option value="">{t('-- اختر العميل المستلم (اختياري) --', '-- Select Receiving Customer (Optional) --')}</option>
-                  {data.customers.map((c) => (
-                    <option key={c.id} value={c.id}>{c.shopName || c.name}</option>
-                  ))}
-                </select>
-                <select
-                  value={delivProdId}
-                  onChange={(e) => setDelivProdId(e.target.value)}
-                  className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-bold"
-                >
-                  <option value="">{t('-- اختر الصنف من العهدة --', '-- Select Item from Custody --')}</option>
-                  {activeProducts.filter((p) => (p.stockPerWarehouse?.[effectiveVanId] || 0) > 0).map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({t('متاح:', 'Avail:')} {formatLocaleNumber(p.stockPerWarehouse?.[effectiveVanId] || 0)} {t(p.baseUnit)})
-                    </option>
-                  ))}
-                </select>
-                <QuantityInput
-                  allowDecimals
-                  min={0.001}
-                  value={delivQty}
-                  onChange={setDelivQty}
-                  ariaLabel={t('الكمية المسلمة', 'Delivered Quantity')}
-                  inputClassName="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
-                />
-                <input
-                  type="text"
-                  value={delivNotes}
-                  onChange={(e) => setDelivNotes(e.target.value)}
-                  placeholder={t('ملاحظات التسليم...', 'Delivery notes...')}
-                  className="w-full h-8 rounded-md border border-slate-300 px-2"
-                />
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('العميل المستلم (اختياري):', 'Receiving Customer (Optional):')}</label>
+                  <select
+                    value={delivCustomerId}
+                    onChange={(e) => setDelivCustomerId(e.target.value)}
+                    className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-bold"
+                  >
+                    <option value="">{t('-- اختر العميل المستلم (اختياري) --', '-- Select Receiving Customer (Optional) --')}</option>
+                    {data.customers.map((c) => (
+                      <option key={c.id} value={c.id}>{c.shopName || c.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الصنف من العهدة:', 'Item from Custody:')}</label>
+                  <select
+                    value={delivProdId}
+                    onChange={(e) => setDelivProdId(e.target.value)}
+                    className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-bold"
+                  >
+                    <option value="">{t('-- اختر الصنف من العهدة --', '-- Select Item from Custody --')}</option>
+                    {activeProducts.filter((p) => (p.stockPerWarehouse?.[effectiveVanId] || 0) > 0).map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({t('متاح:', 'Avail:')} {formatLocaleNumber(p.stockPerWarehouse?.[effectiveVanId] || 0)} {t(p.baseUnit)})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الكمية المسلمة:', 'Delivered Quantity:')}</label>
+                  <QuantityInput
+                    allowDecimals
+                    min={0.001}
+                    value={delivQty}
+                    onChange={setDelivQty}
+                    ariaLabel={t('الكمية المسلمة', 'Delivered Quantity')}
+                    inputClassName="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('ملاحظات التسليم:', 'Delivery Notes:')}</label>
+                  <input
+                    type="text"
+                    value={delivNotes}
+                    onChange={(e) => setDelivNotes(e.target.value)}
+                    className="w-full h-8 rounded-md border border-slate-300 px-2"
+                  />
+                </div>
               </div>
               <button
                 type="submit"
@@ -8945,27 +9175,32 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               })()}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                <select
-                  value={retCustodyTargetWhId}
-                  onChange={(e) => setRetCustodyTargetWhId(e.target.value)}
-                  className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-bold"
-                >
-                  {data.warehouses
-                    .filter((w) => w.id !== effectiveVanId)
-                    .map((w) => (
-                      <option key={w.id} value={w.id}>
-                        {t('إرجاع إلى:', 'Return to:')} {w.name}
-                      </option>
-                    ))}
-                </select>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('إرجاع إلى المستودع:', 'Return to Warehouse:')}</label>
+                  <select
+                    value={retCustodyTargetWhId}
+                    onChange={(e) => setRetCustodyTargetWhId(e.target.value)}
+                    className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-bold"
+                  >
+                    {data.warehouses
+                      .filter((w) => w.id !== effectiveVanId)
+                      .map((w) => (
+                        <option key={w.id} value={w.id}>
+                          {t('إرجاع إلى:', 'Return to:')} {w.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
 
-                <input
-                  type="text"
-                  value={retCustodyNotes}
-                  onChange={(e) => setRetCustodyNotes(e.target.value)}
-                  placeholder={t('سبب الإرجاع أو ملاحظات...', 'Return reason or notes...')}
-                  className="w-full h-8 rounded-md border border-slate-300 px-2"
-                />
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('سبب الإرجاع أو ملاحظات:', 'Return Reason or Notes:')}</label>
+                  <input
+                    type="text"
+                    value={retCustodyNotes}
+                    onChange={(e) => setRetCustodyNotes(e.target.value)}
+                    className="w-full h-8 rounded-md border border-slate-300 px-2"
+                  />
+                </div>
               </div>
 
               <button
@@ -9038,8 +9273,23 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       categories={productCategories}
                       selectedGroupId={reqGroupFilter}
                       selectedCategoryId={reqCatFilter}
-                      onGroupChange={setReqGroupFilter}
-                      onCategoryChange={setReqCatFilter}
+                      onFilterChange={(nextGroupId, nextCategoryId) => {
+                        const res = resolveGroupCategoryCascade(
+                          activeProducts,
+                          productGroups,
+                          productCategories,
+                          nextGroupId,
+                          nextCategoryId,
+                          reqProdId
+                        );
+                        setReqGroupFilter(nextGroupId);
+                        setReqCatFilter(res.nextCategoryId);
+                        if (res.clearSelectedProduct) {
+                          setReqProdId('');
+                          setReqUnitName('');
+                          setReqQty('');
+                        }
+                      }}
                     />
                     <div>
                       <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('اختيار الصنف:', 'Select Item:')}</label>
@@ -9243,30 +9493,34 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-1.5"
               >
                 <h4 className="text-xs sm:text-sm font-black text-slate-900">{t('توريد نقدية من المندوب إلى خزينة الفرع', 'Cash Remittance from Rep to Branch Cashbox')}</h4>
-                <div className="flex gap-1.5">
-                  <input
-                    type="number"
-                    min={1}
-                    value={cashAmount}
-                    onChange={(e) => setCashAmount(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
-                    placeholder={`${t('المبلغ', 'Amount')} (${t(data.settings.currency)})`}
-                    className="flex-1 h-8 rounded-md border border-slate-300 px-2 font-mono font-bold"
-                  />
+                <div className="flex items-end gap-1.5">
+                  <div className="flex-1">
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('المبلغ', 'Amount')} ({t(data.settings.currency)}):</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={cashAmount}
+                      onChange={(e) => setCashAmount(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                      className="w-full h-8 rounded-md border border-slate-300 px-2 font-mono font-bold"
+                    />
+                  </div>
                   <button
                     type="submit"
                     disabled={isSendingTransfer || Number(cashAmount || 0) <= 0}
-                    className="h-8 px-2.5 rounded-md bg-blue-900 text-white font-black disabled:opacity-50 cursor-pointer"
+                    className="h-8 px-2.5 rounded-md bg-blue-900 text-white font-black disabled:opacity-50 cursor-pointer shrink-0"
                   >
                     {t('إرسال التوريد', 'Send Remittance')}
                   </button>
                 </div>
-                <input
-                  type="text"
-                  value={cashNotes}
-                  onChange={(e) => setCashNotes(e.target.value)}
-                  placeholder={t('ملاحظات التوريد (اختياري)...', 'Remittance notes (optional)...')}
-                  className="w-full h-8 rounded-md border border-slate-300 px-2"
-                />
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('ملاحظات التوريد (اختياري):', 'Remittance Notes (Optional):')}</label>
+                  <input
+                    type="text"
+                    value={cashNotes}
+                    onChange={(e) => setCashNotes(e.target.value)}
+                    className="w-full h-8 rounded-md border border-slate-300 px-2"
+                  />
+                </div>
               </form>
 
               <UnifiedDataTable
@@ -9477,8 +9731,24 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 categories={productCategories}
                 selectedGroupId={ordGroupFilter}
                 selectedCategoryId={ordCatFilter}
-                onGroupChange={setOrdGroupFilter}
-                onCategoryChange={setOrdCatFilter}
+                onFilterChange={(nextGroupId, nextCategoryId) => {
+                  const res = resolveGroupCategoryCascade(
+                    activeProducts,
+                    productGroups,
+                    productCategories,
+                    nextGroupId,
+                    nextCategoryId,
+                    ordProductId
+                  );
+                  setOrdGroupFilter(nextGroupId);
+                  setOrdCatFilter(res.nextCategoryId);
+                  if (res.clearSelectedProduct) {
+                    setOrdProductId('');
+                    setOrdUnitName('');
+                    setOrdQty('');
+                    setOrdPrice('');
+                  }
+                }}
               />
               <select
                 value={ordProductId}
@@ -9570,13 +9840,15 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               />
             )}
 
-            <input
-              type="text"
-              value={ordNotes}
-              onChange={(e) => setOrdNotes(e.target.value)}
-              placeholder={t('ملاحظات الطلب...', 'Order notes...')}
-              className="w-full h-8 rounded-md border border-slate-300 px-2"
-            />
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('ملاحظات الطلب:', 'Order Notes:')}</label>
+              <input
+                type="text"
+                value={ordNotes}
+                onChange={(e) => setOrdNotes(e.target.value)}
+                className="w-full h-8 rounded-md border border-slate-300 px-2"
+              />
+            </div>
 
             <button
               type="submit"
@@ -10589,13 +10861,15 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               </div>
             )}
 
-            <input
-              type="text"
-              value={deliveryNotes}
-              onChange={(e) => setDeliveryNotes(e.target.value)}
-              placeholder={t('ملاحظات التسليم...', 'Delivery notes...')}
-              className="w-full h-8 rounded-md border border-slate-300 px-2"
-            />
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('ملاحظات التسليم:', 'Delivery Notes:')}</label>
+              <input
+                type="text"
+                value={deliveryNotes}
+                onChange={(e) => setDeliveryNotes(e.target.value)}
+                className="w-full h-8 rounded-md border border-slate-300 px-2"
+              />
+            </div>
 
             <label className="h-7 px-2 rounded-md border border-blue-200 bg-blue-50 text-blue-900 font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer">
               <Camera className="w-3.5 h-3.5" />
@@ -11821,7 +12095,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     type="text"
                     value={editCustShop}
                     onChange={(e) => setEditCustShop(e.target.value)}
-                    placeholder={t('اسم المحل أو النشاط', 'Shop or business name')}
                     className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold"
                   />
                 </div>
@@ -11832,7 +12105,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     required
                     value={editCustName}
                     onChange={(e) => setEditCustName(e.target.value)}
-                    placeholder={t('الاسم الكامل', 'Full name')}
                     className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold"
                   />
                 </div>
@@ -11908,7 +12180,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       setEditCustAddress(e.target.value);
                       if (editCustMapNotice) setEditCustMapNotice(null);
                     }}
-                    placeholder={t('الشارع، المنطقة، علامة مميزة...', 'Street, area, landmark...')}
                     className="flex-1 h-8 rounded-md border border-slate-300 px-2 font-bold"
                   />
                   <button
@@ -11946,7 +12217,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     type="text"
                     value={editCustGovernorate}
                     onChange={(e) => setEditCustGovernorate(e.target.value)}
-                    placeholder={t('المحافظة', 'Governorate')}
                     className="w-full h-8 rounded-md border border-slate-300 px-2 font-semibold"
                   />
                 </div>
@@ -11956,7 +12226,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     type="text"
                     value={editCustArea}
                     onChange={(e) => setEditCustArea(e.target.value)}
-                    placeholder={t('المنطقة / خط السير', 'Area / Route')}
                     className="w-full h-8 rounded-md border border-slate-300 px-2 font-semibold"
                   />
                 </div>
@@ -12014,12 +12283,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           <input
                             type="tel"
                             dir="ltr"
+                            aria-label={t('رقم إضافي', 'Additional Phone')}
                             value={extra.phone}
                             onChange={(e) => {
                               const v = e.target.value;
                               setEditCustExtraPhones((prev) => prev.map((row, i) => (i === idx ? { ...row, phone: v } : row)));
                             }}
-                            placeholder={t('رقم إضافي...', 'Additional number...')}
                             className="flex-1 min-w-[110px] h-8 rounded-md border border-slate-300 px-2 font-mono font-bold bg-white"
                           />
                           <select
@@ -12094,7 +12363,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   type="text"
                   value={editCustNotes}
                   onChange={(e) => setEditCustNotes(e.target.value)}
-                  placeholder={t('ملاحظات عن المحل أو المواعيد (اختياري)', 'Notes about shop or schedule (optional)')}
                   className="w-full h-8 rounded-md border border-slate-300 px-2"
                 />
               </div>
@@ -12390,13 +12658,15 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               </div>
             </div>
 
-            <input
-              type="text"
-              value={purPayNotes}
-              onChange={(e) => setPurPayNotes(e.target.value)}
-              placeholder={t('ملاحظات السداد (اختياري)...', 'Payment notes (optional)...')}
-              className="w-full h-8 rounded-md border border-slate-300 px-2"
-            />
+            <div>
+              <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('ملاحظات السداد (اختياري):', 'Payment Notes (Optional):')}</label>
+              <input
+                type="text"
+                value={purPayNotes}
+                onChange={(e) => setPurPayNotes(e.target.value)}
+                className="w-full h-8 rounded-md border border-slate-300 px-2"
+              />
+            </div>
 
             <button
               type="submit"

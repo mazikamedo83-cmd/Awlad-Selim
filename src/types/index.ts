@@ -226,8 +226,9 @@ export interface Product {
   categoryId?: string;
   groupId?: string;
   groupName?: string;
-  baseUnit: string;     // الوحدة الصغرى الأساسية: قطعة، كيس، كيلو
-  units: ProductUnit[]; // وحدات القياس الإضافية
+  baseUnit: string;     // الوحدة المسجلة للصنف
+  unitId?: string;      // معرف الوحدة في كتالوج الوحدات المسجلة
+  units: ProductUnit[]; // للبيانات التاريخية السابقة فقط
   size?: string;        // المقاس عند الحاجة
   color?: string;       // اللون عند الحاجة
   class1?: string;      // التصنيف 1 عند الحاجة
@@ -333,6 +334,7 @@ export interface InlinePurchaseNewProduct {
   groupName?: string;
   categoryId?: string;
   category?: string;
+  unitId?: string;
   baseUnit?: string;
   purchasePrice?: number;
   sellingPrice?: number;
@@ -842,8 +844,11 @@ export interface UnitCatalogItem {
   id: string;
   name: string;
   shortCode?: string;
-  defaultConversionFactor: number;
+  defaultConversionFactor?: number;
   notes?: string;
+  status?: 'active' | 'suspended';
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface PrinterSettingItem {

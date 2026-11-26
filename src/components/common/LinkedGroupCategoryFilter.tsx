@@ -34,23 +34,29 @@ export function filterProductsByGroupCategory(
     : new Set<string>();
 
   const selectedCatObj = hasCat
-    ? categories.find((c) => c.id === categoryValue || c.name === categoryValue)
+    ? categories.find((c) => c.id === categoryValue) ||
+      categories.find((c) => (!hasGroup || (c.groupId || '') === groupId) && c.name === categoryValue)
     : undefined;
 
   return products.filter((p) => {
     if (hasGroup) {
-      const matchDirectGroup = p.groupId === groupId || (selectedGroup && p.groupName === selectedGroup.name);
+      const matchDirectGroup =
+        p.groupId === groupId || (!p.groupId && selectedGroup && p.groupName === selectedGroup.name);
       const matchViaCat =
         (p.categoryId && groupCategoryIds.has(p.categoryId)) ||
-        (p.category && groupCategoryNames.has(p.category));
+        (!p.categoryId && !p.groupId && p.category && groupCategoryNames.has(p.category));
       if (!matchDirectGroup && !matchViaCat) return false;
     }
 
     if (hasCat) {
       if (selectedCatObj) {
-        const matchId = p.categoryId ? p.categoryId === selectedCatObj.id : false;
-        const matchName = p.category === selectedCatObj.name;
-        if (!matchId && !matchName) return false;
+        if (p.categoryId) {
+          if (p.categoryId !== selectedCatObj.id) return false;
+        } else {
+          const matchName = p.category === selectedCatObj.name;
+          const matchGroup = !selectedCatObj.groupId || !p.groupId || p.groupId === selectedCatObj.groupId;
+          if (!matchName || !matchGroup) return false;
+        }
       } else if (p.category !== categoryValue && p.categoryId !== categoryValue) {
         return false;
       }
@@ -60,13 +66,46 @@ export function filterProductsByGroupCategory(
   });
 }
 
+export function resolveGroupCategoryCascade(
+  products: Product[],
+  productGroups: ProductGroup[],
+  categories: ProductCategory[],
+  nextGroupId: string,
+  currentCategoryId: string,
+  selectedProductId?: string | null
+): { nextCategoryId: string; clearSelectedProduct: boolean } {
+  const normalizedGroupId = nextGroupId || 'all';
+  let nextCategoryId = currentCategoryId || 'all';
+  if (nextCategoryId !== 'all') {
+    const stillValidCat = getScopedCategoriesForGroup(categories, normalizedGroupId, false).some(
+      (c) => c.id === nextCategoryId || c.name === nextCategoryId
+    );
+    if (!stillValidCat) {
+      nextCategoryId = 'all';
+    }
+  }
+  if (!selectedProductId) {
+    return { nextCategoryId, clearSelectedProduct: false };
+  }
+  const scopedProducts = filterProductsByGroupCategory(
+    products,
+    productGroups,
+    categories,
+    normalizedGroupId,
+    nextCategoryId
+  );
+  const clearSelectedProduct = !scopedProducts.some((p) => p.id === selectedProductId);
+  return { nextCategoryId, clearSelectedProduct };
+}
+
 interface LinkedGroupCategoryFilterProps {
   productGroups: ProductGroup[];
   categories: ProductCategory[];
   selectedGroupId: string;
   selectedCategoryId: string;
-  onGroupChange: (groupId: string) => void;
-  onCategoryChange: (categoryId: string) => void;
+  onGroupChange?: (groupId: string) => void;
+  onCategoryChange?: (categoryId: string) => void;
+  onFilterChange?: (nextGroupId: string, nextCategoryId: string) => void;
   allLabel?: string;
   compact?: boolean;
   showLabels?: boolean;
@@ -80,6 +119,7 @@ export const LinkedGroupCategoryFilter: React.FC<LinkedGroupCategoryFilterProps>
   selectedCategoryId,
   onGroupChange,
   onCategoryChange,
+  onFilterChange,
   allLabel,
   compact = true,
   showLabels = false,
@@ -99,14 +139,22 @@ export const LinkedGroupCategoryFilter: React.FC<LinkedGroupCategoryFilterProps>
   );
 
   const handleGroupSelect = (nextGroupId: string) => {
-    onGroupChange(nextGroupId);
-    if (selectedCategoryId && selectedCategoryId !== 'all') {
+    let nextCategoryId = selectedCategoryId || 'all';
+    if (nextCategoryId !== 'all') {
       const stillValid = getScopedCategoriesForGroup(categories, nextGroupId || 'all', false).some(
-        (c) => c.id === selectedCategoryId || c.name === selectedCategoryId
+        (c) => c.id === nextCategoryId || c.name === nextCategoryId
       );
       if (!stillValid) {
-        onCategoryChange('all');
+        nextCategoryId = 'all';
       }
+    }
+    if (onFilterChange) {
+      onFilterChange(nextGroupId, nextCategoryId);
+      return;
+    }
+    onGroupChange?.(nextGroupId);
+    if (nextCategoryId !== (selectedCategoryId || 'all')) {
+      onCategoryChange?.(nextCategoryId);
     }
   };
 
@@ -143,7 +191,14 @@ export const LinkedGroupCategoryFilter: React.FC<LinkedGroupCategoryFilterProps>
         <select
           aria-label={t('تصفية حسب التصنيف', 'Filter by category')}
           value={selectedCategoryId || 'all'}
-          onChange={(e) => onCategoryChange(e.target.value)}
+          onChange={(e) => {
+            const nextCategoryId = e.target.value;
+            if (onFilterChange) {
+              onFilterChange(selectedGroupId || 'all', nextCategoryId);
+            } else {
+              onCategoryChange?.(nextCategoryId);
+            }
+          }}
           className={`w-full ${compact ? 'h-8' : 'h-9'} bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC]`}
         >
           <option value="all">

@@ -11,7 +11,11 @@ import { formatLocaleNumber } from '../../../i18n/translator';
 import { StockTransferRequest, Invoice } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { ProductSearchSelect } from '../../common/ProductSearchSelect';
-import { LinkedGroupCategoryFilter, filterProductsByGroupCategory } from '../../common/LinkedGroupCategoryFilter';
+import {
+  LinkedGroupCategoryFilter,
+  filterProductsByGroupCategory,
+  resolveGroupCategoryCascade,
+} from '../../common/LinkedGroupCategoryFilter';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { exportToExcel } from '../../common/ExcelExporter';
 import { exportTableToPdf } from '../../common/PdfExporter';
@@ -421,8 +425,24 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
             categories={categories}
             selectedGroupId={transferGroupFilter}
             selectedCategoryId={transferCatFilter}
-            onGroupChange={setTransferGroupFilter}
-            onCategoryChange={setTransferCatFilter}
+            onFilterChange={(nextGroupId, nextCategoryId) => {
+              setTransferGroupFilter(nextGroupId);
+              setTransferCatFilter(nextCategoryId);
+              const { clearSelectedProduct } = resolveGroupCategoryCascade(
+                products,
+                productGroups,
+                categories,
+                nextGroupId,
+                nextCategoryId,
+                pickedProductId
+              );
+              if (clearSelectedProduct) {
+                setPickedProductId('');
+                setPickedUnitName('');
+                setPickedUnitFactor(1);
+                setPickedQty('');
+              }
+            }}
             compact
           />
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 items-end">

@@ -2181,13 +2181,17 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack, in
                       </option>
                     ))}
                   </select>
-                  <input
-                    type="text"
-                    value={batchNotes}
-                    onChange={(e) => setBatchNotes(e.target.value)}
-                    placeholder={t('ملاحظات الإرسال (اختياري)...', 'Dispatch notes (optional)...')}
-                    className="h-8 px-2 rounded-md border border-slate-300 dark:border-[#2C4775] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC] w-40 shrink-0"
-                  />
+                  <div className="flex items-center gap-1 shrink-0">
+                    <label className="text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] whitespace-nowrap">
+                      {t('ملاحظات الإرسال:', 'Notes:')}
+                    </label>
+                    <input
+                      type="text"
+                      value={batchNotes}
+                      onChange={(e) => setBatchNotes(e.target.value)}
+                      className="h-8 px-2 rounded-md border border-slate-300 dark:border-[#2C4775] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC] w-36 shrink-0"
+                    />
+                  </div>
                   <button
                     type="button"
                     disabled={isSending || selectedOpIds.length === 0}
@@ -2889,7 +2893,6 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack, in
                     type="text"
                     value={rejectCashReason}
                     onChange={(e) => setRejectCashReason(e.target.value)}
-                    placeholder={t('اكتب سبب عدم استلام المبلغ أو المراجعة...', 'Enter reason for not accepting transfer...')}
                     className="w-full h-9 px-2.5 rounded-md border border-slate-300 dark:border-[#2C4775] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC]"
                   />
                 </div>
@@ -3204,13 +3207,17 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack, in
                         'Approve batch receipt administratively (manual verification without duplicate financial or stock entries)'
                       )}
                     </div>
-                    <input
-                      type="text"
-                      value={receiptNotesInput}
-                      onChange={(e) => setReceiptNotesInput(e.target.value)}
-                      placeholder={t('ملاحظات الاستلام والتدقيق (اختياري)...', 'Receipt and audit notes (optional)...')}
-                      className="w-full h-8 px-2.5 rounded-md border border-slate-300 dark:border-[#2C4775] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC]"
-                    />
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">
+                        {t('ملاحظات الاستلام والتدقيق (اختياري):', 'Receipt & Audit Notes (Optional):')}
+                      </label>
+                      <input
+                        type="text"
+                        value={receiptNotesInput}
+                        onChange={(e) => setReceiptNotesInput(e.target.value)}
+                        className="w-full h-8 px-2.5 rounded-md border border-slate-300 dark:border-[#2C4775] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC]"
+                      />
+                    </div>
 
                     <label className="flex items-center gap-2 text-xs font-bold text-amber-900 dark:text-amber-300 cursor-pointer">
                       <input
@@ -3223,13 +3230,17 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack, in
                     </label>
 
                     {hasDiscrepancyInput && (
-                      <input
-                        type="text"
-                        value={discrepancyNoteInput}
-                        onChange={(e) => setDiscrepancyNoteInput(e.target.value)}
-                        placeholder={t('تفاصيل الفرق أو الاعتراض الموثق...', 'Details of discrepancy or objection...')}
-                        className="w-full h-8 px-2.5 rounded-md border border-amber-300 dark:border-amber-700 bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC]"
-                      />
+                      <div>
+                        <label className="block text-[11px] font-bold text-amber-900 dark:text-amber-300 mb-0.5">
+                          {t('تفاصيل الفرق أو الاعتراض الموثق:', 'Discrepancy / Objection Details:')}
+                        </label>
+                        <input
+                          type="text"
+                          value={discrepancyNoteInput}
+                          onChange={(e) => setDiscrepancyNoteInput(e.target.value)}
+                          className="w-full h-8 px-2.5 rounded-md border border-amber-300 dark:border-amber-700 bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC]"
+                        />
+                      </div>
                     )}
 
                     {showFailReasonBox && (

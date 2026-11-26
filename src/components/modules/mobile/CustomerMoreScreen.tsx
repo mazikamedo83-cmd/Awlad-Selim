@@ -216,28 +216,34 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
 
         {isEditingProfile && (
           <form onSubmit={handleSaveProfile} className="pt-2 border-t border-slate-100 dark:border-[#1B2F52] space-y-1.5 text-xs">
-            <input
-              type="text"
-              value={editShopName}
-              onChange={(e) => setEditShopName(e.target.value)}
-              placeholder={t('اسم المحل / النشاط', 'Shop / Business Name')}
-              className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] px-2"
-            />
-            <input
-              type="tel"
-              dir="ltr"
-              value={editPhone}
-              onChange={(e) => setEditPhone(e.target.value)}
-              placeholder={t('رقم الهاتف', 'Phone Number')}
-              className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] px-2 font-mono"
-            />
-            <input
-              type="text"
-              value={editAddress}
-              onChange={(e) => setEditAddress(e.target.value)}
-              placeholder={t('العنوان التفصيلي', 'Detailed Address')}
-              className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] px-2"
-            />
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">{t('اسم المحل / النشاط:', 'Shop / Business Name:')}</label>
+              <input
+                type="text"
+                value={editShopName}
+                onChange={(e) => setEditShopName(e.target.value)}
+                className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] px-2"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">{t('رقم الهاتف:', 'Phone Number:')}</label>
+              <input
+                type="tel"
+                dir="ltr"
+                value={editPhone}
+                onChange={(e) => setEditPhone(e.target.value)}
+                className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] px-2 font-mono"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">{t('العنوان التفصيلي:', 'Detailed Address:')}</label>
+              <input
+                type="text"
+                value={editAddress}
+                onChange={(e) => setEditAddress(e.target.value)}
+                className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] px-2"
+              />
+            </div>
             <button
               type="submit"
               disabled={savingProfile}
@@ -459,35 +465,41 @@ export const CustomerMoreScreen: React.FC<CustomerMoreScreenProps> = ({
                 {pwdMsg.text}
               </p>
             )}
-            <input
-              type="password"
-              dir="ltr"
-              required
-              value={currPwd}
-              onChange={(e) => setCurrPwd(e.target.value)}
-              placeholder={t('كلمة المرور الحالية', 'Current Password')}
-              className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] px-2.5 font-mono"
-            />
-            <input
-              type="password"
-              dir="ltr"
-              required
-              minLength={4}
-              value={newPwd}
-              onChange={(e) => setNewPwd(e.target.value)}
-              placeholder={t('كلمة المرور الجديدة', 'New Password')}
-              className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] px-2.5 font-mono"
-            />
-            <input
-              type="password"
-              dir="ltr"
-              required
-              minLength={4}
-              value={confirmPwd}
-              onChange={(e) => setConfirmPwd(e.target.value)}
-              placeholder={t('تأكيد كلمة المرور الجديدة', 'Confirm New Password')}
-              className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] px-2.5 font-mono"
-            />
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">{t('كلمة المرور الحالية:', 'Current Password:')}</label>
+              <input
+                type="password"
+                dir="ltr"
+                required
+                value={currPwd}
+                onChange={(e) => setCurrPwd(e.target.value)}
+                className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] px-2.5 font-mono"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">{t('كلمة المرور الجديدة:', 'New Password:')}</label>
+              <input
+                type="password"
+                dir="ltr"
+                required
+                minLength={4}
+                value={newPwd}
+                onChange={(e) => setNewPwd(e.target.value)}
+                className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] px-2.5 font-mono"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">{t('تأكيد كلمة المرور الجديدة:', 'Confirm New Password:')}</label>
+              <input
+                type="password"
+                dir="ltr"
+                required
+                minLength={4}
+                value={confirmPwd}
+                onChange={(e) => setConfirmPwd(e.target.value)}
+                className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] px-2.5 font-mono"
+              />
+            </div>
             <button
               type="submit"
               disabled={savingPwd}

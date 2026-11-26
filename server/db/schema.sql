@@ -113,6 +113,18 @@ CREATE TABLE IF NOT EXISTS product_categories (
   UNIQUE (group_id, normalized_name)
 );
 
+-- 4c. كتالوج وحدات الأصناف المسجلة (Product Units Catalog)
+CREATE TABLE IF NOT EXISTS product_units_catalog (
+  id VARCHAR(64) PRIMARY KEY,
+  name TEXT NOT NULL,
+  normalized_name TEXT UNIQUE NOT NULL,
+  short_code VARCHAR(32) DEFAULT '',
+  notes TEXT DEFAULT '',
+  status VARCHAR(16) NOT NULL DEFAULT 'active',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- 5. المنتجات والأصناف الغذائية (Products)
 CREATE TABLE IF NOT EXISTS products (
   id VARCHAR(64) PRIMARY KEY,
@@ -124,6 +136,7 @@ CREATE TABLE IF NOT EXISTS products (
   group_id VARCHAR(64),
   group_name TEXT NOT NULL DEFAULT '',
   base_unit VARCHAR(32) NOT NULL,
+  unit_id VARCHAR(64),
   size TEXT,
   color TEXT,
   purchase_price NUMERIC(14, 2) NOT NULL DEFAULT 0.00,

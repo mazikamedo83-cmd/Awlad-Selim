@@ -1295,47 +1295,65 @@ export async function initializeSchema(customPool = null) {
         }
       }
 
+      // Query existing tables and columns first so pg-mem and PostgreSQL skip already-applied v16/v17 DDL cleanly inside txClient
+      const existingTablesRes = await txClient.query(
+        `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`
+      );
+      const existingTableSet = new Set((existingTablesRes.rows || []).map((r) => r.table_name));
+
+      const existingColumnsRes = await txClient.query(
+        `SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public'`
+      );
+      const hasColumn = (tableName, columnName) =>
+        (existingColumnsRes.rows || []).some((r) => r.table_name === tableName && r.column_name === columnName);
+
       // v16 non-destructive transfer enhancements (idempotency + rep-to-rep sender metadata)
-      const v16Statements = [
-        'ALTER TABLE rep_transfers ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(128)',
-        'ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(128)',
-        'ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS sender_representative_id VARCHAR(64)',
-        "ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS sender_representative_name TEXT DEFAULT ''",
+      const v16ColumnDefs = [
+        { table: 'rep_transfers', column: 'idempotency_key', sql: 'ALTER TABLE rep_transfers ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(128)' },
+        { table: 'rep_item_transfers', column: 'idempotency_key', sql: 'ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(128)' },
+        { table: 'rep_item_transfers', column: 'sender_representative_id', sql: 'ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS sender_representative_id VARCHAR(64)' },
+        { table: 'rep_item_transfers', column: 'sender_representative_name', sql: "ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS sender_representative_name TEXT DEFAULT ''" },
       ];
-      for (const stmt of v16Statements) {
-        await txClient.query(stmt);
+      for (const def of v16ColumnDefs) {
+        if (!hasColumn(def.table, def.column)) {
+          await txClient.query(def.sql);
+        }
       }
 
       // v17 linked Product Groups -> Categories & historical item category/group snapshots
-      await txClient.query(`
-        CREATE TABLE IF NOT EXISTS product_groups (
-          id VARCHAR(64) PRIMARY KEY,
-          name TEXT NOT NULL,
-          normalized_name TEXT UNIQUE NOT NULL,
-          description TEXT DEFAULT '',
-          status VARCHAR(16) NOT NULL DEFAULT 'active',
-          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )
-      `);
+      if (!existingTableSet.has('product_groups')) {
+        await txClient.query(`
+          CREATE TABLE IF NOT EXISTS product_groups (
+            id VARCHAR(64) PRIMARY KEY,
+            name TEXT NOT NULL,
+            normalized_name TEXT UNIQUE NOT NULL,
+            description TEXT DEFAULT '',
+            status VARCHAR(16) NOT NULL DEFAULT 'active',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          )
+        `);
+      }
 
-      const v17ColumnStatements = [
-        "ALTER TABLE product_categories ADD COLUMN IF NOT EXISTS normalized_name TEXT NOT NULL DEFAULT ''",
-        "ALTER TABLE product_categories ADD COLUMN IF NOT EXISTS group_id VARCHAR(64) NOT NULL DEFAULT ''",
-        "ALTER TABLE product_categories ADD COLUMN IF NOT EXISTS group_name TEXT NOT NULL DEFAULT ''",
-        "ALTER TABLE products ADD COLUMN IF NOT EXISTS group_id VARCHAR(64)",
-        "ALTER TABLE products ADD COLUMN IF NOT EXISTS group_name TEXT NOT NULL DEFAULT ''",
-        "ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS group_id VARCHAR(64)",
-        "ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS group_name TEXT DEFAULT ''",
-        "ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS category_id VARCHAR(64)",
-        "ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS category_name TEXT DEFAULT ''",
-        "ALTER TABLE invoice_return_items ADD COLUMN IF NOT EXISTS group_id VARCHAR(64)",
-        "ALTER TABLE invoice_return_items ADD COLUMN IF NOT EXISTS group_name TEXT DEFAULT ''",
-        "ALTER TABLE invoice_return_items ADD COLUMN IF NOT EXISTS category_id VARCHAR(64)",
-        "ALTER TABLE invoice_return_items ADD COLUMN IF NOT EXISTS category_name TEXT DEFAULT ''",
+      const v17ColumnDefs = [
+        { table: 'product_categories', column: 'normalized_name', sql: "ALTER TABLE product_categories ADD COLUMN IF NOT EXISTS normalized_name TEXT NOT NULL DEFAULT ''" },
+        { table: 'product_categories', column: 'group_id', sql: "ALTER TABLE product_categories ADD COLUMN IF NOT EXISTS group_id VARCHAR(64) NOT NULL DEFAULT ''" },
+        { table: 'product_categories', column: 'group_name', sql: "ALTER TABLE product_categories ADD COLUMN IF NOT EXISTS group_name TEXT NOT NULL DEFAULT ''" },
+        { table: 'products', column: 'group_id', sql: "ALTER TABLE products ADD COLUMN IF NOT EXISTS group_id VARCHAR(64)" },
+        { table: 'products', column: 'group_name', sql: "ALTER TABLE products ADD COLUMN IF NOT EXISTS group_name TEXT NOT NULL DEFAULT ''" },
+        { table: 'invoice_items', column: 'group_id', sql: "ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS group_id VARCHAR(64)" },
+        { table: 'invoice_items', column: 'group_name', sql: "ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS group_name TEXT DEFAULT ''" },
+        { table: 'invoice_items', column: 'category_id', sql: "ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS category_id VARCHAR(64)" },
+        { table: 'invoice_items', column: 'category_name', sql: "ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS category_name TEXT DEFAULT ''" },
+        { table: 'invoice_return_items', column: 'group_id', sql: "ALTER TABLE invoice_return_items ADD COLUMN IF NOT EXISTS group_id VARCHAR(64)" },
+        { table: 'invoice_return_items', column: 'group_name', sql: "ALTER TABLE invoice_return_items ADD COLUMN IF NOT EXISTS group_name TEXT DEFAULT ''" },
+        { table: 'invoice_return_items', column: 'category_id', sql: "ALTER TABLE invoice_return_items ADD COLUMN IF NOT EXISTS category_id VARCHAR(64)" },
+        { table: 'invoice_return_items', column: 'category_name', sql: "ALTER TABLE invoice_return_items ADD COLUMN IF NOT EXISTS category_name TEXT DEFAULT ''" },
       ];
-      for (const stmt of v17ColumnStatements) {
-        await txClient.query(stmt);
+      for (const def of v17ColumnDefs) {
+        if (!hasColumn(def.table, def.column)) {
+          await txClient.query(def.sql);
+        }
       }
 
       // Drop legacy global UNIQUE(name) constraint on product_categories so category names are scoped per group
@@ -1353,9 +1371,7 @@ export async function initializeSchema(customPool = null) {
           }
         }
       } catch {
-        try {
-          await txClient.query('ALTER TABLE product_categories DROP CONSTRAINT IF EXISTS product_categories_name_key');
-        } catch {}
+        // Ignore constraint inspection gaps on lightweight engines when schema.sql was already applied
       }
 
       // Backfill normalized_name on existing product_categories
@@ -1384,9 +1400,30 @@ export async function initializeSchema(customPool = null) {
           await txClient.query('UPDATE product_categories SET normalized_name = $1 WHERE id = $2', [norm, c.id]);
         }
       }
-      await txClient.query(
-        'CREATE UNIQUE INDEX IF NOT EXISTS idx_product_categories_group_norm_name ON product_categories (group_id, normalized_name)'
-      );
+      if (!existingIndexNames.has('idx_product_categories_group_norm_name')) {
+        await txClient.query(
+          'CREATE UNIQUE INDEX IF NOT EXISTS idx_product_categories_group_norm_name ON product_categories (group_id, normalized_name)'
+        );
+      }
+
+      // v18: Product units catalog entity + optional unit_id link on products
+      if (!existingTableSet.has('product_units_catalog')) {
+        await txClient.query(`
+          CREATE TABLE IF NOT EXISTS product_units_catalog (
+            id VARCHAR(64) PRIMARY KEY,
+            name TEXT NOT NULL,
+            normalized_name TEXT UNIQUE NOT NULL,
+            short_code VARCHAR(32) DEFAULT '',
+            notes TEXT DEFAULT '',
+            status VARCHAR(16) NOT NULL DEFAULT 'active',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          )
+        `);
+      }
+      if (!hasColumn('products', 'unit_id')) {
+        await txClient.query('ALTER TABLE products ADD COLUMN IF NOT EXISTS unit_id VARCHAR(64)');
+      }
     }, currentPool);
 
     return { success: true, message: 'تم تطبيق هيكل الجداول والفهارس والتسلسلات في PostgreSQL بنجاح.' };

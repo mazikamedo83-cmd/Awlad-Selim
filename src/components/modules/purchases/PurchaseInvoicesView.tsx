@@ -15,8 +15,10 @@ import {
   LinkedGroupCategoryFilter,
   filterProductsByGroupCategory,
   getScopedCategoriesForGroup,
+  resolveGroupCategoryCascade,
 } from '../../common/LinkedGroupCategoryFilter';
 import { SearchableFilterSelect } from '../../common/SearchableFilterSelect';
+import { SearchableTaxonomySelect } from '../../common/SearchableTaxonomySelect';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { QuantityInput } from '../../common/QuantityInput';
 import { UnifiedDataTable } from '../../common/UnifiedDataTable';
@@ -106,9 +108,10 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
   initialOpenNew = false,
 }) => {
   const {
-    invoices, suppliers, products, productGroups = [], categories = [], warehouses, cashboxes, purchaseReceivers = [],
+    invoices, suppliers, products, productGroups = [], categories = [], productUnits = [], warehouses, cashboxes, purchaseReceivers = [],
     settings, createPurchaseInvoice, editPurchaseInvoice, cancelInvoice,
     sendPurchaseInvoice, receivePurchaseInvoice, rejectPurchaseInvoice, confirmDraftInvoice,
+    addProductGroup, updateProductGroup, addCategory, updateCategory, addProductUnit, updateProductUnit,
   } = useData();
   const { currentUser, hasPermission } = useAuth();
   const { t, locale } = usePreferences();
@@ -200,6 +203,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
   const [newProdGroupId, setNewProdGroupId] = useState('');
   const [newProdCategoryId, setNewProdCategoryId] = useState('');
   const [newProdCategory, setNewProdCategory] = useState('');
+  const [newProdUnitId, setNewProdUnitId] = useState('');
   const [newProdBaseUnit, setNewProdBaseUnit] = useState('');
   const [newProdQty, setNewProdQty] = useState<number | ''>('');
   const [newProdPurchasePrice, setNewProdPurchasePrice] = useState<number | ''>('');
@@ -231,6 +235,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     setNewProdGroupId('');
     setNewProdCategoryId('');
     setNewProdCategory('');
+    setNewProdUnitId('');
     setNewProdBaseUnit('');
     setNewProdQty('');
     setNewProdPurchasePrice('');
@@ -406,12 +411,12 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
   );
 
   const inlineScopedCategories = useMemo(
-    () => getScopedCategoriesForGroup(categories, newProdGroupId === '' ? 'all' : newProdGroupId).filter((c) => c.isActive !== false),
+    () => getScopedCategoriesForGroup(categories, newProdGroupId === '' ? 'all' : newProdGroupId),
     [categories, newProdGroupId]
   );
 
   const activeGroupsList = useMemo(
-    () => productGroups.filter((g) => g.isActive !== false),
+    () => productGroups.filter((g) => g.status !== 'suspended'),
     [productGroups]
   );
 
@@ -637,7 +642,14 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
       const chosenGroup = productGroups.find((g) => g.id === newProdGroupId);
       const chosenCat = categories.find((c) => c.id === newProdCategoryId);
       const cleanCategory = (chosenCat?.name || newProdCategory).trim();
-      const cleanUnit = newProdBaseUnit.trim() || 'قطعة';
+      const cleanUnit = newProdBaseUnit.trim();
+      if (!cleanUnit) {
+        setError(t('يرجى اختيار أو كتابة الوحدة للصنف الجديد', 'Please select or enter a unit for the new product'));
+        return;
+      }
+      const matchedCatalogUnit =
+        (newProdUnitId ? productUnits.find((u) => u.id === newProdUnitId) : undefined) ||
+        productUnits.find((u) => normalizeArabicNameForDup(u.name) === normalizeArabicNameForDup(cleanUnit));
       const cleanBarcode = newProdBarcode.trim();
       const cleanCode = newProdCode.trim();
       const total = computeLineTotal(qtyNum, buyPrice);
@@ -647,7 +659,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
           productId: '',
           productName: cleanName,
           barcode: cleanBarcode || cleanCode,
-          unit: cleanUnit,
+          unit: matchedCatalogUnit?.name || cleanUnit,
           unitFactor: 1,
           quantity: qtyNum,
           unitPrice: buyPrice,
@@ -666,7 +678,8 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
             groupName: chosenGroup?.name,
             categoryId: chosenCat?.id,
             category: cleanCategory,
-            baseUnit: cleanUnit,
+            unitId: matchedCatalogUnit?.id || (newProdUnitId || undefined),
+            baseUnit: matchedCatalogUnit?.name || cleanUnit,
             purchasePrice: buyPrice,
             sellingPrice: sellPrice,
           },
@@ -680,6 +693,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     setNewProdGroupId('');
     setNewProdCategoryId('');
     setNewProdCategory('');
+    setNewProdUnitId('');
     setNewProdBaseUnit('');
     setNewProdQty('');
     setNewProdPurchasePrice('');
@@ -715,6 +729,13 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
       setPaidAmount(grandTotal > 0 ? grandTotal : '');
     } else if (paymentType === 'credit') {
       setPaidAmount('');
+    } else if (paymentType === 'partial') {
+      setPaidAmount((prev) => {
+        if (prev === '' || prev === undefined) return '';
+        const n = Number(prev);
+        if (!Number.isFinite(n) || n < 0) return '';
+        return n > grandTotal ? grandTotal : prev;
+      });
     }
   }, [paymentType, grandTotal]);
 
@@ -775,6 +796,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
       }
 
       const effectivePaid = paymentType === 'cash' ? grandTotal : paymentType === 'credit' ? 0 : Math.min(grandTotal, rawPaid);
+      const effectiveCashboxId = paymentType === 'credit' || effectivePaid <= 0 ? '' : (selectedCashboxId || cashboxes[0]?.id || '');
       const chosenReceiver = purchaseReceivers.find((r) => r.id === newRecipientUserId);
       const createAsDraft = sendToAdmin || !canApprovePurchase;
       const itemNotesSummary = items
@@ -797,8 +819,8 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
         paidAmount: effectivePaid,
         remainingAmount: Math.max(0, roundCurrency(grandTotal - effectivePaid)),
         paymentType,
-        paymentMethod: 'bank',
-        cashboxId: selectedCashboxId,
+        paymentMethod: 'cash',
+        cashboxId: effectiveCashboxId,
         status: createAsDraft ? 'draft' : 'confirmed',
         dispatchStatus: createAsDraft ? (sendToAdmin ? 'sent' : 'draft') : 'confirmed',
         sendNow: createAsDraft && sendToAdmin,
@@ -1380,11 +1402,23 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('المجموعة:', 'Group:')}</label>
-                    <select
-                      value={newProdGroupId}
-                      onChange={(e) => {
-                        const gid = e.target.value;
+                    <SearchableTaxonomySelect
+                      label={t('المجموعة', 'Group')}
+                      compact
+                      items={activeGroupsList.map((g) => ({
+                        id: g.id,
+                        name: g.name,
+                        status: g.status,
+                      }))}
+                      valueId={newProdGroupId}
+                      allowClear
+                      emptyDisplayText={t('-- اختر المجموعة --', '-- Select Group --')}
+                      clearLabel={t('بدون مجموعة', 'No Group')}
+                      createLabel={t('إضافة مجموعة جديدة', 'Add New Group')}
+                      searchPlaceholder={t('بحث باسم المجموعة...', 'Search group...')}
+                      triggerClassName="h-8 !min-h-[32px] !py-1 rounded-md text-xs"
+                      onChange={({ id }) => {
+                        const gid = id || '';
                         setNewProdGroupId(gid);
                         if (newProdCategoryId) {
                           const curCat = categories.find((c) => c.id === newProdCategoryId);
@@ -1394,42 +1428,111 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                           }
                         }
                       }}
-                      className="w-full h-8 border border-slate-300 bg-white rounded-md px-2 font-semibold text-xs"
-                    >
-                      <option value="">{t('-- اختر المجموعة --', '-- Select Group --')}</option>
-                      {activeGroupsList.map((g) => (
-                        <option key={g.id} value={g.id}>{g.name}</option>
-                      ))}
-                    </select>
+                      onCreate={async (name) => {
+                        const res = await addProductGroup(name);
+                        if (res.success && res.productGroup) {
+                          return { success: true, item: { id: res.productGroup.id, name: res.productGroup.name } };
+                        }
+                        return { success: false, error: res.error ? t(res.error) : t('تعذر إضافة المجموعة', 'Unable to add group') };
+                      }}
+                      onRename={async (id, newName) => {
+                        const res = await updateProductGroup(id, { name: newName });
+                        return res.success
+                          ? { success: true }
+                          : { success: false, error: res.error ? t(res.error) : t('تعذر تعديل المجموعة', 'Unable to rename group') };
+                      }}
+                    />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('التصنيف:', 'Category:')}</label>
-                    <select
-                      value={newProdCategoryId}
-                      onChange={(e) => {
-                        const cid = e.target.value;
+                    <SearchableTaxonomySelect
+                      label={t('التصنيف', 'Category')}
+                      compact
+                      items={inlineScopedCategories.map((c) => ({
+                        id: c.id,
+                        name: c.name,
+                        subtitle: !newProdGroupId ? c.groupName : undefined,
+                        status: c.status,
+                      }))}
+                      valueId={newProdCategoryId}
+                      valueText={newProdCategory}
+                      allowClear
+                      emptyDisplayText={
+                        newProdGroupId && inlineScopedCategories.length === 0
+                          ? t('لا توجد تصنيفات بالمجموعة', 'No categories in group')
+                          : t('-- اختر التصنيف --', '-- Select Category --')
+                      }
+                      clearLabel={t('بدون تصنيف', 'No Category')}
+                      createLabel={t('إضافة تصنيف جديد', 'Add New Category')}
+                      searchPlaceholder={t('بحث باسم التصنيف...', 'Search category...')}
+                      triggerClassName="h-8 !min-h-[32px] !py-1 rounded-md text-xs"
+                      onChange={({ id, name }) => {
+                        const cid = id || '';
                         setNewProdCategoryId(cid);
-                        const catObj = categories.find((c) => c.id === cid);
-                        setNewProdCategory(catObj?.name || '');
+                        const catObj = cid ? categories.find((c) => c.id === cid) : undefined;
+                        setNewProdCategory(catObj?.name || name || '');
                         if (catObj?.groupId && !newProdGroupId) {
                           setNewProdGroupId(catObj.groupId);
                         }
                       }}
-                      className="w-full h-8 border border-slate-300 bg-white rounded-md px-2 font-semibold text-xs"
-                    >
-                      <option value="">{t('-- اختر التصنيف --', '-- Select Category --')}</option>
-                      {inlineScopedCategories.map((c) => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
+                      onCreate={async (name) => {
+                        const res = await addCategory(name, '', newProdGroupId || '');
+                        if (res.success && res.category) {
+                          const cat = res.category;
+                          if (cat.groupId && !newProdGroupId) setNewProdGroupId(cat.groupId);
+                          return { success: true, item: { id: cat.id, name: cat.name } };
+                        }
+                        return { success: false, error: res.error ? t(res.error) : t('تعذر إضافة التصنيف', 'Unable to add category') };
+                      }}
+                      onRename={async (id, newName) => {
+                        try {
+                          await updateCategory(id, { name: newName });
+                          if (newProdCategoryId === id) setNewProdCategory(newName);
+                          return { success: true };
+                        } catch (err: any) {
+                          return { success: false, error: err?.message ? t(err.message) : t('تعذر تعديل التصنيف', 'Unable to rename category') };
+                        }
+                      }}
+                    />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الوحدة:', 'Unit:')}</label>
-                    <input
-                      type="text"
-                      value={newProdBaseUnit}
-                      onChange={(e) => setNewProdBaseUnit(e.target.value)}
-                      className="w-full h-8 border border-slate-300 bg-white rounded-md px-2 font-semibold text-xs"
+                    <SearchableTaxonomySelect
+                      label={t('الوحدة', 'Unit')}
+                      required
+                      compact
+                      items={productUnits
+                        .filter((u) => u.status !== 'suspended' || u.id === newProdUnitId)
+                        .map((u) => ({
+                          id: u.id,
+                          name: u.name,
+                          subtitle: u.shortCode || undefined,
+                          status: u.status,
+                        }))}
+                      valueId={newProdUnitId}
+                      valueText={newProdBaseUnit}
+                      allowManualText
+                      emptyDisplayText={t('-- اختر أو اكتب الوحدة --', '-- Select or Type Unit --')}
+                      createLabel={t('إضافة وحدة جديدة', 'Add New Unit')}
+                      searchPlaceholder={t('بحث باسم الوحدة أو كتابتها...', 'Search or type unit...')}
+                      triggerClassName="h-8 !min-h-[32px] !py-1 rounded-md text-xs"
+                      onChange={({ id, name }) => {
+                        setNewProdUnitId(id || '');
+                        setNewProdBaseUnit(name);
+                      }}
+                      onCreate={async (name) => {
+                        const res = await addProductUnit(name);
+                        if (res.success && res.productUnit) {
+                          return { success: true, item: { id: res.productUnit.id, name: res.productUnit.name } };
+                        }
+                        return { success: false, error: res.error ? t(res.error) : t('تعذر إضافة الوحدة', 'Unable to add unit') };
+                      }}
+                      onRename={async (id, newName) => {
+                        const res = await updateProductUnit(id, { name: newName });
+                        if (res.success) {
+                          if (newProdUnitId === id) setNewProdBaseUnit(newName);
+                          return { success: true };
+                        }
+                        return { success: false, error: res.error ? t(res.error) : t('تعذر تعديل الوحدة', 'Unable to rename unit') };
+                      }}
                     />
                   </div>
                   <div>
@@ -1444,7 +1547,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('سعر الشراء: *', 'Buy Price: *')}</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('سعر شراء الوحدة: *', 'Unit Buy Price: *')}</label>
                     <input
                       type="number"
                       step="0.5"
@@ -1455,7 +1558,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('سعر البيع المقترح:', 'Suggested Sell Price:')}</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('سعر بيع الوحدة:', 'Unit Sell Price:')}</label>
                     <input
                       type="number"
                       step="0.5"
@@ -1535,8 +1638,24 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   categories={categories}
                   selectedGroupId={purchaseGroupFilter}
                   selectedCategoryId={purchaseCatFilter}
-                  onGroupChange={setPurchaseGroupFilter}
-                  onCategoryChange={setPurchaseCatFilter}
+                  onFilterChange={(nextGroupId, nextCategoryId) => {
+                    setPurchaseGroupFilter(nextGroupId);
+                    setPurchaseCatFilter(nextCategoryId);
+                    const { clearSelectedProduct } = resolveGroupCategoryCascade(
+                      products,
+                      productGroups,
+                      categories,
+                      nextGroupId,
+                      nextCategoryId,
+                      itemProdId
+                    );
+                    if (clearSelectedProduct) {
+                      setItemProdId('');
+                      setItemUnitName('');
+                      setItemQty('');
+                      setItemPrice('');
+                    }
+                  }}
                   compact
                 />
                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
@@ -1748,7 +1867,10 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     </button>
                     <button
                       type="button"
-                      onClick={() => setPaymentType('partial')}
+                      onClick={() => {
+                        setPaymentType('partial');
+                        if (paymentType === 'cash') setPaidAmount('');
+                      }}
                       className={`h-8 rounded border cursor-pointer ${
                         paymentType === 'partial' ? 'bg-[#003589] text-white border-[#003589]' : 'bg-white text-slate-700 border-slate-300'
                       }`}
@@ -1770,8 +1892,9 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الخزينة:', 'Cashbox:')}</label>
                   <select
                     value={selectedCashboxId}
+                    disabled={paymentType === 'credit'}
                     onChange={(e) => setSelectedCashboxId(e.target.value)}
-                    className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-xs font-bold"
+                    className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-xs font-bold disabled:bg-slate-100 disabled:text-slate-400"
                   >
                     {cashboxes.map((c) => (
                       <option key={c.id} value={c.id}>{t(c.name)}</option>
@@ -1812,7 +1935,6 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       type="text"
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
-                      placeholder={t('ملاحظات فاتورة الشراء...', 'Purchase notes...')}
                       className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-xs"
                     />
                   </div>
@@ -1826,7 +1948,6 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     type="text"
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
-                    placeholder={t('ملاحظات فاتورة الشراء...', 'Purchase notes...')}
                     className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-xs"
                   />
                 </div>
@@ -2149,7 +2270,6 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       type="text"
                       value={rejectReasonText}
                       onChange={(e) => setRejectReasonText(e.target.value)}
-                      placeholder={t('اكتب سبب الرفض بوضوح...', 'Write rejection reason clearly...')}
                       className="w-full px-2.5 py-1.5 rounded-lg border border-rose-300 bg-white font-semibold"
                     />
                     <div className="flex items-center justify-end gap-2">
@@ -2375,8 +2495,23 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   categories={categories}
                   selectedGroupId={editGroupFilter}
                   selectedCategoryId={editCatFilter}
-                  onGroupChange={setEditGroupFilter}
-                  onCategoryChange={setEditCatFilter}
+                  onFilterChange={(nextGroupId, nextCategoryId) => {
+                    setEditGroupFilter(nextGroupId);
+                    setEditCatFilter(nextCategoryId);
+                    const { clearSelectedProduct } = resolveGroupCategoryCascade(
+                      products,
+                      productGroups,
+                      categories,
+                      nextGroupId,
+                      nextCategoryId,
+                      editAddProdId
+                    );
+                    if (clearSelectedProduct) {
+                      setEditAddProdId('');
+                      setEditAddQty('');
+                      setEditAddPrice('');
+                    }
+                  }}
                   compact
                 />
                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">

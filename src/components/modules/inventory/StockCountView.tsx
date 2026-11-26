@@ -738,6 +738,7 @@ export const StockCountView: React.FC = () => {
                       <td className="p-1.5">
                         <input
                           type="text"
+                          aria-label={t('ملاحظة الفارق', 'Variance note')}
                           value={line.reason}
                           onChange={(e) => {
                             const val = e.target.value;
@@ -745,7 +746,6 @@ export const StockCountView: React.FC = () => {
                               prev.map((row, i) => (i === line.originalIndex ? { ...row, reason: val } : row))
                             );
                           }}
-                          placeholder={t('ملاحظة الفارق...', 'Variance note...')}
                           className="w-full border border-slate-300 rounded-md p-1"
                         />
                       </td>
@@ -960,7 +960,6 @@ export const StockCountView: React.FC = () => {
                   type="text"
                   value={rejectReason}
                   onChange={(e) => setRejectReason(e.target.value)}
-                  placeholder={t('يرجى كتابة سبب الرفض...', 'Please write rejection reason...')}
                   className="w-full h-8 border border-red-300 bg-white rounded-md px-2"
                 />
                 <div className="flex justify-end gap-1.5">
@@ -977,13 +976,15 @@ export const StockCountView: React.FC = () => {
             <div className="flex flex-wrap justify-between items-center gap-1.5 pt-2 border-t">
               <div>
                 {reviewCount.status === 'submitted' && canApprove && (
-                  <input
-                    type="text"
-                    value={approveNotes}
-                    onChange={(e) => setApproveNotes(e.target.value)}
-                    placeholder={t('ملاحظة الاعتماد (اختياري)...', 'Approval note (optional)...')}
-                    className="h-8 border border-slate-300 rounded-md px-2 text-xs w-64"
-                  />
+                  <div className="flex items-center gap-1.5">
+                    <label className="font-bold text-slate-700 whitespace-nowrap">{t('ملاحظة الاعتماد (اختياري):', 'Approval Note (Optional):')}</label>
+                    <input
+                      type="text"
+                      value={approveNotes}
+                      onChange={(e) => setApproveNotes(e.target.value)}
+                      className="h-8 border border-slate-300 rounded-md px-2 text-xs w-56"
+                    />
+                  </div>
                 )}
               </div>
               <div className="flex items-center gap-1.5">

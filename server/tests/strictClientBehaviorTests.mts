@@ -988,4 +988,109 @@ await test('16. Auth tokens stay absent from plaintext localStorage & offlineAut
   }
 });
 
+await test('17. LinkedGroupCategoryFilter strictly isolates identical category names across different product groups & cascades resets', async () => {
+  const {
+    getScopedCategoriesForGroup,
+    filterProductsByGroupCategory,
+    resolveGroupCategoryCascade,
+  } = await import('../../src/components/common/LinkedGroupCategoryFilter.tsx');
+
+  const groups: any[] = [
+    { id: 'GRP-TIGER', name: 'شركة تايجر', status: 'active' },
+    { id: 'GRP-CHIPSY', name: 'شركة شيبسي', status: 'active' },
+    { id: 'GRP-SUSP', name: 'مجموعة موقوفة', status: 'suspended' },
+  ];
+
+  const categories: any[] = [
+    { id: 'CAT-TIGER-FAM', name: 'عائلي', groupId: 'GRP-TIGER', groupName: 'شركة تايجر', status: 'active' },
+    { id: 'CAT-CHIPSY-FAM', name: 'عائلي', groupId: 'GRP-CHIPSY', groupName: 'شركة شيبسي', status: 'active' },
+    { id: 'CAT-TIGER-SMALL', name: 'صغير', groupId: 'GRP-TIGER', groupName: 'شركة تايجر', status: 'active' },
+    { id: 'CAT-TIGER-SUSP', name: 'موقوف', groupId: 'GRP-TIGER', groupName: 'شركة تايجر', status: 'suspended' },
+  ];
+
+  const products: any[] = [
+    {
+      id: 'P-TIGER-1',
+      name: 'تايجر شطة وليمون عائلي',
+      groupId: 'GRP-TIGER',
+      groupName: 'شركة تايجر',
+      categoryId: 'CAT-TIGER-FAM',
+      category: 'عائلي',
+      status: 'active',
+    },
+    {
+      id: 'P-CHIPSY-1',
+      name: 'شيبسي طماطم عائلي',
+      groupId: 'GRP-CHIPSY',
+      groupName: 'شركة شيبسي',
+      categoryId: 'CAT-CHIPSY-FAM',
+      category: 'عائلي',
+      status: 'active',
+    },
+    {
+      id: 'P-TIGER-2',
+      name: 'تايجر جبنة متبلة صغير',
+      groupId: 'GRP-TIGER',
+      groupName: 'شركة تايجر',
+      categoryId: 'CAT-TIGER-SMALL',
+      category: 'صغير',
+      status: 'active',
+    },
+  ];
+
+  const tigerCats = getScopedCategoriesForGroup(categories, 'GRP-TIGER', false);
+  assert.deepEqual(
+    tigerCats.map((c: any) => c.id),
+    ['CAT-TIGER-FAM', 'CAT-TIGER-SMALL'],
+    'Only active categories belonging to GRP-TIGER should appear'
+  );
+
+  // Filtering by CAT-TIGER-FAM ID must NEVER include P-CHIPSY-1 even though both share name "عائلي"
+  const tigerFamById = filterProductsByGroupCategory(products, groups, categories, 'GRP-TIGER', 'CAT-TIGER-FAM');
+  assert.deepEqual(tigerFamById.map((p: any) => p.id), ['P-TIGER-1']);
+
+  const tigerFamNoGroupById = filterProductsByGroupCategory(products, groups, categories, 'all', 'CAT-TIGER-FAM');
+  assert.deepEqual(tigerFamNoGroupById.map((p: any) => p.id), ['P-TIGER-1']);
+
+  // Filtering by Chipsy group only returns P-CHIPSY-1
+  const chipsyAll = filterProductsByGroupCategory(products, groups, categories, 'GRP-CHIPSY', 'all');
+  assert.deepEqual(chipsyAll.map((p: any) => p.id), ['P-CHIPSY-1']);
+
+  // Cascade when switching group from GRP-TIGER (with CAT-TIGER-FAM & P-TIGER-1) -> GRP-CHIPSY
+  const cascadeSwitchGroup = resolveGroupCategoryCascade(
+    products,
+    groups,
+    categories,
+    'GRP-CHIPSY',
+    'CAT-TIGER-FAM',
+    'P-TIGER-1'
+  );
+  assert.equal(cascadeSwitchGroup.nextCategoryId, 'all', 'Incompatible category must reset to all');
+  assert.equal(cascadeSwitchGroup.clearSelectedProduct, true, 'Incompatible product must be cleared');
+
+  // Cascade when switching category within GRP-TIGER from CAT-TIGER-FAM -> CAT-TIGER-SMALL while P-TIGER-1 is selected
+  const cascadeSwitchCat = resolveGroupCategoryCascade(
+    products,
+    groups,
+    categories,
+    'GRP-TIGER',
+    'CAT-TIGER-SMALL',
+    'P-TIGER-1'
+  );
+  assert.equal(cascadeSwitchCat.nextCategoryId, 'CAT-TIGER-SMALL');
+  assert.equal(cascadeSwitchCat.clearSelectedProduct, true, 'Product outside new category must be cleared');
+
+  // Cascade keeps selected product when still valid under new filter
+  const cascadeKeep = resolveGroupCategoryCascade(
+    products,
+    groups,
+    categories,
+    'GRP-TIGER',
+    'all',
+    'P-TIGER-1'
+  );
+  assert.equal(cascadeKeep.nextCategoryId, 'all');
+  assert.equal(cascadeKeep.clearSelectedProduct, false);
+});
+
 console.log(`\nALL CLIENT 503 STRICT MODE TESTS PASSED (${passed} assertions groups)!`);

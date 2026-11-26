@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Printer, X, FileDown } from 'lucide-react';
 import { useData } from '../../context/DataContext';
-import { useShortcuts } from '../../context/ShortcutsContext';
+import { useOptionalShortcuts } from '../../context/ShortcutsContext';
 import { usePreferences } from '../../context/PreferencesContext';
 import { translateSystemEntityName } from '../../i18n/translator';
 import { exportHtmlToPdf } from './PdfExporter';
@@ -47,9 +47,12 @@ interface PrintDocumentProps {
   data: PrintData | null;
 }
 
+const noopRegisterHandler = () => () => {};
+
 export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClose, data }) => {
   const { settings, representatives, warehouses } = useData();
-  const { registerHandler } = useShortcuts();
+  const shortcutsCtx = useOptionalShortcuts();
+  const registerHandler = shortcutsCtx?.registerHandler ?? noopRegisterHandler;
   const { t, dir } = usePreferences();
   const [printFormat, setPrintFormat] = useState<'a4' | 'thermal80' | 'thermal58'>(settings.defaultPrintMode || 'a4');
   const displayCurrency = settings.currency === 'ج.م' ? t('ج.م', 'EGP') : settings.currency;

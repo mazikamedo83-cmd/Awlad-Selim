@@ -976,7 +976,6 @@ export const PersonalAccountsView: React.FC = () => {
                 required
                 value={editReason}
                 onChange={(e) => setEditReason(e.target.value)}
-                placeholder={t('اكتب سبب التعديل بالتفصيل...', 'Enter detailed edit reason...')}
                 className="w-full h-8 border border-amber-300 rounded-md px-2 py-1 font-bold"
               />
             </div>

@@ -432,12 +432,12 @@ const MainAppContent: React.FC = () => {
 
   if (currentUser?.role === 'customer' || currentUser?.role === 'representative') {
     return (
-      <>
+      <ShortcutsProvider onNavigate={(page) => setCurrentPage(page as NavItemKey)}>
         {renderMapsQuotaBanner()}
         {renderFloatingPairingBanner()}
         <AccountSwitcherModal />
         <MobilePortal />
-      </>
+      </ShortcutsProvider>
     );
   }
 

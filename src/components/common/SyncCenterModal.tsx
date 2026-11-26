@@ -441,15 +441,19 @@ export const SyncCenterModal: React.FC<SyncCenterModalProps> = ({ isOpen, onClos
 
                   {isOpenConflict && (
                     <>
-                      <input
-                        type="text"
-                        value={notesByConflict[cf.id] || ''}
-                        onChange={(e) =>
-                          setNotesByConflict((prev) => ({ ...prev, [cf.id]: e.target.value }))
-                        }
-                        placeholder={t('ملاحظة قرار المعالجة (اختياري)...', 'Resolution note (optional)...')}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs"
-                      />
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                          {t('ملاحظة قرار المعالجة (اختياري):', 'Resolution Note (Optional):')}
+                        </label>
+                        <input
+                          type="text"
+                          value={notesByConflict[cf.id] || ''}
+                          onChange={(e) =>
+                            setNotesByConflict((prev) => ({ ...prev, [cf.id]: e.target.value }))
+                          }
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs"
+                        />
+                      </div>
                       <div className="flex flex-wrap gap-1.5">
                         <button
                           type="button"

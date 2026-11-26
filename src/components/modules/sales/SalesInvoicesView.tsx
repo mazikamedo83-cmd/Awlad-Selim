@@ -19,6 +19,7 @@ import { ProductSearchSelect } from '../../common/ProductSearchSelect';
 import {
   filterProductsByGroupCategory,
   LinkedGroupCategoryFilter,
+  resolveGroupCategoryCascade,
 } from '../../common/LinkedGroupCategoryFilter';
 import { SearchableFilterSelect } from '../../common/SearchableFilterSelect';
 import { UnifiedDataTable } from '../../common/UnifiedDataTable';
@@ -1551,7 +1552,6 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                   <label className="block font-bold text-slate-700 mb-0.5">{t('ملاحظات / رقم الإيصال:', 'Notes / Receipt No.:')}</label>
                   <input
                     type="text"
-                    placeholder={t('ملاحظات أو رقم التحويل...', 'Notes or transfer reference...')}
                     value={paymentNotes}
                     onChange={(e) => setPaymentNotes(e.target.value)}
                     className="w-full h-8 px-2 py-1 rounded-md border border-slate-300"
@@ -1715,7 +1715,6 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                   required
                   value={editReason}
                   onChange={(e) => setEditReason(e.target.value)}
-                  placeholder={t('أدخل سبب تعديل الفاتورة', 'Enter reason for editing invoice')}
                   className="w-full h-8 px-2 py-1 rounded-md border border-slate-300 font-semibold focus:border-blue-600 outline-hidden"
                 />
               </div>
@@ -1786,7 +1785,6 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                   rows={2}
                   value={reviewNotesInput}
                   onChange={(e) => setReviewNotesInput(e.target.value)}
-                  placeholder={t('ملاحظة الإدارة على الفاتورة...', 'Admin note on invoice...')}
                   className="w-full px-2 py-1 rounded-md border border-slate-300"
                 />
               </div>
@@ -1872,8 +1870,21 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                   categories={categories}
                   selectedGroupId={quoteGroupFilter}
                   selectedCategoryId={quoteCategoryFilter}
-                  onGroupChange={setQuoteGroupFilter}
-                  onCategoryChange={setQuoteCategoryFilter}
+                  onFilterChange={(nextGroupId, nextCategoryId) => {
+                    setQuoteGroupFilter(nextGroupId);
+                    setQuoteCategoryFilter(nextCategoryId);
+                    const { clearSelectedProduct } = resolveGroupCategoryCascade(
+                      products,
+                      productGroups,
+                      categories,
+                      nextGroupId,
+                      nextCategoryId,
+                      quoteSelectedProductId
+                    );
+                    if (clearSelectedProduct) {
+                      setQuoteSelectedProductId('');
+                    }
+                  }}
                 />
                 <div className="flex flex-col sm:flex-row gap-2">
                   <div className="flex-1">
@@ -2008,7 +2019,6 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                     type="text"
                     value={quoteNotes}
                     onChange={(e) => setQuoteNotes(e.target.value)}
-                    placeholder={t('مدة الصلاحية أو شروط السداد...', 'Validity period or payment terms...')}
                     className="w-full h-8 px-2 py-1 rounded-md border border-slate-300"
                   />
                 </div>

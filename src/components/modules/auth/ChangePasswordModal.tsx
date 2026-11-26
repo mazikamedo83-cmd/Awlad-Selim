@@ -63,7 +63,7 @@ export const ChangePasswordModal: React.FC = () => {
         <form onSubmit={handleSubmit} className="space-y-2">
           <div>
             <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">
-              {t('كلمة المرور الجديدة:', 'New Password:')}
+              {t('كلمة المرور الجديدة (6 خانات فأكثر):', 'New Password (6+ characters):')}
             </label>
             <div className="relative">
               <input
@@ -71,7 +71,6 @@ export const ChangePasswordModal: React.FC = () => {
                 required
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                placeholder={t('أدخل كلمة مرور قوية (6 خانات فأكثر)', 'Enter a strong password (6+ characters)')}
                 className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] dark:bg-[#10203D] dark:text-[#F3F7FC] ps-2.5 pe-8 text-xs focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden"
               />
               <Lock className="w-3.5 h-3.5 text-slate-400 absolute end-2.5 top-2 pointer-events-none" />
@@ -88,7 +87,6 @@ export const ChangePasswordModal: React.FC = () => {
                 required
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder={t('أعد إدخال كلمة المرور للتأكيد', 'Re-enter password to confirm')}
                 className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] dark:bg-[#10203D] dark:text-[#F3F7FC] ps-2.5 pe-8 text-xs focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden"
               />
               <Lock className="w-3.5 h-3.5 text-slate-400 absolute end-2.5 top-2 pointer-events-none" />

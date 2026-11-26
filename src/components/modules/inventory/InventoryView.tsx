@@ -9,29 +9,22 @@ import { useAuth } from '../../../context/AuthContext';
 import { useShortcuts } from '../../../context/ShortcutsContext';
 import { usePreferences } from '../../../context/PreferencesContext';
 import { formatLocaleNumber } from '../../../i18n/translator';
-import { Product, ProductCategory, ProductGroup, ProductUnit, UnitCatalogItem, Warehouse } from '../../../types';
+import { Product, ProductCategory, ProductGroup, UnitCatalogItem, Warehouse } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { ProductSearchSelect } from '../../common/ProductSearchSelect';
-import { SearchableFilterSelect } from '../../common/SearchableFilterSelect';
+import { SearchableFilterSelect, normalizeArabicSearchText } from '../../common/SearchableFilterSelect';
+import { SearchableTaxonomySelect } from '../../common/SearchableTaxonomySelect';
 import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 import {
   filterProductsByGroupCategory,
   getScopedCategoriesForGroup,
   LinkedGroupCategoryFilter,
+  resolveGroupCategoryCascade,
 } from '../../common/LinkedGroupCategoryFilter';
 import { exportToExcel } from '../../common/ExcelExporter';
 import { StockCountView } from './StockCountView';
 import { StockTransfersView } from './StockTransfersView';
-
-interface DraftProductUnit {
-  id: string;
-  name: string;
-  conversionFactor: number | '';
-  sellingPrice: number | '';
-  purchasePrice: number | '';
-  barcode?: string;
-}
 
 export interface InventoryViewProps {
   initialTab?: 'products' | 'categories' | 'warehouses' | 'transfers' | 'adjustments' | 'damaged' | 'movements' | 'stock-counts' | 'stock-transfers' | 'units' | string;
@@ -40,11 +33,12 @@ export interface InventoryViewProps {
 
 export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'products', onOpenItemMovementReport }) => {
   const {
-    products, warehouses, productGroups, categories: categoryList, stockMovements, settings, addProduct, updateProduct,
+    products, warehouses, productGroups, categories: categoryList, productUnits, stockMovements, settings, addProduct, updateProduct,
     deleteProduct, toggleProductStatus, transferStock, adjustStock, recordDamagedStock,
     addProductGroup, updateProductGroup, deleteProductGroup, toggleProductGroupStatus,
     addCategory, updateCategory, deleteCategory, renameCategoryGlobal, toggleCategoryStatus,
-    addWarehouse, updateWarehouse, toggleWarehouseStatus, updateSettings,
+    addProductUnit, updateProductUnit, deleteProductUnit, toggleProductUnitStatus,
+    addWarehouse, updateWarehouse, toggleWarehouseStatus,
   } = useData();
   const { hasPermission } = useAuth();
   const { registerHandler, consumePendingAction } = useShortcuts();
@@ -107,6 +101,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
   const [editGroupName, setEditGroupName] = useState('');
   const [editGroupDesc, setEditGroupDesc] = useState('');
   const [isSavingGroup, setIsSavingGroup] = useState(false);
+  const [groupSearch, setGroupSearch] = useState('');
   const [selectedCategoryGroupFilter, setSelectedCategoryGroupFilter] = useState('all');
 
   const [newCategoryGroupId, setNewCategoryGroupId] = useState('');
@@ -124,22 +119,18 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
   // Units Catalog State
   const [newUnitName, setNewUnitName] = useState('');
   const [newUnitCode, setNewUnitCode] = useState('');
-  const [newUnitFactor, setNewUnitFactor] = useState<number | ''>('');
   const [newUnitNotes, setNewUnitNotes] = useState('');
   const [isSavingUnits, setIsSavingUnits] = useState(false);
+  const [editingUnit, setEditingUnit] = useState<UnitCatalogItem | null>(null);
+  const [editUnitName, setEditUnitName] = useState('');
+  const [editUnitCode, setEditUnitCode] = useState('');
+  const [editUnitNotes, setEditUnitNotes] = useState('');
+  const [isSavingUnitEdit, setIsSavingUnitEdit] = useState(false);
 
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [previewProduct, setPreviewProduct] = useState<Product | null>(null);
-
-  // Inline quick add Group / Category inside Product Add/Edit Modal
-  const [showInlineQuickGroup, setShowInlineQuickGroup] = useState(false);
-  const [quickGroupName, setQuickGroupName] = useState('');
-  const [isSavingQuickGroup, setIsSavingQuickGroup] = useState(false);
-  const [showInlineQuickCat, setShowInlineQuickCat] = useState(false);
-  const [quickCatName, setQuickCatName] = useState('');
-  const [isSavingQuickCat, setIsSavingQuickCat] = useState(false);
 
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [transferGroupFilter, setTransferGroupFilter] = useState('all');
@@ -175,8 +166,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
     groupName: string;
     categoryId: string;
     category: string;
+    unitId: string;
     baseUnit: string;
-    units: DraftProductUnit[];
     size?: string;
     color?: string;
     purchasePrice: number | '';
@@ -192,8 +183,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
     groupName: '',
     categoryId: '',
     category: '',
+    unitId: '',
     baseUnit: '',
-    units: [],
     size: '',
     color: '',
     purchasePrice: '',
@@ -207,6 +198,12 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
     () => getScopedCategoriesForGroup(categoryList, formData.groupId || 'all', false),
     [categoryList, formData.groupId]
   );
+
+  const modalUnitOptions = useMemo(() => {
+    return (productUnits || []).filter(
+      (u) => u.status !== 'suspended' || (formData.unitId && u.id === formData.unitId)
+    );
+  }, [productUnits, formData.unitId]);
 
   const filteredProducts = useMemo(() => {
     const q = searchTerm.toLowerCase();
@@ -309,8 +306,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
       groupName: '',
       categoryId: '',
       category: '',
+      unitId: '',
       baseUnit: '',
-      units: [],
       size: '',
       color: '',
       purchasePrice: '',
@@ -319,10 +316,6 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
       notes: '',
       initialStockPerWarehouse: {},
     });
-    setShowInlineQuickGroup(false);
-    setQuickGroupName('');
-    setShowInlineQuickCat(false);
-    setQuickCatName('');
     setProductModalError(null);
     setEditingProduct(null);
     setIsAddModalOpen(true);
@@ -338,6 +331,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
       productGroups.find((g) => g.id === resolvedGroupId)?.name ||
       matchedCat?.groupName ||
       '';
+    const matchedUnit = (productUnits || []).find(
+      (u) => (p.unitId && u.id === p.unitId) || normalizeArabicSearchText(u.name) === normalizeArabicSearchText(p.baseUnit)
+    );
     setFormData({
       code: p.code,
       barcode: p.barcode,
@@ -346,15 +342,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
       groupName: resolvedGroupName,
       categoryId: p.categoryId || matchedCat?.id || '',
       category: p.category || matchedCat?.name || '',
-      baseUnit: p.baseUnit,
-      units: (p.units || []).map((u) => ({
-        id: u.id,
-        name: u.name,
-        conversionFactor: u.conversionFactor,
-        sellingPrice: u.sellingPrice,
-        purchasePrice: u.purchasePrice,
-        barcode: u.barcode,
-      })),
+      unitId: p.unitId || matchedUnit?.id || '',
+      baseUnit: matchedUnit?.name || p.baseUnit,
       size: p.size || '',
       color: p.color || '',
       purchasePrice: p.purchasePrice,
@@ -363,10 +352,6 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
       notes: p.notes || '',
       initialStockPerWarehouse: p.stockPerWarehouse,
     });
-    setShowInlineQuickGroup(false);
-    setQuickGroupName('');
-    setShowInlineQuickCat(false);
-    setQuickCatName('');
     setProductModalError(null);
     setEditingProduct(p);
     setIsAddModalOpen(true);
@@ -382,56 +367,6 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
     return registerHandler('action:add_product', () => openAddRef.current());
   }, [consumePendingAction, registerHandler]);
 
-  const handleQuickCreateGroupInModal = async () => {
-    if (!quickGroupName.trim() || isSavingQuickGroup) return;
-    setProductModalError(null);
-    setIsSavingQuickGroup(true);
-    try {
-      const res = await addProductGroup(quickGroupName.trim());
-      if (res.success && res.productGroup) {
-        const grp = res.productGroup;
-        setFormData((prev) => ({
-          ...prev,
-          groupId: grp.id,
-          groupName: grp.name,
-          categoryId: '',
-          category: '',
-        }));
-        setQuickGroupName('');
-        setShowInlineQuickGroup(false);
-      } else {
-        setProductModalError(res.error ? t(res.error) : t('تعذر إضافة المجموعة', 'Unable to add group'));
-      }
-    } finally {
-      setIsSavingQuickGroup(false);
-    }
-  };
-
-  const handleQuickCreateCategoryInModal = async () => {
-    if (!quickCatName.trim() || isSavingQuickCat) return;
-    setProductModalError(null);
-    setIsSavingQuickCat(true);
-    try {
-      const res = await addCategory(quickCatName.trim(), '', formData.groupId || '');
-      if (res.success && res.category) {
-        const cat = res.category;
-        setFormData((prev) => ({
-          ...prev,
-          groupId: cat.groupId || prev.groupId,
-          groupName: cat.groupName || prev.groupName,
-          categoryId: cat.id,
-          category: cat.name,
-        }));
-        setQuickCatName('');
-        setShowInlineQuickCat(false);
-      } else {
-        setProductModalError(res.error ? t(res.error) : t('تعذر إضافة التصنيف', 'Unable to add category'));
-      }
-    } finally {
-      setIsSavingQuickCat(false);
-    }
-  };
-
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSavingProduct) return;
@@ -445,28 +380,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
       return;
     }
     if (!formData.baseUnit.trim()) {
-      setProductModalError(t('يرجى إدخال الوحدة الأساسية للصنف', 'Please enter the product base unit'));
+      setProductModalError(t('يرجى اختيار أو إدخال وحدة الصنف', 'Please select or enter the product unit'));
       return;
-    }
-    const sanitizedUnits: ProductUnit[] = [];
-    for (const u of formData.units) {
-      if (!u.name.trim()) {
-        setProductModalError(t('يرجى إدخال اسم كل وحدة إضافية أو حذف السطر الفارغ', 'Please enter each additional unit name or remove the empty row'));
-        return;
-      }
-      const factor = Number(u.conversionFactor || 0);
-      if (factor <= 0) {
-        setProductModalError(t('معامل التحويل للوحدة الإضافية يجب أن يكون أكبر من صفر', 'Unit conversion factor must be greater than zero'));
-        return;
-      }
-      sanitizedUnits.push({
-        id: u.id,
-        name: u.name.trim(),
-        conversionFactor: factor,
-        sellingPrice: Math.max(0, Number(u.sellingPrice || 0)),
-        purchasePrice: Math.max(0, Number(u.purchasePrice || 0)),
-        barcode: u.barcode?.trim() || undefined,
-      });
     }
 
     const purchasePriceVal = Number(formData.purchasePrice || 0);
@@ -488,8 +403,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
           groupName: formData.groupName || undefined,
           categoryId: formData.categoryId || undefined,
           category: formData.category.trim(),
+          unitId: formData.unitId || undefined,
           baseUnit: formData.baseUnit.trim(),
-          units: sanitizedUnits,
+          units: [],
           size: formData.size?.trim() || undefined,
           color: formData.color?.trim() || undefined,
           purchasePrice: purchasePriceVal,
@@ -506,8 +422,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
           groupName: formData.groupName || undefined,
           categoryId: formData.categoryId || undefined,
           category: formData.category.trim(),
+          unitId: formData.unitId || undefined,
           baseUnit: formData.baseUnit.trim(),
-          units: sanitizedUnits,
+          units: [],
           size: formData.size?.trim() || undefined,
           color: formData.color?.trim() || undefined,
           purchasePrice: purchasePriceVal,
@@ -609,9 +526,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
       t('اسم الصنف', 'Product Name'),
       t('المجموعة', 'Group'),
       t('التصنيف', 'Category'),
-      t('الوحدة الأساسية', 'Base Unit'),
-      t('سعر الشراء', 'Purchase Price'),
-      t('سعر البيع', 'Selling Price'),
+      t('الوحدة', 'Unit'),
+      t('سعر شراء الوحدة', 'Unit Purchase Price'),
+      t('سعر بيع الوحدة', 'Unit Selling Price'),
       t('إجمالي الرصيد', 'Total Stock'),
       t('قيمة المخزون', 'Stock Value'),
     ];
@@ -926,7 +843,6 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                   required
                   value={whForm.name}
                   onChange={(e) => setWhForm({ ...whForm, name: e.target.value })}
-                  placeholder={t('أدخل اسم المستودع', 'Enter warehouse name')}
                   className="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold"
                 />
               </div>
@@ -1194,12 +1110,6 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
     );
   }
 
-  const unitsCatalog: UnitCatalogItem[] = settings.extraSettings?.unitsCatalog || [
-    { id: 'u-piece', name: 'قطعة', shortCode: 'PCS', defaultConversionFactor: 1, notes: 'الوحدة الصغرى الافتراضية' },
-    { id: 'u-carton12', name: 'كرتونة (12 قطعة)', shortCode: 'CTN12', defaultConversionFactor: 12, notes: 'كرتونة قياسية' },
-    { id: 'u-sack25', name: 'شيكارة 25 كجم', shortCode: 'BAG25', defaultConversionFactor: 25, notes: 'أصناف الوزن والتعبئة' },
-  ];
-
   const handleAddGroup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newGroupName.trim()) return;
@@ -1305,39 +1215,50 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
     }
   };
 
-  const handleSaveUnitsCatalog = async (updatedList: UnitCatalogItem[], msg: string) => {
+  const handleAddUnitItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newUnitName.trim() || isSavingUnits) return;
     setIsSavingUnits(true);
     try {
-      await updateSettings({
-        extraSettings: {
-          ...(settings.extraSettings || {}),
-          unitsCatalog: updatedList,
-        },
-      });
-      setStatusBanner({ type: 'success', text: msg });
+      const res = await addProductUnit(newUnitName.trim(), newUnitCode.trim(), newUnitNotes.trim());
+      if (res.success) {
+        setStatusBanner({
+          type: 'success',
+          text: `${t('تمت إضافة الوحدة:', 'Unit added:')} (${res.productUnit?.name || newUnitName.trim()})`,
+        });
+        setNewUnitName('');
+        setNewUnitCode('');
+        setNewUnitNotes('');
+      } else {
+        setStatusBanner({ type: 'error', text: res.error ? t(res.error) : t('تعذر إضافة الوحدة', 'Unable to add unit') });
+      }
     } finally {
       setIsSavingUnits(false);
     }
   };
 
-  const handleAddUnitItem = async (e: React.FormEvent) => {
+  const handleSaveUnitEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newUnitName.trim()) return;
-    const item: UnitCatalogItem = {
-      id: `unit-${Date.now().toString().slice(-6)}`,
-      name: newUnitName.trim(),
-      shortCode: newUnitCode.trim() || undefined,
-      defaultConversionFactor: Math.max(1, Number(newUnitFactor) || 1),
-      notes: newUnitNotes.trim() || undefined,
-    };
-    await handleSaveUnitsCatalog(
-      [...unitsCatalog, item],
-      `${t('تمت إضافة الوحدة', 'Unit added:')} (${t(item.name)})`
-    );
-    setNewUnitName('');
-    setNewUnitCode('');
-    setNewUnitFactor('');
-    setNewUnitNotes('');
+    if (!editingUnit || !editUnitName.trim() || isSavingUnitEdit) return;
+    setIsSavingUnitEdit(true);
+    try {
+      const res = await updateProductUnit(editingUnit.id, {
+        name: editUnitName.trim(),
+        shortCode: editUnitCode.trim(),
+        notes: editUnitNotes.trim(),
+      });
+      if (res.success) {
+        setStatusBanner({
+          type: 'success',
+          text: `${t('تم تحديث الوحدة والأصناف المرتبطة بها:', 'Unit and linked products updated:')} (${editUnitName.trim()})`,
+        });
+        setEditingUnit(null);
+      } else {
+        setStatusBanner({ type: 'error', text: res.error ? t(res.error) : t('تعذر تحديث الوحدة', 'Unable to update unit') });
+      }
+    } finally {
+      setIsSavingUnitEdit(false);
+    }
   };
 
   if (initialTab === 'categories') {
@@ -1345,6 +1266,10 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
       selectedCategoryGroupFilter === 'all'
         ? categoryList
         : categoryList.filter((cat) => (cat.groupId || '') === selectedCategoryGroupFilter);
+    const groupQueryNorm = normalizeArabicSearchText(groupSearch);
+    const filteredGroupsForTab = groupQueryNorm
+      ? productGroups.filter((g) => normalizeArabicSearchText(`${g.name} ${g.description || ''}`).includes(groupQueryNorm))
+      : productGroups;
 
     return (
       <div className="space-y-3">
@@ -1381,15 +1306,24 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                 {t('اضغط على أي مجموعة لعرض وتصفية التصنيفات المرتبطة بها أسفلها', 'Click any group to filter its linked categories below')}
               </p>
             </div>
-            {selectedCategoryGroupFilter !== 'all' && (
-              <button
-                type="button"
-                onClick={() => setSelectedCategoryGroupFilter('all')}
-                className="h-7 px-2.5 rounded-md bg-slate-100 dark:bg-[#132544] text-slate-700 dark:text-[#DCE6F5] text-[11px] font-bold cursor-pointer"
-              >
-                {t('عرض تصنيفات جميع المجموعات', 'Show All Groups')}
-              </button>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="text"
+                value={groupSearch}
+                onChange={(e) => setGroupSearch(e.target.value)}
+                placeholder={t('بحث باسم المجموعة...', 'Search groups...')}
+                className="h-7 px-2.5 text-xs border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] rounded-md w-48"
+              />
+              {selectedCategoryGroupFilter !== 'all' && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategoryGroupFilter('all')}
+                  className="h-7 px-2.5 rounded-md bg-slate-100 dark:bg-[#132544] text-slate-700 dark:text-[#DCE6F5] text-[11px] font-bold cursor-pointer"
+                >
+                  {t('عرض تصنيفات جميع المجموعات', 'Show All Groups')}
+                </button>
+              )}
+            </div>
           </div>
 
           <form onSubmit={handleAddGroup} className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs items-end bg-slate-50 dark:bg-[#132544] p-2.5 rounded-lg border border-slate-200 dark:border-[#21375C]">
@@ -1398,7 +1332,6 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               <input
                 type="text"
                 required
-                placeholder={t('أدخل اسم المجموعة', 'Enter group name')}
                 value={newGroupName}
                 onChange={(e) => setNewGroupName(e.target.value)}
                 className="w-full h-8 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] rounded-md px-2.5 font-bold"
@@ -1408,7 +1341,6 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               <label className="block font-bold mb-1">{t('وصف المجموعة (اختياري):', 'Group Description (Optional):')}</label>
               <input
                 type="text"
-                placeholder={t('وصف اختياري', 'Optional description')}
                 value={newGroupDesc}
                 onChange={(e) => setNewGroupDesc(e.target.value)}
                 className="w-full h-8 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] rounded-md px-2.5"
@@ -1419,13 +1351,15 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
             </button>
           </form>
 
-          {productGroups.length === 0 ? (
+          {filteredGroupsForTab.length === 0 ? (
             <div className="p-4 text-center text-xs text-slate-500 dark:text-[#97AECE] border border-dashed border-slate-200 dark:border-[#21375C] rounded-lg">
-              {t('لا توجد مجموعات مسجلة بعد — أضف أول مجموعة من النموذج أعلاه.', 'No product groups created yet — add your first group above.')}
+              {productGroups.length === 0
+                ? t('لا توجد مجموعات مسجلة بعد — أضف أول مجموعة من النموذج أعلاه.', 'No product groups created yet — add your first group above.')
+                : t('لا توجد مجموعات مطابقة للبحث.', 'No matching product groups found.')}
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs">
-              {productGroups.map((grp) => {
+              {filteredGroupsForTab.map((grp) => {
                 const linkedCatsCount = categoryList.filter((c) => (c.groupId || '') === grp.id).length;
                 const linkedProdsCount = products.filter((p) => p.groupId === grp.id || p.groupName === grp.name).length;
                 const isSelected = selectedCategoryGroupFilter === grp.id;
@@ -1541,7 +1475,6 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
             <input
               type="text"
               required
-              placeholder={t('أدخل اسم التصنيف', 'Enter category name')}
               value={newCategoryName}
               onChange={(e) => setNewCategoryName(e.target.value)}
               className="w-full h-8 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] rounded-md px-2.5 font-bold"
@@ -1551,7 +1484,6 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
             <label className="block font-bold mb-1">{t('وصف مختصر:', 'Short Description:')}</label>
             <input
               type="text"
-              placeholder={t('وصف اختياري', 'Optional description')}
               value={newCategoryDesc}
               onChange={(e) => setNewCategoryDesc(e.target.value)}
               className="w-full h-8 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] rounded-md px-2.5"
@@ -1842,15 +1774,22 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
   }
 
   if (initialTab === 'units') {
+    const getUnitLinkedCount = (unit: UnitCatalogItem) => {
+      const normU = normalizeArabicSearchText(unit.name);
+      return products.filter(
+        (p) => p.unitId === unit.id || (!p.unitId && normalizeArabicSearchText(p.baseUnit) === normU)
+      ).length;
+    };
+
     return (
       <div className="space-y-2.5">
-        <div className="bg-white px-3 py-2 rounded-lg border border-slate-200 shadow-xs">
-          <h2 className="text-base font-black text-[#011E58] flex items-center gap-2">
-            <Ruler className="w-4 h-4 text-[#003589]" />
-            <span>{t('دليل الوحدات ومعاملات التحويل', 'Units & Conversion Factors Directory')}</span>
+        <div className="bg-white dark:bg-[#0E1C36] px-3 py-2 rounded-lg border border-slate-200 dark:border-[#21375C] shadow-xs">
+          <h2 className="text-base font-black text-[#011E58] dark:text-[#F3F7FC] flex items-center gap-2">
+            <Ruler className="w-4 h-4 text-[#003589] dark:text-[#85B8FF]" />
+            <span>{t('إدارة الوحدات المسجلة', 'Registered Units Management')}</span>
           </h2>
-          <p className="text-[11px] text-slate-500 mt-0.5">
-            {t('تجهيز وحدات القياس والتعبئة القياسية لاستخدامها السريع في الأصناف', 'Configure standard measurement and packaging units for quick product setup')}
+          <p className="text-[11px] text-slate-500 dark:text-[#97AECE] mt-0.5">
+            {t('إضافة وتعديل وبحث وإدارة وحدات الأصناف المسجلة؛ وعند تعديل اسم الوحدة يتحدث في الأصناف الحالية دون المساس بالفواتير التاريخية', 'Add, search, edit, and manage registered item units; unit renames update current products without modifying historical invoices')}
           </p>
         </div>
 
@@ -1863,62 +1802,52 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
           </div>
         )}
 
-        <form onSubmit={handleAddUnitItem} className="bg-white p-2.5 rounded-lg border border-slate-200 shadow-xs grid grid-cols-1 sm:grid-cols-5 gap-2 text-xs items-end">
+        <form onSubmit={handleAddUnitItem} className="bg-white dark:bg-[#0E1C36] p-2.5 rounded-lg border border-slate-200 dark:border-[#21375C] shadow-xs grid grid-cols-1 sm:grid-cols-4 gap-2 text-xs items-end">
           <div>
             <label className="block font-bold mb-1">{t('اسم الوحدة: *', 'Unit Name: *')}</label>
             <input
               type="text"
               required
-              placeholder={t('أدخل اسم الوحدة', 'Enter unit name')}
               value={newUnitName}
               onChange={(e) => setNewUnitName(e.target.value)}
-              className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-bold"
+              className="w-full h-8 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] rounded-md px-2.5 font-bold"
             />
           </div>
           <div>
-            <label className="block font-bold mb-1">{t('الرمز المختصر:', 'Short Code:')}</label>
+            <label className="block font-bold mb-1">{t('الرمز المختصر (اختياري):', 'Short Code (Optional):')}</label>
             <input
               type="text"
-              placeholder={t('اختياري', 'Optional')}
               value={newUnitCode}
               onChange={(e) => setNewUnitCode(e.target.value)}
-              className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono"
+              className="w-full h-8 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] rounded-md px-2.5 font-mono"
             />
           </div>
           <div>
-            <label className="block font-bold mb-1">{t('معامل التحويل الأساسي:', 'Base Conversion Factor:')}</label>
-            <input
-              type="number"
-              min="1"
-              required
-              value={newUnitFactor}
-              onChange={(e) => setNewUnitFactor(e.target.value === '' ? '' : Number(e.target.value))}
-              className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono font-bold text-center"
-            />
-          </div>
-          <div>
-            <label className="block font-bold mb-1">{t('ملاحظات:', 'Notes:')}</label>
+            <label className="block font-bold mb-1">{t('ملاحظات (اختياري):', 'Notes (Optional):')}</label>
             <input
               type="text"
               value={newUnitNotes}
               onChange={(e) => setNewUnitNotes(e.target.value)}
-              className="w-full h-8 border border-slate-300 rounded-md px-2.5"
+              className="w-full h-8 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] rounded-md px-2.5"
             />
           </div>
           <button type="submit" disabled={isSavingUnits} className="h-8 px-3.5 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-black cursor-pointer disabled:opacity-50">
-            {t('+ إضافة وحدة', '+ Add Unit')}
+            {isSavingUnits ? t('جاري الحفظ...', 'Saving...') : t('+ إضافة وحدة جديدة', '+ Add New Unit')}
           </button>
         </form>
 
         <UnifiedDataTable<UnitCatalogItem>
           title={t('الوحدات المسجلة', 'Registered Units')}
-          data={unitsCatalog}
+          data={productUnits || []}
           rowKey={(u) => u.id}
           compact
-          searchPlaceholder={t('بحث باسم الوحدة أو الرمز...', 'Search by unit name or code...')}
-          searchFilter={(u, q) => `${u.name} ${t(u.name)} ${u.shortCode || ''} ${u.notes || ''}`.toLowerCase().includes(q)}
+          searchPlaceholder={t('بحث باسم الوحدة أو جزء منه...', 'Search by unit name or partial name...')}
+          searchFilter={(u, q) =>
+            normalizeArabicSearchText(`${u.name} ${t(u.name)} ${u.shortCode || ''} ${u.notes || ''}`).includes(normalizeArabicSearchText(q))
+          }
           exportFilename="AWLAD_SELIM_Units"
-          pdfTitle={t('دليل وحدات القياس', 'Units Directory')}
+          pdfTitle={t('إدارة الوحدات المسجلة', 'Registered Units')}
+          emptyTitle={t('لا توجد وحدات مسجلة بعد — أضف أول وحدة من النموذج أعلاه أو مباشرة من شاشة الصنف', 'No registered units yet — add your first unit above or directly from the product screen')}
           columns={[
             {
               key: 'name',
@@ -1926,62 +1855,152 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               sortable: true,
               sortValue: (u) => u.name,
               exportValue: (u) => t(u.name),
-              render: (u) => <span className="font-black text-slate-900">{t(u.name)}</span>,
+              render: (u) => <span className="font-black text-slate-900 dark:text-[#F3F7FC]">{t(u.name)}</span>,
             },
             {
               key: 'shortCode',
               header: t('الرمز', 'Code'),
               exportValue: (u) => u.shortCode || '-',
-              render: (u) => <span className="font-mono text-[#011E58] font-bold">{u.shortCode || '-'}</span>,
+              render: (u) => <span className="font-mono text-[#011E58] dark:text-[#85B8FF] font-bold">{u.shortCode || '-'}</span>,
             },
             {
-              key: 'defaultConversionFactor',
-              header: t('معامل التحويل الافتراضي', 'Default Factor'),
+              key: 'linkedProducts',
+              header: t('الأصناف المرتبطة', 'Linked Products'),
               align: 'center',
               sortable: true,
-              sortValue: (u) => u.defaultConversionFactor,
-              exportValue: (u) => u.defaultConversionFactor,
-              render: (u) => <span className="font-mono font-bold tabular-nums">{fmt(u.defaultConversionFactor)}</span>,
+              sortValue: (u) => getUnitLinkedCount(u),
+              exportValue: (u) => getUnitLinkedCount(u),
+              render: (u) => (
+                <span className="font-mono font-bold text-[#011E58] dark:text-[#F3F7FC] tabular-nums">
+                  {fmt(getUnitLinkedCount(u))} {t('صنف', 'items')}
+                </span>
+              ),
             },
             {
               key: 'notes',
               header: t('ملاحظات', 'Notes'),
               exportValue: (u) => (u.notes ? t(u.notes) : '-'),
-              render: (u) => <span className="text-slate-600">{u.notes ? t(u.notes) : '-'}</span>,
+              render: (u) => <span className="text-slate-600 dark:text-[#97AECE]">{u.notes ? t(u.notes) : '-'}</span>,
+            },
+            {
+              key: 'status',
+              header: t('الحالة', 'Status'),
+              align: 'center',
+              exportValue: (u) => (u.status !== 'suspended' ? t('نشط', 'Active') : t('موقوف', 'Suspended')),
+              render: (u) => (
+                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${u.status !== 'suspended' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-slate-100 text-slate-600'}`}>
+                  {u.status !== 'suspended' ? t('نشط', 'Active') : t('موقوف', 'Suspended')}
+                </span>
+              ),
             },
             {
               key: 'actions',
-              header: t('حذف', 'Delete'),
+              header: t('الإجراءات', 'Actions'),
               align: 'center',
               render: (u) => (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setConfirmState({
-                      isOpen: true,
-                      title: t('حذف وحدة القياس', 'Delete Unit'),
-                      message: isLtr
-                        ? `Do you want to delete unit (${t(u.name)}) from the directory?`
-                        : `هل تريد حذف الوحدة (${u.name}) من الدليل؟`,
-                      variant: 'danger',
-                      onConfirm: async () => {
-                        setConfirmState(null);
-                        await handleSaveUnitsCatalog(
-                          unitsCatalog.filter((x) => x.id !== u.id),
-                          `${t('تم حذف الوحدة', 'Unit deleted:')} (${t(u.name)})`
-                        );
-                      },
-                    });
-                  }}
-                  className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg cursor-pointer"
-                  title={t('حذف الوحدة', 'Delete Unit')}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingUnit(u);
+                      setEditUnitName(u.name);
+                      setEditUnitCode(u.shortCode || '');
+                      setEditUnitNotes(u.notes || '');
+                    }}
+                    className="px-2 py-1 rounded-md bg-[#EEF3FA] hover:bg-[#DCE6F5] text-[#011E58] font-bold border border-[#DCE6F5] cursor-pointer"
+                  >
+                    {t('تعديل', 'Edit')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const res = await toggleProductUnitStatus(u.id);
+                      if (!res.success && res.error) {
+                        setStatusBanner({ type: 'error', text: t(res.error) });
+                      }
+                    }}
+                    className="px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold cursor-pointer"
+                  >
+                    {u.status !== 'suspended' ? t('إيقاف', 'Suspend') : t('تفعيل', 'Activate')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setConfirmState({
+                        isOpen: true,
+                        title: t('حذف الوحدة', 'Delete Unit'),
+                        message: isLtr
+                          ? `Are you sure you want to delete unit (${u.name})? Deletion is blocked if linked to existing products.`
+                          : `هل تريد حذف الوحدة (${u.name})؟ (يُمنع الحذف إذا كانت مرتبطة بأصناف حالية).`,
+                        variant: 'danger',
+                        onConfirm: async () => {
+                          setConfirmState(null);
+                          const res = await deleteProductUnit(u.id);
+                          if (!res.success) {
+                            setStatusBanner({ type: 'error', text: res.error ? t(res.error) : t('تعذر حذف الوحدة', 'Cannot delete unit') });
+                          } else {
+                            setStatusBanner({ type: 'success', text: `${t('تم حذف الوحدة:', 'Unit deleted:')} (${u.name})` });
+                          }
+                        },
+                      });
+                    }}
+                    className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg cursor-pointer"
+                    title={t('حذف الوحدة', 'Delete Unit')}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               ),
             },
           ]}
         />
+
+        <Modal
+          isOpen={!!editingUnit}
+          onClose={() => setEditingUnit(null)}
+          title={`${t('تعديل الوحدة:', 'Edit Unit:')} ${editingUnit?.name || ''}`}
+          subtitle={t('سيتم تحديث اسم الوحدة في الأصناف الحالية المرتبطة بها تلقائيًا دون تعديل الفواتير التاريخية', 'Renaming updates current linked products without changing historical invoices')}
+          maxWidth="md"
+        >
+          <form onSubmit={handleSaveUnitEdit} className="space-y-3 text-xs">
+            <div>
+              <label className="block font-bold mb-1">{t('اسم الوحدة: *', 'Unit Name: *')}</label>
+              <input
+                type="text"
+                required
+                value={editUnitName}
+                onChange={(e) => setEditUnitName(e.target.value)}
+                className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-bold"
+              />
+            </div>
+            <div>
+              <label className="block font-bold mb-1">{t('الرمز المختصر:', 'Short Code:')}</label>
+              <input
+                type="text"
+                value={editUnitCode}
+                onChange={(e) => setEditUnitCode(e.target.value)}
+                className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono"
+              />
+            </div>
+            <div>
+              <label className="block font-bold mb-1">{t('ملاحظات:', 'Notes:')}</label>
+              <input
+                type="text"
+                value={editUnitNotes}
+                onChange={(e) => setEditUnitNotes(e.target.value)}
+                className="w-full h-8 border border-slate-300 rounded-md px-2.5"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t">
+              <button type="button" onClick={() => setEditingUnit(null)} className="h-8 px-3.5 border rounded-md font-bold cursor-pointer">
+                {t('إلغاء', 'Cancel')}
+              </button>
+              <button type="submit" disabled={isSavingUnitEdit} className="h-8 px-4 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-black cursor-pointer disabled:opacity-50">
+                {isSavingUnitEdit ? t('جاري الحفظ...', 'Saving...') : t('حفظ التعديلات', 'Save Changes')}
+              </button>
+            </div>
+          </form>
+        </Modal>
 
         {confirmState && (
           <ConfirmDialog
@@ -2165,7 +2184,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                     <span className="ms-1.5 px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 text-[9px]">{t('موقوف', 'Suspended')}</span>
                   )}
                 </span>
-                <span className="text-[10px] text-slate-500">{t('الوحدة الأساسية:', 'Base Unit:')} {t(prod.baseUnit)}</span>
+                <span className="text-[10px] text-slate-500">{t('الوحدة:', 'Unit:')} {t(prod.baseUnit)}</span>
               </div>
             ),
           },
@@ -2193,26 +2212,20 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
             ),
           },
           {
-            key: 'units',
-            header: t('الوحدات الإضافية', 'Additional Units'),
-            exportValue: (prod) => (prod.units || []).map(u => `${t(u.name)} (${u.sellingPrice})`).join(', ') || t('أساسية فقط', 'Base only'),
+            key: 'baseUnit',
+            header: t('الوحدة', 'Unit'),
+            sortable: true,
+            sortValue: (prod) => prod.baseUnit || '',
+            exportValue: (prod) => t(prod.baseUnit),
             render: (prod) => (
-              prod.units && prod.units.length > 0 ? (
-                <div className="flex flex-wrap gap-1">
-                  {prod.units.map(u => (
-                    <span key={u.id} className="px-1.5 py-0.5 rounded bg-[#EEF3FA] text-[#011E58] text-[10px] font-semibold border border-[#DCE6F5]">
-                      {t(u.name)} ({fmt(u.sellingPrice)} {t(settings.currency)})
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <span className="text-slate-400 text-[10px]">{t('أساسية فقط', 'Base only')}</span>
-              )
+              <span className="px-2 py-0.5 rounded bg-[#EEF3FA] text-[#011E58] text-[11px] font-bold border border-[#DCE6F5]">
+                {t(prod.baseUnit)}
+              </span>
             ),
           },
           {
             key: 'purchasePrice',
-            header: t('سعر الشراء', 'Purchase Price'),
+            header: t('سعر شراء الوحدة', 'Unit Purchase Price'),
             align: 'center',
             sortable: true,
             sortValue: (prod) => prod.purchasePrice,
@@ -2221,7 +2234,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
           },
           {
             key: 'sellingPrice',
-            header: t('سعر البيع', 'Selling Price'),
+            header: t('سعر بيع الوحدة', 'Unit Selling Price'),
             align: 'center',
             sortable: true,
             sortValue: (prod) => prod.sellingPrice,
@@ -2403,7 +2416,6 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               <input
                 type="text"
                 required
-                placeholder={t('أدخل اسم الصنف', 'Enter product name')}
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold text-slate-900 focus:border-blue-700 outline-hidden"
@@ -2416,7 +2428,6 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                 <input
                   type="text"
                   required
-                  placeholder={t('أدخل كود الصنف', 'Enter product code')}
                   value={formData.code}
                   onChange={(e) => setFormData({ ...formData, code: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-bold"
@@ -2428,128 +2439,149 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                   type="text"
                   value={formData.barcode}
                   onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
-                  placeholder={t('الباركود (اختياري)', 'Barcode (optional)')}
                   className="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 font-mono font-bold"
                 />
               </div>
             </div>
 
-            {/* Linked Product Group -> Category Selectors + Quick Inline Add */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <label className="font-bold text-slate-700">{t('المجموعة:', 'Group:')}</label>
-                  <button
-                    type="button"
-                    onClick={() => setShowInlineQuickGroup((v) => !v)}
-                    className="text-[11px] font-black text-[#003589] hover:underline cursor-pointer"
-                  >
-                    {showInlineQuickGroup ? t('إلغاء', 'Cancel') : t('+ إضافة مجموعة', '+ Add Group')}
-                  </button>
-                </div>
-                <select
-                  value={formData.groupId}
-                  onChange={(e) => {
-                    const nextGroupId = e.target.value;
-                    const grp = productGroups.find((g) => g.id === nextGroupId);
-                    const stillValidCat = getScopedCategoriesForGroup(categoryList, nextGroupId || 'all', false).find(
-                      (c) => c.id === formData.categoryId
-                    );
-                    setFormData((prev) => ({
-                      ...prev,
-                      groupId: nextGroupId,
-                      groupName: grp?.name || '',
-                      categoryId: stillValidCat ? prev.categoryId : '',
-                      category: stillValidCat ? prev.category : '',
-                    }));
-                  }}
-                  className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 font-bold"
-                >
-                  <option value="">{t('-- اختر المجموعة --', '-- Select Group --')}</option>
-                  {productGroups.filter((g) => g.status !== 'suspended').map((g) => (
-                    <option key={g.id} value={g.id}>{g.name}</option>
-                  ))}
-                </select>
-                {showInlineQuickGroup && (
-                  <div className="flex items-center gap-1 pt-1">
-                    <input
-                      type="text"
-                      value={quickGroupName}
-                      onChange={(e) => setQuickGroupName(e.target.value)}
-                      placeholder={t('اسم المجموعة الجديدة', 'New group name')}
-                      className="flex-1 h-7 bg-white border border-slate-300 rounded px-2 font-bold"
-                    />
-                    <button
-                      type="button"
-                      disabled={isSavingQuickGroup || !quickGroupName.trim()}
-                      onClick={handleQuickCreateGroupInModal}
-                      className="h-7 px-2.5 bg-[#003589] text-white rounded font-bold disabled:opacity-50 cursor-pointer"
-                    >
-                      {t('حفظ', 'Save')}
-                    </button>
-                  </div>
-                )}
-              </div>
+            {/* Linked Product Group -> Category -> Single Unit Selectors with Search, Inline Add & Inline Rename */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+              <SearchableTaxonomySelect
+                label={t('المجموعة', 'Group')}
+                items={productGroups.filter((g) => g.status !== 'suspended' || g.id === formData.groupId)}
+                valueId={formData.groupId}
+                valueText={formData.groupName}
+                allowClear
+                emptyDisplayText={t('بدون مجموعة', 'No Group')}
+                clearLabel={t('بدون مجموعة', 'No Group')}
+                createLabel={t('إضافة مجموعة جديدة', 'Add New Group')}
+                searchPlaceholder={t('بحث باسم المجموعة...', 'Search group...')}
+                onChange={({ id, name }) => {
+                  const nextGroupId = id || '';
+                  const stillValidCat = getScopedCategoriesForGroup(categoryList, nextGroupId || 'all', false).find(
+                    (c) => c.id === formData.categoryId
+                  );
+                  setFormData((prev) => ({
+                    ...prev,
+                    groupId: nextGroupId,
+                    groupName: name,
+                    categoryId: stillValidCat ? prev.categoryId : '',
+                    category: stillValidCat ? prev.category : '',
+                  }));
+                }}
+                onCreate={async (name) => {
+                  const res = await addProductGroup(name);
+                  if (res.success && res.productGroup) {
+                    return { success: true, item: { id: res.productGroup.id, name: res.productGroup.name } };
+                  }
+                  return { success: false, error: res.error ? t(res.error) : t('تعذر إضافة المجموعة', 'Unable to add group') };
+                }}
+                onRename={async (id, newName) => {
+                  const res = await updateProductGroup(id, { name: newName });
+                  if (res.success) {
+                    setFormData((prev) => (prev.groupId === id ? { ...prev, groupName: newName } : prev));
+                    return { success: true };
+                  }
+                  return { success: false, error: res.error ? t(res.error) : t('تعذر تعديل المجموعة', 'Unable to rename group') };
+                }}
+              />
 
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <label className="font-bold text-slate-700">{t('التصنيف:', 'Category:')}</label>
-                  <button
-                    type="button"
-                    onClick={() => setShowInlineQuickCat((v) => !v)}
-                    className="text-[11px] font-black text-[#003589] hover:underline cursor-pointer"
-                  >
-                    {showInlineQuickCat ? t('إلغاء', 'Cancel') : t('+ إضافة تصنيف', '+ Add Category')}
-                  </button>
-                </div>
-                <select
-                  value={formData.categoryId}
-                  onChange={(e) => {
-                    const nextCatId = e.target.value;
-                    const cat = categoryList.find((c) => c.id === nextCatId);
-                    const grp = cat?.groupId ? productGroups.find((g) => g.id === cat.groupId) : undefined;
+              <SearchableTaxonomySelect
+                label={t('التصنيف', 'Category')}
+                items={modalScopedCategories.map((c) => ({
+                  id: c.id,
+                  name: c.name,
+                  subtitle: !formData.groupId && c.groupName ? c.groupName : undefined,
+                  status: c.status,
+                }))}
+                valueId={formData.categoryId}
+                valueText={formData.category}
+                allowClear
+                emptyDisplayText={
+                  formData.groupId && modalScopedCategories.length === 0
+                    ? t('لا توجد تصنيفات بالمجموعة', 'No categories in group')
+                    : t('اختر التصنيف', 'Select Category')
+                }
+                clearLabel={t('بدون تصنيف', 'No Category')}
+                createLabel={t('إضافة تصنيف جديد', 'Add New Category')}
+                searchPlaceholder={t('بحث باسم التصنيف...', 'Search category...')}
+                onChange={({ id, name }) => {
+                  const cat = id ? categoryList.find((c) => c.id === id) : undefined;
+                  const grp = cat?.groupId ? productGroups.find((g) => g.id === cat.groupId) : undefined;
+                  setFormData((prev) => ({
+                    ...prev,
+                    categoryId: id || '',
+                    category: cat?.name || name || '',
+                    groupId: prev.groupId || cat?.groupId || '',
+                    groupName: prev.groupName || grp?.name || cat?.groupName || '',
+                  }));
+                }}
+                onCreate={async (name) => {
+                  const res = await addCategory(name, '', formData.groupId || '');
+                  if (res.success && res.category) {
+                    const cat = res.category;
                     setFormData((prev) => ({
                       ...prev,
-                      categoryId: nextCatId,
-                      category: cat?.name || '',
-                      groupId: prev.groupId || cat?.groupId || '',
-                      groupName: prev.groupName || grp?.name || cat?.groupName || '',
+                      groupId: cat.groupId || prev.groupId,
+                      groupName: cat.groupName || prev.groupName,
                     }));
-                  }}
-                  className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 font-bold"
-                >
-                  <option value="">
-                    {formData.groupId && modalScopedCategories.length === 0
-                      ? t('-- لا توجد تصنيفات بهذه المجموعة --', '-- No categories in group --')
-                      : t('-- اختر التصنيف --', '-- Select Category --')}
-                  </option>
-                  {modalScopedCategories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {t(c.name)}
-                      {!formData.groupId && c.groupName ? ` (${c.groupName})` : ''}
-                    </option>
-                  ))}
-                </select>
-                {showInlineQuickCat && (
-                  <div className="flex items-center gap-1 pt-1">
-                    <input
-                      type="text"
-                      value={quickCatName}
-                      onChange={(e) => setQuickCatName(e.target.value)}
-                      placeholder={t('اسم التصنيف الجديد', 'New category name')}
-                      className="flex-1 h-7 bg-white border border-slate-300 rounded px-2 font-bold"
-                    />
-                    <button
-                      type="button"
-                      disabled={isSavingQuickCat || !quickCatName.trim()}
-                      onClick={handleQuickCreateCategoryInModal}
-                      className="h-7 px-2.5 bg-[#003589] text-white rounded font-bold disabled:opacity-50 cursor-pointer"
-                    >
-                      {t('حفظ', 'Save')}
-                    </button>
-                  </div>
-                )}
-              </div>
+                    return { success: true, item: { id: cat.id, name: cat.name } };
+                  }
+                  return { success: false, error: res.error ? t(res.error) : t('تعذر إضافة التصنيف', 'Unable to add category') };
+                }}
+                onRename={async (id, newName) => {
+                  try {
+                    await updateCategory(id, { name: newName });
+                    setFormData((prev) => (prev.categoryId === id ? { ...prev, category: newName } : prev));
+                    return { success: true };
+                  } catch (err: any) {
+                    return { success: false, error: err?.message ? t(err.message) : t('تعذر تعديل التصنيف', 'Unable to rename category') };
+                  }
+                }}
+              />
+
+              <SearchableTaxonomySelect
+                label={t('الوحدة', 'Unit')}
+                required
+                items={modalUnitOptions.map((u) => ({
+                  id: u.id,
+                  name: u.name,
+                  subtitle: u.shortCode || undefined,
+                  status: u.status,
+                }))}
+                valueId={formData.unitId}
+                valueText={formData.baseUnit}
+                allowManualText
+                emptyDisplayText={t('اختر أو اكتب الوحدة', 'Select or type unit')}
+                createLabel={t('إضافة وحدة جديدة', 'Add New Unit')}
+                searchPlaceholder={t('بحث باسم الوحدة أو كتابتها...', 'Search or type unit name...')}
+                onChange={({ id, name }) => {
+                  setFormData((prev) => ({
+                    ...prev,
+                    unitId: id || '',
+                    baseUnit: name,
+                  }));
+                }}
+                onCreate={async (name) => {
+                  const res = await addProductUnit(name);
+                  if (res.success && res.productUnit) {
+                    return { success: true, item: { id: res.productUnit.id, name: res.productUnit.name } };
+                  }
+                  return { success: false, error: res.error ? t(res.error) : t('تعذر إضافة الوحدة', 'Unable to add unit') };
+                }}
+                onRename={async (id, newName) => {
+                  const res = await updateProductUnit(id, { name: newName });
+                  if (res.success) {
+                    setFormData((prev) =>
+                      prev.unitId === id || normalizeArabicSearchText(prev.baseUnit) === normalizeArabicSearchText(modalUnitOptions.find((u) => u.id === id)?.name || '')
+                        ? { ...prev, unitId: id, baseUnit: newName }
+                        : prev
+                    );
+                    return { success: true };
+                  }
+                  return { success: false, error: res.error ? t(res.error) : t('تعذر تعديل الوحدة', 'Unable to rename unit') };
+                }}
+              />
             </div>
           </div>
 
@@ -2558,7 +2590,6 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               <label className="block font-bold text-slate-700 mb-1">{t('المقاس (اختياري):', 'Size (Optional):')}</label>
               <input
                 type="text"
-                placeholder={t('المقاس (اختياري)', 'Size (optional)')}
                 value={formData.size || ''}
                 onChange={(e) => setFormData({ ...formData, size: e.target.value })}
                 className="w-full h-8 bg-white border border-slate-300 rounded-md px-2.5 font-bold"
@@ -2568,7 +2599,6 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               <label className="block font-bold text-slate-700 mb-1">{t('اللون / النكهة (اختياري):', 'Color / Flavor (Optional):')}</label>
               <input
                 type="text"
-                placeholder={t('اللون أو النكهة (اختياري)', 'Color or flavor (optional)')}
                 value={formData.color || ''}
                 onChange={(e) => setFormData({ ...formData, color: e.target.value })}
                 className="w-full h-8 bg-white border border-slate-300 rounded-md px-2.5 font-bold"
@@ -2576,137 +2606,13 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
             </div>
           </div>
 
-          {/* Flexible Packaging Units Configuration */}
-          <div className="bg-[#EEF3FA]/70 p-2.5 rounded-lg border border-[#DCE6F5] space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="font-bold text-[#011E58] text-xs">{t('وحدات التعبئة الإضافية ومعامل التحويل:', 'Additional Packaging Units & Conversion Factor:')}</label>
-              <button
-                type="button"
-                onClick={() => {
-                  const newUnit: DraftProductUnit = {
-                    id: `u-${Date.now().toString().slice(-4)}`,
-                    name: '',
-                    conversionFactor: '',
-                    sellingPrice: '',
-                    purchasePrice: '',
-                  };
-                  setFormData(prev => ({ ...prev, units: [...prev.units, newUnit] }));
-                }}
-                className="text-[11px] bg-[#003589] text-white px-2.5 py-1 rounded-md font-bold hover:bg-[#0049B0] cursor-pointer"
-              >
-                {t('+ إضافة وحدة تعبئة', '+ Add Packaging Unit')}
-              </button>
-            </div>
-
-            {formData.units.length === 0 ? (
-              <p className="text-[11px] text-slate-500 italic">{t('لا توجد وحدات تعبئة إضافية (البيع بالوحدة الصغرى الأساسية فقط)', 'No additional packaging units (sold in base unit only)')}</p>
-            ) : (
-              <div className="space-y-1.5">
-                {formData.units.map((u, idx) => (
-                  <div key={u.id} className="grid grid-cols-1 sm:grid-cols-5 gap-2 bg-white p-1.5 rounded-lg border border-[#DCE6F5] items-center text-xs">
-                    <div>
-                      <span className="block text-[10px] text-slate-500 font-bold">{t('اسم الوحدة:', 'Unit Name:')}</span>
-                      <input
-                        type="text"
-                        value={u.name}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setFormData(prev => ({
-                            ...prev,
-                            units: prev.units.map((unit, i) => i === idx ? { ...unit, name: val } : unit),
-                          }));
-                        }}
-                        className="w-full border rounded-md p-1 font-bold text-xs"
-                      />
-                    </div>
-                    <div>
-                      <span className="block text-[10px] text-slate-500 font-bold">{t('تحتوي كم أساسي؟', 'Contains Base Qty?')}</span>
-                      <input
-                        type="number"
-                        min="1"
-                        step="any"
-                        value={u.conversionFactor}
-                        onChange={(e) => {
-                          const val = e.target.value === '' ? '' : Number(e.target.value);
-                          setFormData(prev => ({
-                            ...prev,
-                            units: prev.units.map((unit, i) => i === idx ? { ...unit, conversionFactor: val } : unit),
-                          }));
-                        }}
-                        className="w-full border rounded-md p-1 font-mono font-bold text-center text-xs"
-                      />
-                    </div>
-                    <div>
-                      <span className="block text-[10px] text-slate-500 font-bold">{t('سعر البيع:', 'Selling Price:')}</span>
-                      <input
-                        type="number"
-                        step="0.5"
-                        min="0"
-                        value={u.sellingPrice}
-                        onChange={(e) => {
-                          const val = e.target.value === '' ? '' : Number(e.target.value);
-                          setFormData(prev => ({
-                            ...prev,
-                            units: prev.units.map((unit, i) => i === idx ? { ...unit, sellingPrice: val } : unit),
-                          }));
-                        }}
-                        className="w-full border rounded-md p-1 font-mono font-bold text-[#011E58] text-xs"
-                      />
-                    </div>
-                    <div>
-                      <span className="block text-[10px] text-slate-500 font-bold">{t('سعر الشراء:', 'Purchase Price:')}</span>
-                      <input
-                        type="number"
-                        step="0.5"
-                        min="0"
-                        value={u.purchasePrice}
-                        onChange={(e) => {
-                          const val = e.target.value === '' ? '' : Number(e.target.value);
-                          setFormData(prev => ({
-                            ...prev,
-                            units: prev.units.map((unit, i) => i === idx ? { ...unit, purchasePrice: val } : unit),
-                          }));
-                        }}
-                        className="w-full border rounded-md p-1 font-mono font-bold text-slate-700 text-xs"
-                      />
-                    </div>
-                    <div className="flex items-end justify-center pt-2 sm:pt-0">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setFormData(prev => ({
-                            ...prev,
-                            units: prev.units.filter((_, i) => i !== idx),
-                          }));
-                        }}
-                        className="text-red-500 hover:text-red-700 p-1 text-[11px] font-bold cursor-pointer"
-                      >
-                        {t('حذف', 'Delete')}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
             <div>
-              <label className="block font-bold text-slate-700 mb-1">{t('الوحدة الصغرى الأساسية:', 'Base (Smallest) Unit:')}</label>
-              <input
-                type="text"
-                required
-                placeholder={t('اسم الوحدة الأساسية', 'Base unit name')}
-                value={formData.baseUnit}
-                onChange={(e) => setFormData({ ...formData, baseUnit: e.target.value })}
-                className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 font-bold"
-              />
-            </div>
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">{t('سعر شراء الوحدة الأساسية:', 'Base Unit Purchase Price:')}</label>
+              <label className="block font-bold text-slate-700 mb-1">{t('سعر شراء الوحدة: *', 'Unit Purchase Price: *')}</label>
               <input
                 type="number"
                 step="0.5"
+                min="0"
                 required
                 value={formData.purchasePrice}
                 onChange={(e) => setFormData({ ...formData, purchasePrice: e.target.value === '' ? '' : Number(e.target.value) })}
@@ -2714,10 +2620,11 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               />
             </div>
             <div>
-              <label className="block font-bold text-slate-700 mb-1">{t('سعر بيع الوحدة الأساسية:', 'Base Unit Selling Price:')}</label>
+              <label className="block font-bold text-slate-700 mb-1">{t('سعر بيع الوحدة: *', 'Unit Selling Price: *')}</label>
               <input
                 type="number"
                 step="0.5"
+                min="0"
                 required
                 value={formData.sellingPrice}
                 onChange={(e) => setFormData({ ...formData, sellingPrice: e.target.value === '' ? '' : Number(e.target.value) })}
@@ -2817,8 +2724,21 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               categories={categoryList}
               selectedGroupId={transferGroupFilter}
               selectedCategoryId={transferCatFilter}
-              onGroupChange={setTransferGroupFilter}
-              onCategoryChange={setTransferCatFilter}
+              onFilterChange={(nextGroupId, nextCategoryId) => {
+                setTransferGroupFilter(nextGroupId);
+                setTransferCatFilter(nextCategoryId);
+                const { clearSelectedProduct } = resolveGroupCategoryCascade(
+                  products,
+                  productGroups,
+                  categoryList,
+                  nextGroupId,
+                  nextCategoryId,
+                  transferProdId
+                );
+                if (clearSelectedProduct) {
+                  setTransferProdId('');
+                }
+              }}
             />
             <ProductSearchSelect
               products={transferScopedProducts}
@@ -2864,7 +2784,6 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               type="number"
               min="1"
               required
-              placeholder={t('أدخل الكمية', 'Enter quantity')}
               value={transferQty}
               onChange={(e) => setTransferQty(e.target.value === '' ? '' : Number(e.target.value))}
               className="w-full h-8 bg-slate-50 border border-slate-300 rounded-md px-2.5 font-mono font-black text-center text-sm"
@@ -2877,7 +2796,6 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               type="text"
               value={transferNotes}
               onChange={(e) => setTransferNotes(e.target.value)}
-              placeholder={t('أدخل سبب التحويل (اختياري)', 'Enter transfer reason (optional)')}
               className="w-full h-8 bg-white border border-slate-300 rounded-md px-2.5"
             />
           </div>
@@ -2922,8 +2840,22 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               categories={categoryList}
               selectedGroupId={adjustGroupFilter}
               selectedCategoryId={adjustCatFilter}
-              onGroupChange={setAdjustGroupFilter}
-              onCategoryChange={setAdjustCatFilter}
+              onFilterChange={(nextGroupId, nextCategoryId) => {
+                setAdjustGroupFilter(nextGroupId);
+                setAdjustCatFilter(nextCategoryId);
+                const { clearSelectedProduct } = resolveGroupCategoryCascade(
+                  products,
+                  productGroups,
+                  categoryList,
+                  nextGroupId,
+                  nextCategoryId,
+                  adjustProdId
+                );
+                if (clearSelectedProduct) {
+                  setAdjustProdId('');
+                  setAdjustNewQty('');
+                }
+              }}
             />
             <ProductSearchSelect
               products={adjustScopedProducts}
@@ -2973,7 +2905,6 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
             <input
               type="text"
               required
-              placeholder={t('أدخل سبب التسوية', 'Enter adjustment reason')}
               value={adjustReason}
               onChange={(e) => setAdjustReason(e.target.value)}
               className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5"
@@ -3020,8 +2951,21 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               categories={categoryList}
               selectedGroupId={damageGroupFilter}
               selectedCategoryId={damageCatFilter}
-              onGroupChange={setDamageGroupFilter}
-              onCategoryChange={setDamageCatFilter}
+              onFilterChange={(nextGroupId, nextCategoryId) => {
+                setDamageGroupFilter(nextGroupId);
+                setDamageCatFilter(nextCategoryId);
+                const { clearSelectedProduct } = resolveGroupCategoryCascade(
+                  products,
+                  productGroups,
+                  categoryList,
+                  nextGroupId,
+                  nextCategoryId,
+                  damageProdId
+                );
+                if (clearSelectedProduct) {
+                  setDamageProdId('');
+                }
+              }}
             />
             <ProductSearchSelect
               products={damageScopedProducts}
@@ -3052,7 +2996,6 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               type="number"
               min="1"
               required
-              placeholder={t('أدخل الكمية التالفة', 'Enter damaged quantity')}
               value={damageQty}
               onChange={(e) => setDamageQty(e.target.value === '' ? '' : Number(e.target.value))}
               className="w-full bg-red-50 border border-red-300 rounded-lg px-2.5 py-1.5 font-mono font-black text-center text-red-900 text-sm"
@@ -3064,7 +3007,6 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
             <input
               type="text"
               required
-              placeholder={t('أدخل سبب التلف', 'Enter damage reason')}
               value={damageReason}
               onChange={(e) => setDamageReason(e.target.value)}
               className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5"
@@ -3125,18 +3067,18 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                   <strong className="text-slate-900 dark:text-[#F3F7FC]">{previewProduct.category ? t(previewProduct.category) : '—'}</strong>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('الوحدة الأساسية', 'Base Unit')}</span>
+                  <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('الوحدة', 'Unit')}</span>
                   <strong className="text-slate-900 dark:text-[#F3F7FC]">{t(previewProduct.baseUnit)}</strong>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('سعر البيع الأساسي', 'Base Selling Price')}</span>
+                  <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('سعر بيع الوحدة', 'Unit Selling Price')}</span>
                   <strong className="font-mono tabular-nums text-[#003589] dark:text-[#85B8FF]">
                     {fmt(Number(previewProduct.sellingPrice || 0))} {t(settings.currency)}
                   </strong>
                 </div>
                 {previewProduct.purchasePrice !== undefined && (
                   <div>
-                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('سعر التكلفة / الشراء', 'Cost / Purchase Price')}</span>
+                    <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('سعر شراء الوحدة', 'Unit Purchase Price')}</span>
                     <strong className="font-mono tabular-nums text-slate-900 dark:text-[#F3F7FC]">
                       {fmt(Number(previewProduct.purchasePrice || 0))} {t(settings.currency)}
                     </strong>

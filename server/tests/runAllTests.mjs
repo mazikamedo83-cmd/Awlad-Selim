@@ -28,7 +28,7 @@ for (const pgEnvKey of [
 }
 
 const { createApiApp } = await import('../app.js');
-const { readJsonDatabase, writeJsonDatabase } = await import('../db/jsonLedger.js');
+const { readJsonDatabase, writeJsonDatabase, createEmptyDatabaseState } = await import('../db/jsonLedger.js');
 const { setInjectedPool, initializeSchema } = await import('../db/postgres.js');
 const { runDataMigration, rollbackMigration } = await import('../db/migrator.js');
 const { resetPgModeCache } = await import('../db/stores/mode.js');
@@ -2619,6 +2619,212 @@ async function runSuiteA_JsonLedgerHttp() {
         403
       );
     });
+
+    await test('47. Single Unit catalog (empty default, CRUD, search, rename isolated from history) & Cash/Partial/Credit Purchase & Sales accounting (JSON)', async () => {
+      // 1. Fresh DB starts with zero hardcoded default units
+      const emptyState = createEmptyDatabaseState();
+      assert.equal(Array.isArray(emptyState.productUnits), true);
+      assert.equal(emptyState.productUnits.length, 0);
+
+      const initialUnitsRes = await req(baseUrl, 'GET', '/api/products/units', { token: adminToken });
+      assert.equal(initialUnitsRes.status, 200);
+      assert.ok(!initialUnitsRes.json.productUnits.some((u) => ['u-piece', 'u-carton12', 'u-sack25'].includes(u.id)));
+
+      // 2. Group, Category & Unit CRUD + duplicate guard + partial search
+      const grpRes = await req(baseUrl, 'POST', '/api/products/groups', {
+        token: adminToken,
+        body: { name: 'مجموعة وحدة اختبار' },
+      });
+      assert.equal(grpRes.status, 201);
+      const grpId = grpRes.json.productGroup.id;
+
+      const catRes = await req(baseUrl, 'POST', '/api/products/categories', {
+        token: adminToken,
+        body: { name: 'تصنيف وحدة اختبار', groupId: grpId },
+      });
+      assert.equal(catRes.status, 201);
+      const catId = catRes.json.category.id;
+
+      const uCreate = await req(baseUrl, 'POST', '/api/products/units', {
+        token: adminToken,
+        body: { name: 'بالتة قياس', shortCode: 'PLT' },
+      });
+      assert.equal(uCreate.status, 201);
+      const unitId = uCreate.json.productUnit.id;
+
+      // Normalized duplicate block
+      const uDup = await req(baseUrl, 'POST', '/api/products/units', {
+        token: adminToken,
+        body: { name: 'بالـتة  قياس' },
+      });
+      assert.equal(uDup.status, 409);
+
+      // Search by partial name
+      const uSearch = await req(baseUrl, 'GET', '/api/products/units?search=' + encodeURIComponent('بالتة'), {
+        token: adminToken,
+      });
+      assert.equal(uSearch.status, 200);
+      assert.ok(uSearch.json.productUnits.some((u) => u.id === unitId));
+
+      // 3. Create wholesale product linked to Group/Category/single Unit (units: [])
+      const bootBase = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      const whId = bootBase.warehouses[0].id;
+      const cbId = bootBase.cashboxes[0].id;
+      const custId = bootBase.customers[0].id;
+      const suppId = bootBase.suppliers[0].id;
+
+      const prodRes = await req(baseUrl, 'POST', '/api/products', {
+        token: adminToken,
+        body: {
+          name: 'منتج وحدة مفردة JSON',
+          groupId: grpId,
+          categoryId: catId,
+          category: 'تصنيف وحدة اختبار',
+          unitId,
+          baseUnit: 'بالتة قياس',
+          units: [],
+          purchasePrice: 100,
+          sellingPrice: 110,
+          stockPerWarehouse: { [whId]: 30 },
+          status: 'active',
+        },
+      });
+      assert.equal(prodRes.status, 201);
+      const pSingle = prodRes.json.product;
+      assert.equal(pSingle.unitId, unitId);
+      assert.equal(pSingle.baseUnit, 'بالتة قياس');
+      assert.equal((pSingle.units || []).length, 0);
+
+      // 4. Create historical sales invoice with old unit snapshot, then rename unit
+      const histSale = await req(baseUrl, 'POST', '/api/invoices/sales', {
+        token: adminToken,
+        body: {
+          customerId: custId,
+          warehouseId: whId,
+          cashboxId: cbId,
+          status: 'confirmed',
+          paymentType: 'credit',
+          paidAmount: 0,
+          items: [{ productId: pSingle.id, productName: pSingle.name, unit: 'بالتة قياس', unitFactor: 1, quantity: 1, unitPrice: 110 }],
+        },
+      });
+      assert.equal(histSale.status, 201);
+      const histSaleId = histSale.json.invoice.id;
+
+      // Rename unit -> updates current product ONLY, historical invoice snapshot remains untouched
+      const uRename = await req(baseUrl, 'PUT', `/api/products/units/${unitId}`, {
+        token: adminToken,
+        body: { name: 'شرنك جملة' },
+      });
+      assert.equal(uRename.status, 200);
+
+      const bootRenamed = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      const updatedProd = bootRenamed.products.find((p) => p.id === pSingle.id);
+      assert.equal(updatedProd.baseUnit, 'شرنك جملة');
+      assert.equal(updatedProd.unitId, unitId);
+
+      const histInvAfter = bootRenamed.invoices.find((i) => i.id === histSaleId);
+      assert.equal(histInvAfter.items[0].unit, 'بالتة قياس');
+
+      // Delete guard while used by product -> 409, then unlinked unit delete -> 200
+      const uDelBlocked = await req(baseUrl, 'DELETE', `/api/products/units/${unitId}`, { token: adminToken });
+      assert.equal(uDelBlocked.status, 409);
+
+      const uUnused = await req(baseUrl, 'POST', '/api/products/units', {
+        token: adminToken,
+        body: { name: 'وحدة للحذف' },
+      });
+      assert.equal(uUnused.status, 201);
+      const uDelOk = await req(baseUrl, 'DELETE', `/api/products/units/${uUnused.json.productUnit.id}`, { token: adminToken });
+      assert.equal(uDelOk.status, 200);
+
+      // 5. Purchase & Sales Cash / Partial / Credit balances check (and subsequent payment)
+      const cbStart = bootRenamed.cashboxes.find((c) => c.id === cbId).currentBalance;
+      const suppStart = bootRenamed.suppliers.find((s) => s.id === suppId).currentBalance;
+      const custStart = bootRenamed.customers.find((c) => c.id === custId).currentBalance;
+
+      // Cash purchase (100 total, 100 paid) -> cashbox -100, supplier +0
+      assert.equal(
+        (await req(baseUrl, 'POST', '/api/invoices/purchase', {
+          token: adminToken,
+          body: {
+            supplierId: suppId, warehouseId: whId, cashboxId: cbId,
+            status: 'confirmed', paymentType: 'cash', paymentMethod: 'cash', paidAmount: 100,
+            items: [{ productId: pSingle.id, productName: pSingle.name, unit: 'شرنك جملة', unitFactor: 1, quantity: 1, unitPrice: 100 }],
+          },
+        })).status,
+        201
+      );
+      // Partial purchase (100 total, 40 paid, 60 credit) -> cashbox -40, supplier +60
+      assert.equal(
+        (await req(baseUrl, 'POST', '/api/invoices/purchase', {
+          token: adminToken,
+          body: {
+            supplierId: suppId, warehouseId: whId, cashboxId: cbId,
+            status: 'confirmed', paymentType: 'partial', paymentMethod: 'cash', paidAmount: 40,
+            items: [{ productId: pSingle.id, productName: pSingle.name, unit: 'شرنك جملة', unitFactor: 1, quantity: 1, unitPrice: 100 }],
+          },
+        })).status,
+        201
+      );
+      // Credit purchase (100 total, 0 paid) -> cashbox +0, supplier +100
+      assert.equal(
+        (await req(baseUrl, 'POST', '/api/invoices/purchase', {
+          token: adminToken,
+          body: {
+            supplierId: suppId, warehouseId: whId, cashboxId: cbId,
+            status: 'confirmed', paymentType: 'credit', paymentMethod: 'cash', paidAmount: 0,
+            items: [{ productId: pSingle.id, productName: pSingle.name, unit: 'شرنك جملة', unitFactor: 1, quantity: 1, unitPrice: 100 }],
+          },
+        })).status,
+        201
+      );
+
+      // Cash sale (110 total, 110 paid) -> cashbox +110, customer +0
+      assert.equal(
+        (await req(baseUrl, 'POST', '/api/invoices/sales', {
+          token: adminToken,
+          body: {
+            customerId: custId, warehouseId: whId, cashboxId: cbId,
+            status: 'confirmed', paymentType: 'cash', paymentMethod: 'cash', paidAmount: 110,
+            items: [{ productId: pSingle.id, productName: pSingle.name, unit: 'شرنك جملة', unitFactor: 1, quantity: 1, unitPrice: 110 }],
+          },
+        })).status,
+        201
+      );
+      // Partial sale (110 total, 50 paid, 60 credit) -> cashbox +50, customer +60
+      const pSaleRes = await req(baseUrl, 'POST', '/api/invoices/sales', {
+        token: adminToken,
+        body: {
+          customerId: custId, warehouseId: whId, cashboxId: cbId,
+          status: 'confirmed', paymentType: 'partial', paymentMethod: 'cash', paidAmount: 50,
+          items: [{ productId: pSingle.id, productName: pSingle.name, unit: 'شرنك جملة', unitFactor: 1, quantity: 1, unitPrice: 110 }],
+        },
+      });
+      assert.equal(pSaleRes.status, 201);
+      assert.equal(pSaleRes.json.invoice.remainingAmount, 60);
+
+      // Settle remaining 60 on partial sale -> cashbox +60, customer -60
+      const payRem = await req(baseUrl, 'POST', `/api/invoices/${pSaleRes.json.invoice.id}/payments`, {
+        token: adminToken,
+        body: { amount: 60, cashboxId: cbId, paymentMethod: 'cash', notes: 'سداد باقي الجزئي' },
+      });
+      assert.equal(payRem.status, 200);
+      assert.equal(payRem.json.invoice.remainingAmount, 0);
+      assert.equal(payRem.json.invoice.paymentType, 'cash');
+
+      const bootAfterFin = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      const cbAfter = bootAfterFin.cashboxes.find((c) => c.id === cbId).currentBalance;
+      const suppAfter = bootAfterFin.suppliers.find((s) => s.id === suppId).currentBalance;
+      const custAfter = bootAfterFin.customers.find((c) => c.id === custId).currentBalance;
+
+      // Net cashbox: -100 -40 +110 +50 +60 = +80
+      assert.equal(cbAfter, cbStart + 80);
+      // Net supplier: +0 +60 +100 = +160
+      assert.equal(suppAfter, suppStart + 160);
+      // Net customer: +0 +60 -60 = 0
+      assert.equal(custAfter, custStart);
+    });
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -3622,6 +3828,124 @@ async function runSuiteB_PostgresPgMem() {
         })).status,
         403
       );
+    });
+
+    await test('48. Live PostgreSQL HTTP API validates Single Unit CRUD, inline purchase unit link, rename snapshot isolation & Cash/Partial/Credit invoices', async () => {
+      const pgAdminToken = (
+        await req(baseUrlPg, 'POST', '/api/auth/login', {
+          body: { username: 'owner_tarek', password: 'OwnerStrongPassword!99' },
+        })
+      ).json.accessToken;
+
+      const boot0 = (await req(baseUrlPg, 'GET', '/api/admin/bootstrap', { token: pgAdminToken })).json.data;
+      const whId = boot0.warehouses[0].id;
+      const cbId = boot0.cashboxes[0].id;
+      const custId = boot0.customers[0].id;
+      const suppId = boot0.suppliers[0].id;
+
+      // 1. Unit CRUD + search + duplicate guard in PG
+      const pgUnitRes = await req(baseUrlPg, 'POST', '/api/products/units', {
+        token: pgAdminToken,
+        body: { name: 'دستة PG' },
+      });
+      assert.equal(pgUnitRes.status, 201);
+      const pgUnitId = pgUnitRes.json.productUnit.id;
+
+      assert.equal(
+        (await req(baseUrlPg, 'POST', '/api/products/units', {
+          token: pgAdminToken,
+          body: { name: 'دسته   PG' },
+        })).status,
+        409
+      );
+
+      const pgUnitList = await req(baseUrlPg, 'GET', '/api/products/units?search=PG', { token: pgAdminToken });
+      assert.equal(pgUnitList.status, 200);
+      assert.ok(pgUnitList.json.productUnits.some((u) => u.id === pgUnitId));
+
+      // 2. Inline new product via Partial Purchase Invoice on PG
+      const cbBefore = boot0.cashboxes.find((c) => c.id === cbId).currentBalance;
+      const suppBefore = boot0.suppliers.find((s) => s.id === suppId).currentBalance;
+      const custBefore = boot0.customers.find((c) => c.id === custId).currentBalance;
+
+      const purInline = await req(baseUrlPg, 'POST', '/api/invoices/purchase', {
+        token: pgAdminToken,
+        body: {
+          supplierId: suppId,
+          warehouseId: whId,
+          cashboxId: cbId,
+          status: 'confirmed',
+          paymentType: 'partial',
+          paymentMethod: 'cash',
+          paidAmount: 120,
+          items: [
+            {
+              productId: '',
+              productName: 'بضاعة جملة جديدة PG',
+              unit: 'دستة PG',
+              unitFactor: 1,
+              quantity: 5,
+              unitPrice: 40, // total 200 -> 120 paid, 80 supplier balance
+              newProduct: {
+                name: 'بضاعة جملة جديدة PG',
+                category: 'عام',
+                unitId: pgUnitId,
+                baseUnit: 'دستة PG',
+                purchasePrice: 40,
+                sellingPrice: 60,
+              },
+            },
+          ],
+        },
+      });
+      assert.equal(purInline.status, 201);
+      const createdProdId = purInline.json.invoice.items[0].productId;
+      assert.ok(createdProdId);
+
+      // 3. Sales partial + Cash purchase + unit rename isolation in PG
+      const salePg = await req(baseUrlPg, 'POST', '/api/invoices/sales', {
+        token: pgAdminToken,
+        body: {
+          customerId: custId,
+          warehouseId: whId,
+          cashboxId: cbId,
+          status: 'confirmed',
+          paymentType: 'partial',
+          paymentMethod: 'cash',
+          paidAmount: 50,
+          items: [{ productId: createdProdId, productName: 'بضاعة جملة جديدة PG', unit: 'دستة PG', unitFactor: 1, quantity: 2, unitPrice: 60 }], // 120 total -> +50 cb, +70 cust
+        },
+      });
+      assert.equal(salePg.status, 201);
+      const salePgId = salePg.json.invoice.id;
+
+      // Rename unit -> updates product only, historical PG purchase & sale snapshots stay 'دستة PG'
+      assert.equal(
+        (await req(baseUrlPg, 'PUT', `/api/products/units/${pgUnitId}`, {
+          token: pgAdminToken,
+          body: { name: 'باكو جملة PG' },
+        })).status,
+        200
+      );
+
+      // Block delete while product uses it
+      assert.equal(
+        (await req(baseUrlPg, 'DELETE', `/api/products/units/${pgUnitId}`, { token: pgAdminToken })).status,
+        409
+      );
+
+      const boot1 = (await req(baseUrlPg, 'GET', '/api/admin/bootstrap', { token: pgAdminToken })).json.data;
+      const pPg = boot1.products.find((p) => p.id === createdProdId);
+      assert.equal(pPg.baseUnit, 'باكو جملة PG');
+      assert.equal(pPg.unitId, pgUnitId);
+
+      const histSalePg = boot1.invoices.find((i) => i.id === salePgId);
+      assert.equal(histSalePg.items[0].unit, 'دستة PG');
+
+      // Net balances on PG: cashbox -120 +50 = -70; supplier +80; customer +70
+      assert.equal(boot1.cashboxes.find((c) => c.id === cbId).currentBalance, cbBefore - 70);
+      assert.equal(boot1.suppliers.find((s) => s.id === suppId).currentBalance, suppBefore + 80);
+      assert.equal(boot1.customers.find((c) => c.id === custId).currentBalance, custBefore + 70);
     });
   } finally {
     setInjectedPool(null);

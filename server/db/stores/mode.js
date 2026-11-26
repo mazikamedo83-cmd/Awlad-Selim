@@ -606,6 +606,7 @@ export function mapPgProductRow(r, units = []) {
     groupId: r.group_id || undefined,
     groupName: r.group_name || '',
     baseUnit: r.base_unit,
+    unitId: r.unit_id || undefined,
     units: units.map((u) => ({
       id: u.id,
       name: u.name,

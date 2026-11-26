@@ -12,7 +12,11 @@ import { RepTransfer, RepItemTransferRequest, Representative, RepCustodyStatemen
 import { Modal } from '../../common/Modal';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { ProductSearchSelect } from '../../common/ProductSearchSelect';
-import { LinkedGroupCategoryFilter, filterProductsByGroupCategory } from '../../common/LinkedGroupCategoryFilter';
+import {
+  LinkedGroupCategoryFilter,
+  filterProductsByGroupCategory,
+  resolveGroupCategoryCascade,
+} from '../../common/LinkedGroupCategoryFilter';
 import { QuantityInput } from '../../common/QuantityInput';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 
@@ -2188,7 +2192,6 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
                 rows={2}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder={t('تفاصيل التوريد أو سبب الصرف...', 'Deposit details or reason for issue...')}
                 className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300"
               />
             </div>
@@ -2380,8 +2383,23 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
                 categories={categories}
                 selectedGroupId={itemReqGroupFilter}
                 selectedCategoryId={itemReqCatFilter}
-                onGroupChange={setItemReqGroupFilter}
-                onCategoryChange={setItemReqCatFilter}
+                onFilterChange={(nextGroupId, nextCategoryId) => {
+                  setItemReqGroupFilter(nextGroupId);
+                  setItemReqCatFilter(nextCategoryId);
+                  const { clearSelectedProduct } = resolveGroupCategoryCascade(
+                    products,
+                    productGroups,
+                    categories,
+                    nextGroupId,
+                    nextCategoryId,
+                    tempProdId
+                  );
+                  if (clearSelectedProduct) {
+                    setTempProdId('');
+                    setTempUnitName('');
+                    setTempQty('');
+                  }
+                }}
                 compact
               />
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
@@ -2523,7 +2541,6 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
                 type="text"
                 value={itemReqNotes}
                 onChange={(e) => setItemReqNotes(e.target.value)}
-                placeholder={t('ملاحظات إضافية على إذن التحويل المخزني...', 'Optional notes for stock transfer...')}
                 className="w-full h-8 px-2 rounded-md border border-slate-300 bg-white text-xs"
               />
             </div>
@@ -2692,7 +2709,6 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
                     type="text"
                     value={custodyOpCustomerName}
                     onChange={(e) => setCustodyOpCustomerName(e.target.value)}
-                    placeholder={t('اسم العميل المستلم...', 'Receiving customer name...')}
                     className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300"
                   />
                 </div>
@@ -2805,7 +2821,6 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
                 required
                 value={repName}
                 onChange={(e) => setRepName(e.target.value)}
-                placeholder={t('اسم المندوب ثلاثي...', 'Full representative name...')}
                 className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300"
               />
             </div>

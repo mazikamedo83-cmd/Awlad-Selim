@@ -493,6 +493,10 @@ export const ShortcutsProvider: React.FC<ShortcutsProviderProps> = ({ children, 
   );
 };
 
+export const useOptionalShortcuts = () => {
+  return useContext(ShortcutsContext);
+};
+
 export const useShortcuts = () => {
   const ctx = useContext(ShortcutsContext);
   if (!ctx) {

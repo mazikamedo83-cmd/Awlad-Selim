@@ -2399,6 +2399,281 @@ export async function deleteCategory(categoryId, actor) {
   return { ok: true };
 }
 
+export async function listProductUnits() {
+  if (await isPgMode()) {
+    const pool = getPool();
+    const res = await pool.query('SELECT * FROM product_units_catalog ORDER BY created_at ASC');
+    return res.rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      shortCode: r.short_code || '',
+      notes: r.notes || '',
+      status: r.status || 'active',
+      createdAt: isoTimestamp(r.created_at),
+      updatedAt: r.updated_at ? isoTimestamp(r.updated_at) : isoTimestamp(r.created_at),
+    }));
+  }
+  return [...(readJsonDatabase().productUnits || [])];
+}
+
+export async function createProductUnit(payload, actor) {
+  const name = String(payload?.name || '').trim();
+  if (!name) throw new AppError(400, 'اسم الوحدة مطلوب', 'INVALID_UNIT');
+  const norm = normalizeArabicProductText(name);
+  const id = payload?.id || generateServerId('UNT');
+  const shortCode = String(payload?.shortCode || '').trim();
+  const notes = String(payload?.notes ?? payload?.description ?? '').trim();
+  const status = payload?.status === 'suspended' ? 'suspended' : 'active';
+  const now = nowIso();
+
+  if (await isPgMode()) {
+    const created = await withTransaction(async (client) => {
+      const dup = await client.query(
+        'SELECT id FROM product_units_catalog WHERE normalized_name = $1 OR LOWER(name) = LOWER($2) LIMIT 1',
+        [norm, name]
+      );
+      if (dup.rows[0]) throw new AppError(409, 'اسم الوحدة مسجل مسبقًا', 'DUPLICATE_UNIT');
+      await client.query(
+        `INSERT INTO product_units_catalog (id, name, normalized_name, short_code, notes, status, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $7)`,
+        [id, name, norm, shortCode, notes, status, now]
+      );
+      return { id, name, shortCode, notes, status, createdAt: now, updatedAt: now };
+    });
+    await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `إضافة وحدة صنف (${name})`, module: 'الوحدات', recordId: id });
+    return created;
+  }
+
+  const created = await withJsonTransaction(async (db) => {
+    if (!Array.isArray(db.productUnits)) db.productUnits = [];
+    if (db.productUnits.some((u) => normalizeArabicProductText(u.name) === norm)) {
+      throw new AppError(409, 'اسم الوحدة مسجل مسبقًا', 'DUPLICATE_UNIT');
+    }
+    const unit = { id, name, shortCode, notes, status, createdAt: now, updatedAt: now };
+    db.productUnits.push(unit);
+    return unit;
+  });
+  await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `إضافة وحدة صنف (${name})`, module: 'الوحدات', recordId: id });
+  return created;
+}
+
+export async function updateProductUnit(unitId, updates, actor) {
+  const now = nowIso();
+  if (await isPgMode()) {
+    const updated = await withTransaction(async (client) => {
+      const curRes = await client.query('SELECT * FROM product_units_catalog WHERE id = $1 FOR UPDATE', [unitId]);
+      const cur = curRes.rows[0];
+      if (!cur) throw new AppError(404, 'الوحدة غير موجودة', 'UNIT_NOT_FOUND');
+
+      const nextName = String(updates?.name ?? cur.name).trim();
+      if (!nextName) throw new AppError(400, 'اسم الوحدة مطلوب', 'INVALID_UNIT');
+      const nextNorm = normalizeArabicProductText(nextName);
+      const dup = await client.query(
+        'SELECT id FROM product_units_catalog WHERE (normalized_name = $1 OR LOWER(name) = LOWER($2)) AND id <> $3 LIMIT 1',
+        [nextNorm, nextName, unitId]
+      );
+      if (dup.rows[0]) throw new AppError(409, 'اسم الوحدة مسجل مسبقًا', 'DUPLICATE_UNIT');
+
+      const nextShortCode = updates?.shortCode !== undefined ? String(updates.shortCode || '').trim() : (cur.short_code || '');
+      const nextNotes = updates?.notes !== undefined
+        ? String(updates.notes || '').trim()
+        : updates?.description !== undefined
+        ? String(updates.description || '').trim()
+        : (cur.notes || '');
+      const nextStatus = updates?.status === 'suspended' || updates?.status === 'active' ? updates.status : (cur.status || 'active');
+
+      await client.query(
+        `UPDATE product_units_catalog SET name = $1, normalized_name = $2, short_code = $3, notes = $4, status = $5, updated_at = $6 WHERE id = $7`,
+        [nextName, nextNorm, nextShortCode, nextNotes, nextStatus, now, unitId]
+      );
+      // Propagate rename ONLY to current products (historical invoice_items / return_items stay unchanged)
+      if (nextName !== cur.name) {
+        const oldNorm = normalizeArabicProductText(cur.name);
+        await client.query(
+          `UPDATE products SET base_unit = $1, unit_id = $2 WHERE unit_id = $2`,
+          [nextName, unitId]
+        );
+        const legacyRows = await client.query(
+          `SELECT id, base_unit FROM products WHERE unit_id IS NULL OR unit_id = ''`
+        );
+        for (const r of legacyRows.rows) {
+          if (normalizeArabicProductText(r.base_unit) === oldNorm) {
+            await client.query(
+              `UPDATE products SET base_unit = $1, unit_id = $2 WHERE id = $3`,
+              [nextName, unitId, r.id]
+            );
+          }
+        }
+      }
+
+      return {
+        id: unitId,
+        name: nextName,
+        shortCode: nextShortCode,
+        notes: nextNotes,
+        status: nextStatus,
+        createdAt: isoTimestamp(cur.created_at),
+        updatedAt: now,
+      };
+    });
+    await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `تحديث وحدة صنف (${updated.name})`, module: 'الوحدات', recordId: unitId });
+    return updated;
+  }
+
+  const updated = await withJsonTransaction(async (db) => {
+    if (!Array.isArray(db.productUnits)) db.productUnits = [];
+    const idx = db.productUnits.findIndex((u) => u.id === unitId);
+    if (idx === -1) throw new AppError(404, 'الوحدة غير موجودة', 'UNIT_NOT_FOUND');
+    const cur = db.productUnits[idx];
+    const nextName = String(updates?.name ?? cur.name).trim();
+    if (!nextName) throw new AppError(400, 'اسم الوحدة مطلوب', 'INVALID_UNIT');
+    const nextNorm = normalizeArabicProductText(nextName);
+    if (db.productUnits.some((u) => u.id !== unitId && normalizeArabicProductText(u.name) === nextNorm)) {
+      throw new AppError(409, 'اسم الوحدة مسجل مسبقًا', 'DUPLICATE_UNIT');
+    }
+    const oldNorm = normalizeArabicProductText(cur.name);
+    const nextShortCode = updates?.shortCode !== undefined ? String(updates.shortCode || '').trim() : (cur.shortCode || '');
+    const nextNotes = updates?.notes !== undefined
+      ? String(updates.notes || '').trim()
+      : updates?.description !== undefined
+      ? String(updates.description || '').trim()
+      : (cur.notes || '');
+    const nextStatus = updates?.status === 'suspended' || updates?.status === 'active' ? updates.status : (cur.status || 'active');
+    const oldName = cur.name;
+    db.productUnits[idx] = {
+      ...cur,
+      name: nextName,
+      shortCode: nextShortCode,
+      notes: nextNotes,
+      status: nextStatus,
+      updatedAt: now,
+    };
+    if (nextName !== oldName) {
+      db.products = (db.products || []).map((p) => {
+        const linked = p.unitId === unitId || (!p.unitId && normalizeArabicProductText(p.baseUnit) === oldNorm);
+        return linked ? { ...p, baseUnit: nextName, unitId } : p;
+      });
+    }
+    return db.productUnits[idx];
+  });
+  await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `تحديث وحدة صنف (${updated.name})`, module: 'الوحدات', recordId: unitId });
+  return updated;
+}
+
+export async function deleteProductUnit(unitId, actor) {
+  if (await isPgMode()) {
+    await withTransaction(async (client) => {
+      const curRes = await client.query('SELECT * FROM product_units_catalog WHERE id = $1 FOR UPDATE', [unitId]);
+      const cur = curRes.rows[0];
+      if (!cur) throw new AppError(404, 'الوحدة غير موجودة', 'UNIT_NOT_FOUND');
+      const usedById = await client.query(
+        `SELECT id FROM products WHERE unit_id = $1 LIMIT 1`,
+        [unitId]
+      );
+      let isUsed = Boolean(usedById.rows[0]);
+      if (!isUsed) {
+        const curNorm = normalizeArabicProductText(cur.name);
+        const legacyRows = await client.query(
+          `SELECT id, base_unit FROM products WHERE unit_id IS NULL OR unit_id = ''`
+        );
+        isUsed = legacyRows.rows.some((r) => normalizeArabicProductText(r.base_unit) === curNorm);
+      }
+      if (isUsed) {
+        throw new AppError(409, 'لا يمكن حذف وحدة مرتبطة بأصناف حالية. يمكنك إيقافها مؤقتًا بدلاً من الحذف.', 'UNIT_IN_USE');
+      }
+      await client.query('DELETE FROM product_units_catalog WHERE id = $1', [unitId]);
+    });
+    await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: 'حذف وحدة صنف', module: 'الوحدات', recordId: unitId });
+    return { ok: true };
+  }
+
+  await withJsonTransaction(async (db) => {
+    if (!Array.isArray(db.productUnits)) db.productUnits = [];
+    const cur = db.productUnits.find((u) => u.id === unitId);
+    if (!cur) throw new AppError(404, 'الوحدة غير موجودة', 'UNIT_NOT_FOUND');
+    const norm = normalizeArabicProductText(cur.name);
+    const usedInProds = (db.products || []).some(
+      (p) => p.unitId === unitId || (!p.unitId && normalizeArabicProductText(p.baseUnit) === norm)
+    );
+    if (usedInProds) {
+      throw new AppError(409, 'لا يمكن حذف وحدة مرتبطة بأصناف حالية. يمكنك إيقافها مؤقتًا بدلاً من الحذف.', 'UNIT_IN_USE');
+    }
+    db.productUnits = db.productUnits.filter((u) => u.id !== unitId);
+  });
+  await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: 'حذف وحدة صنف', module: 'الوحدات', recordId: unitId });
+  return { ok: true };
+}
+
+export async function resolveProductUnitPgTx(client, payload = {}, cur = null) {
+  const hasExplicitUnitId = payload?.unitId !== undefined && String(payload.unitId || '').trim() !== '';
+  if (hasExplicitUnitId) {
+    const unitId = String(payload.unitId).trim();
+    const uRes = await client.query('SELECT id, name FROM product_units_catalog WHERE id = $1 LIMIT 1', [unitId]);
+    if (!uRes.rows[0]) throw new AppError(404, 'الوحدة المحددة غير موجودة', 'UNIT_NOT_FOUND');
+    return { unitId: uRes.rows[0].id, baseUnit: uRes.rows[0].name };
+  }
+
+  if (payload?.baseUnit !== undefined) {
+    const typedName = String(payload.baseUnit || '').trim();
+    if (!typedName) {
+      return cur ? { unitId: cur.unitId || null, baseUnit: cur.baseUnit } : { unitId: null, baseUnit: 'قطعة' };
+    }
+    const norm = normalizeArabicProductText(typedName);
+    const exRes = await client.query(
+      'SELECT id, name FROM product_units_catalog WHERE normalized_name = $1 OR LOWER(name) = LOWER($2) LIMIT 1',
+      [norm, typedName]
+    );
+    if (exRes.rows[0]) {
+      return { unitId: exRes.rows[0].id, baseUnit: exRes.rows[0].name };
+    }
+    const newId = generateServerId('UNT');
+    const now = nowIso();
+    await client.query(
+      `INSERT INTO product_units_catalog (id, name, normalized_name, short_code, notes, status, created_at, updated_at)
+       VALUES ($1, $2, $3, '', '', 'active', $4, $4)`,
+      [newId, typedName, norm, now]
+    );
+    return { unitId: newId, baseUnit: typedName };
+  }
+
+  if (cur) {
+    return { unitId: cur.unitId || null, baseUnit: cur.baseUnit || 'قطعة' };
+  }
+  return { unitId: null, baseUnit: 'قطعة' };
+}
+
+export function resolveProductUnitJsonTx(db, payload = {}, cur = null) {
+  if (!Array.isArray(db.productUnits)) db.productUnits = [];
+  const hasExplicitUnitId = payload?.unitId !== undefined && String(payload.unitId || '').trim() !== '';
+  if (hasExplicitUnitId) {
+    const unitId = String(payload.unitId).trim();
+    const existing = db.productUnits.find((u) => u.id === unitId);
+    if (!existing) throw new AppError(404, 'الوحدة المحددة غير موجودة', 'UNIT_NOT_FOUND');
+    return { unitId: existing.id, baseUnit: existing.name };
+  }
+
+  if (payload?.baseUnit !== undefined) {
+    const typedName = String(payload.baseUnit || '').trim();
+    if (!typedName) {
+      return cur ? { unitId: cur.unitId || undefined, baseUnit: cur.baseUnit } : { unitId: undefined, baseUnit: 'قطعة' };
+    }
+    const norm = normalizeArabicProductText(typedName);
+    const existing = db.productUnits.find((u) => normalizeArabicProductText(u.name) === norm);
+    if (existing) {
+      return { unitId: existing.id, baseUnit: existing.name };
+    }
+    const newId = generateServerId('UNT');
+    const now = nowIso();
+    db.productUnits.push({ id: newId, name: typedName, shortCode: '', notes: '', status: 'active', createdAt: now, updatedAt: now });
+    return { unitId: newId, baseUnit: typedName };
+  }
+
+  if (cur) {
+    return { unitId: cur.unitId || undefined, baseUnit: cur.baseUnit || 'قطعة' };
+  }
+  return { unitId: undefined, baseUnit: 'قطعة' };
+}
+
 export function findProductDuplicateMatchInList(products = [], candidate = {}) {
   const cleanBarcode = String(candidate.barcode || '').trim().toLowerCase();
   const cleanCode = String(candidate.code || '').trim().toLowerCase();
@@ -2601,10 +2876,11 @@ export async function createProduct(payload, actor) {
       }
 
       const resolvedMeta = await resolveProductGroupCategoryPgTx(client, payload, null);
+      const resolvedUnit = await resolveProductUnitPgTx(client, payload, null);
 
       await client.query(
-        `INSERT INTO products (id, code, barcode, name, category, category_id, group_id, group_name, base_unit, size, color, purchase_price, selling_price, min_stock_level, stock_per_warehouse, image, notes, status, import_batch_id, imported_from_file, source_file_name, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
+        `INSERT INTO products (id, code, barcode, name, category, category_id, group_id, group_name, base_unit, unit_id, size, color, purchase_price, selling_price, min_stock_level, stock_per_warehouse, image, notes, status, import_batch_id, imported_from_file, source_file_name, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)`,
         [
           id,
           code,
@@ -2614,7 +2890,8 @@ export async function createProduct(payload, actor) {
           resolvedMeta.categoryId,
           resolvedMeta.groupId,
           resolvedMeta.groupName,
-          payload.baseUnit || 'قطعة',
+          resolvedUnit.baseUnit,
+          resolvedUnit.unitId,
           payload.size || null,
           payload.color || null,
           round2(payload.purchasePrice || 0),
@@ -2660,7 +2937,7 @@ export async function createProduct(payload, actor) {
                 whId,
                 whRes.rows[0].name,
                 numQty,
-                payload.baseUnit || 'قطعة',
+                resolvedUnit.baseUnit,
                 round2(payload.purchasePrice || 0),
                 actor.id,
                 actor.fullName,
@@ -2694,6 +2971,7 @@ export async function createProduct(payload, actor) {
       }
     }
     const resolvedMeta = resolveProductGroupCategoryJsonTx(db, payload, null);
+    const resolvedUnit = resolveProductUnitJsonTx(db, payload, null);
     const prod = {
       id,
       code,
@@ -2703,7 +2981,8 @@ export async function createProduct(payload, actor) {
       categoryId: resolvedMeta.categoryId,
       groupId: resolvedMeta.groupId,
       groupName: resolvedMeta.groupName,
-      baseUnit: payload.baseUnit || 'قطعة',
+      baseUnit: resolvedUnit.baseUnit,
+      ...(resolvedUnit.unitId ? { unitId: resolvedUnit.unitId } : {}),
       units,
       size: payload.size || undefined,
       color: payload.color || undefined,
@@ -2781,13 +3060,14 @@ export async function updateProduct(productId, updates, actor) {
       }
 
       const resolvedMeta = await resolveProductGroupCategoryPgTx(client, updates || {}, cur);
+      const resolvedUnit = await resolveProductUnitPgTx(client, updates || {}, cur);
 
       await client.query(
         `UPDATE products SET
-          code = $1, barcode = $2, name = $3, category = $4, category_id = $5, group_id = $6, group_name = $7, base_unit = $8,
-          size = $9, color = $10, purchase_price = $11, selling_price = $12, min_stock_level = $13,
-          image = $14, notes = $15, status = $16, import_batch_id = $17, imported_from_file = $18, source_file_name = $19, version = COALESCE(version, 1) + 1, updated_at = $20
-         WHERE id = $21`,
+          code = $1, barcode = $2, name = $3, category = $4, category_id = $5, group_id = $6, group_name = $7, base_unit = $8, unit_id = $9,
+          size = $10, color = $11, purchase_price = $12, selling_price = $13, min_stock_level = $14,
+          image = $15, notes = $16, status = $17, import_batch_id = $18, imported_from_file = $19, source_file_name = $20, version = COALESCE(version, 1) + 1, updated_at = $21
+         WHERE id = $22`,
         [
           nextCode,
           nextBarcode,
@@ -2796,7 +3076,8 @@ export async function updateProduct(productId, updates, actor) {
           resolvedMeta.categoryId,
           resolvedMeta.groupId,
           resolvedMeta.groupName,
-          updates.baseUnit ?? cur.baseUnit,
+          resolvedUnit.baseUnit,
+          resolvedUnit.unitId,
           updates.size ?? cur.size ?? null,
           updates.color ?? cur.color ?? null,
           round2(updates.purchasePrice ?? cur.purchasePrice),
@@ -2862,6 +3143,7 @@ export async function updateProduct(productId, updates, actor) {
     }
 
     const resolvedMeta = resolveProductGroupCategoryJsonTx(db, updates || {}, cur);
+    const resolvedUnit = resolveProductUnitJsonTx(db, updates || {}, cur);
     const { image: _ignoredImg, ...safeUpdates } = updates || {};
     const { image: _ignoredCurImg, ...safeCur } = cur;
     db.products[idx] = {
@@ -2875,6 +3157,8 @@ export async function updateProduct(productId, updates, actor) {
       categoryId: resolvedMeta.categoryId,
       groupId: resolvedMeta.groupId,
       groupName: resolvedMeta.groupName,
+      baseUnit: resolvedUnit.baseUnit,
+      unitId: resolvedUnit.unitId || undefined,
       stockPerWarehouse: cur.stockPerWarehouse, // Protect stock map from direct override via product edit
       version: Number(cur.version || 1) + 1,
       updatedAt: now,

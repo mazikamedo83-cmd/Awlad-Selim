@@ -495,8 +495,12 @@ try {
   await initializeSchema();
 
   const jsonSnapshot = readJsonDatabase();
-  const migReport = await runDataMigration({ actorName: 'مختبر الترحيل' });
-  assert.equal(migReport.ok, true);
+  const migReport = await runDataMigration(jsonSnapshot, 'مختبر الترحيل', {
+    targetPool: poolMig,
+    skipBackupFile: true,
+    skipLogFile: true,
+  });
+  assert.equal(migReport.success, true);
 
   const pgGroups = (await poolMig.query('SELECT * FROM product_groups')).rows;
   assert.equal(pgGroups.length, jsonSnapshot.productGroups.length);

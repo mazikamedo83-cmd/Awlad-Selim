@@ -931,7 +931,6 @@ export const CustomerRepOrdersView: React.FC = () => {
             value={rejectReason}
             onChange={(e) => setRejectReason(e.target.value)}
             className="w-full py-1.5 px-2 rounded-md border border-slate-300"
-            placeholder={t('اكتب سبب الرفض ليظهر للعميل أو المندوب...', 'Enter the rejection reason to show to the customer or rep...')}
           />
           <div className="flex justify-end gap-2 pt-2 border-t">
             <button

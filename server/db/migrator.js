@@ -151,6 +151,7 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
     const warehouses = Array.isArray(sourceData.warehouses) ? sourceData.warehouses : [];
     const productGroups = Array.isArray(sourceData.productGroups) ? sourceData.productGroups : [];
     const categories = Array.isArray(sourceData.categories) ? sourceData.categories : [];
+    const productUnits = Array.isArray(sourceData.productUnits) ? sourceData.productUnits : [];
     const products = Array.isArray(sourceData.products) ? sourceData.products : [];
     const customers = Array.isArray(sourceData.customers) ? sourceData.customers : [];
     const suppliers = Array.isArray(sourceData.suppliers) ? sourceData.suppliers : [];
@@ -474,6 +475,27 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
           details.categories++;
         }
 
+        // 4b. Product Units Catalog
+        const unitIdByNorm = new Map();
+        for (const unt of productUnits) {
+          const uNorm = normMigratorText(unt.name) || unt.id;
+          unitIdByNorm.set(uNorm, unt.id);
+          await client.query(`
+            INSERT INTO product_units_catalog (id, name, normalized_name, short_code, notes, status, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, normalized_name = EXCLUDED.normalized_name, short_code = EXCLUDED.short_code, notes = EXCLUDED.notes, status = EXCLUDED.status;
+          `, [
+            unt.id,
+            unt.name,
+            uNorm,
+            unt.shortCode || '',
+            unt.notes || unt.description || '',
+            unt.status || 'active',
+            unt.createdAt || new Date().toISOString(),
+            unt.updatedAt || unt.createdAt || new Date().toISOString(),
+          ]);
+        }
+
         // 5. Products & Units (handles both modern & legacy field names cleanly)
         for (const p of products) {
           const purchasePrice = Number(p.purchasePrice ?? p.buyPrice ?? 0);
@@ -481,17 +503,20 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
           const minStock = Number(p.minStockLevel ?? p.minStockLimit ?? 0);
           const status = p.status || (p.isActive === false ? 'archived' : 'active');
           const baseUnit = p.baseUnit || p.packageType || 'قطعة';
+          const pUnitId = p.unitId || unitIdByNorm.get(normMigratorText(baseUnit)) || null;
           const pGroupId = p.groupId || null;
           const pGroupName = p.groupName || (pGroupId ? groupMapById.get(pGroupId)?.name || '' : '');
           await client.query(`
-            INSERT INTO products (id, code, barcode, name, category, category_id, group_id, group_name, base_unit, size, color, purchase_price, selling_price, min_stock_level, stock_per_warehouse, image, notes, status, import_batch_id, imported_from_file, source_file_name, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+            INSERT INTO products (id, code, barcode, name, category, category_id, group_id, group_name, base_unit, unit_id, size, color, purchase_price, selling_price, min_stock_level, stock_per_warehouse, image, notes, status, import_batch_id, imported_from_file, source_file_name, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
             ON CONFLICT (id) DO UPDATE SET
               name = EXCLUDED.name,
               category = EXCLUDED.category,
               category_id = EXCLUDED.category_id,
               group_id = EXCLUDED.group_id,
               group_name = EXCLUDED.group_name,
+              base_unit = EXCLUDED.base_unit,
+              unit_id = EXCLUDED.unit_id,
               purchase_price = EXCLUDED.purchase_price,
               selling_price = EXCLUDED.selling_price,
               stock_per_warehouse = EXCLUDED.stock_per_warehouse,
@@ -510,6 +535,7 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
             pGroupId,
             pGroupName,
             baseUnit,
+            pUnitId,
             p.size || '',
             p.color || '',
             purchasePrice,

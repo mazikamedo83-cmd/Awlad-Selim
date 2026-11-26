@@ -2793,6 +2793,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                         <input
                           type="tel"
                           dir="ltr"
+                          aria-label={t('رقم هاتف إضافي', 'Additional phone')}
                           value={extra.phone}
                           onChange={(e) => {
                             const val = e.target.value;
@@ -2801,7 +2802,6 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                               extraPhones: prev.extraPhones.map((row, i) => (i === idx ? { ...row, phone: val } : row)),
                             }));
                           }}
-                          placeholder={t('رقم هاتف إضافي...', 'Additional phone...')}
                           className="flex-1 min-w-[130px] bg-white border border-slate-300 rounded-lg px-2 py-1.5 font-mono font-bold"
                         />
                         <select
@@ -3215,7 +3215,6 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                 required
                 value={paymentAmount === '' ? '' : paymentAmount}
                 onChange={(e) => setPaymentAmount(e.target.value === '' ? '' : Number(e.target.value))}
-                placeholder={t('أدخل المبلغ', 'Enter amount')}
                 className="w-full h-9 bg-slate-50 border border-slate-300 rounded-md px-2 py-1 text-sm font-black text-center text-emerald-800 font-mono outline-hidden focus:border-emerald-600"
               />
             </div>
@@ -3524,7 +3523,6 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                     minLength={6}
                     value={newCustomerPassword}
                     onChange={(e) => setNewCustomerPassword(e.target.value)}
-                    placeholder={t('أدخل كلمة مرور قوية للعميل', 'Enter a strong password')}
                     className="w-full h-8 border rounded-md px-2 py-1 font-mono"
                   />
                 </div>

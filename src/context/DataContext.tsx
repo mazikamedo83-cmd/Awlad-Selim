@@ -69,6 +69,7 @@ import {
   ServerConnectionSettings,
   ProductGroup,
   ProductCategory,
+  UnitCatalogItem,
   Warehouse,
   CustomerItemOrderRequest,
   OrderAdvancePayment,
@@ -201,6 +202,11 @@ export interface DataContextType extends DatabaseState {
   updateCategory: (id: string, updates: Partial<ProductCategory>) => Promise<void>;
   deleteCategory: (id: string) => Promise<{ success: boolean; error?: string }>;
   toggleCategoryStatus: (id: string) => Promise<void>;
+  productUnits: UnitCatalogItem[];
+  addProductUnit: (name: string, shortCode?: string, notes?: string) => Promise<{ success: boolean; productUnit?: UnitCatalogItem; error?: string }>;
+  updateProductUnit: (id: string, updates: Partial<UnitCatalogItem>) => Promise<{ success: boolean; productUnit?: UnitCatalogItem; error?: string }>;
+  deleteProductUnit: (id: string) => Promise<{ success: boolean; error?: string }>;
+  toggleProductUnitStatus: (id: string) => Promise<{ success: boolean; error?: string }>;
 
   // Warehouses
   addWarehouse: (wh: Omit<Warehouse, 'id'>) => Promise<{ success: boolean; error?: string; warehouse?: Warehouse }>;
@@ -1726,6 +1732,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           products: pullData.products || [],
           productGroups: pullData.productGroups || [],
           categories: pullData.categories || [],
+          productUnits: pullData.productUnits || [],
           customerItemOrders: pullData.customerItemOrders || [],
           orderAdvancePayments: pullData.orderAdvancePayments || [],
           invoices: pullData.invoices || [],
@@ -1791,6 +1798,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           ...empty,
           ...pullData,
           productGroups: pullData.productGroups || [],
+          productUnits: pullData.productUnits || [],
           repCustodyOperations: pullData.repCustodyOperations || [],
           purchaseReceivers: pullData.purchaseReceivers || [],
           purchaseReturnRequests: pullData.purchaseReturnRequests || [],
@@ -3535,6 +3543,48 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const cat = (data.categories || []).find((c) => c.id === id);
     if (!cat) return;
     await updateCategory(id, { status: cat.status === 'active' ? 'suspended' : 'active' });
+  };
+
+  const addProductUnit = async (name: string, shortCode = '', notes = '') => {
+    try {
+      const res = await apiRequest<{ ok: boolean; productUnit: UnitCatalogItem }>('/api/products/units', {
+        method: 'POST',
+        body: { name, shortCode, notes },
+      });
+      await loadRoleScopedData();
+      return { success: true, productUnit: res.productUnit };
+    } catch (err: any) {
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر إضافة الوحدة', 'Could not add unit') };
+    }
+  };
+
+  const updateProductUnit = async (id: string, updates: Partial<UnitCatalogItem>) => {
+    try {
+      const res = await apiRequest<{ ok: boolean; productUnit: UnitCatalogItem }>(`/api/products/units/${id}`, {
+        method: 'PUT',
+        body: updates,
+      });
+      await loadRoleScopedData();
+      return { success: true, productUnit: res.productUnit };
+    } catch (err: any) {
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تحديث الوحدة', 'Could not update unit') };
+    }
+  };
+
+  const deleteProductUnit = async (id: string) => {
+    try {
+      await apiRequest(`/api/products/units/${id}`, { method: 'DELETE' });
+      await loadRoleScopedData();
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر حذف الوحدة', 'Could not delete unit') };
+    }
+  };
+
+  const toggleProductUnitStatus = async (id: string) => {
+    const unt = (data.productUnits || []).find((u) => u.id === id);
+    if (!unt) return { success: false, error: tr('الوحدة غير موجودة', 'Unit not found') };
+    return updateProductUnit(id, { status: unt.status === 'suspended' ? 'active' : 'suspended' });
   };
 
   // Warehouses
@@ -5976,6 +6026,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateCategory,
         deleteCategory,
         toggleCategoryStatus,
+        productUnits: data.productUnits || [],
+        addProductUnit,
+        updateProductUnit,
+        deleteProductUnit,
+        toggleProductUnitStatus,
         addWarehouse,
         updateWarehouse,
         toggleWarehouseStatus,

@@ -2577,20 +2577,41 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               <GitBranch className="w-4 h-4 text-blue-900" />
               <span>{t('إدارة الفروع ونقاط التوزيع', 'Branches & Distribution Points Management')}</span>
             </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-              <input type="text" placeholder={t('اسم الفرع *', 'Branch Name *')} value={newBranchName} onChange={(e) => setNewBranchName(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-bold" />
-              <input type="text" placeholder={t('رقم الفرع', 'Branch Number')} value={newBranchNumber} onChange={(e) => setNewBranchNumber(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
-              <input type="text" placeholder={t('كود الفرع', 'Branch Code')} value={newBranchCode} onChange={(e) => setNewBranchCode(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
-              <input type="text" placeholder={t('رقم الهاتف', 'Phone Number')} value={newBranchPhone} onChange={(e) => setNewBranchPhone(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
-              <input type="text" placeholder={t('العنوان التفصيلي', 'Detailed Address')} value={newBranchAddress} onChange={(e) => setNewBranchAddress(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5" />
-              <select value={newBranchWarehouseId} onChange={(e) => setNewBranchWarehouseId(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2 font-bold bg-white">
-                <option value="">{t('-- ربط بمستودع --', '-- Link Warehouse --')}</option>
-                {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-              </select>
-              <select value={newBranchCashboxId} onChange={(e) => setNewBranchCashboxId(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2 font-bold bg-white">
-                <option value="">{t('-- ربط بخزينة --', '-- Link Cashbox --')}</option>
-                {cashboxes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+            <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-2 items-end">
+              <div>
+                <label className="block text-[11px] font-bold mb-0.5">{t('اسم الفرع *', 'Branch Name *')}</label>
+                <input type="text" value={newBranchName} onChange={(e) => setNewBranchName(e.target.value)} className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-bold" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold mb-0.5">{t('رقم الفرع', 'Branch Number')}</label>
+                <input type="text" value={newBranchNumber} onChange={(e) => setNewBranchNumber(e.target.value)} className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold mb-0.5">{t('كود الفرع', 'Branch Code')}</label>
+                <input type="text" value={newBranchCode} onChange={(e) => setNewBranchCode(e.target.value)} className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold mb-0.5">{t('رقم الهاتف', 'Phone Number')}</label>
+                <input type="text" value={newBranchPhone} onChange={(e) => setNewBranchPhone(e.target.value)} className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold mb-0.5">{t('العنوان التفصيلي', 'Detailed Address')}</label>
+                <input type="text" value={newBranchAddress} onChange={(e) => setNewBranchAddress(e.target.value)} className="w-full h-8 border border-slate-300 rounded-md px-2.5" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold mb-0.5">{t('المستودع المرتبط', 'Linked Warehouse')}</label>
+                <select value={newBranchWarehouseId} onChange={(e) => setNewBranchWarehouseId(e.target.value)} className="w-full h-8 border border-slate-300 rounded-md px-2 font-bold bg-white">
+                  <option value="">{t('-- ربط بمستودع --', '-- Link Warehouse --')}</option>
+                  {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold mb-0.5">{t('الخزينة المرتبطة', 'Linked Cashbox')}</label>
+                <select value={newBranchCashboxId} onChange={(e) => setNewBranchCashboxId(e.target.value)} className="w-full h-8 border border-slate-300 rounded-md px-2 font-bold bg-white">
+                  <option value="">{t('-- ربط بخزينة --', '-- Link Cashbox --')}</option>
+                  {cashboxes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
               <button
                 type="button"
                 onClick={async () => {
@@ -2638,8 +2659,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                 render: (br) => (
                   <input
                     type="text"
+                    aria-label={t('رقم الفرع', 'Branch No.')}
                     value={br.branchNumber || ''}
-                    placeholder={t('رقم الفرع', 'Branch No.')}
                     onChange={(e) => {
                       const val = e.target.value;
                       setBranches((prev) => prev.map((b) => (b.id === br.id ? { ...b, branchNumber: val } : b)));
@@ -2744,17 +2765,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               <Printer className="w-4 h-4 text-blue-900" />
               <span>{t('إدارة الطابعات المتعددة (الإدارة / الكاشير / الباركود)', 'Multi-Printer Management (Admin / Cashier / Barcode)')}</span>
             </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
-              <input type="text" placeholder={t('اسم الطابعة *', 'Printer Name *')} value={newPrinterName} onChange={(e) => setNewPrinterName(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-bold" />
-              <select value={newPrinterRole} onChange={(e) => setNewPrinterRole(e.target.value as any)} className="h-8 border border-slate-300 rounded-md px-2 font-bold bg-white">
-                <option value="a4">{t('A4 قياسية (فواتير وتقارير)', 'Standard A4 (Invoices & Reports)')}</option>
-                <option value="cashier_thermal80">{t('كاشير حرارية 80 مم', 'Cashier Thermal 80mm')}</option>
-                <option value="cashier_thermal58">{t('بلوتوث محمولة 58 مم', 'Portable Bluetooth 58mm')}</option>
-                <option value="barcode_label">{t('طابعة ملصقات باركود', 'Barcode Label Printer')}</option>
-              </select>
-              <input type="text" dir="ltr" placeholder={t('المنفذ أو IP', 'Port or IP')} value={newPrinterPort} onChange={(e) => setNewPrinterPort(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
-              <div className="flex items-center gap-1.5">
-                <input type="number" min="1" max="5" placeholder={t('النسخ', 'Copies')} value={newPrinterCopies} onChange={(e) => setNewPrinterCopies(e.target.value === '' ? '' : Number(e.target.value))} className="w-16 h-8 border border-slate-300 rounded-md px-2 font-mono text-center font-bold" title={t('عدد النسخ', 'Copies')} />
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-end">
+              <div>
+                <label className="block text-[11px] font-bold mb-0.5">{t('اسم الطابعة *', 'Printer Name *')}</label>
+                <input type="text" value={newPrinterName} onChange={(e) => setNewPrinterName(e.target.value)} className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-bold" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold mb-0.5">{t('النوع / الدور', 'Role')}</label>
+                <select value={newPrinterRole} onChange={(e) => setNewPrinterRole(e.target.value as any)} className="w-full h-8 border border-slate-300 rounded-md px-2 font-bold bg-white">
+                  <option value="a4">{t('A4 قياسية (فواتير وتقارير)', 'Standard A4 (Invoices & Reports)')}</option>
+                  <option value="cashier_thermal80">{t('كاشير حرارية 80 مم', 'Cashier Thermal 80mm')}</option>
+                  <option value="cashier_thermal58">{t('بلوتوث محمولة 58 مم', 'Portable Bluetooth 58mm')}</option>
+                  <option value="barcode_label">{t('طابعة ملصقات باركود', 'Barcode Label Printer')}</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold mb-0.5">{t('المنفذ أو IP', 'Port or IP')}</label>
+                <input type="text" dir="ltr" value={newPrinterPort} onChange={(e) => setNewPrinterPort(e.target.value)} className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
+              </div>
+              <div className="flex items-end gap-1.5">
+                <div>
+                  <label className="block text-[11px] font-bold mb-0.5">{t('النسخ', 'Copies')}</label>
+                  <input type="number" min="1" max="5" value={newPrinterCopies} onChange={(e) => setNewPrinterCopies(e.target.value === '' ? '' : Number(e.target.value))} className="w-16 h-8 border border-slate-300 rounded-md px-2 font-mono text-center font-bold" title={t('عدد النسخ', 'Copies')} />
+                </div>
                 <button
                   type="button"
                   onClick={async () => {

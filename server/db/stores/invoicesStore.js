@@ -33,6 +33,8 @@ import {
   getCustomerById,
   getSystemSettingsSafe,
   findProductDuplicateMatchInList,
+  resolveProductUnitPgTx,
+  resolveProductUnitJsonTx,
 } from './catalogStore.js';
 import {
   resolveActorIdentityPgTx,
@@ -641,14 +643,19 @@ async function resolvePurchaseItemsWithInlineProductsPgTx(client, rawItems = [],
       if (gRow) resolvedGroupName = gRow.name;
     }
 
+    const resolvedUnit = await resolveProductUnitPgTx(client, {
+      unitId: np.unitId,
+      baseUnit: candidate.baseUnit,
+    }, null);
+
     const newProdId = generateServerId('PRD');
     const finalCode = candidate.code || `P-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`;
     const purchasePrice = round2(np.purchasePrice ?? (Number(item.unitPrice || 0) / Math.max(0.001, Number(item.unitFactor || 1))));
     const sellingPrice = round2(np.sellingPrice ?? 0);
 
     await client.query(
-      `INSERT INTO products (id, code, barcode, name, category, category_id, group_id, group_name, base_unit, purchase_price, selling_price, min_stock_level, stock_per_warehouse, notes, status, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, '{}'::jsonb, $13, 'active', $14)`,
+      `INSERT INTO products (id, code, barcode, name, category, category_id, group_id, group_name, base_unit, unit_id, purchase_price, selling_price, min_stock_level, stock_per_warehouse, notes, status, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, '{}'::jsonb, $14, 'active', $15)`,
       [
         newProdId,
         finalCode,
@@ -658,7 +665,8 @@ async function resolvePurchaseItemsWithInlineProductsPgTx(client, rawItems = [],
         resolvedCatId,
         resolvedGroupId,
         resolvedGroupName,
-        candidate.baseUnit,
+        resolvedUnit.baseUnit,
+        resolvedUnit.unitId,
         purchasePrice,
         sellingPrice,
         round2(np.minStockLevel || 0),
@@ -676,7 +684,8 @@ async function resolvePurchaseItemsWithInlineProductsPgTx(client, rawItems = [],
       categoryId: resolvedCatId || undefined,
       groupId: resolvedGroupId || undefined,
       groupName: resolvedGroupName,
-      baseUnit: candidate.baseUnit,
+      baseUnit: resolvedUnit.baseUnit,
+      unitId: resolvedUnit.unitId || undefined,
       units: [],
       purchasePrice,
       sellingPrice,
@@ -694,7 +703,7 @@ async function resolvePurchaseItemsWithInlineProductsPgTx(client, rawItems = [],
       groupName: resolvedGroupName,
       categoryId: resolvedCatId || undefined,
       categoryName: resolvedCatName,
-      unit: item.unit || candidate.baseUnit,
+      unit: item.unit || resolvedUnit.baseUnit,
       unitFactor: Number(item.unitFactor || 1),
       purchasePriceAtTime: round2(item.unitPrice ?? purchasePrice),
       newProduct: undefined,
@@ -766,6 +775,11 @@ function resolvePurchaseItemsWithInlineProductsJsonTx(db, rawItems = [], now) {
       if (grpObj) resolvedGroupName = grpObj.name;
     }
 
+    const resolvedUnit = resolveProductUnitJsonTx(db, {
+      unitId: np.unitId,
+      baseUnit: candidate.baseUnit,
+    }, null);
+
     const newProdId = generateServerId('PRD');
     const finalCode = candidate.code || `P-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`;
     const purchasePrice = round2(np.purchasePrice ?? (Number(item.unitPrice || 0) / Math.max(0.001, Number(item.unitFactor || 1))));
@@ -780,7 +794,8 @@ function resolvePurchaseItemsWithInlineProductsJsonTx(db, rawItems = [], now) {
       categoryId: resolvedCatId,
       groupId: resolvedGroupId,
       groupName: resolvedGroupName,
-      baseUnit: candidate.baseUnit,
+      baseUnit: resolvedUnit.baseUnit,
+      ...(resolvedUnit.unitId ? { unitId: resolvedUnit.unitId } : {}),
       units: [],
       purchasePrice,
       sellingPrice,
@@ -801,7 +816,7 @@ function resolvePurchaseItemsWithInlineProductsJsonTx(db, rawItems = [], now) {
       groupName: resolvedGroupName,
       categoryId: resolvedCatId,
       categoryName: resolvedCatName,
-      unit: item.unit || candidate.baseUnit,
+      unit: item.unit || resolvedUnit.baseUnit,
       unitFactor: Number(item.unitFactor || 1),
       purchasePriceAtTime: round2(item.unitPrice ?? purchasePrice),
       newProduct: undefined,

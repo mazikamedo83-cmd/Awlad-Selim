@@ -851,35 +851,47 @@ export const MobilePortal: React.FC = () => {
                       {pwdFeedback.text}
                     </p>
                   )}
-                  <input
-                    type="password"
-                    dir="ltr"
-                    required
-                    value={currPwd}
-                    onChange={(e) => setCurrPwd(e.target.value)}
-                    placeholder={t('كلمة المرور الحالية', 'Current Password')}
-                    className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] px-2 bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-500 dark:placeholder:text-[#8CA3C7] font-mono"
-                  />
-                  <input
-                    type="password"
-                    dir="ltr"
-                    required
-                    minLength={4}
-                    value={newPwd}
-                    onChange={(e) => setNewPwd(e.target.value)}
-                    placeholder={t('كلمة المرور الجديدة', 'New Password')}
-                    className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] px-2 bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-500 dark:placeholder:text-[#8CA3C7] font-mono"
-                  />
-                  <input
-                    type="password"
-                    dir="ltr"
-                    required
-                    minLength={4}
-                    value={confirmPwd}
-                    onChange={(e) => setConfirmPwd(e.target.value)}
-                    placeholder={t('تأكيد كلمة المرور الجديدة', 'Confirm New Password')}
-                    className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] px-2 bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-500 dark:placeholder:text-[#8CA3C7] font-mono"
-                  />
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">
+                      {t('كلمة المرور الحالية:', 'Current Password:')}
+                    </label>
+                    <input
+                      type="password"
+                      dir="ltr"
+                      required
+                      value={currPwd}
+                      onChange={(e) => setCurrPwd(e.target.value)}
+                      className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] px-2 bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">
+                      {t('كلمة المرور الجديدة:', 'New Password:')}
+                    </label>
+                    <input
+                      type="password"
+                      dir="ltr"
+                      required
+                      minLength={4}
+                      value={newPwd}
+                      onChange={(e) => setNewPwd(e.target.value)}
+                      className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] px-2 bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">
+                      {t('تأكيد كلمة المرور الجديدة:', 'Confirm New Password:')}
+                    </label>
+                    <input
+                      type="password"
+                      dir="ltr"
+                      required
+                      minLength={4}
+                      value={confirmPwd}
+                      onChange={(e) => setConfirmPwd(e.target.value)}
+                      className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] px-2 bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] font-mono"
+                    />
+                  </div>
                   <button
                     type="submit"
                     disabled={isSavingPwd}

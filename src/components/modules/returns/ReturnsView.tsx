@@ -11,6 +11,10 @@ import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { exportToExcel } from '../../common/ExcelExporter';
 import { QuantityInput } from '../../common/QuantityInput';
 import { UnifiedDataTable } from '../../common/UnifiedDataTable';
+import {
+  LinkedGroupCategoryFilter,
+  filterProductsByGroupCategory,
+} from '../../common/LinkedGroupCategoryFilter';
 import { usePreferences } from '../../../context/PreferencesContext';
 import { formatLocaleNumber, translateSystemEntityName } from '../../../i18n/translator';
 
@@ -22,6 +26,9 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
   const {
     invoiceReturns,
     invoices,
+    products,
+    productGroups = [],
+    categories = [],
     cashboxes,
     settings,
     createReturn,
@@ -81,6 +88,8 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
   const [refundType, setRefundType] = useState<'balance' | 'cash'>('balance');
   const [refundCashboxId, setRefundCashboxId] = useState(cashboxes[0]?.id || '');
   const [returnQuantities, setReturnQuantities] = useState<Record<string, number | ''>>({});
+  const [retGroupFilter, setRetGroupFilter] = useState('all');
+  const [retCatFilter, setRetCatFilter] = useState('all');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -295,6 +304,8 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
   // When invoice is chosen, leave quantities empty until entered by user
   const handleSelectInvoice = (id: string) => {
     setSelectedInvoiceId(id);
+    setRetGroupFilter('all');
+    setRetCatFilter('all');
     const inv = invoices.find(i => i.id === id);
     if (inv) {
       const qMap: Record<string, number | ''> = {};
@@ -304,6 +315,48 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
       setReturnQuantities(qMap);
     }
   };
+
+  const filteredReturnInvoiceItems = useMemo(() => {
+    if (!selectedInvoice) return [];
+    const hasFilter = (retGroupFilter && retGroupFilter !== 'all') || (retCatFilter && retCatFilter !== 'all');
+    if (!hasFilter) return selectedInvoice.items;
+    return selectedInvoice.items.filter((it) => {
+      const catalogProd = products.find((p) => p.id === it.productId);
+      const syntheticProd: any = catalogProd
+        ? {
+            ...catalogProd,
+            groupId: it.groupId || catalogProd.groupId,
+            groupName: it.groupName || catalogProd.groupName,
+            categoryId: it.categoryId || catalogProd.categoryId,
+            category: it.categoryName || catalogProd.category,
+          }
+        : {
+            id: it.productId,
+            name: it.productName,
+            groupId: it.groupId,
+            groupName: it.groupName,
+            categoryId: it.categoryId,
+            category: it.categoryName || '',
+            baseUnit: it.unit,
+            units: [],
+            code: '',
+            purchasePrice: 0,
+            sellingPrice: it.unitPrice,
+            minStockLevel: 0,
+            stockPerWarehouse: {},
+            status: 'active',
+          };
+      return (
+        filterProductsByGroupCategory(
+          [syntheticProd],
+          productGroups,
+          categories,
+          retGroupFilter,
+          retCatFilter
+        ).length > 0
+      );
+    });
+  }, [selectedInvoice, products, productGroups, categories, retGroupFilter, retCatFilter]);
 
   const filteredReturns = useMemo(() => {
     return invoiceReturns.filter(r => {
@@ -338,9 +391,14 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
       .filter(item => Number(returnQuantities[item.productId] || 0) > 0)
       .map(item => {
         const q = Number(returnQuantities[item.productId] || 0);
+        const catalogProd = products.find((p) => p.id === item.productId);
         return {
           productId: item.productId,
           productName: item.productName,
+          groupId: item.groupId || catalogProd?.groupId,
+          groupName: item.groupName || catalogProd?.groupName,
+          categoryId: item.categoryId || catalogProd?.categoryId,
+          categoryName: item.categoryName || catalogProd?.category,
           unit: item.unit,
           quantity: q,
           unitPrice: item.unitPrice,
@@ -1096,7 +1154,19 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
           {/* Item Quantities Return Form */}
           {selectedInvoice && (
             <div className="border border-slate-200 rounded-lg p-2 bg-slate-50 space-y-1.5 awlad-table-scroll">
-              <h4 className="font-bold text-slate-800">{t('الأصناف المتوفرة بالفاتورة الأصلية للإرجاع:', 'Available Items in Original Invoice for Return:')}</h4>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h4 className="font-bold text-slate-800">{t('الأصناف المتوفرة بالفاتورة الأصلية للإرجاع:', 'Available Items in Original Invoice for Return:')}</h4>
+              </div>
+              <LinkedGroupCategoryFilter
+                productGroups={productGroups}
+                categories={categories}
+                selectedGroupId={retGroupFilter}
+                selectedCategoryId={retCatFilter}
+                onFilterChange={(nextGroupId, nextCategoryId) => {
+                  setRetGroupFilter(nextGroupId);
+                  setRetCatFilter(nextCategoryId);
+                }}
+              />
               <table className="w-full text-start text-xs bg-white rounded-md border border-slate-200">
                 <thead>
                   <tr className="bg-slate-100 border-b border-slate-200">
@@ -1108,7 +1178,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {selectedInvoice.items.map(it => {
+                  {filteredReturnInvoiceItems.map(it => {
                     const alreadyRet = selectedInvoice.returnedQuantityByItem?.[it.productId] || 0;
                     const maxAllowed = it.quantity - alreadyRet;
 
@@ -1321,7 +1391,6 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                 required
                 value={rejectReason}
                 onChange={(e) => setRejectReason(e.target.value)}
-                placeholder={t('اكتب سبب رفض طلب مرتجع المشتريات ليظهر للمندوب...', 'Enter purchase return rejection reason to show to the representative...')}
                 className="w-full border border-slate-300 rounded-md py-1.5 px-2"
               />
             </div>
@@ -1455,7 +1524,6 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                 required
                 value={rejectSalesReason}
                 onChange={(e) => setRejectSalesReason(e.target.value)}
-                placeholder={t('اكتب سبب رفض طلب مرتجع المبيعات ليظهر للمندوب...', 'Enter sales return rejection reason to show to the representative...')}
                 className="w-full border border-slate-300 rounded-md py-1.5 px-2"
               />
             </div>

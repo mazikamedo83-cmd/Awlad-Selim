@@ -1293,9 +1293,9 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                     <div className="flex flex-wrap items-center gap-1.5 shrink-0">
                       <input
                         type="text"
+                        aria-label={t('ملاحظة قرار المراجعة', 'Review decision note')}
                         value={conflictNotesById[cf.id] ?? ''}
                         onChange={(e) => setConflictNotesById((prev) => ({ ...prev, [cf.id]: e.target.value }))}
-                        placeholder={t('ملاحظة قرار المراجعة...', 'Review decision note...')}
                         className="h-8 w-44 border border-slate-300 rounded-md px-2 text-xs"
                       />
                       <button
@@ -1511,12 +1511,15 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
               />
             </div>
             <div>
-              <label className="block text-[11px] font-bold mb-0.5">{t('كلمة المرور:', 'Password:')}</label>
+              <label className="block text-[11px] font-bold mb-0.5">
+                {editingUser
+                  ? t('كلمة المرور (اتركها فارغة للإبقاء عليها):', 'Password (leave empty to keep current):')
+                  : t('كلمة المرور (6 أحرف على الأقل):', 'Password (at least 6 characters):')}
+              </label>
               <input
                 type="password"
                 dir="ltr"
                 required={!editingUser}
-                placeholder={editingUser ? t('اتركه فارغاً للإبقاء عليها', 'Leave empty to keep current') : t('6 أحرف على الأقل', 'At least 6 characters')}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full h-8 bg-white border rounded-md px-2 font-mono"
@@ -1805,7 +1808,6 @@ export const UsersManagementView: React.FC<UsersManagementViewProps> = ({ initia
                 type="password"
                 dir="ltr"
                 required
-                placeholder={t('أدخل كلمة المرور الجديدة', 'Enter new password')}
                 value={resetNewPassword}
                 onChange={(e) => setResetNewPassword(e.target.value)}
                 className="w-full h-8 border rounded-md px-2 font-mono"
