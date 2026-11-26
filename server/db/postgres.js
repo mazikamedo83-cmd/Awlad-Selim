@@ -1305,6 +1305,88 @@ export async function initializeSchema(customPool = null) {
       for (const stmt of v16Statements) {
         await txClient.query(stmt);
       }
+
+      // v17 linked Product Groups -> Categories & historical item category/group snapshots
+      await txClient.query(`
+        CREATE TABLE IF NOT EXISTS product_groups (
+          id VARCHAR(64) PRIMARY KEY,
+          name TEXT NOT NULL,
+          normalized_name TEXT UNIQUE NOT NULL,
+          description TEXT DEFAULT '',
+          status VARCHAR(16) NOT NULL DEFAULT 'active',
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+
+      const v17ColumnStatements = [
+        "ALTER TABLE product_categories ADD COLUMN IF NOT EXISTS normalized_name TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE product_categories ADD COLUMN IF NOT EXISTS group_id VARCHAR(64) NOT NULL DEFAULT ''",
+        "ALTER TABLE product_categories ADD COLUMN IF NOT EXISTS group_name TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE products ADD COLUMN IF NOT EXISTS group_id VARCHAR(64)",
+        "ALTER TABLE products ADD COLUMN IF NOT EXISTS group_name TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS group_id VARCHAR(64)",
+        "ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS group_name TEXT DEFAULT ''",
+        "ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS category_id VARCHAR(64)",
+        "ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS category_name TEXT DEFAULT ''",
+        "ALTER TABLE invoice_return_items ADD COLUMN IF NOT EXISTS group_id VARCHAR(64)",
+        "ALTER TABLE invoice_return_items ADD COLUMN IF NOT EXISTS group_name TEXT DEFAULT ''",
+        "ALTER TABLE invoice_return_items ADD COLUMN IF NOT EXISTS category_id VARCHAR(64)",
+        "ALTER TABLE invoice_return_items ADD COLUMN IF NOT EXISTS category_name TEXT DEFAULT ''",
+      ];
+      for (const stmt of v17ColumnStatements) {
+        await txClient.query(stmt);
+      }
+
+      // Drop legacy global UNIQUE(name) constraint on product_categories so category names are scoped per group
+      try {
+        const legacyUniqueRes = await txClient.query(
+          `SELECT tc.constraint_name
+           FROM information_schema.table_constraints tc
+           WHERE tc.table_name = 'product_categories'
+             AND tc.constraint_type = 'UNIQUE'`
+        );
+        for (const r of legacyUniqueRes.rows || []) {
+          const cName = String(r.constraint_name || '');
+          if (cName === 'product_categories_name_key') {
+            await txClient.query(`ALTER TABLE product_categories DROP CONSTRAINT IF EXISTS ${cName}`);
+          }
+        }
+      } catch {
+        try {
+          await txClient.query('ALTER TABLE product_categories DROP CONSTRAINT IF EXISTS product_categories_name_key');
+        } catch {}
+      }
+
+      // Backfill normalized_name on existing product_categories
+      const existingCatsRes = await txClient.query('SELECT id, name, group_id, normalized_name FROM product_categories ORDER BY created_at ASC');
+      const seenGroupNormKeys = new Set();
+      for (const c of existingCatsRes.rows || []) {
+        let norm = String(c.normalized_name || '').trim();
+        if (!norm) {
+          norm = String(c.name || '')
+            .trim()
+            .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
+            .replace(/[أإآ]/g, 'ا')
+            .replace(/ة/g, 'ه')
+            .replace(/ى/g, 'ي')
+            .replace(/\s+/g, ' ')
+            .toLowerCase();
+        }
+        const gid = String(c.group_id || '').trim();
+        let compositeKey = `${gid}::${norm}`;
+        if (seenGroupNormKeys.has(compositeKey)) {
+          norm = `${norm}__${c.id}`;
+          compositeKey = `${gid}::${norm}`;
+        }
+        seenGroupNormKeys.add(compositeKey);
+        if (norm !== String(c.normalized_name || '')) {
+          await txClient.query('UPDATE product_categories SET normalized_name = $1 WHERE id = $2', [norm, c.id]);
+        }
+      }
+      await txClient.query(
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_product_categories_group_norm_name ON product_categories (group_id, normalized_name)'
+      );
     }, currentPool);
 
     return { success: true, message: 'تم تطبيق هيكل الجداول والفهارس والتسلسلات في PostgreSQL بنجاح.' };

@@ -89,13 +89,28 @@ CREATE TABLE IF NOT EXISTS warehouses (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 4. تصنيفات السلع الغذائية (Categories)
+-- 4. مجموعات الأصناف والشركات (Product Groups)
+CREATE TABLE IF NOT EXISTS product_groups (
+  id VARCHAR(64) PRIMARY KEY,
+  name TEXT NOT NULL,
+  normalized_name TEXT UNIQUE NOT NULL,
+  description TEXT DEFAULT '',
+  status VARCHAR(16) NOT NULL DEFAULT 'active',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 4b. تصنيفات السلع المرتبطة بالمجموعات (Categories)
 CREATE TABLE IF NOT EXISTS product_categories (
   id VARCHAR(64) PRIMARY KEY,
-  name TEXT UNIQUE NOT NULL,
+  name TEXT NOT NULL,
+  normalized_name TEXT NOT NULL DEFAULT '',
+  group_id VARCHAR(64) NOT NULL DEFAULT '',
+  group_name TEXT NOT NULL DEFAULT '',
   description TEXT,
   status VARCHAR(16) NOT NULL DEFAULT 'active',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (group_id, normalized_name)
 );
 
 -- 5. المنتجات والأصناف الغذائية (Products)
@@ -106,6 +121,8 @@ CREATE TABLE IF NOT EXISTS products (
   name TEXT NOT NULL,
   category TEXT NOT NULL,
   category_id VARCHAR(64),
+  group_id VARCHAR(64),
+  group_name TEXT NOT NULL DEFAULT '',
   base_unit VARCHAR(32) NOT NULL,
   size TEXT,
   color TEXT,
@@ -268,6 +285,10 @@ CREATE TABLE IF NOT EXISTS invoice_items (
   product_id VARCHAR(64) NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
   product_name TEXT NOT NULL,
   barcode VARCHAR(64),
+  group_id VARCHAR(64),
+  group_name TEXT DEFAULT '',
+  category_id VARCHAR(64),
+  category_name TEXT DEFAULT '',
   unit VARCHAR(32) NOT NULL,
   unit_factor NUMERIC(12, 3) NOT NULL DEFAULT 1.000,
   quantity NUMERIC(12, 3) NOT NULL,
@@ -322,6 +343,10 @@ CREATE TABLE IF NOT EXISTS invoice_return_items (
   return_id VARCHAR(64) NOT NULL REFERENCES invoice_returns(id) ON DELETE CASCADE,
   product_id VARCHAR(64) NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
   product_name TEXT NOT NULL,
+  group_id VARCHAR(64),
+  group_name TEXT DEFAULT '',
+  category_id VARCHAR(64),
+  category_name TEXT DEFAULT '',
   unit VARCHAR(32) NOT NULL,
   unit_factor NUMERIC(12, 3) NOT NULL DEFAULT 1.000,
   quantity NUMERIC(12, 3) NOT NULL,

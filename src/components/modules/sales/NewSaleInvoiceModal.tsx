@@ -16,6 +16,10 @@ import { CustomerItemOrderRequest, CustomerPriceHistoryEntry } from '../../../ty
 import { Modal } from '../../common/Modal';
 import { SearchableFilterSelect } from '../../common/SearchableFilterSelect';
 import { ProductSearchSelect } from '../../common/ProductSearchSelect';
+import {
+  filterProductsByGroupCategory,
+  LinkedGroupCategoryFilter,
+} from '../../common/LinkedGroupCategoryFilter';
 import { QuantityInput } from '../../common/QuantityInput';
 import { computeLineTotal, roundCurrency } from '../../../utils/quantity';
 
@@ -30,6 +34,10 @@ interface DraftSaleRow {
   productId: string;
   productName: string;
   barcode: string;
+  groupId?: string;
+  groupName?: string;
+  categoryId?: string;
+  categoryName?: string;
   unit: string;
   unitFactor: number;
   quantity: number;
@@ -47,6 +55,8 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
 }) => {
   const {
     products,
+    productGroups,
+    categories,
     customers,
     warehouses,
     representatives,
@@ -81,11 +91,25 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
   const [items, setItems] = useState<DraftSaleRow[]>([]);
 
   // Classic Item Entry states
+  const [itemGroupFilter, setItemGroupFilter] = useState('all');
+  const [itemCategoryFilter, setItemCategoryFilter] = useState('all');
   const [barcodeInput, setBarcodeInput] = useState('');
   const [selectedProductId, setSelectedProductId] = useState<string>('');
   const [selectedUnitName, setSelectedUnitName] = useState<string>('');
   const [inputQuantity, setInputQuantity] = useState<number | ''>('');
   const [inputUnitPrice, setInputUnitPrice] = useState<number | ''>('');
+
+  const scopedSaleProducts = useMemo(
+    () =>
+      filterProductsByGroupCategory(
+        products,
+        productGroups,
+        categories,
+        itemGroupFilter,
+        itemCategoryFilter
+      ),
+    [products, productGroups, categories, itemGroupFilter, itemCategoryFilter]
+  );
 
   const hydratedSourceOrderRef = useRef<CustomerItemOrderRequest | null>(sourceOrder);
   hydratedSourceOrderRef.current = sourceOrder;
@@ -96,6 +120,8 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     const order = hydratedSourceOrderRef.current;
     setError(null);
     setInvoiceStatusMode('confirmed');
+    setItemGroupFilter('all');
+    setItemCategoryFilter('all');
     setBarcodeInput('');
     setSelectedProductId('');
     setSelectedUnitName('');
@@ -243,12 +269,11 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     ];
     const initialUnit = prod.units && prod.units.length > 0 ? opts[1] || opts[0] : opts[0];
     setSelectedUnitName(initialUnit.name);
-    setInputQuantity(1);
-    setInputUnitPrice(initialUnit.sellingPrice);
+    setInputQuantity('');
+    setInputUnitPrice(initialUnit.sellingPrice > 0 ? initialUnit.sellingPrice : '');
     setError(null);
     window.setTimeout(() => {
       qtyInputRef.current?.focus();
-      qtyInputRef.current?.select();
     }, 30);
   };
 
@@ -256,7 +281,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     setSelectedUnitName(unitName);
     const matched = productUnitOptions.find((u) => u.name === unitName);
     if (matched) {
-      setInputUnitPrice(matched.sellingPrice);
+      setInputUnitPrice(matched.sellingPrice > 0 ? matched.sellingPrice : '');
     }
   };
 
@@ -277,14 +302,15 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
       setSelectedProductId(prod.id);
       if (matchedUnit) {
         setSelectedUnitName(matchedUnit.name);
-        setInputUnitPrice(matchedUnit.sellingPrice);
+        setInputUnitPrice(matchedUnit.sellingPrice > 0 ? matchedUnit.sellingPrice : '');
       } else {
         setSelectedUnitName(prod.baseUnit);
-        setInputUnitPrice(prod.sellingPrice);
+        setInputUnitPrice(prod.sellingPrice > 0 ? prod.sellingPrice : '');
       }
-      setInputQuantity(1);
+      setInputQuantity('');
       setBarcodeInput('');
       setError(null);
+      window.setTimeout(() => qtyInputRef.current?.focus(), 30);
     } else {
       setError(
         t(
@@ -375,6 +401,10 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
           productId: selectedProduct.id,
           productName: selectedProduct.name,
           barcode: selectedProduct.barcode,
+          groupId: selectedProduct.groupId,
+          groupName: selectedProduct.groupName,
+          categoryId: selectedProduct.categoryId,
+          categoryName: selectedProduct.category,
           unit: effectiveUnit,
           unitFactor,
           quantity: qtyVal,
@@ -503,9 +533,11 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
 
   useEffect(() => {
     if (paymentType === 'cash') {
-      setPaidAmount(maxCashAtInvoice);
+      setPaidAmount(maxCashAtInvoice > 0 ? maxCashAtInvoice : '');
     } else if (paymentType === 'credit') {
-      setPaidAmount(0);
+      setPaidAmount('');
+    } else {
+      setPaidAmount('');
     }
   }, [paymentType, maxCashAtInvoice]);
 
@@ -785,6 +817,14 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
 
         {/* Classic Inline Item Add Bar */}
         <div className="bg-blue-50/60 p-2.5 rounded-lg border border-blue-200 space-y-2">
+          <LinkedGroupCategoryFilter
+            productGroups={productGroups}
+            categories={categories}
+            selectedGroupId={itemGroupFilter}
+            selectedCategoryId={itemCategoryFilter}
+            onGroupChange={setItemGroupFilter}
+            onCategoryChange={setItemCategoryFilter}
+          />
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
             <form onSubmit={handleBarcodeSubmit} className="sm:col-span-4">
               <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
@@ -807,7 +847,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
               </label>
               <ProductSearchSelect
                 inputRef={productSearchRef}
-                products={products}
+                products={scopedSaleProducts}
                 warehouses={warehouses}
                 warehouseId={selectedWarehouseId}
                 selectedProductId={selectedProductId}
@@ -852,7 +892,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                 disabled={!selectedProduct}
                 value={inputQuantity}
                 onChange={(val) => setInputQuantity(val)}
-                placeholder={t('الكمية', 'Qty')}
+                placeholder=""
                 ariaLabel={t('الكمية', 'Quantity')}
                 inputClassName="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-center font-mono font-bold text-xs disabled:bg-slate-100"
               />
@@ -868,7 +908,6 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                 disabled={!selectedProduct}
                 value={inputUnitPrice}
                 onChange={(e) => setInputUnitPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
-                placeholder="0.00"
                 className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-center font-mono font-bold text-xs disabled:bg-slate-100"
               />
             </div>
@@ -1110,7 +1149,6 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                   type="number"
                   min={0}
                   step="0.5"
-                  placeholder="0"
                   value={discountTotal}
                   onChange={(e) => setDiscountTotal(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
                   className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-center font-mono font-bold"

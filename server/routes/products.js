@@ -1,6 +1,10 @@
 import { Router } from 'express';
 import {
   listProducts,
+  listProductGroups,
+  createProductGroup,
+  updateProductGroup,
+  deleteProductGroup,
   listCategories,
   createProduct,
   updateProduct,
@@ -44,6 +48,44 @@ router.get(
       allowCustomerPriceView,
     });
     res.json({ ok: true, products, mobileConfig: settings.mobileConfig });
+  })
+);
+
+router.get(
+  '/groups',
+  asyncHandler(async (_req, res) => {
+    const productGroups = await listProductGroups();
+    res.json({ ok: true, productGroups });
+  })
+);
+
+router.post(
+  '/groups',
+  requireStaff,
+  requirePermission('canManageInventory'),
+  asyncHandler(async (req, res) => {
+    const productGroup = await createProductGroup(req.body || {}, req.auth.user);
+    res.status(201).json({ ok: true, productGroup });
+  })
+);
+
+router.put(
+  '/groups/:id',
+  requireStaff,
+  requirePermission('canManageInventory'),
+  asyncHandler(async (req, res) => {
+    const productGroup = await updateProductGroup(req.params.id, req.body || {}, req.auth.user);
+    res.json({ ok: true, productGroup });
+  })
+);
+
+router.delete(
+  '/groups/:id',
+  requireStaff,
+  requirePermission('canManageInventory'),
+  asyncHandler(async (req, res) => {
+    await deleteProductGroup(req.params.id, req.auth.user);
+    res.json({ ok: true });
   })
 );
 

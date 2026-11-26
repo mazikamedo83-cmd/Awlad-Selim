@@ -347,7 +347,6 @@ export const QrScannerModal: React.FC<QrScannerModalProps> = ({
                   dir="ltr"
                   value={manualInput}
                   onChange={(e) => setManualInput(e.target.value)}
-                  placeholder={mode === 'barcode' ? '6221000000000' : 'https://example.trycloudflare.com/pair/xxxxxx | awladselim://pair?...'}
                   className="w-full rounded-md border border-slate-300 dark:border-[#2A436E] p-2 text-xs font-mono text-left focus:border-[#003589] outline-hidden"
                 />
               </div>

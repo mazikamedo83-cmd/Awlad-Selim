@@ -19,6 +19,7 @@ import {
   SystemSettings,
   RepItemTransferRequest,
   ServerConnectionSettings,
+  ProductGroup,
   ProductCategory,
   CustomerItemOrderRequest,
   MigrationLogEntry,
@@ -65,6 +66,7 @@ export interface DatabaseState {
   employees: Employee[];
   expenseIncomes: ExpenseIncomeRecord[];
   stockMovements: StockMovement[];
+  productGroups?: ProductGroup[];
   categories?: ProductCategory[];
   ownerAccounts?: OwnerPersonalAccount[];
   ownerTransactions?: OwnerPersonalTransaction[];
@@ -112,6 +114,7 @@ export function getEmptyClientDatabaseState(): DatabaseState {
     employees: [],
     expenseIncomes: [],
     stockMovements: [],
+    productGroups: [],
     categories: [],
     ownerAccounts: [],
     ownerTransactions: [],

@@ -653,7 +653,6 @@ export const LoginView: React.FC = () => {
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    placeholder="01xxxxxxxxx"
                     className="w-full h-8 sm:h-9 rounded-md border border-slate-300 dark:border-[#2A436E] dark:bg-[#10203D] dark:text-[#F3F7FC] px-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 outline-hidden transition-all text-start"
                   />
                 </div>
@@ -686,7 +685,6 @@ export const LoginView: React.FC = () => {
                       required
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
-                      placeholder="01xxxxxxxxx"
                       className="w-full h-8 rounded-md border border-slate-300 bg-white dark:bg-[#10203D] dark:border-[#2A436E] dark:text-[#F3F7FC] px-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-start"
                     />
                   </div>
@@ -698,7 +696,6 @@ export const LoginView: React.FC = () => {
                           type="text"
                           value={shopName}
                           onChange={(e) => setShopName(e.target.value)}
-                          placeholder={t('مثال: سوبر ماركت النور', 'e.g., Al-Noor Supermarket')}
                           className="w-full h-8 rounded-md border border-slate-300 bg-white dark:bg-[#10203D] dark:border-[#2A436E] dark:text-[#F3F7FC] px-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-start"
                         />
                       </div>
@@ -708,7 +705,6 @@ export const LoginView: React.FC = () => {
                           type="text"
                           value={governorate}
                           onChange={(e) => setGovernorate(e.target.value)}
-                          placeholder={t('مثال: القاهرة / الجيزة', 'e.g., Cairo / Giza')}
                           className="w-full h-8 rounded-md border border-slate-300 bg-white dark:bg-[#10203D] dark:border-[#2A436E] dark:text-[#F3F7FC] px-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-start"
                         />
                       </div>
@@ -718,7 +714,6 @@ export const LoginView: React.FC = () => {
                           type="text"
                           value={area}
                           onChange={(e) => setArea(e.target.value)}
-                          placeholder={t('مثال: شبرا / المعادي', 'e.g., Shubra / Maadi')}
                           className="w-full h-8 rounded-md border border-slate-300 bg-white dark:bg-[#10203D] dark:border-[#2A436E] dark:text-[#F3F7FC] px-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-start"
                         />
                       </div>
@@ -730,7 +725,6 @@ export const LoginView: React.FC = () => {
                         type="text"
                         value={vehicleNumber}
                         onChange={(e) => setVehicleNumber(e.target.value)}
-                        placeholder={t('مثال: أ ب ج 1234', 'e.g., ABC 1234')}
                         className="w-full h-8 rounded-md border border-slate-300 bg-white dark:bg-[#10203D] dark:border-[#2A436E] dark:text-[#F3F7FC] px-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:border-blue-600 outline-hidden text-start"
                       />
                     </div>

@@ -182,10 +182,9 @@ const MainAppContent: React.FC = () => {
   const isWindowsDesktop = isWindowsDesktopApp();
   const isMobileApp = isMobileAppPlatform();
 
-  // Auto-open vertical sections sidebar immediately after login on Windows Desktop ONLY
+  // Auto-open vertical sections sidebar immediately after login on Desktop/Web
   useEffect(() => {
     if (
-      isWindowsDesktop &&
       isAuthenticated &&
       currentUser &&
       currentUser.role !== 'customer' &&
@@ -193,7 +192,7 @@ const MainAppContent: React.FC = () => {
     ) {
       setIsSectionsOpen(true);
     }
-  }, [isWindowsDesktop, isAuthenticated, currentUser?.id, currentUser?.role]);
+  }, [isAuthenticated, currentUser?.id, currentUser?.role]);
 
   const inFlightPairingUrlsRef = useRef<Set<string>>(new Set());
   const recentPairingUrlsRef = useRef<Map<string, number>>(new Map());
@@ -714,15 +713,13 @@ const MainAppContent: React.FC = () => {
           />
 
           <div className="flex-1 min-h-0 flex items-stretch min-w-0 print:block">
-            {isWindowsDesktop && (
-              <Sidebar
-                currentPage={currentPage}
-                onNavigate={(page) => setCurrentPage(page)}
-                isOpen={isSectionsOpen}
-                onClose={() => setIsSectionsOpen(false)}
-                onOpenCashOp={(mode) => setCashOpModal({ open: true, mode })}
-              />
-            )}
+            <Sidebar
+              currentPage={currentPage}
+              onNavigate={(page) => setCurrentPage(page)}
+              isOpen={isSectionsOpen}
+              onClose={() => setIsSectionsOpen(false)}
+              onOpenCashOp={(mode) => setCashOpModal({ open: true, mode })}
+            />
 
             <main
               className={`flex-1 flex flex-col min-w-0 min-h-0 overflow-y-auto print:overflow-visible ${

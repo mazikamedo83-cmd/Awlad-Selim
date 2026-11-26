@@ -503,7 +503,6 @@ export const CustomerLocationPickerModal: React.FC<CustomerLocationPickerModalPr
                 type="text"
                 value={governorate}
                 onChange={(e) => setGovernorate(e.target.value)}
-                placeholder={t('مثال: القاهرة / الجيزة', 'e.g. Cairo / Giza')}
                 className="w-full h-8 px-2 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC]"
               />
             </div>

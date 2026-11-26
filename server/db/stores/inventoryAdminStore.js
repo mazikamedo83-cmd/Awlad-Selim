@@ -62,8 +62,10 @@ const EMPTY_PERMISSIONS = Object.fromEntries(Object.keys(FULL_ADMIN_PERMISSIONS)
 import { recordAuditLog, listAuditLogs } from './authStore.js';
 import {
   listCustomers,
+  listProductGroups,
   listCategories,
   listProducts,
+  normalizeArabicProductText,
   getRepresentativeByUserId,
   getSystemSettingsSafe,
   normalizePhoneDigits,
@@ -161,6 +163,7 @@ export async function getStaffBootstrapData(actor) {
     const [
       usersRes,
       whRes,
+      productGroups,
       cats,
       prods,
       custs,
@@ -197,6 +200,7 @@ export async function getStaffBootstrapData(actor) {
     ] = await Promise.all([
       isAdminOrUserMgr ? pool.query('SELECT * FROM users ORDER BY created_at DESC') : Promise.resolve({ rows: [] }),
       pool.query('SELECT * FROM warehouses ORDER BY created_at ASC'),
+      listProductGroups(),
       listCategories(),
       listProducts({ forCustomer: false, forRepresentative: isRep }),
       listCustomers(),
@@ -267,6 +271,10 @@ export async function getStaffBootstrapData(actor) {
       list.push({
         productId: it.product_id,
         productName: it.product_name,
+        groupId: it.group_id || undefined,
+        groupName: it.group_name || '',
+        categoryId: it.category_id || undefined,
+        categoryName: it.category_name || '',
         unit: it.unit,
         unitFactor: Number(it.unit_factor || 1),
         quantity: Number(it.quantity || 0),
@@ -361,6 +369,7 @@ export async function getStaffBootstrapData(actor) {
         isDefault: Boolean(w.is_default),
         status: w.status || 'active',
       })),
+      productGroups,
       categories: cats,
       products: prods,
       customers: custs,
@@ -786,6 +795,7 @@ export async function getStaffBootstrapData(actor) {
       : [],
     purchaseReceivers: canViewPurchaseReceivers ? resolvePurchaseReceiversFromUsers(db.users || []) : [],
     warehouses: db.warehouses,
+    productGroups: db.productGroups || [],
     categories: db.categories,
     products: isRep ? (db.products || []).map(sanitizeProductForRepresentative) : db.products,
     customers: scopedCustomers,
@@ -6356,15 +6366,24 @@ export async function executeCashOperation(payload, actor, idempotencyKey = '') 
 export async function renameCategoryGlobal(categoryId, newName, actor) {
   const cleanName = String(newName || '').trim();
   if (!cleanName) throw new AppError(400, 'يرجى كتابة الاسم الجديد للتصنيف', 'INVALID_CATEGORY_NAME');
+  const norm = normalizeArabicProductText(cleanName);
 
   if (await isPgMode()) {
     const out = await withTransaction(async (client) => {
       const cRes = await client.query('SELECT * FROM product_categories WHERE id = $1 FOR UPDATE', [categoryId]);
       const cur = cRes.rows[0];
       if (!cur) throw new AppError(404, 'التصنيف غير موجود', 'CATEGORY_NOT_FOUND');
+      const dup = await client.query(
+        'SELECT id FROM product_categories WHERE group_id = $1 AND normalized_name = $2 AND id <> $3 LIMIT 1',
+        [String(cur.group_id || ''), norm, categoryId]
+      );
+      if (dup.rows[0]) throw new AppError(409, 'اسم التصنيف مسجل مسبقًا داخل هذه المجموعة', 'DUPLICATE_CATEGORY');
       const oldName = cur.name;
-      await client.query('UPDATE product_categories SET name = $1 WHERE id = $2', [cleanName, categoryId]);
-      await client.query('UPDATE products SET category = $1 WHERE category_id = $2 OR category = $3', [cleanName, categoryId, oldName]);
+      await client.query('UPDATE product_categories SET name = $1, normalized_name = $2 WHERE id = $3', [cleanName, norm, categoryId]);
+      await client.query(
+        'UPDATE products SET category = $1 WHERE category_id = $2 OR (category = $3 AND COALESCE(group_id, \'\') = $4)',
+        [cleanName, categoryId, oldName, String(cur.group_id || '')]
+      );
       return { id: categoryId, oldName, newName: cleanName };
     });
     await recordAuditLog({
@@ -6380,10 +6399,13 @@ export async function renameCategoryGlobal(categoryId, newName, actor) {
   const out = await withJsonTransaction((db) => {
     const cat = db.categories.find((c) => c.id === categoryId);
     if (!cat) throw new AppError(404, 'التصنيف غير موجود', 'CATEGORY_NOT_FOUND');
+    if (db.categories.some((c) => c.id !== categoryId && String(c.groupId || '') === String(cat.groupId || '') && normalizeArabicProductText(c.name) === norm)) {
+      throw new AppError(409, 'اسم التصنيف مسجل مسبقًا داخل هذه المجموعة', 'DUPLICATE_CATEGORY');
+    }
     const oldName = cat.name;
     cat.name = cleanName;
     db.products.forEach((p) => {
-      if (p.categoryId === categoryId || p.category === oldName) {
+      if (p.categoryId === categoryId || (p.category === oldName && String(p.groupId || '') === String(cat.groupId || ''))) {
         p.category = cleanName;
       }
     });

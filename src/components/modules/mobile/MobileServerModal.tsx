@@ -63,7 +63,7 @@ const MODE_OPTIONS: Array<{
     hint: 'الاتصال المباشر بلابتوب المحل عبر شبكة الواي فاي المحلية (http://IP:3000).',
     hintEn: 'Direct connection to the store laptop over local Wi-Fi (http://IP:3000).',
     icon: Wifi,
-    placeholder: '192.168.1.100',
+    placeholder: '',
   },
   {
     key: 'free_remote',
@@ -71,10 +71,10 @@ const MODE_OPTIONS: Array<{
     shortLabelEn: 'Free Remote',
     title: 'رابط عن بُعد مجاني (Quick Tunnel)',
     titleEn: 'Free Remote (Quick Tunnel)',
-    hint: 'رابط Cloudflare Quick Tunnel المجاني بصيغة https://xxxx.trycloudflare.com.',
-    hintEn: 'Free Cloudflare Quick Tunnel URL in https://xxxx.trycloudflare.com format.',
+    hint: 'رابط Cloudflare Quick Tunnel المجاني بصيغة https://...',
+    hintEn: 'Free Cloudflare Quick Tunnel HTTPS URL.',
     icon: Radio,
-    placeholder: 'https://example-shop.trycloudflare.com',
+    placeholder: '',
   },
   {
     key: 'pro_remote',
@@ -85,7 +85,7 @@ const MODE_OPTIONS: Array<{
     hint: 'دومين ثابت بشهادة HTTPS مشفرة دون تغيير مع إعادة التشغيل.',
     hintEn: 'Static domain with encrypted HTTPS that persists across restarts.',
     icon: Globe,
-    placeholder: 'https://erp.yourdomain.com',
+    placeholder: '',
   },
   {
     key: 'cloud_vps',
@@ -96,7 +96,7 @@ const MODE_OPTIONS: Array<{
     hint: 'سيرفر سحابي دائم متصل بنفس قاعدة البيانات المركزية.',
     hintEn: 'Always-on cloud server connected to the same central database.',
     icon: Cloud,
-    placeholder: 'https://cloud-erp.yourdomain.com',
+    placeholder: '',
   },
 ];
 
@@ -456,7 +456,7 @@ export const MobileServerModal: React.FC<MobileServerModalProps> = ({
                         setFormError(null);
                         setTestResult({});
                       }}
-                      placeholder="192.168.1.100"
+                      placeholder=""
                       className="w-full h-8 rounded-md border border-slate-300 bg-white px-2 text-xs font-mono text-left focus:border-blue-600 outline-hidden"
                     />
                   </div>

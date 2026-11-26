@@ -12,6 +12,7 @@ import { RepTransfer, RepItemTransferRequest, Representative, RepCustodyStatemen
 import { Modal } from '../../common/Modal';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { ProductSearchSelect } from '../../common/ProductSearchSelect';
+import { LinkedGroupCategoryFilter, filterProductsByGroupCategory } from '../../common/LinkedGroupCategoryFilter';
 import { QuantityInput } from '../../common/QuantityInput';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 
@@ -67,7 +68,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
   embeddedMode = false,
 }) => {
   const { 
-    repTransfers, repItemTransfers = [], representatives, repTransferTargets = [], customers, products, warehouses, invoices, cashboxes, settings, 
+    repTransfers, repItemTransfers = [], representatives, repTransferTargets = [], customers, products, productGroups = [], categories = [], warehouses, invoices, cashboxes, settings, 
     createRepTransfer, confirmRepTransferReceipt, rejectRepTransfer,
     createRepItemTransfer, updateRepItemTransferStatus, addRepresentative, updateRepresentative, addUser,
     getRepCustodyStatement, recordRepCustodyDelivery, recordRepCustodyReturn, recordRepCustodyAdjustment,
@@ -140,6 +141,8 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
     shortageQty: number;
     notes?: string;
   }>>([]);
+  const [itemReqGroupFilter, setItemReqGroupFilter] = useState<string>('all');
+  const [itemReqCatFilter, setItemReqCatFilter] = useState<string>('all');
   const [tempProdId, setTempProdId] = useState<string>('');
   const [tempUnitName, setTempUnitName] = useState<string>('');
   const [tempQty, setTempQty] = useState<number | ''>('');
@@ -435,6 +438,11 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
     setIsPrintModalOpen(true);
   };
 
+  const filteredRepTransferProducts = useMemo(
+    () => filterProductsByGroupCategory(products, productGroups, categories, itemReqGroupFilter, itemReqCatFilter),
+    [products, productGroups, categories, itemReqGroupFilter, itemReqCatFilter]
+  );
+
   const activeTempReqProduct = useMemo(
     () => products.find((p) => p.id === tempProdId) || null,
     [products, tempProdId]
@@ -456,7 +464,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
     const prod = products.find((p) => p.id === prodId);
     if (!prod) return;
     setTempUnitName(prod.baseUnit);
-    setTempQty(1);
+    setTempQty('');
     setItemReqError(null);
     window.setTimeout(() => {
       repProdQtyRef.current?.focus();
@@ -2150,7 +2158,6 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
                   type="number"
                   required
                   min={1}
-                  placeholder="0.00"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
                   className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-bold text-sm"
@@ -2368,6 +2375,15 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
 
             {/* Classic Add Item Bar */}
             <div className="bg-blue-50/60 p-2.5 rounded-lg border border-blue-200 space-y-2">
+              <LinkedGroupCategoryFilter
+                productGroups={productGroups}
+                categories={categories}
+                selectedGroupId={itemReqGroupFilter}
+                selectedCategoryId={itemReqCatFilter}
+                onGroupChange={setItemReqGroupFilter}
+                onCategoryChange={setItemReqCatFilter}
+                compact
+              />
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
                 <div className="sm:col-span-4">
                   <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('باركود سريع:', 'Quick Barcode:')}</label>
@@ -2392,7 +2408,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
                   <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('اختيار الصنف:', 'Select Item:')}</label>
                   <ProductSearchSelect
                     inputRef={repProdSearchRef}
-                    products={products}
+                    products={filteredRepTransferProducts}
                     warehouses={warehouses}
                     warehouseId={itemReqSourceWhId}
                     selectedProductId={tempProdId}
@@ -2428,7 +2444,6 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
                     disabled={!activeTempReqProduct}
                     value={tempQty}
                     onChange={(val) => setTempQty(val)}
-                    placeholder={t('الكمية', 'Qty')}
                     ariaLabel={t('كمية التحويل', 'Transfer Qty')}
                     inputClassName="w-full h-8 px-1.5 rounded-md border border-slate-300 bg-white text-center font-mono font-bold disabled:bg-slate-100"
                   />
@@ -2722,7 +2737,6 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
                   required
                   min={0.001}
                   step="0.001"
-                  placeholder={t('أدخل الكمية', 'Enter quantity')}
                   value={custodyOpQty}
                   onChange={(e) => setCustodyOpQty(e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
                   className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-mono font-bold"
@@ -2805,7 +2819,6 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
                   dir="ltr"
                   value={repPhone}
                   onChange={(e) => setRepPhone(e.target.value)}
-                  placeholder="010XXXXXXXX"
                   className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-mono"
                 />
               </div>
@@ -2816,7 +2829,6 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
                   type="text"
                   value={repVehicle}
                   onChange={(e) => setRepVehicle(e.target.value)}
-                  placeholder={t('مثال: سيارة توزيع 4 (أ ب ج 123)', 'e.g., Distribution Van 4')}
                   className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300"
                 />
               </div>
@@ -2828,7 +2840,6 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
                   <label className="block font-bold mb-1">{t('رصيد العهدة الافتتاحي', 'Opening Custody Balance')} ({t(settings.currency)}):</label>
                   <input
                     type="number"
-                    placeholder="0.00"
                     value={repOpening}
                     onChange={(e) => setRepOpening(e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
                     className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-mono"
@@ -2866,7 +2877,6 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
                             required={createRepAccount}
                             value={repUsername}
                             onChange={(e) => setRepUsername(e.target.value)}
-                            placeholder="rep_ahmed"
                             dir="ltr"
                             className="w-full h-8 px-2 rounded-md border border-[#B8CAE8] bg-white font-mono"
                           />
@@ -2878,7 +2888,6 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
                             required={createRepAccount}
                             value={repPassword}
                             onChange={(e) => setRepPassword(e.target.value)}
-                            placeholder={t('4 أحرف على الأقل...', 'At least 4 chars...')}
                             dir="ltr"
                             className="w-full h-8 px-2 rounded-md border border-[#B8CAE8] bg-white font-mono"
                           />

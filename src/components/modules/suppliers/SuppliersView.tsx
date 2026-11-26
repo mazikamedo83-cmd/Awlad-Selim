@@ -947,7 +947,6 @@ export const SuppliersView: React.FC = () => {
               <label className="block font-bold mb-1">{t('رصيد أول المدة المستحق له:', 'Opening Balance Payable:')}</label>
               <input
                 type="number"
-                placeholder="0.00"
                 value={formData.openingBalance}
                 onChange={(e) => setFormData({ ...formData, openingBalance: e.target.value === '' ? '' : Number(e.target.value) })}
                 className="w-full h-8 border border-slate-300 rounded-md px-2 py-1 font-mono font-bold"
@@ -1066,7 +1065,6 @@ export const SuppliersView: React.FC = () => {
                 type="text"
                 value={paymentNotes}
                 onChange={(e) => setPaymentNotes(e.target.value)}
-                placeholder={t('سداد دفعة من حساب المورد...', 'Supplier account payment...')}
                 className="w-full h-8 border border-slate-300 rounded-md px-2 py-1"
               />
             </div>

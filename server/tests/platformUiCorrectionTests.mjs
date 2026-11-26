@@ -32,19 +32,31 @@ test('1. Preload & native bridge expose strict Electron Windows platform detecti
   assert.ok(!native.includes('innerWidth'), 'Platform detection must never depend on window.innerWidth');
 });
 
-test('2. App.tsx & Header.tsx scope Sidebar and Sidebar Toggle strictly to Windows Desktop and restore horizontal Web sections bar', () => {
+test('2. App.tsx & Header.tsx render Sidebar on Desktop/Web, remove horizontal sections from Header, and keep exact 7 shortcuts', () => {
   const app = readFile('src/App.tsx');
   const header = readFile('src/components/layout/Header.tsx');
 
   assert.ok(app.includes('const isWindowsDesktop = isWindowsDesktopApp();'));
-  assert.ok(app.includes('isWindowsDesktop &&') && app.includes('setIsSectionsOpen(true)'), 'Sidebar auto-open must run on Windows Desktop login');
-  assert.ok(app.includes('{isWindowsDesktop && (') && app.includes('<Sidebar'), 'Sidebar must mount only inside {isWindowsDesktop && (...)}');
-  assert.ok(app.includes('{!isWindowsDesktop && (isMobileApp || isMobileViewport)'), 'Mobile app shell must never displace Windows Desktop Sidebar');
+  assert.ok(app.includes('setIsSectionsOpen(true)'), 'Sidebar auto-open must run on staff login');
+  assert.ok(app.includes('<Sidebar'), 'App must render <Sidebar> in desktop shell');
+  assert.ok(app.includes('{!isWindowsDesktop && (isMobileApp || isMobileViewport)'), 'Mobile app shell must stay scoped to mobile');
 
-  assert.ok(header.includes('{isWinDesktop && (') && header.includes('data-testid="sidebar-toggle-btn"'), 'Header sidebar toggle must render only for Windows Desktop');
-  assert.ok(header.includes('{!isWinDesktop && webHorizontalSections.length > 0 && ('), 'Web must render horizontal sections bar');
-  assert.ok(header.includes('data-testid="web-horizontal-sections-nav"'), 'Web horizontal sections nav testid missing');
-  assert.ok(header.includes('webHorizontalSections'), 'Web sections menu definition missing');
+  assert.ok(header.includes('{!isSidebarOpen && (') && header.includes('data-testid="sidebar-toggle-btn"'), 'Header reopen sidebar button must appear when sidebar is closed');
+  assert.ok(!header.includes('webHorizontalSections'), 'Header must not contain horizontal sections menu');
+  assert.ok(!header.includes('web-horizontal-sections-nav'), 'Header must not render web-horizontal-sections-nav');
+
+  const expectedShortcutKeys = [
+    "'home'",
+    "'add-customer'",
+    "'add-product'",
+    "'new-sale'",
+    "'new-purchase'",
+    "'stock-transfer'",
+    "'add-expense'",
+  ];
+  for (const key of expectedShortcutKeys) {
+    assert.ok(header.includes(`key: ${key}`), `Header missing required quick shortcut ${key}`);
+  }
 });
 
 test('3. Android/iOS Mobile shells (StaffMobileShell & MobilePortal) have zero vertical Sidebar leakage and keep original layouts', () => {
@@ -62,7 +74,7 @@ test('3. Android/iOS Mobile shells (StaffMobileShell & MobilePortal) have zero v
   assert.ok(mobilePortal.includes('bottomNavItems'), 'MobilePortal must preserve 5-tab mobile bottom nav');
 });
 
-test('4. Sidebar preserves all 10 system module sections and flex-push close/open behavior on Windows Desktop', () => {
+test('4. Sidebar preserves all 10 system module sections, auto-expands on open, and closes cleanly with (X)', () => {
   const sidebar = readFile('src/components/layout/Sidebar.tsx');
   const expectedSectionIds = [
     "'sales'",
@@ -79,6 +91,8 @@ test('4. Sidebar preserves all 10 system module sections and flex-push close/ope
   for (const id of expectedSectionIds) {
     assert.ok(sidebar.includes(id), `Sidebar missing section ${id}`);
   }
+  assert.ok(sidebar.includes('data-testid="sidebar-close-btn"'), 'Sidebar must include explicit close (X) button');
+  assert.ok(sidebar.includes('setOpenSectionIds(ALL_OPEN_SECTIONS)'), 'Sidebar must expand all sections when reopened');
   assert.ok(sidebar.includes('if (!mobileDrawer && !isOpen) {\n    return null;\n  }'), 'Closing sidebar must unmount aside so main expands seamlessly');
 });
 

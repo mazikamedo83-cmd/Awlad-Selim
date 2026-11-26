@@ -3241,7 +3241,6 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack, in
                           type="text"
                           value={failReasonInput}
                           onChange={(e) => setFailReasonInput(e.target.value)}
-                          placeholder={t('مثال: نقص مستندات أو فرق عهدة...', 'Example: Missing documents or custody discrepancy...')}
                           className="w-full h-8 px-2.5 rounded-md border border-red-300 dark:border-red-700 bg-white dark:bg-[#10203D] text-xs font-bold text-slate-900 dark:text-[#EEF4FC]"
                         />
                         <div className="flex items-center gap-1.5">

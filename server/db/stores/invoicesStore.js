@@ -599,6 +599,9 @@ async function resolvePurchaseItemsWithInlineProductsPgTx(client, rawItems = [],
       barcode: String(np.barcode || item.barcode || '').trim(),
       code: String(np.code || '').trim(),
       category: String(np.category || 'عام').trim() || 'عام',
+      categoryId: String(np.categoryId || '').trim() || undefined,
+      groupId: String(np.groupId || '').trim() || undefined,
+      groupName: String(np.groupName || '').trim(),
       baseUnit: String(np.baseUnit || item.unit || 'قطعة').trim() || 'قطعة',
     };
     const dupCheck = findProductDuplicateMatchInList(catalogList, candidate);
@@ -609,6 +612,10 @@ async function resolvePurchaseItemsWithInlineProductsPgTx(client, rawItems = [],
         productId: ex.id,
         productName: ex.name,
         barcode: ex.barcode || candidate.barcode || '',
+        groupId: ex.groupId || undefined,
+        groupName: ex.groupName || '',
+        categoryId: ex.categoryId || undefined,
+        categoryName: ex.category || '',
         unit: item.unit || ex.baseUnit || candidate.baseUnit,
         unitFactor: Number(item.unitFactor || 1),
         purchasePriceAtTime: round2(item.unitPrice ?? ex.purchasePrice ?? 0),
@@ -617,20 +624,40 @@ async function resolvePurchaseItemsWithInlineProductsPgTx(client, rawItems = [],
       continue;
     }
 
+    let resolvedCatId = candidate.categoryId || null;
+    let resolvedCatName = candidate.category;
+    let resolvedGroupId = candidate.groupId || null;
+    let resolvedGroupName = candidate.groupName || '';
+    if (resolvedCatId) {
+      const cRow = (await client.query(`SELECT id, name, group_id, group_name FROM product_categories WHERE id = $1 LIMIT 1`, [resolvedCatId])).rows[0];
+      if (cRow) {
+        resolvedCatName = cRow.name;
+        if (!resolvedGroupId && cRow.group_id) resolvedGroupId = cRow.group_id;
+        if (!resolvedGroupName && cRow.group_name) resolvedGroupName = cRow.group_name;
+      }
+    }
+    if (resolvedGroupId) {
+      const gRow = (await client.query(`SELECT id, name FROM product_groups WHERE id = $1 LIMIT 1`, [resolvedGroupId])).rows[0];
+      if (gRow) resolvedGroupName = gRow.name;
+    }
+
     const newProdId = generateServerId('PRD');
     const finalCode = candidate.code || `P-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`;
     const purchasePrice = round2(np.purchasePrice ?? (Number(item.unitPrice || 0) / Math.max(0.001, Number(item.unitFactor || 1))));
     const sellingPrice = round2(np.sellingPrice ?? 0);
 
     await client.query(
-      `INSERT INTO products (id, code, barcode, name, category, base_unit, purchase_price, selling_price, min_stock_level, stock_per_warehouse, notes, status, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, '{}'::jsonb, $10, 'active', $11)`,
+      `INSERT INTO products (id, code, barcode, name, category, category_id, group_id, group_name, base_unit, purchase_price, selling_price, min_stock_level, stock_per_warehouse, notes, status, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, '{}'::jsonb, $13, 'active', $14)`,
       [
         newProdId,
         finalCode,
         candidate.barcode,
         name,
-        candidate.category,
+        resolvedCatName,
+        resolvedCatId,
+        resolvedGroupId,
+        resolvedGroupName,
         candidate.baseUnit,
         purchasePrice,
         sellingPrice,
@@ -645,7 +672,10 @@ async function resolvePurchaseItemsWithInlineProductsPgTx(client, rawItems = [],
       code: finalCode,
       barcode: candidate.barcode,
       name,
-      category: candidate.category,
+      category: resolvedCatName,
+      categoryId: resolvedCatId || undefined,
+      groupId: resolvedGroupId || undefined,
+      groupName: resolvedGroupName,
       baseUnit: candidate.baseUnit,
       units: [],
       purchasePrice,
@@ -660,6 +690,10 @@ async function resolvePurchaseItemsWithInlineProductsPgTx(client, rawItems = [],
       productId: newProdId,
       productName: name,
       barcode: candidate.barcode,
+      groupId: resolvedGroupId || undefined,
+      groupName: resolvedGroupName,
+      categoryId: resolvedCatId || undefined,
+      categoryName: resolvedCatName,
       unit: item.unit || candidate.baseUnit,
       unitFactor: Number(item.unitFactor || 1),
       purchasePriceAtTime: round2(item.unitPrice ?? purchasePrice),
@@ -690,6 +724,9 @@ function resolvePurchaseItemsWithInlineProductsJsonTx(db, rawItems = [], now) {
       barcode: String(np.barcode || item.barcode || '').trim(),
       code: String(np.code || '').trim(),
       category: String(np.category || 'عام').trim() || 'عام',
+      categoryId: String(np.categoryId || '').trim() || undefined,
+      groupId: String(np.groupId || '').trim() || undefined,
+      groupName: String(np.groupName || '').trim(),
       baseUnit: String(np.baseUnit || item.unit || 'قطعة').trim() || 'قطعة',
     };
     const dupCheck = findProductDuplicateMatchInList(db.products, candidate);
@@ -700,12 +737,33 @@ function resolvePurchaseItemsWithInlineProductsJsonTx(db, rawItems = [], now) {
         productId: ex.id,
         productName: ex.name,
         barcode: ex.barcode || candidate.barcode || '',
+        groupId: ex.groupId || undefined,
+        groupName: ex.groupName || '',
+        categoryId: ex.categoryId || undefined,
+        categoryName: ex.category || '',
         unit: item.unit || ex.baseUnit || candidate.baseUnit,
         unitFactor: Number(item.unitFactor || 1),
         purchasePriceAtTime: round2(item.unitPrice ?? ex.purchasePrice ?? 0),
         newProduct: undefined,
       });
       continue;
+    }
+
+    let resolvedCatId = candidate.categoryId || undefined;
+    let resolvedCatName = candidate.category;
+    let resolvedGroupId = candidate.groupId || undefined;
+    let resolvedGroupName = candidate.groupName || '';
+    if (resolvedCatId) {
+      const catObj = (db.categories || []).find((c) => c.id === resolvedCatId);
+      if (catObj) {
+        resolvedCatName = catObj.name;
+        if (!resolvedGroupId && catObj.groupId) resolvedGroupId = catObj.groupId;
+        if (!resolvedGroupName && catObj.groupName) resolvedGroupName = catObj.groupName;
+      }
+    }
+    if (resolvedGroupId) {
+      const grpObj = (db.productGroups || []).find((g) => g.id === resolvedGroupId);
+      if (grpObj) resolvedGroupName = grpObj.name;
     }
 
     const newProdId = generateServerId('PRD');
@@ -718,7 +776,10 @@ function resolvePurchaseItemsWithInlineProductsJsonTx(db, rawItems = [], now) {
       code: finalCode,
       barcode: candidate.barcode,
       name,
-      category: candidate.category,
+      category: resolvedCatName,
+      categoryId: resolvedCatId,
+      groupId: resolvedGroupId,
+      groupName: resolvedGroupName,
       baseUnit: candidate.baseUnit,
       units: [],
       purchasePrice,
@@ -736,6 +797,10 @@ function resolvePurchaseItemsWithInlineProductsJsonTx(db, rawItems = [], now) {
       productId: newProdId,
       productName: name,
       barcode: candidate.barcode,
+      groupId: resolvedGroupId,
+      groupName: resolvedGroupName,
+      categoryId: resolvedCatId,
+      categoryName: resolvedCatName,
       unit: item.unit || candidate.baseUnit,
       unitFactor: Number(item.unitFactor || 1),
       purchasePriceAtTime: round2(item.unitPrice ?? purchasePrice),
@@ -909,24 +974,32 @@ export async function createInvoiceInsidePgTx(client, type, payload, actor) {
 
   for (let i = 0; i < totals.items.length; i++) {
     const it = totals.items[i];
-    const pRow = (await client.query(`SELECT name, barcode, purchase_price FROM products WHERE id = $1 LIMIT 1`, [it.productId])).rows[0];
+    const pRow = (await client.query(`SELECT name, barcode, purchase_price, group_id, group_name, category_id, category FROM products WHERE id = $1 LIMIT 1`, [it.productId])).rows[0];
     if (!pRow) throw new AppError(404, `الصنف غير موجود (${it.productName || it.productId})`, 'PRODUCT_NOT_FOUND');
     it.productName = it.productName || pRow.name;
     it.barcode = it.barcode || pRow.barcode || '';
+    it.groupId = it.groupId || pRow.group_id || undefined;
+    it.groupName = it.groupName || pRow.group_name || '';
+    it.categoryId = it.categoryId || pRow.category_id || undefined;
+    it.categoryName = it.categoryName || pRow.category || '';
     const dbCost = Number(pRow.purchase_price || 0);
     it.purchasePriceAtTime = (actor?.role === 'representative' && type !== 'purchase')
       ? dbCost
       : (it.purchasePriceAtTime || dbCost);
 
     await client.query(
-      `INSERT INTO invoice_items (id, invoice_id, product_id, product_name, barcode, unit, unit_factor, quantity, unit_price, purchase_price_at_time, discount, total)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+      `INSERT INTO invoice_items (id, invoice_id, product_id, product_name, barcode, group_id, group_name, category_id, category_name, unit, unit_factor, quantity, unit_price, purchase_price_at_time, discount, total)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
       [
         `${invoiceId}-ITM-${i + 1}`,
         invoiceId,
         it.productId,
         it.productName,
         it.barcode,
+        it.groupId || null,
+        it.groupName || '',
+        it.categoryId || null,
+        it.categoryName || '',
         it.unit,
         it.unitFactor,
         it.quantity,
@@ -1052,6 +1125,10 @@ export function createInvoiceInsideJsonTx(db, type, payload, actor) {
       ...it,
       productName: it.productName || prod.name,
       barcode: it.barcode || prod.barcode || '',
+      groupId: it.groupId || prod.groupId || undefined,
+      groupName: it.groupName || prod.groupName || '',
+      categoryId: it.categoryId || prod.categoryId || undefined,
+      categoryName: it.categoryName || prod.category || '',
       purchasePriceAtTime: (actor?.role === 'representative' && type !== 'purchase')
         ? dbCost
         : (it.purchasePriceAtTime || dbCost),
@@ -2540,21 +2617,25 @@ export async function editSalesInvoice(invoiceId, updates, actor) {
       const oldCostByProduct = new Map((inv.items || []).map((o) => [o.productId, Number(o.purchasePriceAtTime || 0)]));
       for (let idx = 0; idx < totals.items.length; idx++) {
         const it = totals.items[idx];
+        const pMeta = (await client.query(`SELECT purchase_price, group_id, group_name, category_id, category FROM products WHERE id = $1 LIMIT 1`, [it.productId])).rows[0];
         let resolvedCost = Number(it.purchasePriceAtTime || 0);
         if (repActor || resolvedCost <= 0) {
           const priorCost = oldCostByProduct.get(it.productId) || 0;
           if (priorCost > 0) {
             resolvedCost = priorCost;
           } else {
-            const cRow = (await client.query(`SELECT purchase_price FROM products WHERE id = $1 LIMIT 1`, [it.productId])).rows[0];
-            resolvedCost = Number(cRow?.purchase_price || 0);
+            resolvedCost = Number(pMeta?.purchase_price || 0);
           }
           it.purchasePriceAtTime = resolvedCost;
         }
+        const snapGroupId = it.groupId || pMeta?.group_id || null;
+        const snapGroupName = it.groupName || pMeta?.group_name || '';
+        const snapCatId = it.categoryId || pMeta?.category_id || null;
+        const snapCatName = it.categoryName || pMeta?.category || '';
         await client.query(
-          `INSERT INTO invoice_items (id, invoice_id, product_id, product_name, barcode, unit, unit_factor, quantity, unit_price, purchase_price_at_time, discount, total)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-          [`${invoiceId}-ITM-${idx + 1}`, invoiceId, it.productId, it.productName, it.barcode, it.unit, it.unitFactor, it.quantity, it.unitPrice, it.purchasePriceAtTime, it.discount, it.total]
+          `INSERT INTO invoice_items (id, invoice_id, product_id, product_name, barcode, group_id, group_name, category_id, category_name, unit, unit_factor, quantity, unit_price, purchase_price_at_time, discount, total)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+          [`${invoiceId}-ITM-${idx + 1}`, invoiceId, it.productId, it.productName, it.barcode, snapGroupId, snapGroupName, snapCatId, snapCatName, it.unit, it.unitFactor, it.quantity, it.unitPrice, it.purchasePriceAtTime, it.discount, it.total]
         );
       }
 
@@ -2611,12 +2692,18 @@ export async function editSalesInvoice(invoiceId, updates, actor) {
     );
     const oldCostByProd = new Map((inv.items || []).map((o) => [o.productId, Number(o.purchasePriceAtTime || 0)]));
     for (const it of totals.items) {
+      const prod = (db.products || []).find((p) => p.id === it.productId);
+      if (prod) {
+        if (!it.groupId && prod.groupId) it.groupId = prod.groupId;
+        if (!it.groupName && prod.groupName) it.groupName = prod.groupName;
+        if (!it.categoryId && prod.categoryId) it.categoryId = prod.categoryId;
+        if (!it.categoryName && prod.category) it.categoryName = prod.category;
+      }
       if (repActor || Number(it.purchasePriceAtTime || 0) <= 0) {
         const prior = oldCostByProd.get(it.productId) || 0;
         if (prior > 0) {
           it.purchasePriceAtTime = prior;
         } else {
-          const prod = (db.products || []).find((p) => p.id === it.productId);
           it.purchasePriceAtTime = Number(prod?.purchasePrice || 0);
         }
       }
@@ -3199,10 +3286,15 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
       await client.query(`DELETE FROM invoice_items WHERE invoice_id = $1`, [invoiceId]);
       for (let idx = 0; idx < itemsWithCost.length; idx++) {
         const it = itemsWithCost[idx];
+        const pMeta = (await client.query(`SELECT group_id, group_name, category_id, category FROM products WHERE id = $1 LIMIT 1`, [it.productId])).rows[0];
+        const snapGroupId = it.groupId || pMeta?.group_id || null;
+        const snapGroupName = it.groupName || pMeta?.group_name || '';
+        const snapCatId = it.categoryId || pMeta?.category_id || null;
+        const snapCatName = it.categoryName || pMeta?.category || '';
         await client.query(
-          `INSERT INTO invoice_items (id, invoice_id, product_id, product_name, barcode, unit, unit_factor, quantity, unit_price, purchase_price_at_time, discount, total)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-          [`${invoiceId}-ITM-${idx + 1}`, invoiceId, it.productId, it.productName, it.barcode, it.unit, it.unitFactor, it.quantity, it.unitPrice, it.purchasePriceAtTime, it.discount, it.total]
+          `INSERT INTO invoice_items (id, invoice_id, product_id, product_name, barcode, group_id, group_name, category_id, category_name, unit, unit_factor, quantity, unit_price, purchase_price_at_time, discount, total)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+          [`${invoiceId}-ITM-${idx + 1}`, invoiceId, it.productId, it.productName, it.barcode, snapGroupId, snapGroupName, snapCatId, snapCatName, it.unit, it.unitFactor, it.quantity, it.unitPrice, it.purchasePriceAtTime, it.discount, it.total]
         );
       }
 
@@ -3530,10 +3622,17 @@ export async function editPurchaseInvoice(invoiceId, updates, actor) {
       }
     }
 
-    const itemsWithCost = totals.items.map((it) => ({
-      ...it,
-      purchasePriceAtTime: round2(Number(it.unitPrice || 0) / Math.max(0.001, Number(it.unitFactor || 1))),
-    }));
+    const itemsWithCost = totals.items.map((it) => {
+      const prod = (db.products || []).find((p) => p.id === it.productId);
+      return {
+        ...it,
+        groupId: it.groupId || prod?.groupId || undefined,
+        groupName: it.groupName || prod?.groupName || '',
+        categoryId: it.categoryId || prod?.categoryId || undefined,
+        categoryName: it.categoryName || prod?.category || '',
+        purchasePriceAtTime: round2(Number(it.unitPrice || 0) / Math.max(0.001, Number(it.unitFactor || 1))),
+      };
+    });
 
     const afterSnapshot = {
       date: updates.date || inv.date,
@@ -4649,6 +4748,10 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
         normalizedItems.push({
           productId: item.productId,
           productName: origItem.productName || item.productName,
+          groupId: origItem.groupId || undefined,
+          groupName: origItem.groupName || '',
+          categoryId: origItem.categoryId || undefined,
+          categoryName: origItem.categoryName || '',
           unit: origItem.unit || item.unit,
           unitFactor: Number(origItem.unitFactor || item.unitFactor || 1),
           quantity: qty,
@@ -4726,10 +4829,17 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
 
       for (let i = 0; i < normalizedItems.length; i++) {
         const it = normalizedItems[i];
+        const pMetaRes = !it.categoryName
+          ? (await client.query(`SELECT group_id, group_name, category_id, category FROM products WHERE id = $1 LIMIT 1`, [it.productId])).rows[0]
+          : null;
+        it.groupId = it.groupId || pMetaRes?.group_id || undefined;
+        it.groupName = it.groupName || pMetaRes?.group_name || '';
+        it.categoryId = it.categoryId || pMetaRes?.category_id || undefined;
+        it.categoryName = it.categoryName || pMetaRes?.category || '';
         await client.query(
-          `INSERT INTO invoice_return_items (id, return_id, product_id, product_name, unit, unit_factor, quantity, unit_price, total)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-          [`${retId}-RITM-${i + 1}`, retId, it.productId, it.productName, it.unit, it.unitFactor, it.quantity, it.unitPrice, it.total]
+          `INSERT INTO invoice_return_items (id, return_id, product_id, product_name, group_id, group_name, category_id, category_name, unit, unit_factor, quantity, unit_price, total)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+          [`${retId}-RITM-${i + 1}`, retId, it.productId, it.productName, it.groupId || null, it.groupName || '', it.categoryId || null, it.categoryName || '', it.unit, it.unitFactor, it.quantity, it.unitPrice, it.total]
         );
 
         const pRes = await client.query(`SELECT * FROM products WHERE id = $1 FOR UPDATE`, [it.productId]);
@@ -4967,9 +5077,14 @@ export async function createInvoiceReturn(returnData, actor, idempotencyKey = ''
       }
       const lineTotal = round2(qty * unitPrice);
       grandTotal = round2(grandTotal + lineTotal);
+      const retProd = (db.products || []).find((p) => p.id === item.productId);
       normalizedItems.push({
         productId: item.productId,
         productName: origItem.productName || item.productName,
+        groupId: origItem.groupId || retProd?.groupId || undefined,
+        groupName: origItem.groupName || retProd?.groupName || '',
+        categoryId: origItem.categoryId || retProd?.categoryId || undefined,
+        categoryName: origItem.categoryName || retProd?.category || '',
         unit: origItem.unit || item.unit,
         unitFactor: Number(origItem.unitFactor || item.unitFactor || 1),
         quantity: qty,
@@ -5600,7 +5715,14 @@ export async function approvePurchaseReturnRequest(requestId, payload = {}, acto
           returnedMap[it.productId] = round3(prevRet + it.quantity);
           const lineTotal = round2(it.quantity * it.unitPrice);
           grandTotal = round2(grandTotal + lineTotal);
-          normalizedItems.push({ ...it, total: lineTotal });
+          normalizedItems.push({
+            ...it,
+            groupId: origItem.groupId || undefined,
+            groupName: origItem.groupName || '',
+            categoryId: origItem.categoryId || undefined,
+            categoryName: origItem.categoryName || '',
+            total: lineTotal,
+          });
         }
 
         const stRes = await client.query(`SELECT allow_negative_stock FROM system_settings LIMIT 1`);
@@ -5674,10 +5796,17 @@ export async function approvePurchaseReturnRequest(requestId, payload = {}, acto
 
         for (let i = 0; i < normalizedItems.length; i++) {
           const it = normalizedItems[i];
+          const pMetaRes = !it.categoryName
+            ? (await client.query(`SELECT group_id, group_name, category_id, category FROM products WHERE id = $1 LIMIT 1`, [it.productId])).rows[0]
+            : null;
+          it.groupId = it.groupId || pMetaRes?.group_id || undefined;
+          it.groupName = it.groupName || pMetaRes?.group_name || '';
+          it.categoryId = it.categoryId || pMetaRes?.category_id || undefined;
+          it.categoryName = it.categoryName || pMetaRes?.category || '';
           await client.query(
-            `INSERT INTO invoice_return_items (id, return_id, product_id, product_name, unit, unit_factor, quantity, unit_price, total)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-            [`${retId}-RITM-${i + 1}`, retId, it.productId, it.productName, it.unit, it.unitFactor, it.quantity, it.unitPrice, it.total]
+            `INSERT INTO invoice_return_items (id, return_id, product_id, product_name, group_id, group_name, category_id, category_name, unit, unit_factor, quantity, unit_price, total)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+            [`${retId}-RITM-${i + 1}`, retId, it.productId, it.productName, it.groupId || null, it.groupName || '', it.categoryId || null, it.categoryName || '', it.unit, it.unitFactor, it.quantity, it.unitPrice, it.total]
           );
 
           const pRes = await client.query(`SELECT * FROM products WHERE id = $1 FOR UPDATE`, [it.productId]);
@@ -5862,7 +5991,15 @@ export async function approvePurchaseReturnRequest(requestId, payload = {}, acto
           returnedMap[it.productId] = round3(prevRet + it.quantity);
           const lineTotal = round2(it.quantity * it.unitPrice);
           grandTotal = round2(grandTotal + lineTotal);
-          normalizedItems.push({ ...it, total: lineTotal });
+          const retProd = (db.products || []).find((p) => p.id === it.productId);
+          normalizedItems.push({
+            ...it,
+            groupId: origItem.groupId || retProd?.groupId || undefined,
+            groupName: origItem.groupName || retProd?.groupName || '',
+            categoryId: origItem.categoryId || retProd?.categoryId || undefined,
+            categoryName: origItem.categoryName || retProd?.category || '',
+            total: lineTotal,
+          });
         }
 
         const allowNeg = Boolean(db.settings?.allowNegativeStock) && Boolean(actor?.permissions?.canAllowNegativeInventory);
@@ -6585,7 +6722,14 @@ export async function approveSalesReturnRequest(requestId, payload = {}, actor, 
           returnedMap[it.productId] = round3(prevRet + it.quantity);
           const lineTotal = round2(it.quantity * it.unitPrice);
           grandTotal = round2(grandTotal + lineTotal);
-          normalizedItems.push({ ...it, total: lineTotal });
+          normalizedItems.push({
+            ...it,
+            groupId: origItem.groupId || undefined,
+            groupName: origItem.groupName || '',
+            categoryId: origItem.categoryId || undefined,
+            categoryName: origItem.categoryName || '',
+            total: lineTotal,
+          });
         }
 
         const prevRetValRes = await client.query(
@@ -6649,10 +6793,17 @@ export async function approveSalesReturnRequest(requestId, payload = {}, actor, 
 
         for (let i = 0; i < normalizedItems.length; i++) {
           const it = normalizedItems[i];
+          const pMetaRes = !it.categoryName
+            ? (await client.query(`SELECT group_id, group_name, category_id, category FROM products WHERE id = $1 LIMIT 1`, [it.productId])).rows[0]
+            : null;
+          it.groupId = it.groupId || pMetaRes?.group_id || undefined;
+          it.groupName = it.groupName || pMetaRes?.group_name || '';
+          it.categoryId = it.categoryId || pMetaRes?.category_id || undefined;
+          it.categoryName = it.categoryName || pMetaRes?.category || '';
           await client.query(
-            `INSERT INTO invoice_return_items (id, return_id, product_id, product_name, unit, unit_factor, quantity, unit_price, total)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-            [`${retId}-RITM-${i + 1}`, retId, it.productId, it.productName, it.unit, it.unitFactor, it.quantity, it.unitPrice, it.total]
+            `INSERT INTO invoice_return_items (id, return_id, product_id, product_name, group_id, group_name, category_id, category_name, unit, unit_factor, quantity, unit_price, total)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+            [`${retId}-RITM-${i + 1}`, retId, it.productId, it.productName, it.groupId || null, it.groupName || '', it.categoryId || null, it.categoryName || '', it.unit, it.unitFactor, it.quantity, it.unitPrice, it.total]
           );
 
           const pRes = await client.query(`SELECT * FROM products WHERE id = $1 FOR UPDATE`, [it.productId]);
@@ -6838,7 +6989,15 @@ export async function approveSalesReturnRequest(requestId, payload = {}, actor, 
           returnedMap[it.productId] = round3(prevRet + it.quantity);
           const lineTotal = round2(it.quantity * it.unitPrice);
           grandTotal = round2(grandTotal + lineTotal);
-          normalizedItems.push({ ...it, total: lineTotal });
+          const retProd = (db.products || []).find((p) => p.id === it.productId);
+          normalizedItems.push({
+            ...it,
+            groupId: origItem.groupId || retProd?.groupId || undefined,
+            groupName: origItem.groupName || retProd?.groupName || '',
+            categoryId: origItem.categoryId || retProd?.categoryId || undefined,
+            categoryName: origItem.categoryName || retProd?.category || '',
+            total: lineTotal,
+          });
         }
 
         const prevReturnedVal = (db.invoiceReturns || [])

@@ -198,9 +198,20 @@ export interface ProductUnit {
   barcode?: string;
 }
 
+export interface ProductGroup {
+  id: string;
+  name: string;
+  description?: string;
+  status: 'active' | 'suspended';
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface ProductCategory {
   id: string;
   name: string;
+  groupId?: string;
+  groupName?: string;
   description?: string;
   status: 'active' | 'suspended';
   createdAt: string;
@@ -213,6 +224,8 @@ export interface Product {
   name: string;
   category: string;
   categoryId?: string;
+  groupId?: string;
+  groupName?: string;
   baseUnit: string;     // الوحدة الصغرى الأساسية: قطعة، كيس، كيلو
   units: ProductUnit[]; // وحدات القياس الإضافية
   size?: string;        // المقاس عند الحاجة
@@ -316,6 +329,9 @@ export interface InlinePurchaseNewProduct {
   name: string;
   barcode?: string;
   code?: string;
+  groupId?: string;
+  groupName?: string;
+  categoryId?: string;
   category?: string;
   baseUnit?: string;
   purchasePrice?: number;
@@ -327,6 +343,10 @@ export interface InvoiceItem {
   productId: string;
   productName: string;
   barcode: string;
+  groupId?: string;
+  groupName?: string;
+  categoryId?: string;
+  categoryName?: string;
   unit: string;
   unitFactor: number;
   quantity: number;
@@ -468,6 +488,10 @@ export interface Invoice {
 export interface InvoiceReturnItem {
   productId: string;
   productName: string;
+  groupId?: string;
+  groupName?: string;
+  categoryId?: string;
+  categoryName?: string;
   unit: string;
   unitFactor?: number;
   quantity: number;

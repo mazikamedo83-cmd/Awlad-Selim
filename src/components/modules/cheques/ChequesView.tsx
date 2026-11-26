@@ -575,7 +575,6 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
                 type="number"
                 min="1"
                 required
-                placeholder="0.00"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value === '' ? '' : Number(e.target.value))}
                 className="w-full h-8 border border-slate-300 rounded-md px-2 py-1 font-mono font-black text-center"
@@ -708,7 +707,6 @@ export const ChequesView: React.FC<ChequesViewProps> = ({ initialTab }) => {
         variant="danger"
         requireInput
         inputLabel={t('سبب رفض / ارتداد الشيك:', 'Rejection / Bounce Reason:')}
-        inputPlaceholder={t('مثال: عدم كفاية الرصيد أو خطأ في التوقيع...', 'e.g., Insufficient funds or signature mismatch...')}
         isLoading={isRejectingCheque}
         title={t('تأكيد رفض الشيك البنكي', 'Confirm Cheque Rejection')}
         message={

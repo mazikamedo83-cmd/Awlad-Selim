@@ -149,6 +149,7 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
 
     const users = Array.isArray(sourceData.users) ? sourceData.users : [];
     const warehouses = Array.isArray(sourceData.warehouses) ? sourceData.warehouses : [];
+    const productGroups = Array.isArray(sourceData.productGroups) ? sourceData.productGroups : [];
     const categories = Array.isArray(sourceData.categories) ? sourceData.categories : [];
     const products = Array.isArray(sourceData.products) ? sourceData.products : [];
     const customers = Array.isArray(sourceData.customers) ? sourceData.customers : [];
@@ -431,13 +432,45 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
           details.warehouses++;
         }
 
+        // 3b. Product Groups
+        const normMigratorText = (v) =>
+          String(v || '')
+            .trim()
+            .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
+            .replace(/[أإآ]/g, 'ا')
+            .replace(/ة/g, 'ه')
+            .replace(/ى/g, 'ي')
+            .replace(/\s+/g, ' ')
+            .toLowerCase();
+        const groupMapById = new Map();
+        for (const grp of productGroups) {
+          const gNorm = normMigratorText(grp.name);
+          groupMapById.set(grp.id, grp);
+          await client.query(`
+            INSERT INTO product_groups (id, name, normalized_name, description, status, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, normalized_name = EXCLUDED.normalized_name, status = EXCLUDED.status;
+          `, [
+            grp.id,
+            grp.name,
+            gNorm || grp.id,
+            grp.description || '',
+            grp.status || 'active',
+            grp.createdAt || new Date().toISOString(),
+            grp.updatedAt || grp.createdAt || new Date().toISOString(),
+          ]);
+        }
+
         // 4. Categories
         for (const cat of categories) {
+          const cNorm = normMigratorText(cat.name) || cat.id;
+          const gId = String(cat.groupId || '').trim();
+          const gName = cat.groupName || groupMapById.get(gId)?.name || '';
           await client.query(`
-            INSERT INTO product_categories (id, name, description, status, created_at)
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, status = EXCLUDED.status;
-          `, [cat.id, cat.name, cat.description || '', cat.status || 'active', cat.createdAt || new Date().toISOString()]);
+            INSERT INTO product_categories (id, name, normalized_name, group_id, group_name, description, status, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, normalized_name = EXCLUDED.normalized_name, group_id = EXCLUDED.group_id, group_name = EXCLUDED.group_name, status = EXCLUDED.status;
+          `, [cat.id, cat.name, cNorm, gId, gName, cat.description || '', cat.status || 'active', cat.createdAt || new Date().toISOString()]);
           details.categories++;
         }
 
@@ -448,11 +481,17 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
           const minStock = Number(p.minStockLevel ?? p.minStockLimit ?? 0);
           const status = p.status || (p.isActive === false ? 'archived' : 'active');
           const baseUnit = p.baseUnit || p.packageType || 'قطعة';
+          const pGroupId = p.groupId || null;
+          const pGroupName = p.groupName || (pGroupId ? groupMapById.get(pGroupId)?.name || '' : '');
           await client.query(`
-            INSERT INTO products (id, code, barcode, name, category, category_id, base_unit, size, color, purchase_price, selling_price, min_stock_level, stock_per_warehouse, image, notes, status, import_batch_id, imported_from_file, source_file_name, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+            INSERT INTO products (id, code, barcode, name, category, category_id, group_id, group_name, base_unit, size, color, purchase_price, selling_price, min_stock_level, stock_per_warehouse, image, notes, status, import_batch_id, imported_from_file, source_file_name, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
             ON CONFLICT (id) DO UPDATE SET
               name = EXCLUDED.name,
+              category = EXCLUDED.category,
+              category_id = EXCLUDED.category_id,
+              group_id = EXCLUDED.group_id,
+              group_name = EXCLUDED.group_name,
               purchase_price = EXCLUDED.purchase_price,
               selling_price = EXCLUDED.selling_price,
               stock_per_warehouse = EXCLUDED.stock_per_warehouse,
@@ -468,6 +507,8 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
             p.name,
             p.category || 'عام',
             p.categoryId || null,
+            pGroupId,
+            pGroupName,
             baseUnit,
             p.size || '',
             p.color || '',
@@ -752,9 +793,10 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
                 details.warnings.push(`تجاهل بند فاتورة (${inv.invoiceNumber}) لصنف محذوف (${it.productId})`);
                 continue;
               }
+              const snapProd = productMap.get(it.productId);
               await client.query(`
-                INSERT INTO invoice_items (id, invoice_id, product_id, product_name, barcode, unit, unit_factor, quantity, unit_price, purchase_price_at_time, discount, total)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                INSERT INTO invoice_items (id, invoice_id, product_id, product_name, barcode, group_id, group_name, category_id, category_name, unit, unit_factor, quantity, unit_price, purchase_price_at_time, discount, total)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
                 ON CONFLICT (id) DO NOTHING;
               `, [
                 it.id || `${inv.id}-ITM-${idx + 1}`,
@@ -762,6 +804,10 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
                 it.productId,
                 it.productName,
                 it.barcode || '',
+                it.groupId || snapProd?.groupId || null,
+                it.groupName || snapProd?.groupName || '',
+                it.categoryId || snapProd?.categoryId || null,
+                it.categoryName || snapProd?.category || '',
                 it.unit || 'قطعة',
                 Number(it.unitFactor || 1),
                 Number(it.quantity || 0),
@@ -836,15 +882,20 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
             for (let idx = 0; idx < ret.items.length; idx++) {
               const it = ret.items[idx];
               if (!productMap.has(it.productId)) continue;
+              const snapProd = productMap.get(it.productId);
               await client.query(`
-                INSERT INTO invoice_return_items (id, return_id, product_id, product_name, unit, unit_factor, quantity, unit_price, total)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                INSERT INTO invoice_return_items (id, return_id, product_id, product_name, group_id, group_name, category_id, category_name, unit, unit_factor, quantity, unit_price, total)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
                 ON CONFLICT (id) DO NOTHING;
               `, [
                 `${ret.id}-RITM-${idx + 1}`,
                 ret.id,
                 it.productId,
                 it.productName,
+                it.groupId || snapProd?.groupId || null,
+                it.groupName || snapProd?.groupName || '',
+                it.categoryId || snapProd?.categoryId || null,
+                it.categoryName || snapProd?.category || '',
                 it.unit || 'قطعة',
                 Number(it.unitFactor || 1),
                 Number(it.quantity || 0),
@@ -1555,7 +1606,7 @@ export async function rollbackMigration(migrationIdOrBackup, executedBy = 'مد�
         'rep_custody_operations', 'rep_item_transfer_items', 'rep_item_transfers', 'rep_transfers',
         'stock_movements', 'financial_transactions', 'cheques', 'installments',
         'expenses_incomes',
-        'product_units', 'products', 'product_categories', 'customers', 'suppliers',
+        'product_units', 'products', 'product_categories', 'product_groups', 'customers', 'suppliers',
         'representatives', 'warehouses', 'cashboxes', 'employees', 'identity_conflicts', 'identity_roles', 'identities', 'user_sessions', 'users', 'system_settings',
       ];
       for (const tbl of tables) {

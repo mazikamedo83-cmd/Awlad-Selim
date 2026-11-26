@@ -696,7 +696,6 @@ export const StorefrontManagerView: React.FC = () => {
                       type="text"
                       value={bannerTitle}
                       onChange={(e) => setBannerTitle(e.target.value)}
-                      placeholder={t('مثال: عروض أول الشهر على الزيوت', 'e.g., Monthly Oil Promotions')}
                       className="w-full min-h-[32px] h-8 px-2.5 rounded-md border border-slate-300 text-xs font-bold"
                     />
                   </div>
@@ -706,7 +705,6 @@ export const StorefrontManagerView: React.FC = () => {
                       type="text"
                       value={bannerSubtitle}
                       onChange={(e) => setBannerSubtitle(e.target.value)}
-                      placeholder={t('مثال: خصومات حصرية لطلبات الجملة', 'e.g., Exclusive wholesale order discounts')}
                       className="w-full min-h-[32px] h-8 px-2.5 rounded-md border border-slate-300 text-xs font-bold"
                     />
                   </div>
@@ -1111,7 +1109,6 @@ export const StorefrontManagerView: React.FC = () => {
                       type="text"
                       value={scLabel}
                       onChange={(e) => setScLabel(e.target.value)}
-                      placeholder={t('مثال: عروض اليوم', 'e.g., Today Offers')}
                       className="w-full min-h-[32px] h-8 px-2.5 rounded-md border border-slate-300 text-xs font-bold"
                     />
                   </div>
@@ -1325,7 +1322,6 @@ export const StorefrontManagerView: React.FC = () => {
                       type="text"
                       value={dispName}
                       onChange={(e) => setDispName(e.target.value)}
-                      placeholder={t('مثال: تجهيزات رمضان / الأكثر طلباً', 'e.g., Seasonal Specials / Best Sellers')}
                       className="w-full min-h-[32px] h-8 px-2.5 rounded-md border border-slate-300 text-xs font-bold"
                     />
                   </div>

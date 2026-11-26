@@ -26,6 +26,7 @@ import {
   getCustomerById,
   recordCustomerPayment,
   getRepresentativeByUserId,
+  listProductGroups,
   listCategories,
   listProducts,
   updateProduct,
@@ -730,8 +731,9 @@ router.get(
           }
         : null;
 
-      const [products, categories, customerItemOrders, statement, syncConflicts, publishedStorefront, customerFavorites] = await Promise.all([
+      const [products, productGroups, categories, customerItemOrders, statement, syncConflicts, publishedStorefront, customerFavorites] = await Promise.all([
         listProducts({ forCustomer: true, allowCustomerPriceView: allowPriceView }),
+        listProductGroups(),
         listCategories(),
         listOrders(req.auth),
         cust ? getCustomerStatementData(cust.id, { allowPriceView }) : Promise.resolve(null),
@@ -750,6 +752,7 @@ router.get(
         publishedStorefront,
         customerFavorites,
         products,
+        productGroups,
         categories,
         customerItemOrders,
         orderAdvancePayments: statement?.advancePayments || [],

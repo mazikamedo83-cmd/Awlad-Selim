@@ -25,12 +25,18 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
   onClose,
   onSaved,
 }) => {
-  const { products, categories, warehouses, settings, addProduct } = useData();
+  const { products, productGroups, categories, warehouses, settings, addProduct, addProductGroup, addCategory } = useData();
   const { t, dir, isRtl } = usePreferences();
 
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
+  const [groupId, setGroupId] = useState('');
+  const [categoryId, setCategoryId] = useState('');
   const [category, setCategory] = useState('');
+  const [showQuickGroup, setShowQuickGroup] = useState(false);
+  const [quickGroupName, setQuickGroupName] = useState('');
+  const [showQuickCat, setShowQuickCat] = useState(false);
+  const [quickCatName, setQuickCatName] = useState('');
   const [availableQty, setAvailableQty] = useState<number | ''>('');
   const [selectedWarehouseId, setSelectedWarehouseId] = useState(
     warehouses.find((w) => w.isDefault)?.id || warehouses[0]?.id || ''
@@ -65,16 +71,11 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  const categoryOptions = useMemo(() => {
-    const set = new Set<string>();
-    categories.forEach((c) => {
-      if (c.name) set.add(c.name);
-    });
-    products.forEach((p) => {
-      if (p.category) set.add(p.category);
-    });
-    return Array.from(set);
-  }, [categories, products]);
+  const scopedCategories = useMemo(() => {
+    const active = categories.filter((c) => c.status !== 'suspended');
+    if (!groupId) return active;
+    return active.filter((c) => (c.groupId || '') === groupId);
+  }, [categories, groupId]);
 
   const activeEntryFactor = useMemo(() => {
     if (qtyEntryUnit === '2') return Math.max(1, Number(unit2Factor) || 1);
@@ -114,7 +115,13 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
   const resetForm = () => {
     setName('');
     setNotes('');
+    setGroupId('');
+    setCategoryId('');
     setCategory('');
+    setShowQuickGroup(false);
+    setQuickGroupName('');
+    setShowQuickCat(false);
+    setQuickCatName('');
     setAvailableQty('');
     setBaseUnit('');
     setBarcode1('');
@@ -198,11 +205,16 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
 
     setIsSaving(true);
     try {
+      const selectedGroup = productGroups.find((g) => g.id === groupId);
+      const selectedCat = categories.find((c) => c.id === categoryId);
       const saved = await addProduct({
-        code: `PRD-${products.length + 101}`,
+        code: `${Date.now().toString().slice(-6)}-${products.length + 1}`,
         barcode: barcode1.trim() || generateBarcode(),
         name: name.trim(),
-        category: category.trim() || 'عام',
+        groupId: selectedGroup?.id || selectedCat?.groupId || undefined,
+        groupName: selectedGroup?.name || selectedCat?.groupName || undefined,
+        categoryId: selectedCat?.id || undefined,
+        category: selectedCat?.name || category.trim(),
         baseUnit: baseUnit.trim(),
         units: extraUnits,
         purchasePrice: p1,
@@ -263,32 +275,144 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
             <div>
-              <label className="block font-bold text-slate-700 mb-0.5">{t('ملاحظات على المنتج', 'Product Notes')}</label>
-              <input
-                type="text"
-                placeholder={t('ملاحظات اختيارية...', 'Optional notes...')}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="w-full h-8 border border-slate-300 rounded-md px-2 bg-white focus:outline-hidden focus:border-[#003589]"
-              />
+              <div className="flex items-center justify-between mb-0.5">
+                <label className="font-bold text-slate-700">{t('المجموعة', 'Group')}</label>
+                <button
+                  type="button"
+                  onClick={() => setShowQuickGroup((v) => !v)}
+                  className="text-[11px] font-black text-[#003589] cursor-pointer"
+                >
+                  {showQuickGroup ? t('إلغاء', 'Cancel') : t('+ إضافة مجموعة', '+ Add Group')}
+                </button>
+              </div>
+              <select
+                value={groupId}
+                onChange={(e) => {
+                  const nextGid = e.target.value;
+                  setGroupId(nextGid);
+                  if (categoryId && !getScopedMatch(nextGid, categoryId)) {
+                    setCategoryId('');
+                    setCategory('');
+                  }
+                  function getScopedMatch(gid: string, cid: string) {
+                    if (!gid) return true;
+                    const found = categories.find((c) => c.id === cid);
+                    return found ? (found.groupId || '') === gid : false;
+                  }
+                }}
+                className="w-full h-8 border border-slate-300 rounded-md px-2 font-bold bg-white"
+              >
+                <option value="">{t('-- اختر المجموعة --', '-- Select Group --')}</option>
+                {productGroups.filter((g) => g.status !== 'suspended').map((g) => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+              </select>
+              {showQuickGroup && (
+                <div className="flex items-center gap-1 mt-1">
+                  <input
+                    type="text"
+                    value={quickGroupName}
+                    onChange={(e) => setQuickGroupName(e.target.value)}
+                    placeholder={t('اسم المجموعة الجديدة', 'New group name')}
+                    className="flex-1 h-7 border border-slate-300 rounded px-2 font-bold bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!quickGroupName.trim()) return;
+                      const res = await addProductGroup(quickGroupName.trim());
+                      if (res.success && res.productGroup) {
+                        setGroupId(res.productGroup.id);
+                        setCategoryId('');
+                        setCategory('');
+                        setQuickGroupName('');
+                        setShowQuickGroup(false);
+                      } else if (res.error) {
+                        setError(t(res.error));
+                      }
+                    }}
+                    className="h-7 px-2 bg-[#003589] text-white rounded font-bold cursor-pointer"
+                  >
+                    {t('حفظ', 'Save')}
+                  </button>
+                </div>
+              )}
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 mb-0.5">{t('التصنيف', 'Category')}</label>
-              <input
-                type="text"
-                list="mobile-add-prod-categories"
-                placeholder={t('اختر أو اكتب التصنيف...', 'Select or enter category...')}
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full h-8 border border-slate-300 rounded-md px-2 font-bold bg-white focus:outline-hidden focus:border-[#003589]"
-              />
-              <datalist id="mobile-add-prod-categories">
-                {categoryOptions.map((c) => (
-                  <option key={c} value={c} />
+              <div className="flex items-center justify-between mb-0.5">
+                <label className="font-bold text-slate-700">{t('التصنيف', 'Category')}</label>
+                <button
+                  type="button"
+                  onClick={() => setShowQuickCat((v) => !v)}
+                  className="text-[11px] font-black text-[#003589] cursor-pointer"
+                >
+                  {showQuickCat ? t('إلغاء', 'Cancel') : t('+ إضافة تصنيف', '+ Add Category')}
+                </button>
+              </div>
+              <select
+                value={categoryId}
+                onChange={(e) => {
+                  const nextCid = e.target.value;
+                  const cat = categories.find((c) => c.id === nextCid);
+                  setCategoryId(nextCid);
+                  setCategory(cat?.name || '');
+                  if (!groupId && cat?.groupId) {
+                    setGroupId(cat.groupId);
+                  }
+                }}
+                className="w-full h-8 border border-slate-300 rounded-md px-2 font-bold bg-white"
+              >
+                <option value="">{t('-- اختر التصنيف --', '-- Select Category --')}</option>
+                {scopedCategories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {t(c.name)}
+                    {!groupId && c.groupName ? ` (${c.groupName})` : ''}
+                  </option>
                 ))}
-              </datalist>
+              </select>
+              {showQuickCat && (
+                <div className="flex items-center gap-1 mt-1">
+                  <input
+                    type="text"
+                    value={quickCatName}
+                    onChange={(e) => setQuickCatName(e.target.value)}
+                    placeholder={t('اسم التصنيف الجديد', 'New category name')}
+                    className="flex-1 h-7 border border-slate-300 rounded px-2 font-bold bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!quickCatName.trim()) return;
+                      const res = await addCategory(quickCatName.trim(), '', groupId);
+                      if (res.success && res.category) {
+                        setCategoryId(res.category.id);
+                        setCategory(res.category.name);
+                        if (res.category.groupId) setGroupId(res.category.groupId);
+                        setQuickCatName('');
+                        setShowQuickCat(false);
+                      } else if (res.error) {
+                        setError(t(res.error));
+                      }
+                    }}
+                    className="h-7 px-2 bg-[#003589] text-white rounded font-bold cursor-pointer"
+                  >
+                    {t('حفظ', 'Save')}
+                  </button>
+                </div>
+              )}
             </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-slate-700 mb-0.5">{t('ملاحظات على المنتج', 'Product Notes')}</label>
+            <input
+              type="text"
+              placeholder={t('ملاحظات اختيارية', 'Optional notes')}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="w-full h-8 border border-slate-300 rounded-md px-2 bg-white focus:outline-hidden focus:border-[#003589]"
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-1.5">
@@ -298,7 +422,6 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                 type="number"
                 min="0"
                 step="any"
-                placeholder="0"
                 value={availableQty}
                 onChange={(e) =>
                   setAvailableQty(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))
@@ -363,7 +486,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                 <input
                   type="text"
                   required
-                  placeholder={t('قطعة / كيس / كيلو / علبة', 'Piece / Bag / Kg / Box')}
+                  placeholder={t('اسم الوحدة الأساسية', 'Base unit name')}
                   value={baseUnit}
                   onChange={(e) => setBaseUnit(e.target.value)}
                   className="w-full h-8 border border-slate-300 rounded-md px-2 font-bold"
@@ -406,7 +529,6 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                     type="number"
                     step="0.01"
                     min="0"
-                    placeholder="0.00"
                     value={purchasePrice1}
                     onChange={(e) =>
                       setPurchasePrice1(e.target.value === '' ? '' : Number(e.target.value))
@@ -420,7 +542,6 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                     type="number"
                     step="0.01"
                     min="0"
-                    placeholder="0.00"
                     value={sellingPrice1}
                     onChange={(e) =>
                       setSellingPrice1(e.target.value === '' ? '' : Number(e.target.value))
@@ -450,7 +571,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                   <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">{t('اسم الوحدة', 'Unit Name')}</label>
                   <input
                     type="text"
-                    placeholder={t('كرتونة / باكت', 'Carton / Pack')}
+                    placeholder={t('اسم الوحدة', 'Unit name')}
                     value={unit2Name}
                     onChange={(e) => setUnit2Name(e.target.value)}
                     className="w-full h-8 border border-slate-300 rounded-md px-2 font-bold"
@@ -462,7 +583,6 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                     type="number"
                     min="1"
                     step="any"
-                    placeholder={t('مثال: 12', 'e.g. 12')}
                     value={unit2Factor}
                     onChange={(e) =>
                       setUnit2Factor(e.target.value === '' ? '' : Number(e.target.value))
@@ -495,7 +615,6 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                     type="number"
                     step="0.01"
                     min="0"
-                    placeholder="0.00"
                     value={purchasePrice2}
                     onChange={(e) =>
                       setPurchasePrice2(e.target.value === '' ? '' : Number(e.target.value))
@@ -509,7 +628,6 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                     type="number"
                     step="0.01"
                     min="0"
-                    placeholder="0.00"
                     value={sellingPrice2}
                     onChange={(e) =>
                       setSellingPrice2(e.target.value === '' ? '' : Number(e.target.value))
@@ -539,7 +657,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                   <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">{t('اسم الوحدة', 'Unit Name')}</label>
                   <input
                     type="text"
-                    placeholder={t('بالة / طرد', 'Bale / Parcel')}
+                    placeholder={t('اسم الوحدة', 'Unit name')}
                     value={unit3Name}
                     onChange={(e) => setUnit3Name(e.target.value)}
                     className="w-full h-8 border border-slate-300 rounded-md px-2 font-bold"
@@ -551,7 +669,6 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                     type="number"
                     min="1"
                     step="any"
-                    placeholder={t('مثال: 48', 'e.g. 48')}
                     value={unit3Factor}
                     onChange={(e) =>
                       setUnit3Factor(e.target.value === '' ? '' : Number(e.target.value))
@@ -584,7 +701,6 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                     type="number"
                     step="0.01"
                     min="0"
-                    placeholder="0.00"
                     value={purchasePrice3}
                     onChange={(e) =>
                       setPurchasePrice3(e.target.value === '' ? '' : Number(e.target.value))
@@ -598,7 +714,6 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                     type="number"
                     step="0.01"
                     min="0"
-                    placeholder="0.00"
                     value={sellingPrice3}
                     onChange={(e) =>
                       setSellingPrice3(e.target.value === '' ? '' : Number(e.target.value))

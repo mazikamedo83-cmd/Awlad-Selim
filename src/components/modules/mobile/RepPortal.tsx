@@ -46,6 +46,11 @@ import { MobileSendReceiveScreen } from './MobileSendReceiveScreen';
 import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { ProductSearchSelect } from '../../common/ProductSearchSelect';
+import {
+  LinkedGroupCategoryFilter,
+  filterProductsByGroupCategory,
+  getScopedCategoriesForGroup,
+} from '../../common/LinkedGroupCategoryFilter';
 import { SearchableFilterSelect, type SearchableFilterOption } from '../../common/SearchableFilterSelect';
 
 const roundQty3 = (val: number): number => Math.round((Number(val || 0) + Number.EPSILON) * 1000) / 1000;
@@ -322,6 +327,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [invWarehouseId, setInvWarehouseId] = useState<string>('');
   const [invDate, setInvDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [invBarcodeInput, setInvBarcodeInput] = useState<string>('');
+  const [invGroupFilter, setInvGroupFilter] = useState<string>('all');
+  const [invCatFilter, setInvCatFilter] = useState<string>('all');
   const [invProductId, setInvProductId] = useState<string>('');
   const [invOnlyVanStock, setInvOnlyVanStock] = useState<boolean>(false);
   const [invUnitName, setInvUnitName] = useState<string>('');
@@ -343,6 +350,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     purchasePriceAtTime: number;
     discount: number;
     total: number;
+    groupId?: string;
+    groupName?: string;
+    categoryId?: string;
+    categoryName?: string;
     notes?: string;
   }>>([]);
   const [priceHistoryMap, setPriceHistoryMap] = useState<Record<string, CustomerPriceHistoryEntry[]>>({});
@@ -375,6 +386,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [purWarehouseId, setPurWarehouseId] = useState<string>('');
   const [purDate, setPurDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [purBarcodeInput, setPurBarcodeInput] = useState<string>('');
+  const [purGroupFilter, setPurGroupFilter] = useState<string>('all');
+  const [purCatFilter, setPurCatFilter] = useState<string>('all');
   const [purProductId, setPurProductId] = useState<string>('');
   const [purUnitName, setPurUnitName] = useState<string>('');
   const [purQty, setPurQty] = useState<number | ''>('');
@@ -395,6 +408,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     purchasePriceAtTime: number;
     discount: number;
     total: number;
+    groupId?: string;
+    groupName?: string;
+    categoryId?: string;
+    categoryName?: string;
     notes?: string;
     newProduct?: InlinePurchaseNewProduct;
   }>>([]);
@@ -402,6 +419,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [newPurProdName, setNewPurProdName] = useState('');
   const [newPurProdBarcode, setNewPurProdBarcode] = useState('');
   const [newPurProdCode, setNewPurProdCode] = useState('');
+  const [newPurProdGroupId, setNewPurProdGroupId] = useState('');
+  const [newPurProdCategoryId, setNewPurProdCategoryId] = useState('');
   const [newPurProdCategory, setNewPurProdCategory] = useState('');
   const [newPurProdBaseUnit, setNewPurProdBaseUnit] = useState('');
   const [newPurProdQty, setNewPurProdQty] = useState<number | ''>('');
@@ -428,6 +447,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [sRetCustomerId, setSRetCustomerId] = useState('');
   const [sRetInvoiceId, setSRetInvoiceId] = useState('');
   const [sRetWarehouseId, setSRetWarehouseId] = useState('');
+  const [sRetGroupFilter, setSRetGroupFilter] = useState<string>('all');
+  const [sRetCatFilter, setSRetCatFilter] = useState<string>('all');
   const [sRetProductId, setSRetProductId] = useState('');
   const [sRetQty, setSRetQty] = useState<number | ''>('');
   const [sRetPrice, setSRetPrice] = useState<number | ''>('');
@@ -442,12 +463,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     quantity: number;
     unitPrice: number;
     total: number;
+    groupId?: string;
+    groupName?: string;
+    categoryId?: string;
+    categoryName?: string;
   }>>([]);
   const [isSubmittingSRet, setIsSubmittingSRet] = useState(false);
 
   const [pRetSupplierId, setPRetSupplierId] = useState('');
   const [pRetInvoiceId, setPRetInvoiceId] = useState('');
   const [pRetWarehouseId, setPRetWarehouseId] = useState('');
+  const [pRetGroupFilter, setPRetGroupFilter] = useState<string>('all');
+  const [pRetCatFilter, setPRetCatFilter] = useState<string>('all');
   const [pRetProductId, setPRetProductId] = useState('');
   const [pRetQty, setPRetQty] = useState<number | ''>('');
   const [pRetPrice, setPRetPrice] = useState<number | ''>('');
@@ -462,6 +489,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     quantity: number;
     unitPrice: number;
     total: number;
+    groupId?: string;
+    groupName?: string;
+    categoryId?: string;
+    categoryName?: string;
   }>>([]);
   const [isSubmittingPRet, setIsSubmittingPRet] = useState(false);
 
@@ -554,6 +585,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
   // ==================== 6. PRICE QUOTES STATE ====================
   const [quoteCustomerId, setQuoteCustomerId] = useState('');
+  const [quoteGroupFilter, setQuoteGroupFilter] = useState<string>('all');
+  const [quoteCatFilter, setQuoteCatFilter] = useState<string>('all');
   const [quoteProductId, setQuoteProductId] = useState('');
   const [quoteUnitName, setQuoteUnitName] = useState('');
   const [quoteQty, setQuoteQty] = useState<number | ''>('');
@@ -570,6 +603,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     purchasePriceAtTime: number;
     discount: number;
     total: number;
+    groupId?: string;
+    groupName?: string;
+    categoryId?: string;
+    categoryName?: string;
   }>>([]);
   const [isSubmittingQuote, setIsSubmittingQuote] = useState(false);
   const [convertingQuoteId, setConvertingQuoteId] = useState<string | null>(null);
@@ -592,6 +629,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [isLoadingCustodyStmt, setIsLoadingCustodyStmt] = useState(false);
   const [reqDate, setReqDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [reqBarcodeInput, setReqBarcodeInput] = useState<string>('');
+  const [reqGroupFilter, setReqGroupFilter] = useState<string>('all');
+  const [reqCatFilter, setReqCatFilter] = useState<string>('all');
   const [reqProdId, setReqProdId] = useState('');
   const [reqUnitName, setReqUnitName] = useState('');
   const [reqQty, setReqQty] = useState<number | ''>('');
@@ -618,16 +657,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [retCustodyQty, setRetCustodyQty] = useState<number | ''>('');
   const [retCustodyTargetWhId, setRetCustodyTargetWhId] = useState('');
   const [retCustodyNotes, setRetCustodyNotes] = useState('');
-  const [cashAmount, setCashAmount] = useState<number>(0);
+  const [cashAmount, setCashAmount] = useState<number | ''>('');
   const [cashNotes, setCashNotes] = useState<string>('');
   const [isSendingTransfer, setIsSendingTransfer] = useState(false);
 
   // ==================== 9. REPRESENTATIVE PURCHASE ORDER & DELIVERY ====================
   const [ordCustomerId, setOrdCustomerId] = useState<string>('');
+  const [ordGroupFilter, setOrdGroupFilter] = useState<string>('all');
+  const [ordCatFilter, setOrdCatFilter] = useState<string>('all');
   const [ordProductId, setOrdProductId] = useState<string>('');
   const [ordUnitName, setOrdUnitName] = useState<string>('');
-  const [ordQty, setOrdQty] = useState<number>(1);
-  const [ordPrice, setOrdPrice] = useState<number>(0);
+  const [ordQty, setOrdQty] = useState<number | ''>('');
+  const [ordPrice, setOrdPrice] = useState<number | ''>('');
   const [ordNotes, setOrdNotes] = useState<string>('');
   const [ordItems, setOrdItems] = useState<
     Array<{
@@ -643,7 +684,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
 
   const [deliveringOrder, setDeliveringOrder] = useState<CustomerItemOrderRequest | null>(null);
-  const [deliveryCollectedAmount, setDeliveryCollectedAmount] = useState<number>(0);
+  const [deliveryCollectedAmount, setDeliveryCollectedAmount] = useState<number | ''>('');
   const [deliveryCashboxId, setDeliveryCashboxId] = useState<string>(data.cashboxes[0]?.id || 'CASH-01');
   const [deliveryMethod, setDeliveryMethod] = useState<'cash' | 'bank' | 'cheque'>('cash');
   const [deliveryNotes, setDeliveryNotes] = useState<string>('');
@@ -658,7 +699,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [supStmtError, setSupStmtError] = useState<string | null>(null);
 
   const [payingPurchaseTarget, setPayingPurchaseTarget] = useState<Invoice | null>(null);
-  const [purPayAmount, setPurPayAmount] = useState<number>(0);
+  const [purPayAmount, setPurPayAmount] = useState<number | ''>('');
   const [purPayMethod, setPurPayMethod] = useState<'cash' | 'bank' | 'cheque'>('cash');
   const [purPayDate, setPurPayDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [purPayNotes, setPurPayNotes] = useState<string>('');
@@ -1272,12 +1313,55 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     });
   }, [activeProducts, invOnlyVanStock, effectiveVanId]);
 
+  const productGroups = data.productGroups || [];
+  const productCategories = data.categories || [];
+
+  const scopedInvoicePickerProducts = useMemo(
+    () => filterProductsByGroupCategory(filteredInvoiceProducts, productGroups, productCategories, invGroupFilter, invCatFilter),
+    [filteredInvoiceProducts, productGroups, productCategories, invGroupFilter, invCatFilter]
+  );
+
+  const scopedPurchasePickerProducts = useMemo(
+    () => filterProductsByGroupCategory(activeProducts, productGroups, productCategories, purGroupFilter, purCatFilter),
+    [activeProducts, productGroups, productCategories, purGroupFilter, purCatFilter]
+  );
+
+  const scopedSRetProducts = useMemo(
+    () => filterProductsByGroupCategory(activeProducts, productGroups, productCategories, sRetGroupFilter, sRetCatFilter),
+    [activeProducts, productGroups, productCategories, sRetGroupFilter, sRetCatFilter]
+  );
+
+  const scopedPRetProducts = useMemo(
+    () => filterProductsByGroupCategory(activeProducts, productGroups, productCategories, pRetGroupFilter, pRetCatFilter),
+    [activeProducts, productGroups, productCategories, pRetGroupFilter, pRetCatFilter]
+  );
+
+  const scopedQuoteProducts = useMemo(
+    () => filterProductsByGroupCategory(activeProducts, productGroups, productCategories, quoteGroupFilter, quoteCatFilter),
+    [activeProducts, productGroups, productCategories, quoteGroupFilter, quoteCatFilter]
+  );
+
+  const scopedReqProducts = useMemo(
+    () => filterProductsByGroupCategory(activeProducts, productGroups, productCategories, reqGroupFilter, reqCatFilter),
+    [activeProducts, productGroups, productCategories, reqGroupFilter, reqCatFilter]
+  );
+
+  const scopedOrderProducts = useMemo(
+    () => filterProductsByGroupCategory(activeProducts, productGroups, productCategories, ordGroupFilter, ordCatFilter),
+    [activeProducts, productGroups, productCategories, ordGroupFilter, ordCatFilter]
+  );
+
+  const scopedNewPurCategories = useMemo(
+    () => getScopedCategoriesForGroup(productCategories, newPurProdGroupId, false),
+    [productCategories, newPurProdGroupId]
+  );
+
   const handleSelectProduct = (prodId: string) => {
     setInvProductId(prodId);
     const prod = activeProducts.find((p) => p.id === prodId);
     if (!prod) return;
     setInvUnitName(prod.baseUnit);
-    setInvQty(1);
+    setInvQty('');
     const nextPrice = roundCurrency(prod.sellingPrice || 0);
     setInvPrice(nextPrice > 0 ? nextPrice : '');
   };
@@ -1342,6 +1426,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           purchasePriceAtTime: purchaseAtTime,
           discount: 0,
           total: computeLineTotal(1, unitPrice, 0),
+          groupId: matched.groupId,
+          groupName: matched.groupName,
+          categoryId: matched.categoryId,
+          categoryName: matched.category,
         },
       ];
     });
@@ -1391,6 +1479,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           purchasePriceAtTime,
           discount: 0,
           total,
+          groupId: selectedProduct.groupId,
+          groupName: selectedProduct.groupName,
+          categoryId: selectedProduct.categoryId,
+          categoryName: selectedProduct.category,
         },
       ];
     });
@@ -1752,7 +1844,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     const prod = activeProducts.find((p) => p.id === prodId);
     if (!prod) return;
     setPurUnitName(prod.baseUnit);
-    setPurQty(1);
+    setPurQty('');
     const nextPrice = roundCurrency(prod.purchasePrice || 0);
     setPurPrice(nextPrice > 0 ? nextPrice : '');
   };
@@ -1817,6 +1909,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           purchasePriceAtTime: perBaseCost,
           discount: 0,
           total: computeLineTotal(1, unitPrice, 0),
+          groupId: matched.groupId,
+          groupName: matched.groupName,
+          categoryId: matched.categoryId,
+          categoryName: matched.category,
         },
       ];
     });
@@ -1830,7 +1926,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     setPurUnitName(prod.baseUnit);
     const pPrice = prod.purchasePrice > 0 ? prod.purchasePrice : '';
     setPurPrice(pPrice);
-    const q = newPurProdQty !== '' && Number(newPurProdQty) > 0 ? Number(newPurProdQty) : 1;
+    const q: number | '' = newPurProdQty !== '' && Number(newPurProdQty) > 0 ? Number(newPurProdQty) : '';
     setPurQty(q);
     setFeedback(null);
   };
@@ -1880,6 +1976,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             purchasePriceAtTime: effectiveBuy,
             discount: 0,
             total: computeLineTotal(qtyNum, effectiveBuy),
+            groupId: exact.groupId,
+            groupName: exact.groupName,
+            categoryId: exact.categoryId,
+            categoryName: exact.category,
           },
         ];
       });
@@ -1891,7 +1991,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         ),
       });
     } else {
-      const cleanCategory = newPurProdCategory.trim() || 'أصناف عامة';
+      const chosenGroup = productGroups.find((g) => g.id === newPurProdGroupId);
+      const chosenCat = productCategories.find((c) => c.id === newPurProdCategoryId);
+      const cleanCategory = (chosenCat?.name || newPurProdCategory).trim();
       const cleanUnit = newPurProdBaseUnit.trim() || 'قطعة';
       const cleanBarcode = newPurProdBarcode.trim();
       const cleanCode = newPurProdCode.trim();
@@ -1908,10 +2010,17 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           purchasePriceAtTime: buyPrice,
           discount: 0,
           total: computeLineTotal(qtyNum, buyPrice),
+          groupId: chosenGroup?.id || chosenCat?.groupId,
+          groupName: chosenGroup?.name,
+          categoryId: chosenCat?.id,
+          categoryName: cleanCategory || undefined,
           newProduct: {
             name: cleanName,
             barcode: cleanBarcode || undefined,
             code: cleanCode || undefined,
+            groupId: chosenGroup?.id || chosenCat?.groupId,
+            groupName: chosenGroup?.name,
+            categoryId: chosenCat?.id,
             category: cleanCategory,
             baseUnit: cleanUnit,
             purchasePrice: buyPrice,
@@ -1931,6 +2040,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     setNewPurProdName('');
     setNewPurProdBarcode('');
     setNewPurProdCode('');
+    setNewPurProdGroupId('');
+    setNewPurProdCategoryId('');
+    setNewPurProdCategory('');
+    setNewPurProdBaseUnit('');
     setNewPurProdQty('');
     setNewPurProdBuyPrice('');
     setNewPurProdSellPrice('');
@@ -1978,6 +2091,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           purchasePriceAtTime: perBaseCost,
           discount: 0,
           total: computeLineTotal(qtyNum, priceNum, 0),
+          groupId: prod.groupId,
+          groupName: prod.groupName,
+          categoryId: prod.categoryId,
+          categoryName: prod.category,
         },
       ];
     });
@@ -2027,12 +2144,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         purchasePriceAtTime: it.purchasePriceAtTime ?? it.unitPrice,
         discount: it.discount || 0,
         total: it.total,
+        groupId: it.groupId,
+        groupName: it.groupName,
+        categoryId: it.categoryId,
+        categoryName: it.categoryName,
       }))
     );
     const loadedItemDisc = (inv.items || []).reduce((s, it) => s + Number(it.discount || 0), 0);
-    setPurDiscount(Math.max(0, roundCurrency(Number(inv.discountTotal || 0) - loadedItemDisc)));
+    const loadedHeaderDisc = Math.max(0, roundCurrency(Number(inv.discountTotal || 0) - loadedItemDisc));
+    setPurDiscount(loadedHeaderDisc > 0 ? loadedHeaderDisc : '');
     setPurPaymentType(inv.paymentType || 'cash');
-    setPurPaidAmount(Number(inv.paidAmount || 0));
+    const loadedPaid = Number(inv.paidAmount || 0);
+    setPurPaidAmount(loadedPaid > 0 ? loadedPaid : '');
     setPurCashboxId(inv.cashboxId || data.cashboxes[0]?.id || 'CASH-01');
     setPurNotes(inv.notes || '');
     setPurRecipientUserId(inv.recipientUserId || '');
@@ -2152,7 +2275,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     setIsSubmittingPurchase(false);
     if (res.success) {
       setPurItems([]);
-      setPurDiscount(0);
+      setPurDiscount('');
       setPurNotes('');
       setPurReviewOpen(false);
       setFeedback({
@@ -2576,7 +2699,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
   const openPurchasePaymentModal = (inv: Invoice) => {
     setPayingPurchaseTarget(inv);
-    setPurPayAmount(Math.max(0, Number(inv.remainingAmount || 0)));
+    const remVal = Math.max(0, Number(inv.remainingAmount || 0));
+    setPurPayAmount(remVal > 0 ? remVal : '');
     setPurPayMethod('cash');
     setPurPayDate(new Date().toISOString().split('T')[0]);
     setPurPayNotes('');
@@ -2586,11 +2710,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     e.preventDefault();
     if (!payingPurchaseTarget) return;
     const rem = Math.max(0, Number(payingPurchaseTarget.remainingAmount || 0));
-    if (purPayAmount <= 0) {
+    const purPayAmtNum = Number(purPayAmount || 0);
+    if (purPayAmtNum <= 0) {
       setFeedback({ type: 'error', text: t('يرجى إدخال مبلغ سداد صحيح أكبر من الصفر.', 'Please enter a valid payment amount greater than zero.') });
       return;
     }
-    if (purPayAmount > rem + 0.01) {
+    if (purPayAmtNum > rem + 0.01) {
       setFeedback({
         type: 'error',
         text: t(
@@ -2605,7 +2730,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     try {
       const defaultCb = data.cashboxes[0]?.id || 'CASH-01';
       const res = await data.addInvoicePayment(payingPurchaseTarget.id, {
-        amount: purPayAmount,
+        amount: purPayAmtNum,
         paymentMethod: purPayMethod,
         cashboxId: defaultCb,
         date: purPayDate || new Date().toISOString().split('T')[0],
@@ -3031,6 +3156,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           purchasePriceAtTime: prod.purchasePrice * factor,
           discount: 0,
           total: computeLineTotal(qQty, qPrice),
+          groupId: prod.groupId,
+          groupName: prod.groupName,
+          categoryId: prod.categoryId,
+          categoryName: prod.category,
         },
       ];
     });
@@ -3154,27 +3283,35 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     if (!prod) return;
     if (prod.units && prod.units.length > 0) {
       setOrdUnitName(prod.units[0].name);
-      setOrdPrice(prod.units[0].sellingPrice);
+      const uPrice = Number(prod.units[0].sellingPrice || 0);
+      setOrdPrice(uPrice > 0 ? uPrice : '');
     } else {
       setOrdUnitName(prod.baseUnit);
-      setOrdPrice(prod.sellingPrice);
+      const sPrice = Number(prod.sellingPrice || 0);
+      setOrdPrice(sPrice > 0 ? sPrice : '');
     }
-    setOrdQty(1);
+    setOrdQty('');
   };
 
   const handleOrderUnitChange = (unitName: string) => {
     setOrdUnitName(unitName);
     if (!selectedOrderProduct) return;
     if (unitName === selectedOrderProduct.baseUnit) {
-      setOrdPrice(selectedOrderProduct.sellingPrice);
+      const sPrice = Number(selectedOrderProduct.sellingPrice || 0);
+      setOrdPrice(sPrice > 0 ? sPrice : '');
     } else {
       const u = selectedOrderProduct.units.find((x) => x.name === unitName);
-      if (u) setOrdPrice(u.sellingPrice);
+      if (u) {
+        const uPrice = Number(u.sellingPrice || 0);
+        setOrdPrice(uPrice > 0 ? uPrice : '');
+      }
     }
   };
 
   const handleAddOrderItem = () => {
-    if (!selectedOrderProduct || ordQty <= 0) return;
+    const qtyNum = Number(ordQty || 0);
+    const priceNum = Math.max(0, Number(ordPrice || 0));
+    if (!selectedOrderProduct || qtyNum <= 0) return;
     let unitFactor = 1;
     if (ordUnitName !== selectedOrderProduct.baseUnit) {
       const u = selectedOrderProduct.units.find((x) => x.name === ordUnitName);
@@ -3187,7 +3324,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       );
       if (existingIdx >= 0) {
         return prev.map((it, i) =>
-          i === existingIdx ? { ...it, quantity: it.quantity + ordQty, unitPrice: ordPrice } : it
+          i === existingIdx ? { ...it, quantity: it.quantity + qtyNum, unitPrice: priceNum } : it
         );
       }
       return [
@@ -3198,14 +3335,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           productName: selectedOrderProduct.name,
           unit: unitUsed,
           unitFactor,
-          quantity: ordQty,
-          unitPrice: ordPrice,
+          quantity: qtyNum,
+          unitPrice: priceNum,
         },
       ];
     });
     setOrdProductId('');
-    setOrdQty(1);
-    setOrdPrice(0);
+    setOrdQty('');
+    setOrdPrice('');
   };
 
   const ordTotalAmount = useMemo(
@@ -3282,7 +3419,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const handleOpenDeliverModal = (ord: CustomerItemOrderRequest) => {
     const remainingAfterAdv = Math.max(0, Number(ord.totalAmount || 0) - Number(ord.advancePaidAmount || 0));
     setDeliveringOrder(ord);
-    setDeliveryCollectedAmount(remainingAfterAdv);
+    setDeliveryCollectedAmount(remainingAfterAdv > 0 ? remainingAfterAdv : '');
     setDeliveryCashboxId(data.cashboxes[0]?.id || 'CASH-01');
     setDeliveryMethod('cash');
     setDeliveryNotes('');
@@ -3294,11 +3431,12 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     if (!deliveringOrder || isUpdatingDelivery) return;
     setIsUpdatingDelivery(true);
     setFeedback(null);
+    const collectedNum = Number(deliveryCollectedAmount || 0);
     try {
       const res = await data.updateOrderDeliveryStatus(deliveringOrder.id, {
         status: 'delivered',
-        collectedAmount: deliveryCollectedAmount > 0 ? deliveryCollectedAmount : 0,
-        cashboxId: !isRepRoleAccount && canCashOps && deliveryCollectedAmount > 0 ? deliveryCashboxId : undefined,
+        collectedAmount: collectedNum > 0 ? collectedNum : 0,
+        cashboxId: !isRepRoleAccount && canCashOps && collectedNum > 0 ? deliveryCashboxId : undefined,
         paymentMethod: deliveryMethod,
         deliveryNotes: deliveryNotes.trim() || undefined,
         deliveryProof: deliveryProof || undefined,
@@ -3798,7 +3936,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
   const handleSendCashToOwner = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!rep || cashAmount <= 0) return;
+    const cashAmtNum = Number(cashAmount || 0);
+    if (!rep || cashAmtNum <= 0) return;
     setIsSendingTransfer(true);
     const res = await data.createRepTransfer({
       direction: 'rep_to_owner',
@@ -3806,13 +3945,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       senderName: rep.name,
       receiverId: 'OWNER',
       receiverName: t('الفرع الرئيسي (الخزينة)', 'Main Branch (Treasury)'),
-      amount: cashAmount,
+      amount: cashAmtNum,
       cashboxId: data.cashboxes[0]?.id || 'CASH-01',
       notes: cashNotes.trim() || t('توريد تحصيلات من تطبيق المندوب', 'Collections remittance from representative app'),
     });
     setIsSendingTransfer(false);
     if (res.success) {
-      setCashAmount(0);
+      setCashAmount('');
       setCashNotes('');
       setFeedback({
         type: 'success',
@@ -5345,20 +5484,30 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               </button>
             </form>
 
-            <div>
-              <label className="block text-[10px] font-bold text-slate-700 mb-0.5">
-                {t('اختيار الصنف:', 'Select Item:')}
-              </label>
-              <ProductSearchSelect
-                products={filteredInvoiceProducts}
-                selectedProductId={invProductId}
-                onSelect={(prod) => handleSelectProduct(prod.id)}
-                warehouseId={effectiveVanId}
-                warehouses={data.warehouses}
-                priceMode="selling"
-                currency={data.settings.currency}
-                placeholder={t('ابحث باسم الصنف أو الكود أو الباركود...', 'Search by item name, code or barcode...')}
+            <div className="space-y-1.5">
+              <LinkedGroupCategoryFilter
+                productGroups={productGroups}
+                categories={productCategories}
+                selectedGroupId={invGroupFilter}
+                selectedCategoryId={invCatFilter}
+                onGroupChange={setInvGroupFilter}
+                onCategoryChange={setInvCatFilter}
               />
+              <div>
+                <label className="block text-[10px] font-bold text-slate-700 mb-0.5">
+                  {t('اختيار الصنف:', 'Select Item:')}
+                </label>
+                <ProductSearchSelect
+                  products={scopedInvoicePickerProducts}
+                  selectedProductId={invProductId}
+                  onSelect={(prod) => handleSelectProduct(prod.id)}
+                  warehouseId={effectiveVanId}
+                  warehouses={data.warehouses}
+                  priceMode="selling"
+                  currency={data.settings.currency}
+                  placeholder={t('ابحث باسم الصنف أو الكود أو الباركود...', 'Search by item name, code or barcode...')}
+                />
+              </div>
             </div>
 
             {selectedProduct && (
@@ -5546,7 +5695,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     min={0}
                     value={invGeneralDiscount}
                     onChange={(e) => setInvGeneralDiscount(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
-                    placeholder="0"
                     className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-mono font-bold text-xs"
                   />
                 </div>
@@ -5590,7 +5738,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   type="text"
                   value={invNotes}
                   onChange={(e) => setInvNotes(e.target.value)}
-                  placeholder={t('اختياري...', 'Optional...')}
                   className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white text-xs"
                 />
               </div>
@@ -5814,7 +5961,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       type="text"
                       value={newPurProdName}
                       onChange={(e) => setNewPurProdName(e.target.value)}
-                      placeholder={t('مثال: شاي العروسة 250 جم', 'e.g., El-Arosa Tea 250g')}
                       className="w-full h-8 border border-slate-300 rounded-md px-2 font-bold bg-white"
                     />
                   </div>
@@ -5825,7 +5971,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       dir="ltr"
                       value={newPurProdBarcode}
                       onChange={(e) => setNewPurProdBarcode(e.target.value)}
-                      placeholder="622..."
                       className="w-full h-7 border border-slate-300 rounded-md px-2 font-mono bg-white text-start text-[11px]"
                     />
                   </div>
@@ -5836,19 +5981,53 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       dir="ltr"
                       value={newPurProdCode}
                       onChange={(e) => setNewPurProdCode(e.target.value)}
-                      placeholder="PRD-..."
                       className="w-full h-7 border border-slate-300 rounded-md px-2 font-mono bg-white text-start text-[11px]"
                     />
                   </div>
                   <div>
+                    <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('المجموعة:', 'Group:')}</label>
+                    <select
+                      value={newPurProdGroupId}
+                      onChange={(e) => {
+                        const gid = e.target.value;
+                        setNewPurProdGroupId(gid);
+                        const valid = getScopedCategoriesForGroup(productCategories, gid, false);
+                        if (!valid.some((c) => c.id === newPurProdCategoryId)) {
+                          setNewPurProdCategoryId('');
+                          setNewPurProdCategory('');
+                        }
+                      }}
+                      className="w-full h-7 border border-slate-300 rounded-md px-1.5 font-semibold bg-white text-[11px]"
+                    >
+                      <option value="">{t('-- اختر المجموعة --', '-- Select Group --')}</option>
+                      {productGroups.filter((g) => g.status !== 'suspended').map((g) => (
+                        <option key={g.id} value={g.id}>{g.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
                     <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('التصنيف:', 'Category:')}</label>
-                    <input
-                      type="text"
-                      value={newPurProdCategory}
-                      onChange={(e) => setNewPurProdCategory(e.target.value)}
-                      placeholder={t('اختياري', 'Optional')}
-                      className="w-full h-7 border border-slate-300 rounded-md px-2 font-semibold bg-white text-[11px]"
-                    />
+                    <select
+                      value={newPurProdCategoryId}
+                      onChange={(e) => {
+                        const cid = e.target.value;
+                        setNewPurProdCategoryId(cid);
+                        const matchedCat = productCategories.find((c) => c.id === cid);
+                        setNewPurProdCategory(matchedCat?.name || '');
+                        if (matchedCat?.groupId && !newPurProdGroupId) {
+                          setNewPurProdGroupId(matchedCat.groupId);
+                        }
+                      }}
+                      className="w-full h-7 border border-slate-300 rounded-md px-1.5 font-semibold bg-white text-[11px]"
+                    >
+                      <option value="">{t('-- اختر التصنيف --', '-- Select Category --')}</option>
+                      {scopedNewPurCategories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {t(c.name)}
+                          {!newPurProdGroupId && c.groupName ? ` (${c.groupName})` : ''}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('الوحدة:', 'Unit:')}</label>
@@ -5856,7 +6035,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       type="text"
                       value={newPurProdBaseUnit}
                       onChange={(e) => setNewPurProdBaseUnit(e.target.value)}
-                      placeholder={t('قطعة / كرتونة', 'Piece / Carton')}
                       className="w-full h-7 border border-slate-300 rounded-md px-2 font-semibold bg-white text-[11px]"
                     />
                   </div>
@@ -5867,7 +6045,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       min={0.001}
                       value={newPurProdQty}
                       onChange={setNewPurProdQty}
-                      placeholder={t('الكمية', 'Qty')}
                       ariaLabel={t('كمية الصنف الجديد', 'New Product Quantity')}
                       inputClassName="w-full h-7 bg-white border border-slate-300 rounded-md text-center font-mono font-bold text-[11px]"
                     />
@@ -5878,19 +6055,17 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       type="number"
                       step="0.5"
                       min={0}
-                      placeholder={t('سعر الشراء', 'Buy Price')}
                       value={newPurProdBuyPrice}
                       onChange={(e) => setNewPurProdBuyPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
                       className="w-full h-7 border border-slate-300 rounded-md text-center font-mono font-bold bg-white text-[11px]"
                     />
                   </div>
-                  <div className="col-span-2">
+                  <div>
                     <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('سعر البيع المقترح:', 'Suggested Sell Price:')}</label>
                     <input
                       type="number"
                       step="0.5"
                       min={0}
-                      placeholder={t('سعر البيع', 'Sell Price')}
                       value={newPurProdSellPrice}
                       onChange={(e) => setNewPurProdSellPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
                       className="w-full h-7 border border-slate-300 rounded-md text-center font-mono font-bold bg-white text-[11px]"
@@ -5954,20 +6129,30 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               </div>
             ) : (
               <>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-700 mb-0.5">
-                    {t('اختيار الصنف:', 'Select Item:')}
-                  </label>
-                  <ProductSearchSelect
-                    products={activeProducts}
-                    selectedProductId={purProductId}
-                    onSelect={(prod) => handleSelectPurProduct(prod.id)}
-                    warehouseId={purWarehouseId || mainWarehouse?.id || ''}
-                    warehouses={data.warehouses}
-                    priceMode="purchase"
-                    currency={data.settings.currency}
-                    placeholder={t('ابحث باسم الصنف أو الكود أو الباركود...', 'Search by item name, code or barcode...')}
+                <div className="space-y-1.5">
+                  <LinkedGroupCategoryFilter
+                    productGroups={productGroups}
+                    categories={productCategories}
+                    selectedGroupId={purGroupFilter}
+                    selectedCategoryId={purCatFilter}
+                    onGroupChange={setPurGroupFilter}
+                    onCategoryChange={setPurCatFilter}
                   />
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-700 mb-0.5">
+                      {t('اختيار الصنف:', 'Select Item:')}
+                    </label>
+                    <ProductSearchSelect
+                      products={scopedPurchasePickerProducts}
+                      selectedProductId={purProductId}
+                      onSelect={(prod) => handleSelectPurProduct(prod.id)}
+                      warehouseId={purWarehouseId || mainWarehouse?.id || ''}
+                      warehouses={data.warehouses}
+                      priceMode="purchase"
+                      currency={data.settings.currency}
+                      placeholder={t('ابحث باسم الصنف أو الكود أو الباركود...', 'Search by item name, code or barcode...')}
+                    />
+                  </div>
                 </div>
 
                 {selectedPurProduct && (
@@ -6126,7 +6311,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     min={0}
                     value={purDiscount}
                     onChange={(e) => setPurDiscount(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
-                    placeholder="0"
                     className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-mono font-bold text-xs"
                   />
                 </div>
@@ -6170,7 +6354,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   type="text"
                   value={purNotes}
                   onChange={(e) => setPurNotes(e.target.value)}
-                  placeholder={t('اختياري...', 'Optional...')}
                   className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white text-xs"
                 />
               </div>
@@ -6263,39 +6446,52 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           </div>
 
           <div className="p-2 rounded-md bg-rose-50/70 border border-rose-200 space-y-1.5">
+            <LinkedGroupCategoryFilter
+              productGroups={productGroups}
+              categories={productCategories}
+              selectedGroupId={sRetGroupFilter}
+              selectedCategoryId={sRetCatFilter}
+              onGroupChange={setSRetGroupFilter}
+              onCategoryChange={setSRetCatFilter}
+            />
             <select
               value={sRetProductId}
               onChange={(e) => {
                 setSRetProductId(e.target.value);
                 const p = activeProducts.find((x) => x.id === e.target.value);
-                if (p) setSRetPrice(p.sellingPrice);
+                if (p) setSRetPrice(p.sellingPrice > 0 ? p.sellingPrice : '');
               }}
               className="w-full h-8 rounded-md border border-rose-300 px-2 font-bold bg-white"
             >
               <option value="">{t('-- اختر الصنف المرتجع --', '-- Select Return Item --')}</option>
-              {activeProducts.map((p) => (
+              {scopedSRetProducts.map((p) => (
                 <option key={p.id} value={p.id}>{p.name} ({t(p.baseUnit)})</option>
               ))}
             </select>
             {sRetProductId && (
               <div className="grid grid-cols-2 gap-1.5">
-                <QuantityInput
-                  allowDecimals
-                  min={0.001}
-                  value={sRetQty}
-                  onChange={setSRetQty}
-                  ariaLabel={t('كمية المرتجع', 'Return quantity')}
-                  inputClassName="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
-                />
-                <input
-                  type="number"
-                  min={0}
-                  step="0.5"
-                  value={sRetPrice}
-                  onChange={(e) => setSRetPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
-                  placeholder={t('السعر', 'Price')}
-                  className="h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
-                />
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('الكمية', 'Quantity')}</label>
+                  <QuantityInput
+                    allowDecimals
+                    min={0.001}
+                    value={sRetQty}
+                    onChange={setSRetQty}
+                    ariaLabel={t('كمية المرتجع', 'Return quantity')}
+                    inputClassName="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('سعر الوحدة', 'Unit Price')}</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.5"
+                    value={sRetPrice}
+                    onChange={(e) => setSRetPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                    className="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
+                  />
+                </div>
               </div>
             )}
             {sRetProductId && (
@@ -6316,6 +6512,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       quantity: rq,
                       unitPrice: rp,
                       total: computeLineTotal(rq, rp),
+                      groupId: p.groupId,
+                      groupName: p.groupName,
+                      categoryId: p.categoryId,
+                      categoryName: p.category,
                     },
                   ]);
                   setSRetProductId('');
@@ -6536,13 +6736,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 <>
                   <select
                     value={pRetProductId}
-                    onChange={(e) => {
+                      onChange={(e) => {
                       const val = e.target.value;
                       setPRetProductId(val);
                       const matched = pRetReturnableOptions.find((x) => `${x.productId}::${x.unit}` === val);
                       if (matched) {
-                        setPRetQty(Math.min(1, matched.maxReturnableQty || 0));
-                        setPRetPrice(Number(matched.unitPrice || 0));
+                        setPRetQty('');
+                        const mp = Number(matched.unitPrice || 0);
+                        setPRetPrice(mp > 0 ? mp : '');
                       }
                     }}
                     className="w-full h-8 rounded-md border border-[#DCE6F5] px-2 font-bold bg-white"
@@ -6586,7 +6787,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                               step="0.5"
                               value={pRetPrice}
                               onChange={(e) => setPRetPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
-                              placeholder={t('السعر', 'Price')}
                               className="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
                             />
                           </div>
@@ -6617,6 +6817,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                                 quantity: rq,
                                 unitPrice: rp,
                                 total: computeLineTotal(rq, rp),
+                                groupId: selectedLine.groupId,
+                                groupName: selectedLine.groupName,
+                                categoryId: selectedLine.categoryId,
+                                categoryName: selectedLine.categoryName,
                               },
                             ]);
                             setPRetProductId('');
@@ -6634,6 +6838,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               )
             ) : (
               <>
+                <LinkedGroupCategoryFilter
+                  productGroups={productGroups}
+                  categories={productCategories}
+                  selectedGroupId={pRetGroupFilter}
+                  selectedCategoryId={pRetCatFilter}
+                  onGroupChange={setPRetGroupFilter}
+                  onCategoryChange={setPRetCatFilter}
+                />
                 <select
                   value={pRetProductId}
                   onChange={(e) => {
@@ -6644,29 +6856,34 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   className="w-full h-8 rounded-md border border-[#DCE6F5] px-2 font-bold bg-white"
                 >
                   <option value="">{t('-- اختر الصنف المرتجع للمورد --', '-- Select Supplier Return Item --')}</option>
-                  {activeProducts.map((p) => (
+                  {scopedPRetProducts.map((p) => (
                     <option key={p.id} value={p.id}>{p.name} ({t(p.baseUnit)})</option>
                   ))}
                 </select>
                 {pRetProductId && (
                   <div className="grid grid-cols-2 gap-1.5">
-                    <QuantityInput
-                      allowDecimals
-                      min={0.001}
-                      value={pRetQty}
-                      onChange={setPRetQty}
-                      ariaLabel={t('كمية مرتجع الشراء', 'Purchase return quantity')}
-                      inputClassName="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
-                    />
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.5"
-                      value={pRetPrice}
-                      onChange={(e) => setPRetPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
-                      placeholder={t('السعر', 'Price')}
-                      className="h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
-                    />
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('الكمية', 'Quantity')}</label>
+                      <QuantityInput
+                        allowDecimals
+                        min={0.001}
+                        value={pRetQty}
+                        onChange={setPRetQty}
+                        ariaLabel={t('كمية مرتجع الشراء', 'Purchase return quantity')}
+                        inputClassName="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('سعر الوحدة', 'Unit Price')}</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.5"
+                        value={pRetPrice}
+                        onChange={(e) => setPRetPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                        className="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
+                      />
+                    </div>
                   </div>
                 )}
                 {pRetProductId && (
@@ -6687,6 +6904,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           quantity: rq,
                           unitPrice: rp,
                           total: computeLineTotal(rq, rp),
+                          groupId: p.groupId,
+                          groupName: p.groupName,
+                          categoryId: p.categoryId,
+                          categoryName: p.category,
                         },
                       ]);
                       setPRetProductId('');
@@ -7106,7 +7327,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 type="text"
                 value={wdCategory}
                 onChange={(e) => setWdCategory(e.target.value)}
-                placeholder={t('البند / التصنيف (مثال: بنزين / مصروف تشغيل)', 'Category (e.g., Fuel / Operating Expense)')}
+                placeholder={t('البند / التصنيف', 'Category / Expense Item')}
                 className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold"
               />
               <input
@@ -7165,7 +7386,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   type="text"
                   value={newCustShop}
                   onChange={(e) => setNewCustShop(e.target.value)}
-                  placeholder={t('مثال: سوبرماركت النور', 'e.g., Al-Nour Supermarket')}
                   className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold"
                 />
               </div>
@@ -7292,7 +7512,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   type="text"
                   value={newCustGovernorate}
                   onChange={(e) => setNewCustGovernorate(e.target.value)}
-                  placeholder={t('مثال: القاهرة / الجيزة', 'e.g., Cairo / Giza')}
                   className="w-full h-8 rounded-md border border-slate-300 px-2 font-semibold"
                 />
               </div>
@@ -7322,7 +7541,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       setNewCustPhone(e.target.value);
                       if (custPhoneNotice) setCustPhoneNotice(null);
                     }}
-                    placeholder="01012345678"
                     className="flex-1 h-8 rounded-md border border-slate-300 px-2 font-mono font-bold bg-white text-start"
                   />
                   {helper.isPhoneValid ? (
@@ -7766,35 +7984,48 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             </select>
 
             <div className="p-2 rounded-md bg-blue-50/70 border border-blue-200 space-y-1.5">
+              <LinkedGroupCategoryFilter
+                productGroups={productGroups}
+                categories={productCategories}
+                selectedGroupId={quoteGroupFilter}
+                selectedCategoryId={quoteCatFilter}
+                onGroupChange={setQuoteGroupFilter}
+                onCategoryChange={setQuoteCatFilter}
+              />
               <select
                 value={quoteProductId}
                 onChange={(e) => handleSelectQuoteProduct(e.target.value)}
                 className="w-full h-8 rounded-md border border-blue-300 px-2 font-bold bg-white"
               >
                 <option value="">{t('-- اختر الصنف لعرض السعر --', '-- Select Item for Quote --')}</option>
-                {activeProducts.map((p) => (
+                {scopedQuoteProducts.map((p) => (
                   <option key={p.id} value={p.id}>{p.name} ({formatLocaleNumber(p.sellingPrice)} {t(data.settings.currency)})</option>
                 ))}
               </select>
               {quoteProductId && (
-                <div className="grid grid-cols-3 gap-1.5">
-                  <QuantityInput
-                    allowDecimals
-                    min={0.001}
-                    value={quoteQty}
-                    onChange={setQuoteQty}
-                    ariaLabel={t('كمية عرض السعر', 'Quote quantity')}
-                    inputClassName="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
-                  />
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.5"
-                    value={quotePrice}
-                    onChange={(e) => setQuotePrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
-                    placeholder={t('السعر', 'Price')}
-                    className="h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
-                  />
+                <div className="grid grid-cols-3 gap-1.5 items-end">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('الكمية', 'Quantity')}</label>
+                    <QuantityInput
+                      allowDecimals
+                      min={0.001}
+                      value={quoteQty}
+                      onChange={setQuoteQty}
+                      ariaLabel={t('كمية عرض السعر', 'Quote quantity')}
+                      inputClassName="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('السعر', 'Price')}</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.5"
+                      value={quotePrice}
+                      onChange={(e) => setQuotePrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                      className="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
+                    />
+                  </div>
                   <button
                     type="button"
                     onClick={handleAddQuoteItem}
@@ -8801,18 +9032,28 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     </button>
                   </form>
 
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('اختيار الصنف:', 'Select Item:')}</label>
-                    <ProductSearchSelect
-                      products={activeProducts}
-                      selectedProductId={reqProdId}
-                      onSelect={handleSelectReqProduct}
-                      warehouseId={mainWarehouse?.id || ''}
-                      warehouses={data.warehouses}
-                      priceMode="purchase"
-                      currency={data.settings.currency}
-                      placeholder={t('ابحث باسم الصنف أو الكود أو الباركود...', 'Search by item name, code or barcode...')}
+                  <div className="space-y-1.5">
+                    <LinkedGroupCategoryFilter
+                      productGroups={productGroups}
+                      categories={productCategories}
+                      selectedGroupId={reqGroupFilter}
+                      selectedCategoryId={reqCatFilter}
+                      onGroupChange={setReqGroupFilter}
+                      onCategoryChange={setReqCatFilter}
                     />
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('اختيار الصنف:', 'Select Item:')}</label>
+                      <ProductSearchSelect
+                        products={scopedReqProducts}
+                        selectedProductId={reqProdId}
+                        onSelect={handleSelectReqProduct}
+                        warehouseId={mainWarehouse?.id || ''}
+                        warehouses={data.warehouses}
+                        priceMode="purchase"
+                        currency={data.settings.currency}
+                        placeholder={t('ابحث باسم الصنف أو الكود أو الباركود...', 'Search by item name, code or barcode...')}
+                      />
+                    </div>
                   </div>
 
                   {activeReqProduct && (
@@ -8919,7 +9160,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     type="text"
                     value={reqNotes}
                     onChange={(e) => setReqNotes(e.target.value)}
-                    placeholder={t('اختياري...', 'Optional...')}
                     className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white text-xs"
                   />
                 </div>
@@ -9007,14 +9247,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   <input
                     type="number"
                     min={1}
-                    value={cashAmount || ''}
-                    onChange={(e) => setCashAmount(Number(e.target.value))}
+                    value={cashAmount}
+                    onChange={(e) => setCashAmount(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
                     placeholder={`${t('المبلغ', 'Amount')} (${t(data.settings.currency)})`}
                     className="flex-1 h-8 rounded-md border border-slate-300 px-2 font-mono font-bold"
                   />
                   <button
                     type="submit"
-                    disabled={isSendingTransfer || cashAmount <= 0}
+                    disabled={isSendingTransfer || Number(cashAmount || 0) <= 0}
                     className="h-8 px-2.5 rounded-md bg-blue-900 text-white font-black disabled:opacity-50 cursor-pointer"
                   >
                     {t('إرسال التوريد', 'Send Remittance')}
@@ -9232,46 +9472,62 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             </select>
 
             <div className="p-2 rounded-md bg-blue-50/60 border border-blue-200 space-y-1.5">
+              <LinkedGroupCategoryFilter
+                productGroups={productGroups}
+                categories={productCategories}
+                selectedGroupId={ordGroupFilter}
+                selectedCategoryId={ordCatFilter}
+                onGroupChange={setOrdGroupFilter}
+                onCategoryChange={setOrdCatFilter}
+              />
               <select
                 value={ordProductId}
                 onChange={(e) => handleSelectOrderProduct(e.target.value)}
                 className="w-full h-8 rounded-md border border-blue-300 px-2 font-bold bg-white"
               >
                 <option value="">{t('-- اختر الصنف للطلب --', '-- Select Item for Order --')}</option>
-                {activeProducts.map((p) => (
+                {scopedOrderProducts.map((p) => (
                   <option key={p.id} value={p.id}>{p.name} ({t(p.baseUnit)})</option>
                 ))}
               </select>
 
               {selectedOrderProduct && (
-                <div className="grid grid-cols-4 gap-1.5">
-                  <select
-                    value={ordUnitName}
-                    onChange={(e) => handleOrderUnitChange(e.target.value)}
-                    className="w-full h-8 rounded-md border border-slate-300 px-1.5 bg-white font-bold"
-                  >
-                    {selectedOrderProduct.units.map((u) => (
-                      <option key={u.id} value={u.name}>{t(u.name)}</option>
-                    ))}
-                    <option value={selectedOrderProduct.baseUnit}>{t(selectedOrderProduct.baseUnit)}</option>
-                  </select>
-                  <QuantityInput
-                    allowDecimals
-                    min={0.001}
-                    value={ordQty}
-                    onChange={setOrdQty}
-                    ariaLabel={t('كمية الصنف في الطلب', 'Item Quantity in Order')}
-                    inputClassName="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
-                  />
-                  <input
-                    type="number"
-                    step="0.5"
-                    min={0}
-                    value={ordPrice || ''}
-                    onChange={(e) => setOrdPrice(Math.max(0, Number(e.target.value)))}
-                    placeholder={t('السعر', 'Price')}
-                    className="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
-                  />
+                <div className="grid grid-cols-4 gap-1.5 items-end">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('الوحدة', 'Unit')}</label>
+                    <select
+                      value={ordUnitName}
+                      onChange={(e) => handleOrderUnitChange(e.target.value)}
+                      className="w-full h-8 rounded-md border border-slate-300 px-1.5 bg-white font-bold"
+                    >
+                      {selectedOrderProduct.units.map((u) => (
+                        <option key={u.id} value={u.name}>{t(u.name)}</option>
+                      ))}
+                      <option value={selectedOrderProduct.baseUnit}>{t(selectedOrderProduct.baseUnit)}</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('الكمية', 'Qty')}</label>
+                    <QuantityInput
+                      allowDecimals
+                      min={0.001}
+                      value={ordQty}
+                      onChange={setOrdQty}
+                      ariaLabel={t('كمية الصنف في الطلب', 'Item Quantity in Order')}
+                      inputClassName="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('السعر', 'Price')}</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      min={0}
+                      value={ordPrice}
+                      onChange={(e) => setOrdPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                      className="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
+                    />
+                  </div>
                   <button
                     type="button"
                     onClick={handleAddOrderItem}
@@ -10302,14 +10558,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 type="number"
                 min={0}
                 step="0.01"
-                value={deliveryCollectedAmount || ''}
-                onChange={(e) => setDeliveryCollectedAmount(Math.max(0, Number(e.target.value)))}
-                placeholder={t('المبلغ المحصل', 'Collected amount')}
+                value={deliveryCollectedAmount}
+                onChange={(e) => setDeliveryCollectedAmount(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
                 className="w-full h-8 rounded-md border border-slate-300 px-2 font-mono font-black text-center text-[#011E58]"
               />
             </div>
 
-            {deliveryCollectedAmount > 0 && (
+            {Number(deliveryCollectedAmount || 0) > 0 && (
               <div className={`grid gap-1.5 ${!isRepRoleAccount && canCashOps ? 'grid-cols-2' : 'grid-cols-1'}`}>
                 {!isRepRoleAccount && canCashOps && (
                   <select
@@ -11720,7 +11975,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         setEditCustPhone(e.target.value);
                         if (editCustPhoneNotice) setEditCustPhoneNotice(null);
                       }}
-                      placeholder="01012345678"
                       className="flex-1 h-8 rounded-md border border-slate-300 px-2 font-mono font-bold bg-white"
                     />
                     {editPhoneValid ? (
@@ -12106,8 +12360,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 min={0.01}
                 max={Math.max(0.01, Number(payingPurchaseTarget.remainingAmount || 0))}
                 step="0.01"
-                value={purPayAmount || ''}
-                onChange={(e) => setPurPayAmount(Math.max(0, Number(e.target.value)))}
+                value={purPayAmount}
+                onChange={(e) => setPurPayAmount(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
                 className="w-full h-8 rounded-md border border-slate-300 px-2 font-mono font-black text-center text-[#011E58]"
               />
             </div>

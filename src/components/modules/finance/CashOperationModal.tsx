@@ -71,7 +71,7 @@ export const CashOperationModal: React.FC<CashOperationModalProps> = ({
   const [opType, setOpType] = useState<CashOperationType>(initialMode);
   const [cashboxId, setCashboxId] = useState<string>('');
   const [targetCashboxId, setTargetCashboxId] = useState<string>('');
-  const [amount, setAmount] = useState<number>(0);
+  const [amount, setAmount] = useState<number | ''>('');
   const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [category, setCategory] = useState<string>('');
   const [recipientOrPayer, setRecipientOrPayer] = useState<string>('');
@@ -87,7 +87,7 @@ export const CashOperationModal: React.FC<CashOperationModalProps> = ({
       setCategory('');
       setCashboxId(cashboxes[0]?.id || '');
       setTargetCashboxId(cashboxes[1]?.id || cashboxes[0]?.id || '');
-      setAmount(0);
+      setAmount('');
       setDate(new Date().toISOString().split('T')[0]);
       setRecipientOrPayer('');
       setNotes('');
@@ -115,7 +115,8 @@ export const CashOperationModal: React.FC<CashOperationModalProps> = ({
   const targetCb = cashboxes.find((c) => c.id === targetCashboxId);
   const isOutflow = opType === 'cash_withdrawal' || opType === 'cashbox_transfer' || opType === 'expense';
   const currentBalance = Number(selectedCb?.currentBalance || 0);
-  const projectedBalance = isOutflow ? currentBalance - (amount || 0) : currentBalance + (amount || 0);
+  const amountNum = Number(amount || 0);
+  const projectedBalance = isOutflow ? currentBalance - amountNum : currentBalance + amountNum;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -130,11 +131,11 @@ export const CashOperationModal: React.FC<CashOperationModalProps> = ({
       setError(t('يرجى تحديد خزينة وجهة مختلفة للترحيل', 'Please select a different destination cashbox'));
       return;
     }
-    if (!amount || amount <= 0) {
+    if (!amountNum || amountNum <= 0) {
       setError(t('يرجى إدخال مبلغ صحيح أكبر من الصفر', 'Please enter a valid amount greater than zero'));
       return;
     }
-    if (isOutflow && currentBalance < amount) {
+    if (isOutflow && currentBalance < amountNum) {
       setError(
         t(
           `الرصيد المتاح (${formatLocaleNumber(currentBalance)}) في ${selectedCb?.name || 'الخزينة'} لا يكفي لهذه العملية.`,
@@ -151,7 +152,7 @@ export const CashOperationModal: React.FC<CashOperationModalProps> = ({
         type: opType,
         cashboxId,
         targetCashboxId: opType === 'cashbox_transfer' ? targetCashboxId : undefined,
-        amount,
+        amount: amountNum,
         date,
         category: category.trim() || OP_LABELS[opType].defaultCategory,
         recipientOrPayer: recipientOrPayer.trim(),
@@ -178,8 +179,8 @@ export const CashOperationModal: React.FC<CashOperationModalProps> = ({
         partyName: recipientOrPayer || (selectedCb ? t(selectedCb.name) : ''),
         warehouseName: selectedCb ? t(selectedCb.name) : undefined,
         paymentType: t(m.badgeAr, m.badgeEn),
-        grandTotal: amount,
-        paidAmount: amount,
+        grandTotal: amountNum,
+        paidAmount: amountNum,
         previousBalance: currentBalance,
         currentBalance: projectedBalance,
         notes: `${category}${notes ? ` | ${notes}` : ''}`,
@@ -289,7 +290,7 @@ export const CashOperationModal: React.FC<CashOperationModalProps> = ({
                   {formatLocaleNumber(currentBalance)} {t(settings.currency)}
                 </strong>
               </div>
-              {amount > 0 && (
+              {amountNum > 0 && (
                 <div className="flex items-center gap-1.5">
                   <span className="text-slate-500">{t('الرصيد بعد العملية:', 'Balance After:')}</span>
                   <strong className={`font-mono font-black tabular-nums ${projectedBalance < 0 ? 'text-red-700' : 'text-emerald-700'}`}>
@@ -297,7 +298,7 @@ export const CashOperationModal: React.FC<CashOperationModalProps> = ({
                   </strong>
                   {opType === 'cashbox_transfer' && targetCb && (
                     <span className="text-blue-800 font-mono font-bold tabular-nums">
-                      ({t('الوجهة:', 'Destination:')} {targetCb.balanceHidden ? t('محجوب', 'Hidden') : formatLocaleNumber((targetCb.currentBalance ?? 0) + amount)})
+                      ({t('الوجهة:', 'Destination:')} {targetCb.balanceHidden ? t('محجوب', 'Hidden') : formatLocaleNumber((targetCb.currentBalance ?? 0) + amountNum)})
                     </span>
                   )}
                 </div>
@@ -313,9 +314,8 @@ export const CashOperationModal: React.FC<CashOperationModalProps> = ({
                 step="0.01"
                 min="0.01"
                 required
-                value={amount || ''}
-                onChange={(e) => setAmount(Number(e.target.value))}
-                placeholder="0.00"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
                 className="w-full h-8 bg-blue-50 border border-blue-300 rounded-md px-2.5 py-1 font-mono font-black text-center text-sm text-blue-950"
               />
             </div>
@@ -332,7 +332,6 @@ export const CashOperationModal: React.FC<CashOperationModalProps> = ({
                 type="text"
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                placeholder={t(meta.defaultCategory)}
                 className="w-full h-8 bg-white border border-slate-300 rounded-md px-2.5 py-1 font-bold"
               />
             </div>

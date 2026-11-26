@@ -2399,7 +2399,6 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               type="number"
               min="1"
               required
-              placeholder="0.00"
               value={transferAmount}
               onChange={(e) => setTransferAmount(e.target.value === '' ? '' : Number(e.target.value))}
               className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1 font-mono font-black text-center text-sm"
@@ -2412,7 +2411,6 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               type="text"
               value={transferNotes}
               onChange={(e) => setTransferNotes(e.target.value)}
-              placeholder={t('إيداع بنكي لحساب المبيعات...', 'Bank deposit for sales account...')}
               className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1"
             />
           </div>
@@ -2467,7 +2465,6 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             <input
               type="text"
               required
-              placeholder={t('مثال: حساب البنك الأهلي الجاري', 'e.g., National Bank Current Account')}
               value={newCbName}
               onChange={(e) => setNewCbName(e.target.value)}
               className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1 font-bold"
@@ -2480,7 +2477,6 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               <input
                 type="text"
                 dir="ltr"
-                placeholder="IBAN / Account Number"
                 value={newCbAccount}
                 onChange={(e) => setNewCbAccount(e.target.value)}
                 className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1 font-mono"
@@ -2492,7 +2488,6 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             <label className="block font-bold mb-1">{t('الرصيد الافتتاحي:', 'Opening Balance:')}</label>
             <input
               type="number"
-              placeholder="0.00"
               value={newCbOpening}
               onChange={(e) => setNewCbOpening(e.target.value === '' ? '' : Number(e.target.value))}
               className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1 font-mono font-bold"
@@ -2533,7 +2528,6 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               required
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              placeholder={t('وقود، صيانة، كهرباء، إيجار، تخريد...', 'Fuel, maintenance, electricity, rent, scrap...')}
               className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1 font-bold"
             />
           </div>
@@ -2544,7 +2538,6 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               type="number"
               min="1"
               required
-              placeholder="0.00"
               value={amount}
               onChange={(e) => setAmount(e.target.value === '' ? '' : Number(e.target.value))}
               className="w-full h-8 border border-slate-300 rounded-md px-2.5 py-1 font-mono font-black text-center text-sm"

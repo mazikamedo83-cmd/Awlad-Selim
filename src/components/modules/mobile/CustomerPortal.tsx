@@ -43,6 +43,7 @@ import { CustomerLocationPickerModal } from '../../common/CustomerLocationPicker
 import { computeLineTotal, round3 } from '../../../utils/quantity';
 import { CustomerStorefrontHome, CustomerCartItem } from './CustomerStorefrontHome';
 import { CustomerMoreScreen } from './CustomerMoreScreen';
+import { filterProductsByGroupCategory } from '../../common/LinkedGroupCategoryFilter';
 
 export type CustomerTabKey =
   | 'home'
@@ -130,8 +131,9 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
   const isNative = isNativeCapacitor();
   const storefront = data.publishedStorefront;
 
-  // Search & category filter
+  // Search & group/category filter
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedGroupId, setSelectedGroupId] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedDisplayProductIds, setSelectedDisplayProductIds] = useState<string[] | null>(null);
   const [selectedUnitsByProd, setSelectedUnitsByProd] = useState<Record<string, string>>({});
@@ -193,11 +195,18 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
     [data.products, hiddenSet]
   );
 
+  const activeGroups = useMemo(
+    () => (data.productGroups || []).filter((g) => g.status !== 'suspended'),
+    [data.productGroups]
+  );
+
   const imageCategoryTiles = useMemo(() => {
     const overrideMap = new Map(
       (storefront?.imageCategorySettings || []).map((c) => [c.categoryId, c])
     );
-    const erpCats = (data.categories || []).filter((c) => c.status !== 'suspended');
+    const erpCats = (data.categories || []).filter(
+      (c) => c.status !== 'suspended' && (selectedGroupId === 'all' || (c.groupId || '') === selectedGroupId)
+    );
     const erpTiles = erpCats
       .map((cat, idx) => {
         const ov = overrideMap.get(cat.id);
@@ -221,7 +230,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
     }>;
 
     // Fallback if server didn't return categories array yet: derive from products
-    if (erpTiles.length === 0) {
+    if (erpTiles.length === 0 && selectedGroupId === 'all') {
       const names = Array.from(new Set(activeProducts.map((p) => p.category).filter(Boolean)));
       names.forEach((name, idx) => {
         erpTiles.push({
@@ -234,19 +243,22 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
       });
     }
 
-    const displayTiles = (storefront?.displayCategories || [])
-      .filter((dc) => dc.isActive !== false && dc.name)
-      .map((dc, idx) => ({
-        id: `disp-${dc.id}`,
-        name: dc.name,
-        rawCategoryName: dc.name,
-        imageUrl: dc.imageUrl || '',
-        sortOrder: dc.sortOrder ?? 100 + idx,
-        productIds: dc.productIds || [],
-      }));
+    const displayTiles =
+      selectedGroupId === 'all'
+        ? (storefront?.displayCategories || [])
+            .filter((dc) => dc.isActive !== false && dc.name)
+            .map((dc, idx) => ({
+              id: `disp-${dc.id}`,
+              name: dc.name,
+              rawCategoryName: dc.name,
+              imageUrl: dc.imageUrl || '',
+              sortOrder: dc.sortOrder ?? 100 + idx,
+              productIds: dc.productIds || [],
+            }))
+        : [];
 
     return [...erpTiles, ...displayTiles].sort((a, b) => a.sortOrder - b.sortOrder);
-  }, [data.categories, storefront, activeProducts]);
+  }, [data.categories, storefront, activeProducts, selectedGroupId]);
 
   const getProductUnits = (prod: Product) => {
     const list: Array<{ name: string; factor: number; sellingPrice: number }> = [
@@ -405,7 +417,16 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
 
   const filteredProducts = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return activeProducts.filter((p) => {
+    const groupCatPool = selectedDisplayProductIds
+      ? activeProducts
+      : filterProductsByGroupCategory(
+          activeProducts,
+          data.productGroups || [],
+          data.categories || [],
+          selectedGroupId,
+          selectedCategory === 'all' ? 'all' : selectedCategory
+        );
+    return groupCatPool.filter((p) => {
       const unitBarcodes = (p.units || []).map((u) => u.barcode || '').join(' ').toLowerCase();
       const matchSearch =
         !q ||
@@ -416,10 +437,9 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
       if (selectedDisplayProductIds) {
         return matchSearch && selectedDisplayProductIds.includes(p.id);
       }
-      const matchCat = selectedCategory === 'all' || p.category === selectedCategory;
-      return matchSearch && matchCat;
+      return matchSearch;
     });
-  }, [activeProducts, searchQuery, selectedCategory, selectedDisplayProductIds]);
+  }, [activeProducts, data.productGroups, data.categories, searchQuery, selectedGroupId, selectedCategory, selectedDisplayProductIds]);
 
   const offerItems = useMemo(() => {
     const list: Array<{ product: Product; unitName: string }> = [];
@@ -894,6 +914,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
           onToggleFavorite={(pid) => data.toggleCustomerFavorite(pid)}
           onNavigateTab={(tab) => onTabChange(tab)}
           onOpenCategory={(catName, displayProductIds) => {
+            setSelectedGroupId('all');
             setSelectedCategory(catName);
             setSelectedDisplayProductIds(displayProductIds || null);
             onTabChange('categories');
@@ -901,19 +922,65 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
         />
       )}
 
-      {/* TAB 2: CATEGORIES (الأقسام المصورة + المنتجات) */}
+      {/* TAB 2: CATEGORIES (المجموعات + الأقسام المصورة + المنتجات) */}
       {activeTab === 'categories' && (
         <div className="space-y-2">
+          {activeGroups.length > 0 && (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between px-0.5">
+                <span className="text-[11px] font-black text-slate-700 dark:text-[#A9BCD9]">
+                  {t('المجموعات / الشركات', 'Product Groups')}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedGroupId('all');
+                    setSelectedCategory('all');
+                    setSelectedDisplayProductIds(null);
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-black shrink-0 cursor-pointer transition-colors ${
+                    selectedGroupId === 'all'
+                      ? 'bg-[#003589] dark:bg-[#1659C8] text-white border-[#003589]'
+                      : 'bg-white dark:bg-[#0E1C36] text-slate-800 dark:text-[#DCE6F5] border-slate-200 dark:border-[#21375C]'
+                  }`}
+                >
+                  {t('كل المجموعات', 'All Groups')}
+                </button>
+                {activeGroups.map((g) => (
+                  <button
+                    key={g.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedGroupId(g.id);
+                      setSelectedCategory('all');
+                      setSelectedDisplayProductIds(null);
+                    }}
+                    className={`px-2.5 py-1.5 rounded-lg border text-xs font-black shrink-0 cursor-pointer transition-colors ${
+                      selectedGroupId === g.id
+                        ? 'bg-[#003589] dark:bg-[#1659C8] text-white border-[#003589]'
+                        : 'bg-white dark:bg-[#0E1C36] text-slate-800 dark:text-[#DCE6F5] border-slate-200 dark:border-[#21375C]'
+                    }`}
+                  >
+                    {g.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {imageCategoryTiles.length > 0 && (
             <div className="space-y-1.5">
               <div className="flex items-center justify-between px-0.5">
                 <h2 className="text-xs font-black text-slate-900 dark:text-[#F3F7FC]">
                   {t('الأقسام المصورة', 'Categories')}
                 </h2>
-                {(selectedCategory !== 'all' || selectedDisplayProductIds) && (
+                {(selectedGroupId !== 'all' || selectedCategory !== 'all' || selectedDisplayProductIds) && (
                   <button
                     type="button"
                     onClick={() => {
+                      setSelectedGroupId('all');
                       setSelectedCategory('all');
                       setSelectedDisplayProductIds(null);
                     }}

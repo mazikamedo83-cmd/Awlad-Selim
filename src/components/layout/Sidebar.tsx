@@ -141,19 +141,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const isLtr = dir === 'ltr';
   const pendingOrdersCount = customerItemOrders.filter((o) => o.status === 'pending').length;
 
-  // Expand all Windows desktop sections by default; users can collapse/expand freely
-  const [openSectionIds, setOpenSectionIds] = useState<Record<string, boolean>>({
-    sales: true,
-    purchases: true,
-    inventory: true,
-    finance: true,
-    'cheques-inst': true,
-    representatives: true,
-    employees: true,
-    reports: true,
-    management: true,
-    settings: true,
-  });
+  const ALL_OPEN_SECTIONS: Record<string, boolean> = useMemo(
+    () => ({
+      sales: true,
+      purchases: true,
+      inventory: true,
+      finance: true,
+      'cheques-inst': true,
+      representatives: true,
+      employees: true,
+      reports: true,
+      management: true,
+      settings: true,
+    }),
+    []
+  );
+
+  // Expand all sections by default and whenever the sidebar is reopened
+  const [openSectionIds, setOpenSectionIds] = useState<Record<string, boolean>>(ALL_OPEN_SECTIONS);
+
+  useEffect(() => {
+    if (isOpen) {
+      setOpenSectionIds(ALL_OPEN_SECTIONS);
+    }
+  }, [isOpen, ALL_OPEN_SECTIONS]);
 
   const navSections: NavSection[] = useMemo(
     () => [
@@ -456,12 +467,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
             type="button"
             data-testid="sidebar-close-btn"
             onClick={onClose}
-            className="h-7 px-1.5 sm:px-2 flex items-center justify-center gap-1 rounded-md bg-white/15 hover:bg-white/25 text-white text-[10.5px] sm:text-[11px] font-bold transition-colors cursor-pointer shrink-0"
+            className="h-7 px-2 flex items-center justify-center gap-1 rounded-md bg-white/15 hover:bg-white/25 text-white text-[11px] font-bold transition-colors cursor-pointer shrink-0"
             aria-label={t('إغلاق قائمة الأقسام', 'Close Sections Menu')}
             title={t('إغلاق القائمة الجانبية', 'Close Sidebar')}
           >
             <X className="w-3.5 h-3.5 shrink-0" />
-            <span className="hidden sm:inline">{t('إغلاق', 'Close')}</span>
+            <span>{t('إغلاق', 'Close')}</span>
           </button>
         </div>
 

@@ -11,6 +11,7 @@ import { formatLocaleNumber } from '../../../i18n/translator';
 import { StockTransferRequest, Invoice } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { ProductSearchSelect } from '../../common/ProductSearchSelect';
+import { LinkedGroupCategoryFilter, filterProductsByGroupCategory } from '../../common/LinkedGroupCategoryFilter';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { exportToExcel } from '../../common/ExcelExporter';
 import { exportTableToPdf } from '../../common/PdfExporter';
@@ -35,7 +36,7 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
   onClose,
   onCreated,
 }) => {
-  const { warehouses, representatives, products, settings, createStockTransferRequest, submitStockTransferRequest } = useData();
+  const { warehouses, representatives, products, productGroups = [], categories = [], settings, createStockTransferRequest, submitStockTransferRequest } = useData();
   const { t, isLtr, locale } = usePreferences();
   const fmt = (n: number) => formatLocaleNumber(n);
   const [sourceMode, setSourceMode] = useState<'warehouse' | 'rep'>('warehouse');
@@ -49,6 +50,8 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
   const [notes, setNotes] = useState('');
 
   // Multi-item picker
+  const [transferGroupFilter, setTransferGroupFilter] = useState('all');
+  const [transferCatFilter, setTransferCatFilter] = useState('all');
   const [pickedProductId, setPickedProductId] = useState('');
   const [pickedUnitName, setPickedUnitName] = useState('');
   const [pickedUnitFactor, setPickedUnitFactor] = useState<number>(1);
@@ -84,6 +87,8 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
       setReason('');
       setNotes('');
       setItems([]);
+      setTransferGroupFilter('all');
+      setTransferCatFilter('all');
       setPickedProductId('');
       setPickedUnitName('');
       setPickedUnitFactor(1);
@@ -121,6 +126,11 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
     );
     return vanWh?.id || '';
   }, [sourceMode, sourceWarehouseId, sourceRepId, representatives, warehouses]);
+
+  const filteredTransferProducts = useMemo(
+    () => filterProductsByGroupCategory(products, productGroups, categories, transferGroupFilter, transferCatFilter),
+    [products, productGroups, categories, transferGroupFilter, transferCatFilter]
+  );
 
   const pickedProduct = useMemo(
     () => products.find((p) => p.id === pickedProductId) || null,
@@ -406,11 +416,20 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
 
         {/* Add Items Row with Live ProductSearchSelect */}
         <div className="p-2 rounded-lg bg-[#EEF3FA] border border-[#DCE6F5] space-y-1.5">
+          <LinkedGroupCategoryFilter
+            productGroups={productGroups}
+            categories={categories}
+            selectedGroupId={transferGroupFilter}
+            selectedCategoryId={transferCatFilter}
+            onGroupChange={setTransferGroupFilter}
+            onCategoryChange={setTransferCatFilter}
+            compact
+          />
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 items-end">
             <div className="sm:col-span-5">
               <label className="block font-bold text-[11px] mb-0.5 text-[#011E58]">{t('البحث الفوري عن الصنف:', 'Quick Item Search:')}</label>
               <ProductSearchSelect
-                products={products}
+                products={filteredTransferProducts}
                 selectedProductId={pickedProductId}
                 onSelect={handleSelectProduct}
                 onAfterSelect={() => qtyInputRef.current?.focus()}
@@ -453,7 +472,6 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
                 type="number"
                 min="0.01"
                 step="any"
-                placeholder={t('أدخل الكمية', 'Enter qty')}
                 value={pickedQty}
                 onChange={(e) => setPickedQty(e.target.value === '' ? '' : Number(e.target.value))}
                 onKeyDown={(e) => {
@@ -478,7 +496,6 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
                     handleAddItem();
                   }
                 }}
-                placeholder={t('اختياري', 'Optional')}
                 className="w-full h-8 bg-white border border-slate-300 rounded-md px-2"
               />
             </div>
@@ -558,7 +575,6 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
               type="text"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder={t('تغذية فرع / تحميل سيارة مندوب / مرتجع للمخزن...', 'Branch replenishment / Rep vehicle loading / Return to warehouse...')}
               className="w-full h-8 border border-slate-300 rounded-md px-2"
             />
           </div>

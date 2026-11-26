@@ -2700,7 +2700,6 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
               <input
                 type="text"
                 required
-                placeholder={t('مثال: الحاج طارق سليم', 'e.g. Tariq Selim')}
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 font-bold focus:border-blue-600 outline-hidden"
@@ -2713,7 +2712,6 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
               </label>
               <input
                 type="text"
-                placeholder={t('مثال: سوبرماركت البركة لتجارة التجزئة', 'e.g. Al-Baraka Supermarket')}
                 value={formData.shopName}
                 onChange={(e) => setFormData({ ...formData, shopName: e.target.value })}
                 className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 font-bold focus:border-blue-600 outline-hidden"
@@ -2730,7 +2728,6 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                     type="tel"
                     dir="ltr"
                     required
-                    placeholder={t('مثال: 01012345678', 'e.g. 01012345678')}
                     value={formData.phone}
                     onChange={(e) => {
                       setFormData({ ...formData, phone: e.target.value });
@@ -2894,7 +2891,6 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
               </label>
               <input
                 type="text"
-                placeholder={t('مثال: القاهرة / الجيزة / الغربية', 'e.g. Cairo / Giza')}
                 value={formData.governorate}
                 onChange={(e) => setFormData({ ...formData, governorate: e.target.value })}
                 className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 font-semibold focus:border-blue-600 outline-hidden"
@@ -2907,7 +2903,6 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
               </label>
               <input
                 type="text"
-                placeholder={t('مثال: وسط البلد / العبور / طنطا', 'e.g. Downtown / Obour')}
                 value={formData.area}
                 onChange={(e) => setFormData({ ...formData, area: e.target.value })}
                 className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 font-semibold focus:border-blue-600 outline-hidden"
@@ -2922,7 +2917,6 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                 <input
                   type="text"
                   dir="ltr"
-                  placeholder={t('مثال: 30.0444, 31.2357 أو رابط خرائط', 'e.g. 30.0444, 31.2357 or Maps URL')}
                   value={formData.geoCoordinates}
                   onChange={(e) => {
                     setFormData({ ...formData, geoCoordinates: e.target.value });
@@ -2962,7 +2956,6 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                 <input
                   type="text"
                   required
-                  placeholder={t('مثال: شارع الجمهورية الرئيسي، بجوار مسجد السلام، طنطا', 'e.g. Main Street, Downtown')}
                   value={formData.address}
                   onChange={(e) => {
                     setFormData({ ...formData, address: e.target.value });
@@ -3078,7 +3071,6 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                       openingBalance: e.target.value === '' ? '' : Number(e.target.value),
                     })
                   }
-                  placeholder="0.00"
                   className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 font-mono font-bold"
                 />
                 <span className="text-[10px] text-slate-500 mt-0.5 block">
@@ -3103,7 +3095,6 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
               <label className="block font-bold text-slate-700 mb-1">{t('ملاحظات إضافية:', 'Additional Notes:')}</label>
               <input
                 type="text"
-                placeholder={t('ملاحظات التسليم، أوقات الفتح، مندوب المنطقة...', 'Delivery notes, opening hours, area rep...')}
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 outline-hidden focus:border-blue-600"
@@ -3134,7 +3125,6 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                       dir="ltr"
                       value={portalUsername}
                       onChange={(e) => setPortalUsername(e.target.value)}
-                      placeholder={t('مثال: cust_ahmad', 'e.g. cust_ahmad')}
                       className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 font-mono font-bold"
                     />
                   </div>
@@ -3147,7 +3137,6 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                       dir="ltr"
                       value={portalPassword}
                       onChange={(e) => setPortalPassword(e.target.value)}
-                      placeholder="••••••••"
                       className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 font-mono"
                     />
                   </div>
@@ -3291,7 +3280,6 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                 type="text"
                 value={paymentNotes}
                 onChange={(e) => setPaymentNotes(e.target.value)}
-                placeholder={t('سداد دفعة من الحساب / تحصيل مبيعات...', 'Account payment / sales collection...')}
                 className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 outline-hidden focus:border-[#003589]"
               />
             </div>
@@ -3524,7 +3512,6 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
                     required
                     value={newCustomerUsername}
                     onChange={(e) => setNewCustomerUsername(e.target.value)}
-                    placeholder={t('مثال: shop_baraka', 'e.g. shop_baraka')}
                     className="w-full h-8 border rounded-md px-2 py-1 font-mono font-bold"
                   />
                 </div>

@@ -444,7 +444,6 @@ export const PairingAndDevicesPanel: React.FC<PairingAndDevicesPanelProps> = ({
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder={t('مثال: هاتف مندوب خط القاهرة / موبايل عميل جديد', 'e.g., Cairo route rep phone / new customer phone')}
               className="w-full h-8 border border-slate-300 rounded-md px-2.5"
             />
           </div>

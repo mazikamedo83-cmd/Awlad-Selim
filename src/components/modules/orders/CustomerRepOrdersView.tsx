@@ -852,7 +852,6 @@ export const CustomerRepOrdersView: React.FC = () => {
               min={0}
               step="0.01"
               required
-              placeholder="0.00"
               value={collectAmount || ''}
               onChange={(e) => setCollectAmount(e.target.value === '' ? 0 : Number(e.target.value))}
               className="w-full h-8 py-1 px-2 rounded-md border border-slate-300 font-mono font-bold"
@@ -1048,7 +1047,6 @@ export const CustomerRepOrdersView: React.FC = () => {
               min={0.01}
               step="0.01"
               required
-              placeholder="0.00"
               value={advanceAmount || ''}
               onChange={(e) => setAdvanceAmount(e.target.value === '' ? 0 : Number(e.target.value))}
               className="w-full h-8 py-1 px-2 rounded-md border border-slate-300 font-mono font-bold"
@@ -1199,7 +1197,6 @@ export const CustomerRepOrdersView: React.FC = () => {
                     type="number"
                     min={0}
                     step="0.01"
-                    placeholder="0.00"
                     value={convertPaid || ''}
                     onChange={(e) => setConvertPaid(e.target.value === '' ? 0 : Number(e.target.value))}
                     className="w-full h-8 py-1 px-2 rounded-md border border-slate-300 font-mono font-bold"
@@ -1213,7 +1210,6 @@ export const CustomerRepOrdersView: React.FC = () => {
                 type="number"
                 min={0}
                 step="0.01"
-                placeholder="0.00"
                 value={convertDiscount || ''}
                 onChange={(e) => setConvertDiscount(e.target.value === '' ? 0 : Number(e.target.value))}
                 className="w-full h-8 py-1 px-2 rounded-md border border-slate-300 font-mono font-bold"

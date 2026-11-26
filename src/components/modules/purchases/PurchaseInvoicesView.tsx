@@ -11,6 +11,11 @@ import { Invoice, InvoiceItem, InlinePurchaseNewProduct, Product } from '../../.
 import { Modal } from '../../common/Modal';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { ProductSearchSelect } from '../../common/ProductSearchSelect';
+import {
+  LinkedGroupCategoryFilter,
+  filterProductsByGroupCategory,
+  getScopedCategoriesForGroup,
+} from '../../common/LinkedGroupCategoryFilter';
 import { SearchableFilterSelect } from '../../common/SearchableFilterSelect';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { QuantityInput } from '../../common/QuantityInput';
@@ -35,6 +40,10 @@ interface PurchaseDraftItem {
   purchasePriceAtTime: number;
   discount: number;
   total: number;
+  groupId?: string;
+  groupName?: string;
+  categoryId?: string;
+  categoryName?: string;
   notes?: string;
   newProduct?: InlinePurchaseNewProduct;
 }
@@ -97,7 +106,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
   initialOpenNew = false,
 }) => {
   const {
-    invoices, suppliers, products, warehouses, cashboxes, purchaseReceivers = [],
+    invoices, suppliers, products, productGroups = [], categories = [], warehouses, cashboxes, purchaseReceivers = [],
     settings, createPurchaseInvoice, editPurchaseInvoice, cancelInvoice,
     sendPurchaseInvoice, receivePurchaseInvoice, rejectPurchaseInvoice, confirmDraftInvoice,
   } = useData();
@@ -147,10 +156,12 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
   const [editDate, setEditDate] = useState('');
   const [editSupplierId, setEditSupplierId] = useState('');
   const [editWarehouseId, setEditWarehouseId] = useState('');
-  const [editDiscount, setEditDiscount] = useState<number>(0);
+  const [editDiscount, setEditDiscount] = useState<number | ''>('');
   const [editNotes, setEditNotes] = useState('');
   const [editReason, setEditReason] = useState('');
   const [editItems, setEditItems] = useState<InvoiceItem[]>([]);
+  const [editGroupFilter, setEditGroupFilter] = useState('all');
+  const [editCatFilter, setEditCatFilter] = useState('all');
   const [editAddProdId, setEditAddProdId] = useState('');
   const [editAddQty, setEditAddQty] = useState<number | ''>('');
   const [editAddPrice, setEditAddPrice] = useState<number | ''>('');
@@ -173,6 +184,8 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
   const [items, setItems] = useState<PurchaseDraftItem[]>([]);
 
   // Classic Item Entry states
+  const [purchaseGroupFilter, setPurchaseGroupFilter] = useState('all');
+  const [purchaseCatFilter, setPurchaseCatFilter] = useState('all');
   const [barcodeInput, setBarcodeInput] = useState('');
   const [itemProdId, setItemProdId] = useState('');
   const [itemUnitName, setItemUnitName] = useState('');
@@ -184,6 +197,8 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
   const [newProdName, setNewProdName] = useState('');
   const [newProdBarcode, setNewProdBarcode] = useState('');
   const [newProdCode, setNewProdCode] = useState('');
+  const [newProdGroupId, setNewProdGroupId] = useState('');
+  const [newProdCategoryId, setNewProdCategoryId] = useState('');
   const [newProdCategory, setNewProdCategory] = useState('');
   const [newProdBaseUnit, setNewProdBaseUnit] = useState('');
   const [newProdQty, setNewProdQty] = useState<number | ''>('');
@@ -198,6 +213,8 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
 
   const resetPurchaseModalForm = useCallback(() => {
     setItems([]);
+    setPurchaseGroupFilter('all');
+    setPurchaseCatFilter('all');
     setBarcodeInput('');
     setItemProdId('');
     setItemUnitName('');
@@ -211,6 +228,10 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     setNewProdName('');
     setNewProdBarcode('');
     setNewProdCode('');
+    setNewProdGroupId('');
+    setNewProdCategoryId('');
+    setNewProdCategory('');
+    setNewProdBaseUnit('');
     setNewProdQty('');
     setNewProdPurchasePrice('');
     setNewProdSellingPrice('');
@@ -360,6 +381,40 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     });
   }, [purchaseInvoices, searchTerm, supplierFilter, statusFilter]);
 
+  const filteredPurchaseProducts = useMemo(
+    () =>
+      filterProductsByGroupCategory(
+        products,
+        productGroups,
+        categories,
+        purchaseGroupFilter,
+        purchaseCatFilter
+      ),
+    [products, productGroups, categories, purchaseGroupFilter, purchaseCatFilter]
+  );
+
+  const filteredEditProducts = useMemo(
+    () =>
+      filterProductsByGroupCategory(
+        products,
+        productGroups,
+        categories,
+        editGroupFilter,
+        editCatFilter
+      ),
+    [products, productGroups, categories, editGroupFilter, editCatFilter]
+  );
+
+  const inlineScopedCategories = useMemo(
+    () => getScopedCategoriesForGroup(categories, newProdGroupId === '' ? 'all' : newProdGroupId).filter((c) => c.isActive !== false),
+    [categories, newProdGroupId]
+  );
+
+  const activeGroupsList = useMemo(
+    () => productGroups.filter((g) => g.isActive !== false),
+    [productGroups]
+  );
+
   const selectedPurchaseProduct = useMemo(
     () => products.find((p) => p.id === itemProdId) || null,
     [products, itemProdId]
@@ -391,8 +446,8 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     const p = products.find((prod) => prod.id === prodId);
     if (!p) return;
     setItemUnitName(p.baseUnit);
-    setItemQty(1);
-    setItemPrice(p.purchasePrice > 0 ? p.purchasePrice : 0);
+    setItemQty('');
+    setItemPrice(p.purchasePrice > 0 ? p.purchasePrice : '');
     setError(null);
     window.setTimeout(() => {
       qtyInputRef.current?.focus();
@@ -404,7 +459,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     setItemUnitName(unitName);
     const matched = purchaseUnitOptions.find((u) => u.name === unitName);
     if (matched) {
-      setItemPrice(matched.purchasePrice);
+      setItemPrice(matched.purchasePrice > 0 ? matched.purchasePrice : '');
     }
   };
 
@@ -420,12 +475,17 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     );
     if (prod) {
       const unitMatch = prod.units.find((u) => u.barcode === barcode);
+      const unitBuy = unitMatch ? unitMatch.purchasePrice : prod.purchasePrice;
       setItemProdId(prod.id);
       setItemUnitName(unitMatch?.name || prod.baseUnit);
-      setItemQty(1);
-      setItemPrice(unitMatch ? unitMatch.purchasePrice : prod.purchasePrice);
+      setItemQty('');
+      setItemPrice(unitBuy > 0 ? unitBuy : '');
       setBarcodeInput('');
       setError(null);
+      window.setTimeout(() => {
+        qtyInputRef.current?.focus();
+        qtyInputRef.current?.select();
+      }, 30);
     } else {
       setError(
         t(
@@ -440,8 +500,8 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     setShowInlineNewProduct(false);
     setItemProdId(prod.id);
     setItemUnitName(prod.baseUnit);
-    const price = prod.purchasePrice > 0 ? prod.purchasePrice : 0;
-    const qty = newProdQty !== '' && Number(newProdQty) > 0 ? Number(newProdQty) : 1;
+    const price = prod.purchasePrice > 0 ? prod.purchasePrice : '';
+    const qty = newProdQty !== '' && Number(newProdQty) > 0 ? Number(newProdQty) : '';
     setItemPrice(price);
     setItemQty(qty);
     setError(null);
@@ -498,6 +558,10 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
           purchasePriceAtTime: priceNum,
           discount: 0,
           total,
+          groupId: prod.groupId,
+          groupName: prod.groupName,
+          categoryId: prod.categoryId,
+          categoryName: prod.category,
         },
       ];
     });
@@ -558,6 +622,10 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
             purchasePriceAtTime: effectiveBuy,
             discount: 0,
             total,
+            groupId: exact.groupId,
+            groupName: exact.groupName,
+            categoryId: exact.categoryId,
+            categoryName: exact.category,
           },
         ];
       });
@@ -566,7 +634,9 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
         text: t(`تم ربط البند بالصنف المسجل مسبقاً (${exact.name}) لمنع التكرار في المخزن.`, `Linked line item to existing product (${exact.name}) to prevent warehouse duplication.`),
       });
     } else {
-      const cleanCategory = newProdCategory.trim() || 'أصناف عامة';
+      const chosenGroup = productGroups.find((g) => g.id === newProdGroupId);
+      const chosenCat = categories.find((c) => c.id === newProdCategoryId);
+      const cleanCategory = (chosenCat?.name || newProdCategory).trim();
       const cleanUnit = newProdBaseUnit.trim() || 'قطعة';
       const cleanBarcode = newProdBarcode.trim();
       const cleanCode = newProdCode.trim();
@@ -584,10 +654,17 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
           purchasePriceAtTime: buyPrice,
           discount: 0,
           total,
+          groupId: chosenGroup?.id || chosenCat?.groupId,
+          groupName: chosenGroup?.name,
+          categoryId: chosenCat?.id,
+          categoryName: cleanCategory || undefined,
           newProduct: {
             name: cleanName,
             barcode: cleanBarcode || undefined,
             code: cleanCode || undefined,
+            groupId: chosenGroup?.id || chosenCat?.groupId,
+            groupName: chosenGroup?.name,
+            categoryId: chosenCat?.id,
             category: cleanCategory,
             baseUnit: cleanUnit,
             purchasePrice: buyPrice,
@@ -600,6 +677,10 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     setNewProdName('');
     setNewProdBarcode('');
     setNewProdCode('');
+    setNewProdGroupId('');
+    setNewProdCategoryId('');
+    setNewProdCategory('');
+    setNewProdBaseUnit('');
     setNewProdQty('');
     setNewProdPurchasePrice('');
     setNewProdSellingPrice('');
@@ -788,10 +869,12 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     setEditDate(inv.date);
     setEditSupplierId(inv.supplierId || '');
     setEditWarehouseId(inv.warehouseId || '');
-    setEditDiscount(inv.discountTotal || 0);
+    setEditDiscount(inv.discountTotal ? inv.discountTotal : '');
     setEditNotes(inv.notes || '');
     setEditReason('');
     setEditItems(inv.items.map((it) => ({ ...it })));
+    setEditGroupFilter('all');
+    setEditCatFilter('all');
     setEditAddProdId('');
     setEditAddQty('');
     setEditAddPrice('');
@@ -843,6 +926,10 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
           purchasePriceAtTime: priceNum,
           discount: 0,
           total: computeLineTotal(qtyNum, priceNum, 0),
+          groupId: prod.groupId,
+          groupName: prod.groupName,
+          categoryId: prod.categoryId,
+          categoryName: prod.category,
         },
       ];
     });
@@ -1271,7 +1358,6 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       type="text"
                       value={newProdName}
                       onChange={(e) => setNewProdName(e.target.value)}
-                      placeholder={t('مثال: سكر الضحى 1 كجم', 'e.g., Sugar 1kg')}
                       className="w-full h-8 border border-slate-300 bg-white rounded-md px-2 font-bold focus:border-blue-600 outline-hidden"
                     />
                   </div>
@@ -1281,7 +1367,6 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       type="text"
                       value={newProdBarcode}
                       onChange={(e) => setNewProdBarcode(e.target.value)}
-                      placeholder="622..."
                       className="w-full h-8 border border-slate-300 bg-white rounded-md px-2 font-mono text-xs"
                     />
                   </div>
@@ -1291,18 +1376,52 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       type="text"
                       value={newProdCode}
                       onChange={(e) => setNewProdCode(e.target.value)}
-                      placeholder="PRD-..."
                       className="w-full h-8 border border-slate-300 bg-white rounded-md px-2 font-mono text-xs"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('التصنيف:', 'Category:')}</label>
-                    <input
-                      type="text"
-                      value={newProdCategory}
-                      onChange={(e) => setNewProdCategory(e.target.value)}
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('المجموعة:', 'Group:')}</label>
+                    <select
+                      value={newProdGroupId}
+                      onChange={(e) => {
+                        const gid = e.target.value;
+                        setNewProdGroupId(gid);
+                        if (newProdCategoryId) {
+                          const curCat = categories.find((c) => c.id === newProdCategoryId);
+                          if (!curCat || (gid && curCat.groupId !== gid)) {
+                            setNewProdCategoryId('');
+                            setNewProdCategory('');
+                          }
+                        }
+                      }}
                       className="w-full h-8 border border-slate-300 bg-white rounded-md px-2 font-semibold text-xs"
-                    />
+                    >
+                      <option value="">{t('-- اختر المجموعة --', '-- Select Group --')}</option>
+                      {activeGroupsList.map((g) => (
+                        <option key={g.id} value={g.id}>{g.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('التصنيف:', 'Category:')}</label>
+                    <select
+                      value={newProdCategoryId}
+                      onChange={(e) => {
+                        const cid = e.target.value;
+                        setNewProdCategoryId(cid);
+                        const catObj = categories.find((c) => c.id === cid);
+                        setNewProdCategory(catObj?.name || '');
+                        if (catObj?.groupId && !newProdGroupId) {
+                          setNewProdGroupId(catObj.groupId);
+                        }
+                      }}
+                      className="w-full h-8 border border-slate-300 bg-white rounded-md px-2 font-semibold text-xs"
+                    >
+                      <option value="">{t('-- اختر التصنيف --', '-- Select Category --')}</option>
+                      {inlineScopedCategories.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الوحدة:', 'Unit:')}</label>
@@ -1310,7 +1429,6 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       type="text"
                       value={newProdBaseUnit}
                       onChange={(e) => setNewProdBaseUnit(e.target.value)}
-                      placeholder={t('قطعة / كرتونة', 'Piece / Carton')}
                       className="w-full h-8 border border-slate-300 bg-white rounded-md px-2 font-semibold text-xs"
                     />
                   </div>
@@ -1320,7 +1438,6 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       allowDecimals
                       min={0.001}
                       value={newProdQty}
-                      placeholder={t('الكمية', 'Qty')}
                       onChange={setNewProdQty}
                       ariaLabel={t('كمية الصنف الجديد', 'New Product Qty')}
                       inputClassName="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-center font-mono font-bold text-xs"
@@ -1332,7 +1449,6 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       type="number"
                       step="0.5"
                       min="0"
-                      placeholder="0.00"
                       value={newProdPurchasePrice}
                       onChange={(e) => setNewProdPurchasePrice(e.target.value === '' ? '' : Number(e.target.value))}
                       className="w-full h-8 border border-slate-300 bg-white rounded-md px-2 text-center font-mono font-bold text-xs"
@@ -1344,7 +1460,6 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       type="number"
                       step="0.5"
                       min="0"
-                      placeholder="0.00"
                       value={newProdSellingPrice}
                       onChange={(e) => setNewProdSellingPrice(e.target.value === '' ? '' : Number(e.target.value))}
                       className="w-full h-8 border border-slate-300 bg-white rounded-md px-2 text-center font-mono font-bold text-xs"
@@ -1414,74 +1529,83 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
-                <div className="sm:col-span-5">
-                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('اختيار الصنف:', 'Select Product:')}</label>
-                  <ProductSearchSelect
-                    inputRef={productSearchRef}
-                    products={products}
-                    selectedProductId={itemProdId}
-                    warehouseId={selectedWarehouseId}
-                    warehouses={warehouses}
-                    priceMode="purchase"
-                    currency={settings.currency}
-                    placeholder={t('ابحث لإضافة صنف...', 'Search to add item...')}
-                    onSelect={(p) => handleProductPick(p.id)}
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الوحدة:', 'Unit:')}</label>
-                  <select
-                    disabled={!selectedPurchaseProduct}
-                    value={itemUnitName}
-                    onChange={(e) => handlePurchaseUnitSelect(e.target.value)}
-                    className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-xs font-bold disabled:bg-slate-100"
-                  >
-                    {purchaseUnitOptions.length === 0 ? (
-                      <option value="">{t('-- الوحدة --', '-- Unit --')}</option>
-                    ) : (
-                      purchaseUnitOptions.map((u) => (
-                        <option key={u.name} value={u.name}>{t(u.name)}</option>
-                      ))
-                    )}
-                  </select>
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الكمية:', 'Qty:')}</label>
-                  <QuantityInput
-                    inputRef={qtyInputRef}
-                    allowDecimals
-                    min={0.001}
-                    disabled={!selectedPurchaseProduct}
-                    value={itemQty}
-                    onChange={(val) => setItemQty(val)}
-                    placeholder={t('الكمية', 'Qty')}
-                    ariaLabel={t('الكمية', 'Qty')}
-                    inputClassName="w-full h-8 px-2 rounded-md border border-slate-300 bg-white text-center font-mono font-bold disabled:bg-slate-100"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('سعر الشراء:', 'Buy Price:')}</label>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.5"
-                    disabled={!selectedPurchaseProduct}
-                    placeholder="0.00"
-                    value={itemPrice}
-                    onChange={(e) => setItemPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
-                    className="w-full h-8 px-2 rounded-md border border-slate-300 bg-white text-center font-mono font-bold disabled:bg-slate-100"
-                  />
-                </div>
-                <div className="sm:col-span-1">
-                  <button
-                    type="button"
-                    disabled={!selectedPurchaseProduct}
-                    onClick={handleAddItem}
-                    className="w-full h-8 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer disabled:opacity-50"
-                  >
-                    {t('+', '+')}
-                  </button>
+              <div className="space-y-2">
+                <LinkedGroupCategoryFilter
+                  productGroups={productGroups}
+                  categories={categories}
+                  selectedGroupId={purchaseGroupFilter}
+                  selectedCategoryId={purchaseCatFilter}
+                  onGroupChange={setPurchaseGroupFilter}
+                  onCategoryChange={setPurchaseCatFilter}
+                  compact
+                />
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
+                  <div className="sm:col-span-5">
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('اختيار الصنف:', 'Select Product:')}</label>
+                    <ProductSearchSelect
+                      inputRef={productSearchRef}
+                      products={filteredPurchaseProducts}
+                      selectedProductId={itemProdId}
+                      warehouseId={selectedWarehouseId}
+                      warehouses={warehouses}
+                      priceMode="purchase"
+                      currency={settings.currency}
+                      placeholder={t('ابحث لإضافة صنف...', 'Search to add item...')}
+                      onSelect={(p) => handleProductPick(p.id)}
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الوحدة:', 'Unit:')}</label>
+                    <select
+                      disabled={!selectedPurchaseProduct}
+                      value={itemUnitName}
+                      onChange={(e) => handlePurchaseUnitSelect(e.target.value)}
+                      className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-xs font-bold disabled:bg-slate-100"
+                    >
+                      {purchaseUnitOptions.length === 0 ? (
+                        <option value="">{t('-- الوحدة --', '-- Unit --')}</option>
+                      ) : (
+                        purchaseUnitOptions.map((u) => (
+                          <option key={u.name} value={u.name}>{t(u.name)}</option>
+                        ))
+                      )}
+                    </select>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الكمية:', 'Qty:')}</label>
+                    <QuantityInput
+                      inputRef={qtyInputRef}
+                      allowDecimals
+                      min={0.001}
+                      disabled={!selectedPurchaseProduct}
+                      value={itemQty}
+                      onChange={(val) => setItemQty(val)}
+                      ariaLabel={t('الكمية', 'Qty')}
+                      inputClassName="w-full h-8 px-2 rounded-md border border-slate-300 bg-white text-center font-mono font-bold disabled:bg-slate-100"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('سعر الشراء:', 'Buy Price:')}</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.5"
+                      disabled={!selectedPurchaseProduct}
+                      value={itemPrice}
+                      onChange={(e) => setItemPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                      className="w-full h-8 px-2 rounded-md border border-slate-300 bg-white text-center font-mono font-bold disabled:bg-slate-100"
+                    />
+                  </div>
+                  <div className="sm:col-span-1">
+                    <button
+                      type="button"
+                      disabled={!selectedPurchaseProduct}
+                      onClick={handleAddItem}
+                      className="w-full h-8 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer disabled:opacity-50"
+                    >
+                      {t('+', '+')}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -1663,7 +1787,6 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     type="number"
                     min={0}
                     step="0.5"
-                    placeholder="0"
                     value={discountTotal}
                     onChange={(e) => setDiscountTotal(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
                     className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-center font-mono font-bold"
@@ -2239,59 +2362,68 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     min={0}
                     step="0.5"
                     value={editDiscount}
-                    onChange={(e) => setEditDiscount(Math.max(0, parseFloat(e.target.value) || 0))}
+                    onChange={(e) => setEditDiscount(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
                     className="w-full h-8 px-2 py-1 rounded-md border border-slate-300 bg-white font-bold"
                   />
                 </div>
               </div>
 
               {/* Add another item inside Edit Modal */}
-              <div className="bg-blue-50/60 p-2.5 rounded-lg border border-blue-200 grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
-                <div className="sm:col-span-5">
-                  <label className="block font-bold text-slate-700 mb-1">{t('إضافة صنف آخر للفاتورة:', 'Add Another Item to Invoice:')}</label>
-                  <ProductSearchSelect
-                    products={products}
-                    selectedProductId={editAddProdId}
-                    warehouseId={editWarehouseId}
-                    warehouses={warehouses}
-                    priceMode="purchase"
-                    currency={settings.currency}
-                    placeholder={t('ابحث لإضافة صنف...', 'Search to add item...')}
-                    onSelect={handleEditPickProduct}
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block font-bold text-slate-700 mb-1">{t('الكمية:', 'Qty:')}</label>
-                  <QuantityInput
-                    allowDecimals
-                    min={0.001}
-                    value={editAddQty}
-                    onChange={setEditAddQty}
-                    placeholder={t('الكمية', 'Qty')}
-                    ariaLabel={t('كمية صنف مضاف', 'Added Item Qty')}
-                    inputClassName="w-full px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-center font-mono font-bold"
-                  />
-                </div>
-                <div className="sm:col-span-3">
-                  <label className="block font-bold text-slate-700 mb-1">{t('سعر الشراء:', 'Buy Price:')}</label>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.5"
-                    placeholder={t('السعر', 'Price')}
-                    value={editAddPrice}
-                    onChange={(e) => setEditAddPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
-                    className="w-full px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-center font-mono font-bold"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <button
-                    type="button"
-                    onClick={handleAddItemToEdit}
-                    className="w-full py-1.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
-                  >
-                    {t('+ إضافة', '+ Add')}
-                  </button>
+              <div className="bg-blue-50/60 p-2.5 rounded-lg border border-blue-200 space-y-2">
+                <LinkedGroupCategoryFilter
+                  productGroups={productGroups}
+                  categories={categories}
+                  selectedGroupId={editGroupFilter}
+                  selectedCategoryId={editCatFilter}
+                  onGroupChange={setEditGroupFilter}
+                  onCategoryChange={setEditCatFilter}
+                  compact
+                />
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
+                  <div className="sm:col-span-5">
+                    <label className="block font-bold text-slate-700 mb-1">{t('إضافة صنف آخر للفاتورة:', 'Add Another Item to Invoice:')}</label>
+                    <ProductSearchSelect
+                      products={filteredEditProducts}
+                      selectedProductId={editAddProdId}
+                      warehouseId={editWarehouseId}
+                      warehouses={warehouses}
+                      priceMode="purchase"
+                      currency={settings.currency}
+                      placeholder={t('ابحث لإضافة صنف...', 'Search to add item...')}
+                      onSelect={handleEditPickProduct}
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block font-bold text-slate-700 mb-1">{t('الكمية:', 'Qty:')}</label>
+                    <QuantityInput
+                      allowDecimals
+                      min={0.001}
+                      value={editAddQty}
+                      onChange={setEditAddQty}
+                      ariaLabel={t('كمية صنف مضاف', 'Added Item Qty')}
+                      inputClassName="w-full px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-center font-mono font-bold"
+                    />
+                  </div>
+                  <div className="sm:col-span-3">
+                    <label className="block font-bold text-slate-700 mb-1">{t('سعر الشراء:', 'Buy Price:')}</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.5"
+                      value={editAddPrice}
+                      onChange={(e) => setEditAddPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                      className="w-full px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-center font-mono font-bold"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <button
+                      type="button"
+                      onClick={handleAddItemToEdit}
+                      className="w-full py-1.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
+                    >
+                      {t('+ إضافة', '+ Add')}
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -2428,7 +2560,6 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   required={editModalInvoice.status === 'confirmed'}
                   value={editReason}
                   onChange={(e) => setEditReason(e.target.value)}
-                  placeholder={t('مثال: تعديل كميات أو أسعار التوريد من المورد...', 'e.g., adjusting supply quantities or prices...')}
                   className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 font-semibold focus:border-blue-600 outline-hidden"
                 />
               </div>
@@ -2533,7 +2664,6 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 type="text"
                 value={sendModalNotes}
                 onChange={(e) => setSendModalNotes(e.target.value)}
-                placeholder={t('مثال: تم شراء البضاعة وبانتظار مراجعة التسعير والكميات...', 'e.g., Goods purchased, awaiting pricing and qty review...')}
                 className="w-full h-8 px-2 py-1 rounded-md border border-slate-300"
               />
             </div>

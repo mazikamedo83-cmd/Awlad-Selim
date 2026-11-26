@@ -80,7 +80,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
   const [reason, setReason] = useState('');
   const [refundType, setRefundType] = useState<'balance' | 'cash'>('balance');
   const [refundCashboxId, setRefundCashboxId] = useState(cashboxes[0]?.id || '');
-  const [returnQuantities, setReturnQuantities] = useState<Record<string, number>>({});
+  const [returnQuantities, setReturnQuantities] = useState<Record<string, number | ''>>({});
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -292,14 +292,14 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
     return invoices.find(i => i.id === selectedInvoiceId);
   }, [invoices, selectedInvoiceId]);
 
-  // When invoice is chosen, initialize quantities to 0
+  // When invoice is chosen, leave quantities empty until entered by user
   const handleSelectInvoice = (id: string) => {
     setSelectedInvoiceId(id);
     const inv = invoices.find(i => i.id === id);
     if (inv) {
-      const qMap: Record<string, number> = {};
+      const qMap: Record<string, number | ''> = {};
       inv.items.forEach(it => {
-        qMap[it.productId] = 0;
+        qMap[it.productId] = '';
       });
       setReturnQuantities(qMap);
     }
@@ -321,7 +321,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
     if (!selectedInvoice) return 0;
     let total = 0;
     for (const item of selectedInvoice.items) {
-      const q = returnQuantities[item.productId] || 0;
+      const q = Number(returnQuantities[item.productId] || 0);
       total += q * item.unitPrice;
     }
     return total;
@@ -335,9 +335,9 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
     }
 
     const returnItems = selectedInvoice.items
-      .filter(item => (returnQuantities[item.productId] || 0) > 0)
+      .filter(item => Number(returnQuantities[item.productId] || 0) > 0)
       .map(item => {
-        const q = returnQuantities[item.productId] || 0;
+        const q = Number(returnQuantities[item.productId] || 0);
         return {
           productId: item.productId,
           productName: item.productName,
@@ -1125,7 +1125,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                             allowDecimals
                             min={0}
                             max={maxAllowed}
-                            value={returnQuantities[it.productId] || 0}
+                            value={returnQuantities[it.productId] ?? ''}
                             onChange={(q) =>
                               setReturnQuantities((prev) => ({
                                 ...prev,

@@ -13,6 +13,7 @@ import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { exportToExcel } from '../../common/ExcelExporter';
 import { exportTableToPdf } from '../../common/PdfExporter';
 import { UnifiedDataTable } from '../../common/UnifiedDataTable';
+import { LinkedGroupCategoryFilter, filterProductsByGroupCategory } from '../../common/LinkedGroupCategoryFilter';
 
 const STATUS_BADGE: Record<StockCountSession['status'], { labelAr: string; labelEn: string; cls: string }> = {
   draft: { labelAr: 'مسودة (لا يؤثر على الرصيد)', labelEn: 'Draft (No stock impact)', cls: 'bg-slate-100 text-slate-700 border-slate-300' },
@@ -26,6 +27,8 @@ export const StockCountView: React.FC = () => {
     stockCounts = [],
     warehouses,
     products,
+    productGroups = [],
+    categories = [],
     settings,
     createStockCount,
     updateStockCount,
@@ -56,6 +59,8 @@ export const StockCountView: React.FC = () => {
   const [countDate, setCountDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [countNotes, setCountNotes] = useState<string>('');
   const [itemSearch, setItemSearch] = useState<string>('');
+  const [countGroupFilter, setCountGroupFilter] = useState<string>('all');
+  const [countCatFilter, setCountCatFilter] = useState<string>('all');
   const [onlyVarianceFilter, setOnlyVarianceFilter] = useState<boolean>(false);
   const [draftLines, setDraftLines] = useState<Array<{
     productId: string;
@@ -126,6 +131,8 @@ export const StockCountView: React.FC = () => {
     setCountDate(new Date().toISOString().split('T')[0]);
     setCountNotes('');
     setItemSearch('');
+    setCountGroupFilter('all');
+    setCountCatFilter('all');
     setOnlyVarianceFilter(false);
     setDraftLines(whId ? buildLinesForWarehouse(whId) : []);
     setModalError(null);
@@ -138,6 +145,8 @@ export const StockCountView: React.FC = () => {
     setCountDate(session.date);
     setCountNotes(session.notes || '');
     setItemSearch('');
+    setCountGroupFilter('all');
+    setCountCatFilter('all');
     setOnlyVarianceFilter(false);
     setDraftLines(
       session.items.map((it) => ({
@@ -365,10 +374,17 @@ export const StockCountView: React.FC = () => {
     });
   };
 
+  const allowedCountProductIds = useMemo(() => {
+    if (countGroupFilter === 'all' && countCatFilter === 'all') return null;
+    const matched = filterProductsByGroupCategory(products, productGroups, categories, countGroupFilter, countCatFilter);
+    return new Set(matched.map((p) => p.id));
+  }, [products, productGroups, categories, countGroupFilter, countCatFilter]);
+
   const visibleDraftLines = useMemo(() => {
     return draftLines
       .map((line, originalIndex) => ({ ...line, originalIndex }))
       .filter((line) => {
+        if (allowedCountProductIds && !allowedCountProductIds.has(line.productId)) return false;
         if (onlyVarianceFilter && line.actualQty === line.systemQty) return false;
         if (itemSearch.trim()) {
           const q = itemSearch.trim().toLowerCase();
@@ -380,7 +396,7 @@ export const StockCountView: React.FC = () => {
         }
         return true;
       });
-  }, [draftLines, onlyVarianceFilter, itemSearch]);
+  }, [draftLines, allowedCountProductIds, onlyVarianceFilter, itemSearch]);
 
   return (
     <div className="space-y-2">
@@ -637,13 +653,12 @@ export const StockCountView: React.FC = () => {
                 type="text"
                 value={countNotes}
                 onChange={(e) => setCountNotes(e.target.value)}
-                placeholder={t('جرد ربع سنوي / جرد دوري...', 'Quarterly count / periodic count...')}
                 className="w-full h-8 bg-white border border-slate-300 rounded-md px-2"
               />
             </div>
           </div>
 
-          <div className="awlad-filter-row justify-between" data-testid="stockcount-modal-filter-row">
+          <div className="awlad-filter-row justify-between flex-wrap gap-2" data-testid="stockcount-modal-filter-row">
             <div className="relative flex-1 min-w-[180px] shrink-0">
               <input
                 type="text"
@@ -654,6 +669,15 @@ export const StockCountView: React.FC = () => {
               />
               <Search className="w-3.5 h-3.5 text-slate-400 absolute start-2 top-2" />
             </div>
+            <LinkedGroupCategoryFilter
+              productGroups={productGroups}
+              categories={categories}
+              selectedGroupId={countGroupFilter}
+              selectedCategoryId={countCatFilter}
+              onGroupChange={setCountGroupFilter}
+              onCategoryChange={setCountCatFilter}
+              compact
+            />
             <label className="flex items-center gap-1.5 h-8 px-2.5 bg-slate-50 border border-slate-200 rounded-md cursor-pointer font-bold text-xs whitespace-nowrap shrink-0">
               <input
                 type="checkbox"

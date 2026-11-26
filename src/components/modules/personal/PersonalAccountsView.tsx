@@ -753,7 +753,6 @@ export const PersonalAccountsView: React.FC = () => {
               required
               value={accOwnerName}
               onChange={(e) => setAccOwnerName(e.target.value)}
-              placeholder={t('مثال: الحاج سليم / أ. أحمد سليم', 'e.g. Owner Name / Partner')}
               className="w-full h-8 border border-slate-300 rounded-md px-2 py-1 font-bold"
             />
           </div>
@@ -764,7 +763,6 @@ export const PersonalAccountsView: React.FC = () => {
               required
               value={accName}
               onChange={(e) => setAccName(e.target.value)}
-              placeholder={t('مثال: الحساب الجاري الشخصي', 'e.g. Personal Current Account')}
               className="w-full h-8 border border-slate-300 rounded-md px-2 py-1 font-bold"
             />
           </div>
@@ -774,7 +772,6 @@ export const PersonalAccountsView: React.FC = () => {
               <input
                 type="number"
                 step="0.01"
-                placeholder="0.00"
                 value={accOpening}
                 onChange={(e) => setAccOpening(e.target.value === '' ? '' : Number(e.target.value))}
                 className="w-full h-8 border border-slate-300 rounded-md px-2 py-1 font-mono font-bold"
@@ -910,7 +907,6 @@ export const PersonalAccountsView: React.FC = () => {
               required={txType === 'adjustment'}
               value={txReason}
               onChange={(e) => setTxReason(e.target.value)}
-              placeholder={t('مثال: مصروفات عائلية / سداد التزام شخصي / تمويل من المالك', 'e.g. Family expenses / Personal commitment / Owner funding')}
               className="w-full h-8 border border-slate-300 rounded-md px-2 py-1 font-bold"
             />
           </div>
@@ -955,7 +951,6 @@ export const PersonalAccountsView: React.FC = () => {
                   type="number"
                   step="0.01"
                   required
-                  placeholder="0.00"
                   value={editAmount || ''}
                   onChange={(e) => setEditAmount(e.target.value === '' ? 0 : Number(e.target.value))}
                   className="w-full h-8 border border-slate-300 rounded-md px-2 py-1 font-mono font-bold"

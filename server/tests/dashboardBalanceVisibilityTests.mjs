@@ -86,7 +86,7 @@ test('DashboardView renders independent Eye/EyeOff buttons, global toggle, profi
   assert.ok(src.includes('grossProfit') && src.includes('netProfit'));
 });
 
-test('Platform Navigation Shell: Windows-only auto-open vertical Sidebar + toggle, Web horizontal sections bar, and restored Mobile portals', () => {
+test('Platform Navigation Shell: auto-open vertical Sidebar + reopen toggle, 7-shortcut Header without sections bar, and restored Mobile portals', () => {
   const header = readSrc('src/components/layout/Header.tsx');
   const sidebar = readSrc('src/components/layout/Sidebar.tsx');
   const app = readSrc('src/App.tsx');
@@ -96,16 +96,17 @@ test('Platform Navigation Shell: Windows-only auto-open vertical Sidebar + toggl
 
   assert.ok(native.includes('export function isWindowsDesktopApp()') && native.includes('export function getAppPlatform()'));
   assert.ok(header.includes('/awlad-selim-logo.png'), 'Original logo must be preserved in Header');
-  assert.ok(header.includes('{isWinDesktop && (') && header.includes('data-testid="sidebar-toggle-btn"'), 'Sidebar toggle must appear ONLY on Windows Desktop');
-  assert.ok(header.includes('{!isWinDesktop && webHorizontalSections.length > 0 && (') && header.includes('data-testid="web-horizontal-sections-nav"'), 'Web must restore horizontal sections navigation bar');
+  assert.ok(header.includes('{!isSidebarOpen && (') && header.includes('data-testid="sidebar-toggle-btn"'), 'Reopen sidebar toggle must appear when sidebar is closed');
+  assert.ok(!header.includes('webHorizontalSections') && !header.includes('data-testid="web-horizontal-sections-nav"'), 'Header must not render duplicate horizontal sections bar');
+  assert.ok(header.includes('data-testid="header-quick-shortcuts"'), 'Header quick shortcuts bar required');
   assert.ok(header.includes('data-testid="header-theme-toggle"'), '1-click theme toggle required in Header');
   assert.ok(header.includes('awlad-brand-gradient'), 'Top blue brand bar required');
 
   assert.ok(sidebar.includes('/awlad-selim-logo.png'), 'Original logo must be preserved in Sidebar');
   assert.ok(sidebar.includes("isLtr ? 'left-0 border-r' : 'right-0 border-l'"), 'Sidebar must support symmetric LTR/RTL');
   assert.ok(sidebar.includes('data-testid="sidebar-close-btn"'), 'Sidebar must include explicit close button');
-  assert.ok(app.includes('isWindowsDesktop &&') && app.includes('setIsSectionsOpen(true)'), 'Sidebar auto-open must be scoped strictly to Windows Desktop');
-  assert.ok(app.includes('{isWindowsDesktop && (') && app.includes('<Sidebar'), 'App must render Sidebar ONLY on Windows Desktop');
+  assert.ok(app.includes('setIsSectionsOpen(true)'), 'Sidebar auto-open must run after login');
+  assert.ok(app.includes('<Sidebar'), 'App must render Sidebar in desktop shell');
   assert.ok(app.includes('flex-1 min-h-0 flex items-stretch min-w-0'), 'Flex push layout beside sidebar required so content expands automatically');
   assert.ok(!mobileShell.includes('<Sidebar') && !mobileShell.includes('isMobileSidebarOpen'), 'StaffMobileShell must not render vertical Sidebar');
   assert.ok(!mobilePortal.includes('portal-sections-sidebar') && !mobilePortal.includes('isDrawerOpen'), 'MobilePortal must not render vertical drawer sidebar');

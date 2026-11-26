@@ -55,9 +55,8 @@ export function createEmptyDatabaseState() {
         status: 'active',
       },
     ],
-    categories: [
-      { id: 'cat-1', name: 'مواد غذائية عامة', status: 'active', createdAt: new Date().toISOString() },
-    ],
+    productGroups: [],
+    categories: [],
     products: [],
     customers: [],
     suppliers: [],
@@ -164,6 +163,7 @@ export function normalizeDbState(raw) {
   const arrayKeys = [
     'users',
     'warehouses',
+    'productGroups',
     'categories',
     'products',
     'customers',

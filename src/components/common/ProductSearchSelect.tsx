@@ -203,7 +203,7 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
       .map((p) => {
         const unitBarcodes = (p.units || []).map((u) => u.barcode || '').join(' ');
         const haystack = normalizeSearchText(
-          `${p.name} ${p.code} ${p.barcode || ''} ${unitBarcodes} ${p.category || ''}`
+          `${p.name} ${p.code} ${p.barcode || ''} ${unitBarcodes} ${p.groupName || ''} ${p.category || ''}`
         );
         const matchesAll = tokens.every((tk) => haystack.includes(tk));
         if (!matchesAll) return null;
@@ -429,7 +429,13 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
                       )}
                     </div>
                     <div className="flex items-center gap-2 text-[10px] text-slate-500 dark:text-[#97AECE] mt-0.5 flex-wrap">
-                      <span>{p.category}</span>
+                      {p.groupName && (
+                        <>
+                          <span className="font-bold text-[#003589] dark:text-[#85B8FF]">{p.groupName}</span>
+                          <span>•</span>
+                        </>
+                      )}
+                      <span>{p.category || t('بدون تصنيف', 'Uncategorized')}</span>
                       <span>•</span>
                       <span>{t('الوحدة:', 'Unit:')} {t(p.baseUnit)}</span>
                       <span>•</span>

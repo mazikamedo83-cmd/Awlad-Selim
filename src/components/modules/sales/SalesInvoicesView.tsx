@@ -16,6 +16,10 @@ import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { exportToExcel } from '../../common/ExcelExporter';
 import { QuantityInput } from '../../common/QuantityInput';
 import { ProductSearchSelect } from '../../common/ProductSearchSelect';
+import {
+  filterProductsByGroupCategory,
+  LinkedGroupCategoryFilter,
+} from '../../common/LinkedGroupCategoryFilter';
 import { SearchableFilterSelect } from '../../common/SearchableFilterSelect';
 import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 import { computeLineTotal } from '../../../utils/quantity';
@@ -35,6 +39,8 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
     invoices,
     customers,
     products,
+    productGroups,
+    categories,
     warehouses,
     representatives,
     cashboxes,
@@ -96,7 +102,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
 
   // Subsequent Payment on Invoice Modal state
   const [paymentModalInvoice, setPaymentModalInvoice] = useState<Invoice | null>(null);
-  const [paymentAmount, setPaymentAmount] = useState<number>(0);
+  const [paymentAmount, setPaymentAmount] = useState<number | ''>('');
   const [paymentCashboxId, setPaymentCashboxId] = useState<string>(cashboxes[0]?.id || '');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bank' | 'cheque'>('cash');
   const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -134,10 +140,24 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
   const [quoteDiscountTotal, setQuoteDiscountTotal] = useState<number | ''>('');
   const [quoteNotes, setQuoteNotes] = useState('');
   const [quoteItems, setQuoteItems] = useState<InvoiceItem[]>([]);
+  const [quoteGroupFilter, setQuoteGroupFilter] = useState('all');
+  const [quoteCategoryFilter, setQuoteCategoryFilter] = useState('all');
   const [quoteSelectedProductId, setQuoteSelectedProductId] = useState('');
   const [quoteQty, setQuoteQty] = useState<number | ''>('');
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [isSubmittingQuote, setIsSubmittingQuote] = useState(false);
+
+  const scopedQuoteProducts = useMemo(
+    () =>
+      filterProductsByGroupCategory(
+        products,
+        productGroups,
+        categories,
+        quoteGroupFilter,
+        quoteCategoryFilter
+      ),
+    [products, productGroups, categories, quoteGroupFilter, quoteCategoryFilter]
+  );
 
   // Convert Quote to Invoice modal state
   const [convertQuoteTarget, setConvertQuoteTarget] = useState<Invoice | null>(null);
@@ -341,7 +361,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
     setPaymentError(null);
     setIsSubmittingPayment(true);
     const res = await addInvoicePayment(paymentModalInvoice.id, {
-      amount: paymentAmount,
+      amount: Number(paymentAmount || 0),
       date: paymentDate,
       paymentMethod,
       cashboxId: paymentCashboxId,
@@ -415,6 +435,10 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
           productId: prod.id,
           productName: prod.name,
           barcode: prod.barcode || prod.code || '',
+          groupId: prod.groupId,
+          groupName: prod.groupName,
+          categoryId: prod.categoryId,
+          categoryName: prod.category,
           unit: prod.baseUnit,
           unitFactor: 1,
           quantity: qty,
@@ -1476,9 +1500,8 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                   required
                   min={1}
                   max={paymentModalInvoice.remainingAmount}
-                  placeholder="0.00"
-                  value={paymentAmount || ''}
-                  onChange={(e) => setPaymentAmount(e.target.value === '' ? 0 : parseFloat(e.target.value) || 0)}
+                  value={paymentAmount}
+                  onChange={(e) => setPaymentAmount(e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
                   className="w-full h-8 px-2 py-1 rounded-md border border-slate-300 font-bold text-sm text-emerald-800 focus:border-blue-600 focus:ring-1 focus:ring-blue-600 outline-hidden"
                 />
               </div>
@@ -1546,7 +1569,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmittingPayment || paymentAmount <= 0}
+                  disabled={isSubmittingPayment || Number(paymentAmount || 0) <= 0}
                   className="px-3 py-1 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-black transition-colors disabled:opacity-50 cursor-pointer"
                 >
                   {isSubmittingPayment ? t('جاري الحفظ...', 'Saving...') : t('تأكيد وقبض الدفعة', 'Confirm & Collect Payment')}
@@ -1602,7 +1625,6 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                   <input
                     type="number"
                     min={0}
-                    placeholder="0"
                     value={editDiscount || ''}
                     onChange={(e) => setEditDiscount(e.target.value === '' ? 0 : parseFloat(e.target.value) || 0)}
                     className="w-full h-8 px-2 py-1 rounded-md border border-slate-300 font-bold"
@@ -1693,7 +1715,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                   required
                   value={editReason}
                   onChange={(e) => setEditReason(e.target.value)}
-                  placeholder={t('مثال: تصحيح كمية الصنف أو تعديل السعر المتفق عليه...', 'e.g., Correct item quantity or update agreed price...')}
+                  placeholder={t('أدخل سبب تعديل الفاتورة', 'Enter reason for editing invoice')}
                   className="w-full h-8 px-2 py-1 rounded-md border border-slate-300 font-semibold focus:border-blue-600 outline-hidden"
                 />
               </div>
@@ -1845,10 +1867,18 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
 
               <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 space-y-1.5">
                 <label className="block font-bold text-slate-700">{t('إضافة أصناف لعرض السعر:', 'Add Items to Price Quote:')}</label>
+                <LinkedGroupCategoryFilter
+                  productGroups={productGroups}
+                  categories={categories}
+                  selectedGroupId={quoteGroupFilter}
+                  selectedCategoryId={quoteCategoryFilter}
+                  onGroupChange={setQuoteGroupFilter}
+                  onCategoryChange={setQuoteCategoryFilter}
+                />
                 <div className="flex flex-col sm:flex-row gap-2">
                   <div className="flex-1">
                     <ProductSearchSelect
-                      products={products}
+                      products={scopedQuoteProducts}
                       warehouses={warehouses}
                       warehouseId={quoteWarehouseId}
                       selectedProductId={quoteSelectedProductId}
@@ -1967,7 +1997,6 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                     type="number"
                     min={0}
                     step="0.01"
-                    placeholder="0.00"
                     value={quoteDiscountTotal}
                     onChange={(e) => setQuoteDiscountTotal(e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
                     className="w-full h-8 px-2 py-1 rounded-md border border-slate-300 font-mono font-bold"
@@ -2075,7 +2104,6 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                     type="number"
                     min={0}
                     step="0.01"
-                    placeholder="0.00"
                     value={convertPaidAtInvoice}
                     onChange={(e) => setConvertPaidAtInvoice(e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
                     className="w-full h-8 px-2 py-1 rounded-md border border-slate-300 font-mono font-bold"
@@ -2087,7 +2115,6 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                     type="number"
                     min={0}
                     step="0.01"
-                    placeholder="0.00"
                     value={convertDiscountTotal}
                     onChange={(e) => setConvertDiscountTotal(e.target.value === '' ? '' : parseFloat(e.target.value) || 0)}
                     className="w-full h-8 px-2 py-1 rounded-md border border-slate-300 font-mono font-bold"

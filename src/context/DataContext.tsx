@@ -67,6 +67,7 @@ import {
   RepCustodyStatementResponse,
   ItemMovementReportResponse,
   ServerConnectionSettings,
+  ProductGroup,
   ProductCategory,
   Warehouse,
   CustomerItemOrderRequest,
@@ -189,10 +190,16 @@ export interface DataContextType extends DatabaseState {
   adjustStock: (productId: string, warehouseId: string, newQuantity: number, reason: string) => Promise<void>;
   recordDamagedStock: (productId: string, warehouseId: string, quantity: number, reason: string) => Promise<{ success?: boolean; queuedOffline?: boolean } | void>;
 
-  // Categories
+  // Product Groups & Categories
+  productGroups: ProductGroup[];
+  addProductGroup: (name: string, description?: string) => Promise<{ success: boolean; productGroup?: ProductGroup; error?: string }>;
+  updateProductGroup: (id: string, updates: Partial<ProductGroup>) => Promise<{ success: boolean; productGroup?: ProductGroup; error?: string }>;
+  deleteProductGroup: (id: string) => Promise<{ success: boolean; error?: string }>;
+  toggleProductGroupStatus: (id: string) => Promise<{ success: boolean; error?: string }>;
   categories: ProductCategory[];
-  addCategory: (name: string, description?: string) => Promise<{ success: boolean; category?: ProductCategory; error?: string }>;
+  addCategory: (name: string, description?: string, groupId?: string) => Promise<{ success: boolean; category?: ProductCategory; error?: string }>;
   updateCategory: (id: string, updates: Partial<ProductCategory>) => Promise<void>;
+  deleteCategory: (id: string) => Promise<{ success: boolean; error?: string }>;
   toggleCategoryStatus: (id: string) => Promise<void>;
 
   // Warehouses
@@ -1717,6 +1724,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           ...empty,
           customers: pullData.customerProfile ? [pullData.customerProfile] : [],
           products: pullData.products || [],
+          productGroups: pullData.productGroups || [],
           categories: pullData.categories || [],
           customerItemOrders: pullData.customerItemOrders || [],
           orderAdvancePayments: pullData.orderAdvancePayments || [],
@@ -1782,6 +1790,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         nextStateBase = {
           ...empty,
           ...pullData,
+          productGroups: pullData.productGroups || [],
           repCustodyOperations: pullData.repCustodyOperations || [],
           purchaseReceivers: pullData.purchaseReceivers || [],
           purchaseReturnRequests: pullData.purchaseReturnRequests || [],
@@ -3452,11 +3461,53 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const addCategory = async (name: string, description = '') => {
+  const addProductGroup = async (name: string, description = '') => {
+    try {
+      const res = await apiRequest<{ ok: boolean; productGroup: ProductGroup }>('/api/products/groups', {
+        method: 'POST',
+        body: { name, description },
+      });
+      await loadRoleScopedData();
+      return { success: true, productGroup: res.productGroup };
+    } catch (err: any) {
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر إضافة المجموعة', 'Could not add group') };
+    }
+  };
+
+  const updateProductGroup = async (id: string, updates: Partial<ProductGroup>) => {
+    try {
+      const res = await apiRequest<{ ok: boolean; productGroup: ProductGroup }>(`/api/products/groups/${id}`, {
+        method: 'PUT',
+        body: updates,
+      });
+      await loadRoleScopedData();
+      return { success: true, productGroup: res.productGroup };
+    } catch (err: any) {
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر تحديث المجموعة', 'Could not update group') };
+    }
+  };
+
+  const deleteProductGroup = async (id: string) => {
+    try {
+      await apiRequest(`/api/products/groups/${id}`, { method: 'DELETE' });
+      await loadRoleScopedData();
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر حذف المجموعة', 'Could not delete group') };
+    }
+  };
+
+  const toggleProductGroupStatus = async (id: string) => {
+    const grp = (data.productGroups || []).find((g) => g.id === id);
+    if (!grp) return { success: false, error: tr('المجموعة غير موجودة', 'Group not found') };
+    return updateProductGroup(id, { status: grp.status === 'active' ? 'suspended' : 'active' });
+  };
+
+  const addCategory = async (name: string, description = '', groupId = '') => {
     try {
       const res = await apiRequest<{ ok: boolean; category: ProductCategory }>('/api/products/categories', {
         method: 'POST',
-        body: { name, description },
+        body: { name, description, ...(groupId ? { groupId } : {}) },
       });
       await loadRoleScopedData();
       return { success: true, category: res.category };
@@ -3468,6 +3519,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateCategory = async (id: string, updates: Partial<ProductCategory>) => {
     await apiRequest(`/api/products/categories/${id}`, { method: 'PUT', body: updates });
     await loadRoleScopedData();
+  };
+
+  const deleteCategory = async (id: string) => {
+    try {
+      await apiRequest(`/api/products/categories/${id}`, { method: 'DELETE' });
+      await loadRoleScopedData();
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر حذف التصنيف', 'Could not delete category') };
+    }
   };
 
   const toggleCategoryStatus = async (id: string) => {
@@ -5905,9 +5966,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         transferStock,
         adjustStock,
         recordDamagedStock,
+        productGroups: data.productGroups || [],
+        addProductGroup,
+        updateProductGroup,
+        deleteProductGroup,
+        toggleProductGroupStatus,
         categories: data.categories || [],
         addCategory,
         updateCategory,
+        deleteCategory,
         toggleCategoryStatus,
         addWarehouse,
         updateWarehouse,

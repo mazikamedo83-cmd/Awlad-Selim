@@ -1977,6 +1977,180 @@ export async function repairUnlinkedCustomerUsers(actor) {
 // Products & Categories
 // ==============================================================================
 
+export function normalizeArabicProductText(value) {
+  return String(value || '')
+    .trim()
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
+export async function listProductGroups() {
+  if (await isPgMode()) {
+    const pool = getPool();
+    const res = await pool.query('SELECT * FROM product_groups ORDER BY created_at ASC');
+    return res.rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      description: r.description || '',
+      status: r.status || 'active',
+      createdAt: isoTimestamp(r.created_at),
+      updatedAt: r.updated_at ? isoTimestamp(r.updated_at) : isoTimestamp(r.created_at),
+    }));
+  }
+  return [...(readJsonDatabase().productGroups || [])];
+}
+
+export async function createProductGroup(payload, actor) {
+  const name = String(payload?.name || '').trim();
+  if (!name) throw new AppError(400, 'اسم المجموعة مطلوب', 'INVALID_GROUP');
+  const norm = normalizeArabicProductText(name);
+  const id = payload?.id || generateServerId('GRP');
+  const description = String(payload?.description || '').trim();
+  const status = payload?.status === 'suspended' ? 'suspended' : 'active';
+  const now = nowIso();
+
+  if (await isPgMode()) {
+    const created = await withTransaction(async (client) => {
+      const dup = await client.query(
+        'SELECT id FROM product_groups WHERE normalized_name = $1 OR LOWER(name) = LOWER($2) LIMIT 1',
+        [norm, name]
+      );
+      if (dup.rows[0]) throw new AppError(409, 'اسم المجموعة مسجل مسبقًا', 'DUPLICATE_GROUP');
+      await client.query(
+        `INSERT INTO product_groups (id, name, normalized_name, description, status, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $6)`,
+        [id, name, norm, description, status, now]
+      );
+      return { id, name, description, status, createdAt: now, updatedAt: now };
+    });
+    await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `إضافة مجموعة أصناف (${name})`, module: 'المجموعات', recordId: id });
+    return created;
+  }
+
+  const created = await withJsonTransaction(async (db) => {
+    if (!Array.isArray(db.productGroups)) db.productGroups = [];
+    if (db.productGroups.some((g) => normalizeArabicProductText(g.name) === norm)) {
+      throw new AppError(409, 'اسم المجموعة مسجل مسبقًا', 'DUPLICATE_GROUP');
+    }
+    const group = { id, name, description, status, createdAt: now, updatedAt: now };
+    db.productGroups.push(group);
+    return group;
+  });
+  await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `إضافة مجموعة أصناف (${name})`, module: 'المجموعات', recordId: id });
+  return created;
+}
+
+export async function updateProductGroup(groupId, updates, actor) {
+  const now = nowIso();
+  if (await isPgMode()) {
+    const updated = await withTransaction(async (client) => {
+      const curRes = await client.query('SELECT * FROM product_groups WHERE id = $1 FOR UPDATE', [groupId]);
+      const cur = curRes.rows[0];
+      if (!cur) throw new AppError(404, 'المجموعة غير موجودة', 'GROUP_NOT_FOUND');
+
+      const nextName = String(updates?.name ?? cur.name).trim();
+      if (!nextName) throw new AppError(400, 'اسم المجموعة مطلوب', 'INVALID_GROUP');
+      const nextNorm = normalizeArabicProductText(nextName);
+      const dup = await client.query(
+        'SELECT id FROM product_groups WHERE (normalized_name = $1 OR LOWER(name) = LOWER($2)) AND id <> $3 LIMIT 1',
+        [nextNorm, nextName, groupId]
+      );
+      if (dup.rows[0]) throw new AppError(409, 'اسم المجموعة مسجل مسبقًا', 'DUPLICATE_GROUP');
+
+      const nextDescription = updates?.description !== undefined ? String(updates.description || '').trim() : (cur.description || '');
+      const nextStatus = updates?.status === 'suspended' || updates?.status === 'active' ? updates.status : (cur.status || 'active');
+
+      await client.query(
+        `UPDATE product_groups SET name = $1, normalized_name = $2, description = $3, status = $4, updated_at = $5 WHERE id = $6`,
+        [nextName, nextNorm, nextDescription, nextStatus, now, groupId]
+      );
+      // Cascade group rename to current categories & products ONLY (never rewrite historical invoice/return snapshots)
+      if (nextName !== cur.name) {
+        await client.query('UPDATE product_categories SET group_name = $1 WHERE group_id = $2', [nextName, groupId]);
+        await client.query('UPDATE products SET group_name = $1 WHERE group_id = $2', [nextName, groupId]);
+      }
+
+      return {
+        id: groupId,
+        name: nextName,
+        description: nextDescription,
+        status: nextStatus,
+        createdAt: isoTimestamp(cur.created_at),
+        updatedAt: now,
+      };
+    });
+    await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `تحديث مجموعة أصناف (${updated.name})`, module: 'المجموعات', recordId: groupId });
+    return updated;
+  }
+
+  const updated = await withJsonTransaction(async (db) => {
+    if (!Array.isArray(db.productGroups)) db.productGroups = [];
+    const idx = db.productGroups.findIndex((g) => g.id === groupId);
+    if (idx === -1) throw new AppError(404, 'المجموعة غير موجودة', 'GROUP_NOT_FOUND');
+    const cur = db.productGroups[idx];
+    const nextName = String(updates?.name ?? cur.name).trim();
+    if (!nextName) throw new AppError(400, 'اسم المجموعة مطلوب', 'INVALID_GROUP');
+    const nextNorm = normalizeArabicProductText(nextName);
+    if (db.productGroups.some((g) => g.id !== groupId && normalizeArabicProductText(g.name) === nextNorm)) {
+      throw new AppError(409, 'اسم المجموعة مسجل مسبقًا', 'DUPLICATE_GROUP');
+    }
+    const nextDescription = updates?.description !== undefined ? String(updates.description || '').trim() : (cur.description || '');
+    const nextStatus = updates?.status === 'suspended' || updates?.status === 'active' ? updates.status : (cur.status || 'active');
+    const oldName = cur.name;
+    db.productGroups[idx] = {
+      ...cur,
+      name: nextName,
+      description: nextDescription,
+      status: nextStatus,
+      updatedAt: now,
+    };
+    if (nextName !== oldName) {
+      db.categories = (db.categories || []).map((c) => (c.groupId === groupId ? { ...c, groupName: nextName } : c));
+      db.products = (db.products || []).map((p) => (p.groupId === groupId ? { ...p, groupName: nextName } : p));
+    }
+    return db.productGroups[idx];
+  });
+  await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `تحديث مجموعة أصناف (${updated.name})`, module: 'المجموعات', recordId: groupId });
+  return updated;
+}
+
+export async function deleteProductGroup(groupId, actor) {
+  if (await isPgMode()) {
+    await withTransaction(async (client) => {
+      const curRes = await client.query('SELECT * FROM product_groups WHERE id = $1 FOR UPDATE', [groupId]);
+      if (!curRes.rows[0]) throw new AppError(404, 'المجموعة غير موجودة', 'GROUP_NOT_FOUND');
+      const [usedCats, usedProds] = await Promise.all([
+        client.query('SELECT id FROM product_categories WHERE group_id = $1 LIMIT 1', [groupId]),
+        client.query('SELECT id FROM products WHERE group_id = $1 LIMIT 1', [groupId]),
+      ]);
+      if (usedCats.rows[0] || usedProds.rows[0]) {
+        throw new AppError(409, 'لا يمكن حذف مجموعة مرتبطة بتصنيفات أو أصناف حالية. يمكنك إيقافها مؤقتًا بدلاً من الحذف.', 'GROUP_IN_USE');
+      }
+      await client.query('DELETE FROM product_groups WHERE id = $1', [groupId]);
+    });
+    await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: 'حذف مجموعة أصناف', module: 'المجموعات', recordId: groupId });
+    return { ok: true };
+  }
+
+  await withJsonTransaction(async (db) => {
+    if (!Array.isArray(db.productGroups)) db.productGroups = [];
+    const cur = db.productGroups.find((g) => g.id === groupId);
+    if (!cur) throw new AppError(404, 'المجموعة غير موجودة', 'GROUP_NOT_FOUND');
+    const usedInCats = (db.categories || []).some((c) => c.groupId === groupId);
+    const usedInProds = (db.products || []).some((p) => p.groupId === groupId);
+    if (usedInCats || usedInProds) {
+      throw new AppError(409, 'لا يمكن حذف مجموعة مرتبطة بتصنيفات أو أصناف حالية. يمكنك إيقافها مؤقتًا بدلاً من الحذف.', 'GROUP_IN_USE');
+    }
+    db.productGroups = db.productGroups.filter((g) => g.id !== groupId);
+  });
+  await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: 'حذف مجموعة أصناف', module: 'المجموعات', recordId: groupId });
+  return { ok: true };
+}
+
 export async function listCategories() {
   if (await isPgMode()) {
     const pool = getPool();
@@ -1984,6 +2158,8 @@ export async function listCategories() {
     return res.rows.map((r) => ({
       id: r.id,
       name: r.name,
+      groupId: r.group_id || undefined,
+      groupName: r.group_name || '',
       description: r.description || '',
       status: r.status || 'active',
       createdAt: isoTimestamp(r.created_at),
@@ -1993,30 +2169,80 @@ export async function listCategories() {
 }
 
 export async function createCategory(payload, actor) {
-  const name = String(payload.name || '').trim();
+  const name = String(payload?.name || '').trim();
   if (!name) throw new AppError(400, 'اسم التصنيف مطلوب', 'INVALID_CATEGORY');
-  const id = payload.id || generateServerId('CAT');
+  const norm = normalizeArabicProductText(name);
+  const rawGroupId = String(payload?.groupId || '').trim();
+  const id = payload?.id || generateServerId('CAT');
+  const description = String(payload?.description || '').trim();
+  const status = payload?.status === 'suspended' ? 'suspended' : 'active';
   const now = nowIso();
 
   if (await isPgMode()) {
     const created = await withTransaction(async (client) => {
-      const dup = await client.query('SELECT id FROM product_categories WHERE LOWER(name) = LOWER($1) LIMIT 1', [name]);
-      if (dup.rows[0]) throw new AppError(409, 'اسم التصنيف مسجل مسبقًا', 'DUPLICATE_CATEGORY');
-      await client.query(
-        `INSERT INTO product_categories (id, name, description, status, created_at) VALUES ($1, $2, $3, $4, $5)`,
-        [id, name, payload.description || '', payload.status || 'active', now]
+      let resolvedGroupName = '';
+      if (rawGroupId) {
+        const gRes = await client.query('SELECT id, name FROM product_groups WHERE id = $1 LIMIT 1', [rawGroupId]);
+        if (!gRes.rows[0]) throw new AppError(404, 'المجموعة المحددة غير موجودة', 'GROUP_NOT_FOUND');
+        resolvedGroupName = gRes.rows[0].name;
+      }
+      const dup = await client.query(
+        'SELECT id FROM product_categories WHERE group_id = $1 AND (normalized_name = $2 OR LOWER(name) = LOWER($3)) LIMIT 1',
+        [rawGroupId, norm, name]
       );
-      return { id, name, description: payload.description || '', status: payload.status || 'active', createdAt: now };
+      if (dup.rows[0]) {
+        throw new AppError(
+          409,
+          rawGroupId ? 'اسم التصنيف مسجل مسبقًا داخل هذه المجموعة' : 'اسم التصنيف مسجل مسبقًا',
+          'DUPLICATE_CATEGORY'
+        );
+      }
+      await client.query(
+        `INSERT INTO product_categories (id, name, normalized_name, group_id, group_name, description, status, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [id, name, norm, rawGroupId, resolvedGroupName, description, status, now]
+      );
+      return {
+        id,
+        name,
+        ...(rawGroupId ? { groupId: rawGroupId } : {}),
+        groupName: resolvedGroupName,
+        description,
+        status,
+        createdAt: now,
+      };
     });
     await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `إضافة تصنيف (${name})`, module: 'التصنيفات', recordId: id });
     return created;
   }
 
   const created = await withJsonTransaction(async (db) => {
-    if (db.categories.some((c) => c.name.toLowerCase() === name.toLowerCase())) {
-      throw new AppError(409, 'اسم التصنيف مسجل مسبقًا', 'DUPLICATE_CATEGORY');
+    let resolvedGroupName = '';
+    if (rawGroupId) {
+      const grp = (db.productGroups || []).find((g) => g.id === rawGroupId);
+      if (!grp) throw new AppError(404, 'المجموعة المحددة غير موجودة', 'GROUP_NOT_FOUND');
+      resolvedGroupName = grp.name;
     }
-    const cat = { id, name, description: payload.description || '', status: payload.status || 'active', createdAt: now };
+    if (
+      db.categories.some(
+        (c) => String(c.groupId || '') === rawGroupId && normalizeArabicProductText(c.name) === norm
+      )
+    ) {
+      throw new AppError(
+        409,
+        rawGroupId ? 'اسم التصنيف مسجل مسبقًا داخل هذه المجموعة' : 'اسم التصنيف مسجل مسبقًا',
+        'DUPLICATE_CATEGORY'
+      );
+    }
+    const cat = {
+      id,
+      name,
+      ...(rawGroupId ? { groupId: rawGroupId } : {}),
+      groupName: resolvedGroupName,
+      description,
+      status,
+      createdAt: now,
+    };
     db.categories.push(cat);
     return cat;
   });
@@ -2030,17 +2256,54 @@ export async function updateCategory(categoryId, updates, actor) {
       const curRes = await client.query('SELECT * FROM product_categories WHERE id = $1 FOR UPDATE', [categoryId]);
       if (!curRes.rows[0]) throw new AppError(404, 'التصنيف غير موجود', 'CATEGORY_NOT_FOUND');
       const cur = curRes.rows[0];
-      const nextName = String(updates.name ?? cur.name).trim();
-      await client.query('UPDATE product_categories SET name = $1, description = $2, status = $3 WHERE id = $4', [
-        nextName,
-        updates.description ?? cur.description ?? '',
-        updates.status ?? cur.status,
-        categoryId,
-      ]);
-      if (nextName !== cur.name) {
-        await client.query('UPDATE products SET category = $1 WHERE category = $2 OR category_id = $3', [nextName, cur.name, categoryId]);
+      const nextName = String(updates?.name ?? cur.name).trim();
+      if (!nextName) throw new AppError(400, 'اسم التصنيف مطلوب', 'INVALID_CATEGORY');
+      const nextNorm = normalizeArabicProductText(nextName);
+      const nextGroupId =
+        updates?.groupId !== undefined ? String(updates.groupId || '').trim() : String(cur.group_id || '').trim();
+      let nextGroupName = '';
+      if (nextGroupId) {
+        const gRes = await client.query('SELECT id, name FROM product_groups WHERE id = $1 LIMIT 1', [nextGroupId]);
+        if (!gRes.rows[0]) throw new AppError(404, 'المجموعة المحددة غير موجودة', 'GROUP_NOT_FOUND');
+        nextGroupName = gRes.rows[0].name;
       }
-      return { id: categoryId, name: nextName, description: updates.description ?? cur.description ?? '', status: updates.status ?? cur.status, createdAt: isoTimestamp(cur.created_at) };
+
+      const dup = await client.query(
+        'SELECT id FROM product_categories WHERE group_id = $1 AND (normalized_name = $2 OR LOWER(name) = LOWER($3)) AND id <> $4 LIMIT 1',
+        [nextGroupId, nextNorm, nextName, categoryId]
+      );
+      if (dup.rows[0]) {
+        throw new AppError(
+          409,
+          nextGroupId ? 'اسم التصنيف مسجل مسبقًا داخل هذه المجموعة' : 'اسم التصنيف مسجل مسبقًا',
+          'DUPLICATE_CATEGORY'
+        );
+      }
+
+      const nextDescription = updates?.description !== undefined ? String(updates.description || '').trim() : (cur.description ?? '');
+      const nextStatus = updates?.status === 'suspended' || updates?.status === 'active' ? updates.status : cur.status;
+
+      await client.query(
+        'UPDATE product_categories SET name = $1, normalized_name = $2, group_id = $3, group_name = $4, description = $5, status = $6 WHERE id = $7',
+        [nextName, nextNorm, nextGroupId, nextGroupName, nextDescription, nextStatus, categoryId]
+      );
+
+      // Update current products linked to this category (never modify historical invoice/return rows)
+      if (nextName !== cur.name || nextGroupId !== String(cur.group_id || '')) {
+        await client.query(
+          'UPDATE products SET category = $1, group_id = $2, group_name = $3 WHERE category_id = $4 OR (category = $5 AND COALESCE(group_id, \'\') = $6)',
+          [nextName, nextGroupId || null, nextGroupName, categoryId, cur.name, String(cur.group_id || '')]
+        );
+      }
+      return {
+        id: categoryId,
+        name: nextName,
+        ...(nextGroupId ? { groupId: nextGroupId } : {}),
+        groupName: nextGroupName,
+        description: nextDescription,
+        status: nextStatus,
+        createdAt: isoTimestamp(cur.created_at),
+      };
     });
     await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `تحديث تصنيف (${updated.name})`, module: 'التصنيفات', recordId: categoryId });
     return updated;
@@ -2049,10 +2312,54 @@ export async function updateCategory(categoryId, updates, actor) {
   const updated = await withJsonTransaction(async (db) => {
     const idx = db.categories.findIndex((c) => c.id === categoryId);
     if (idx === -1) throw new AppError(404, 'التصنيف غير موجود', 'CATEGORY_NOT_FOUND');
-    const oldName = db.categories[idx].name;
-    db.categories[idx] = { ...db.categories[idx], ...updates };
-    if (updates.name && updates.name !== oldName) {
-      db.products = db.products.map((p) => (p.category === oldName || p.categoryId === categoryId ? { ...p, category: updates.name } : p));
+    const cur = db.categories[idx];
+    const nextName = String(updates?.name ?? cur.name).trim();
+    if (!nextName) throw new AppError(400, 'اسم التصنيف مطلوب', 'INVALID_CATEGORY');
+    const nextNorm = normalizeArabicProductText(nextName);
+    const nextGroupId =
+      updates?.groupId !== undefined ? String(updates.groupId || '').trim() : String(cur.groupId || '').trim();
+    let nextGroupName = '';
+    if (nextGroupId) {
+      const grp = (db.productGroups || []).find((g) => g.id === nextGroupId);
+      if (!grp) throw new AppError(404, 'المجموعة المحددة غير موجودة', 'GROUP_NOT_FOUND');
+      nextGroupName = grp.name;
+    }
+
+    if (
+      db.categories.some(
+        (c) => c.id !== categoryId && String(c.groupId || '') === nextGroupId && normalizeArabicProductText(c.name) === nextNorm
+      )
+    ) {
+      throw new AppError(
+        409,
+        nextGroupId ? 'اسم التصنيف مسجل مسبقًا داخل هذه المجموعة' : 'اسم التصنيف مسجل مسبقًا',
+        'DUPLICATE_CATEGORY'
+      );
+    }
+
+    const oldName = cur.name;
+    const oldGroupId = String(cur.groupId || '');
+    const nextObj = {
+      ...cur,
+      ...updates,
+      name: nextName,
+      groupName: nextGroupName,
+    };
+    if (nextGroupId) nextObj.groupId = nextGroupId;
+    else delete nextObj.groupId;
+    db.categories[idx] = nextObj;
+
+    if (nextName !== oldName || nextGroupId !== oldGroupId) {
+      db.products = db.products.map((p) => {
+        const linked = p.categoryId === categoryId || (p.category === oldName && String(p.groupId || '') === oldGroupId);
+        if (!linked) return p;
+        return {
+          ...p,
+          category: nextName,
+          groupId: nextGroupId || undefined,
+          groupName: nextGroupName,
+        };
+      });
     }
     return db.categories[idx];
   });
@@ -2065,7 +2372,11 @@ export async function deleteCategory(categoryId, actor) {
     await withTransaction(async (client) => {
       const curRes = await client.query('SELECT * FROM product_categories WHERE id = $1 FOR UPDATE', [categoryId]);
       if (!curRes.rows[0]) throw new AppError(404, 'التصنيف غير موجود', 'CATEGORY_NOT_FOUND');
-      const used = await client.query('SELECT id FROM products WHERE category = $1 OR category_id = $2 LIMIT 1', [curRes.rows[0].name, categoryId]);
+      const cur = curRes.rows[0];
+      const used = await client.query(
+        'SELECT id FROM products WHERE category_id = $1 OR (category = $2 AND COALESCE(group_id, \'\') = $3) LIMIT 1',
+        [categoryId, cur.name, String(cur.group_id || '')]
+      );
       if (used.rows[0]) throw new AppError(409, 'لا يمكن حذف تصنيف مرتبط بمنتجات حالية', 'CATEGORY_IN_USE');
       await client.query('DELETE FROM product_categories WHERE id = $1', [categoryId]);
     });
@@ -2076,24 +2387,16 @@ export async function deleteCategory(categoryId, actor) {
   await withJsonTransaction(async (db) => {
     const cat = db.categories.find((c) => c.id === categoryId);
     if (!cat) throw new AppError(404, 'التصنيف غير موجود', 'CATEGORY_NOT_FOUND');
-    if (db.products.some((p) => p.category === cat.name || p.categoryId === categoryId)) {
+    const inUse = db.products.some(
+      (p) => p.categoryId === categoryId || (p.category === cat.name && String(p.groupId || '') === String(cat.groupId || ''))
+    );
+    if (inUse) {
       throw new AppError(409, 'لا يمكن حذف تصنيف مرتبط بمنتجات حالية', 'CATEGORY_IN_USE');
     }
     db.categories = db.categories.filter((c) => c.id !== categoryId);
   });
   await recordAuditLog({ userId: actor.id, userName: actor.fullName, action: `حذف تصنيف`, module: 'التصنيفات', recordId: categoryId });
   return { ok: true };
-}
-
-export function normalizeArabicProductText(value) {
-  return String(value || '')
-    .trim()
-    .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
-    .replace(/[أإآ]/g, 'ا')
-    .replace(/ة/g, 'ه')
-    .replace(/ى/g, 'ي')
-    .replace(/\s+/g, ' ')
-    .toLowerCase();
 }
 
 export function findProductDuplicateMatchInList(products = [], candidate = {}) {
@@ -2189,6 +2492,79 @@ export async function listProducts({ forCustomer = false, forRepresentative = fa
   return products;
 }
 
+async function resolveProductGroupCategoryPgTx(client, payload, cur = null) {
+  let groupId = payload.groupId !== undefined ? String(payload.groupId || '').trim() : String(cur?.groupId || '').trim();
+  let groupName = '';
+  let categoryId = payload.categoryId !== undefined ? String(payload.categoryId || '').trim() : String(cur?.categoryId || '').trim();
+  let categoryName = payload.category !== undefined ? String(payload.category || '').trim() : String(cur?.category || '').trim();
+
+  if (categoryId) {
+    const cRes = await client.query('SELECT * FROM product_categories WHERE id = $1 LIMIT 1', [categoryId]);
+    const cat = cRes.rows[0];
+    if (!cat) throw new AppError(404, 'التصنيف المحدد غير موجود', 'CATEGORY_NOT_FOUND');
+    const catGroupId = String(cat.group_id || '').trim();
+    if (groupId && catGroupId && catGroupId !== groupId) {
+      throw new AppError(400, 'التصنيف المحدد لا ينتمي إلى المجموعة المختارة', 'CATEGORY_GROUP_MISMATCH');
+    }
+    if (!groupId && catGroupId) {
+      groupId = catGroupId;
+    }
+    categoryName = cat.name;
+    if (cat.group_name && !groupName) groupName = cat.group_name;
+  }
+
+  if (groupId) {
+    const gRes = await client.query('SELECT id, name FROM product_groups WHERE id = $1 LIMIT 1', [groupId]);
+    if (!gRes.rows[0]) throw new AppError(404, 'المجموعة المحددة غير موجودة', 'GROUP_NOT_FOUND');
+    groupName = gRes.rows[0].name;
+  } else if (payload.groupName !== undefined) {
+    groupName = String(payload.groupName || '').trim();
+  }
+
+  return {
+    groupId: groupId || null,
+    groupName: groupName || '',
+    categoryId: categoryId || null,
+    category: categoryName || 'عام',
+  };
+}
+
+function resolveProductGroupCategoryJsonTx(db, payload, cur = null) {
+  let groupId = payload.groupId !== undefined ? String(payload.groupId || '').trim() : String(cur?.groupId || '').trim();
+  let groupName = '';
+  let categoryId = payload.categoryId !== undefined ? String(payload.categoryId || '').trim() : String(cur?.categoryId || '').trim();
+  let categoryName = payload.category !== undefined ? String(payload.category || '').trim() : String(cur?.category || '').trim();
+
+  if (categoryId) {
+    const cat = (db.categories || []).find((c) => c.id === categoryId);
+    if (!cat) throw new AppError(404, 'التصنيف المحدد غير موجود', 'CATEGORY_NOT_FOUND');
+    const catGroupId = String(cat.groupId || '').trim();
+    if (groupId && catGroupId && catGroupId !== groupId) {
+      throw new AppError(400, 'التصنيف المحدد لا ينتمي إلى المجموعة المختارة', 'CATEGORY_GROUP_MISMATCH');
+    }
+    if (!groupId && catGroupId) {
+      groupId = catGroupId;
+    }
+    categoryName = cat.name;
+    if (cat.groupName && !groupName) groupName = cat.groupName;
+  }
+
+  if (groupId) {
+    const grp = (db.productGroups || []).find((g) => g.id === groupId);
+    if (!grp) throw new AppError(404, 'المجموعة المحددة غير موجودة', 'GROUP_NOT_FOUND');
+    groupName = grp.name;
+  } else if (payload.groupName !== undefined) {
+    groupName = String(payload.groupName || '').trim();
+  }
+
+  return {
+    groupId: groupId || undefined,
+    groupName: groupName || '',
+    categoryId: categoryId || undefined,
+    category: categoryName || 'عام',
+  };
+}
+
 export async function createProduct(payload, actor) {
   const name = String(payload.name || '').trim();
   const code = String(payload.code || `P-${Date.now().toString().slice(-6)}`).trim();
@@ -2224,16 +2600,20 @@ export async function createProduct(payload, actor) {
         }
       }
 
+      const resolvedMeta = await resolveProductGroupCategoryPgTx(client, payload, null);
+
       await client.query(
-        `INSERT INTO products (id, code, barcode, name, category, category_id, base_unit, size, color, purchase_price, selling_price, min_stock_level, stock_per_warehouse, image, notes, status, import_batch_id, imported_from_file, source_file_name, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+        `INSERT INTO products (id, code, barcode, name, category, category_id, group_id, group_name, base_unit, size, color, purchase_price, selling_price, min_stock_level, stock_per_warehouse, image, notes, status, import_batch_id, imported_from_file, source_file_name, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
         [
           id,
           code,
           barcode,
           name,
-          payload.category || 'عام',
-          payload.categoryId || null,
+          resolvedMeta.category,
+          resolvedMeta.categoryId,
+          resolvedMeta.groupId,
+          resolvedMeta.groupName,
           payload.baseUnit || 'قطعة',
           payload.size || null,
           payload.color || null,
@@ -2313,13 +2693,16 @@ export async function createProduct(payload, actor) {
         throw new AppError(409, `الباركود (${barcode}) مستخدم مسبقًا في الصنف (${dupBc.name})`, 'DUPLICATE_PRODUCT_BARCODE');
       }
     }
+    const resolvedMeta = resolveProductGroupCategoryJsonTx(db, payload, null);
     const prod = {
       id,
       code,
       barcode,
       name,
-      category: payload.category || 'عام',
-      categoryId: payload.categoryId || undefined,
+      category: resolvedMeta.category,
+      categoryId: resolvedMeta.categoryId,
+      groupId: resolvedMeta.groupId,
+      groupName: resolvedMeta.groupName,
       baseUnit: payload.baseUnit || 'قطعة',
       units,
       size: payload.size || undefined,
@@ -2397,18 +2780,22 @@ export async function updateProduct(productId, updates, actor) {
         }
       }
 
+      const resolvedMeta = await resolveProductGroupCategoryPgTx(client, updates || {}, cur);
+
       await client.query(
         `UPDATE products SET
-          code = $1, barcode = $2, name = $3, category = $4, category_id = $5, base_unit = $6,
-          size = $7, color = $8, purchase_price = $9, selling_price = $10, min_stock_level = $11,
-          image = $12, notes = $13, status = $14, import_batch_id = $15, imported_from_file = $16, source_file_name = $17, version = COALESCE(version, 1) + 1, updated_at = $18
-         WHERE id = $19`,
+          code = $1, barcode = $2, name = $3, category = $4, category_id = $5, group_id = $6, group_name = $7, base_unit = $8,
+          size = $9, color = $10, purchase_price = $11, selling_price = $12, min_stock_level = $13,
+          image = $14, notes = $15, status = $16, import_batch_id = $17, imported_from_file = $18, source_file_name = $19, version = COALESCE(version, 1) + 1, updated_at = $20
+         WHERE id = $21`,
         [
           nextCode,
           nextBarcode,
           nextName,
-          updates.category ?? cur.category,
-          updates.categoryId ?? cur.categoryId ?? null,
+          resolvedMeta.category,
+          resolvedMeta.categoryId,
+          resolvedMeta.groupId,
+          resolvedMeta.groupName,
           updates.baseUnit ?? cur.baseUnit,
           updates.size ?? cur.size ?? null,
           updates.color ?? cur.color ?? null,
@@ -2474,6 +2861,7 @@ export async function updateProduct(productId, updates, actor) {
       }
     }
 
+    const resolvedMeta = resolveProductGroupCategoryJsonTx(db, updates || {}, cur);
     const { image: _ignoredImg, ...safeUpdates } = updates || {};
     const { image: _ignoredCurImg, ...safeCur } = cur;
     db.products[idx] = {
@@ -2483,6 +2871,10 @@ export async function updateProduct(productId, updates, actor) {
       name: nextName,
       code: nextCode,
       barcode: nextBarcode,
+      category: resolvedMeta.category,
+      categoryId: resolvedMeta.categoryId,
+      groupId: resolvedMeta.groupId,
+      groupName: resolvedMeta.groupName,
       stockPerWarehouse: cur.stockPerWarehouse, // Protect stock map from direct override via product edit
       version: Number(cur.version || 1) + 1,
       updatedAt: now,

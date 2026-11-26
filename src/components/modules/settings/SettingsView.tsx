@@ -188,8 +188,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
   ]);
   const [newPrinterName, setNewPrinterName] = useState('');
   const [newPrinterRole, setNewPrinterRole] = useState<PrinterSettingItem['role']>('cashier_thermal80');
-  const [newPrinterPort, setNewPrinterPort] = useState('USB001');
-  const [newPrinterCopies, setNewPrinterCopies] = useState(1);
+  const [newPrinterPort, setNewPrinterPort] = useState('');
+  const [newPrinterCopies, setNewPrinterCopies] = useState<number | ''>('');
 
   const [invoiceTemplate, setInvoiceTemplate] = useState(extra.invoiceTemplate || {
     showLogo: true,
@@ -1197,7 +1197,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                 <input
                   type="text"
                   dir="ltr"
-                  placeholder={t('مثال: 01 أو BR-01 (اختياري)', 'e.g. 01 or BR-01 (Optional)')}
                   value={formData.branchNumber || ''}
                   onChange={(e) => setFormData({ ...formData, branchNumber: e.target.value })}
                   className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono"
@@ -1669,7 +1668,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                         type="text"
                         dir="ltr"
                         required
-                        placeholder="192.168.1.100"
                         value={connProfiles.localNetwork.ip}
                         onChange={(e) =>
                           setConnProfiles((prev) => ({
@@ -1745,7 +1743,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     <input
                       type="url"
                       dir="ltr"
-                      placeholder="https://example-shop.trycloudflare.com"
                       value={connProfiles.freeRemote.tunnelUrl}
                       onChange={(e) =>
                         setConnProfiles((prev) => ({
@@ -1829,7 +1826,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                       <input
                         type="url"
                         dir="ltr"
-                        placeholder="https://erp.yourdomain.com"
                         value={connProfiles.proRemote.domainUrl}
                         onChange={(e) =>
                           setConnProfiles((prev) => ({
@@ -1895,7 +1891,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     <input
                       type="url"
                       dir="ltr"
-                      placeholder="https://cloud-erp.yourdomain.com"
                       value={connProfiles.cloudVps.vpsUrl}
                       onChange={(e) =>
                         setConnProfiles((prev) => ({
@@ -1911,7 +1906,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                     <label className="block text-[11px] font-bold mb-0.5">{t('ملاحظات الاستضافة (بدون كلمات مرور أو مفاتيح):', 'Hosting Notes (No passwords or keys):')}</label>
                     <input
                       type="text"
-                      placeholder={t('مثال: VPS مستقبلي — ترحيل يدوي عند الحاجة', 'e.g., Future VPS — manual migration when needed')}
                       value={connProfiles.cloudVps.notes || ''}
                       onChange={(e) =>
                         setConnProfiles((prev) => ({
@@ -2585,8 +2579,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-2">
               <input type="text" placeholder={t('اسم الفرع *', 'Branch Name *')} value={newBranchName} onChange={(e) => setNewBranchName(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-bold" />
-              <input type="text" placeholder={t('رقم الفرع (مثال: 01)', 'Branch Number (e.g. 01)')} value={newBranchNumber} onChange={(e) => setNewBranchNumber(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
-              <input type="text" placeholder={t('كود الفرع (BR-02)', 'Branch Code (BR-02)')} value={newBranchCode} onChange={(e) => setNewBranchCode(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
+              <input type="text" placeholder={t('رقم الفرع', 'Branch Number')} value={newBranchNumber} onChange={(e) => setNewBranchNumber(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
+              <input type="text" placeholder={t('كود الفرع', 'Branch Code')} value={newBranchCode} onChange={(e) => setNewBranchCode(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
               <input type="text" placeholder={t('رقم الهاتف', 'Phone Number')} value={newBranchPhone} onChange={(e) => setNewBranchPhone(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
               <input type="text" placeholder={t('العنوان التفصيلي', 'Detailed Address')} value={newBranchAddress} onChange={(e) => setNewBranchAddress(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5" />
               <select value={newBranchWarehouseId} onChange={(e) => setNewBranchWarehouseId(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2 font-bold bg-white">
@@ -2758,9 +2752,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                 <option value="cashier_thermal58">{t('بلوتوث محمولة 58 مم', 'Portable Bluetooth 58mm')}</option>
                 <option value="barcode_label">{t('طابعة ملصقات باركود', 'Barcode Label Printer')}</option>
               </select>
-              <input type="text" dir="ltr" placeholder={t('المنفذ أو IP (مثال: 192.168.1.200)', 'Port or IP (e.g. 192.168.1.200)')} value={newPrinterPort} onChange={(e) => setNewPrinterPort(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
+              <input type="text" dir="ltr" placeholder={t('المنفذ أو IP', 'Port or IP')} value={newPrinterPort} onChange={(e) => setNewPrinterPort(e.target.value)} className="h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
               <div className="flex items-center gap-1.5">
-                <input type="number" min="1" max="5" value={newPrinterCopies} onChange={(e) => setNewPrinterCopies(Number(e.target.value))} className="w-16 h-8 border border-slate-300 rounded-md px-2 font-mono text-center font-bold" title={t('عدد النسخ', 'Copies')} />
+                <input type="number" min="1" max="5" placeholder={t('النسخ', 'Copies')} value={newPrinterCopies} onChange={(e) => setNewPrinterCopies(e.target.value === '' ? '' : Number(e.target.value))} className="w-16 h-8 border border-slate-300 rounded-md px-2 font-mono text-center font-bold" title={t('عدد النسخ', 'Copies')} />
                 <button
                   type="button"
                   onClick={async () => {
@@ -2771,12 +2765,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
                       role: newPrinterRole,
                       paperWidthMm: newPrinterRole === 'a4' ? 210 : newPrinterRole === 'cashier_thermal80' ? 80 : 58,
                       ipOrPort: newPrinterPort.trim() || 'USB001',
-                      copies: Math.max(1, newPrinterCopies),
+                      copies: Math.max(1, Number(newPrinterCopies || 1)),
                       isActive: true,
                     };
                     const next = [...printers, item];
                     setPrinters(next);
                     setNewPrinterName('');
+                    setNewPrinterPort('');
+                    setNewPrinterCopies('');
                     await persistExtraSettings({ printers: next }, t(`تمت إضافة الطابعة (${item.name}) بنجاح.`, `Printer (${item.name}) added successfully.`));
                   }}
                   className="flex-1 h-8 bg-blue-900 hover:bg-blue-950 text-white rounded-md font-black cursor-pointer"
@@ -2947,7 +2943,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             </div>
             <div className="sm:col-span-2">
               <label className="block text-[11px] font-bold mb-0.5">{t('رابط السيرفر البعيد / السحابي (اختياري):', 'Remote / Cloud Server URL (Optional):')}</label>
-              <input type="text" dir="ltr" placeholder="http://192.168.1.100:3000" value={onlineSyncConfig.cloudEndpointUrl || ''} onChange={(e) => setOnlineSyncConfig({ ...onlineSyncConfig, cloudEndpointUrl: e.target.value })} className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
+              <input type="text" dir="ltr" value={onlineSyncConfig.cloudEndpointUrl || ''} onChange={(e) => setOnlineSyncConfig({ ...onlineSyncConfig, cloudEndpointUrl: e.target.value })} className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
             </div>
           </div>
           <p className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded-md px-2.5 py-1.5">
@@ -3055,7 +3051,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             <Search className="w-3.5 h-3.5 text-slate-400 absolute start-2.5 top-2.5" />
             <input
               type="text"
-              placeholder={t('ابحث عن وظيفة أو مفتاح اختصار (مثال: الطباعة، Ctrl+S)...', 'Search action or key combo (e.g., Print, Ctrl+S)...')}
+              placeholder={t('ابحث عن وظيفة أو مفتاح اختصار...', 'Search action or key combo...')}
               value={shortcutSearch}
               onChange={(e) => setShortcutSearch(e.target.value)}
               className="w-full h-8 ps-8 pe-2.5 bg-slate-50 border border-slate-300 rounded-md font-bold outline-hidden focus:bg-white focus:border-blue-700"
