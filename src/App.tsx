@@ -38,7 +38,7 @@ import { SettingsView } from './components/modules/settings/SettingsView';
 import { StorefrontManagerView } from './components/modules/settings/StorefrontManagerView';
 import { MobilePortal } from './components/modules/mobile/MobilePortal';
 import { StaffMobileShell } from './components/modules/mobile/StaffMobileShell';
-import { RefreshSyncScreen } from './components/modules/mobile/RefreshSyncScreen';
+import { SendReceiveView } from './components/modules/sync/SendReceiveView';
 import {
   getLaunchDeepLinkUrl,
   isMobileAppPlatform,
@@ -573,13 +573,13 @@ const MainAppContent: React.FC = () => {
         return <RepTransferView initialTab="reps-list" />;
 
       case 'rep-transfers':
-        return <RefreshSyncScreen initialTab="financial-transfers" />;
+        return <RepTransferView initialTab="cash-transfers" />;
 
       case 'rep-item-transfers':
-        return <RefreshSyncScreen initialTab="stock-custody" />;
+        return <RepTransferView initialTab="item-transfers" />;
 
       case 'refresh-sync':
-        return <RefreshSyncScreen />;
+        return <SendReceiveView />;
 
       case 'employees':
         return <EmployeesView />;

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Plus, Filter, Printer, Download, Eye, XCircle,
   CheckCircle, FileText, Calendar, ArrowLeftRight, DollarSign,
@@ -22,6 +22,7 @@ import {
   resolveGroupCategoryCascade,
 } from '../../common/LinkedGroupCategoryFilter';
 import { SearchableFilterSelect } from '../../common/SearchableFilterSelect';
+import { EditableItemGrid } from '../../common/EditableItemGrid';
 import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 import { computeLineTotal } from '../../../utils/quantity';
 
@@ -147,6 +148,10 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
   const [quoteQty, setQuoteQty] = useState<number | ''>('');
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [isSubmittingQuote, setIsSubmittingQuote] = useState(false);
+  const quoteGroupTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const quoteCategoryTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const quoteProductSearchRef = useRef<HTMLInputElement | null>(null);
+  const quoteQtyInputRef = useRef<HTMLInputElement | null>(null);
 
   const scopedQuoteProducts = useMemo(
     () =>
@@ -1632,68 +1637,57 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                 </div>
               </div>
 
-              {/* Items Table for Editing Quantities & Prices */}
+              {/* Items Table for Editing Units, Quantities & Prices */}
               <div>
-                <label className="block font-bold text-slate-700 mb-0.5">{t('أصناف الفاتورة (تعديل الكميات والأسعار):', 'Invoice Items (Edit Quantities & Prices):')}</label>
-                <div className="border border-slate-200 rounded-lg overflow-hidden awlad-table-scroll">
-                  <table className="w-full text-start text-xs">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold">
-                        <th className="px-2 py-1.5">{t('الصنف', 'Product')}</th>
-                        <th className="px-2 py-1.5 text-center">{t('الوحدة', 'Unit')}</th>
-                        <th className="px-2 py-1.5 text-center w-24">{t('الكمية', 'Qty')}</th>
-                        <th className="px-2 py-1.5 text-center w-28">{t('السعر', 'Price')}</th>
-                        <th className="px-2 py-1.5 text-center">{t('الإجمالي', 'Total')}</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {editItems.map((item, idx) => (
-                        <tr key={idx}>
-                          <td className="px-2 py-1 font-bold text-slate-800">{item.productName}</td>
-                          <td className="px-2 py-1 text-center text-slate-600">{t(item.unit)}</td>
-                          <td className="px-2 py-1 text-center">
-                            <QuantityInput
-                              allowDecimals
-                              min={0.001}
-                              value={item.quantity}
-                              onChange={(newQty) => {
-                                setEditItems((prev) =>
-                                  prev.map((it, i) =>
-                                    i === idx
-                                      ? {
-                                          ...it,
-                                          quantity: newQty,
-                                          total: computeLineTotal(newQty, it.unitPrice, it.discount || 0),
-                                        }
-                                      : it
-                                  )
-                                );
-                              }}
-                              ariaLabel={`${t('كمية', 'Qty')} ${item.productName}`}
-                              inputClassName="w-20 px-1.5 py-0.5 rounded-md border border-slate-300 text-center font-bold font-mono outline-hidden focus:border-blue-700"
-                            />
-                          </td>
-                          <td className="px-2 py-1 text-center">
-                            <input
-                              type="number"
-                              min={0}
-                              step={0.5}
-                              value={item.unitPrice}
-                              onChange={(e) => {
-                                const newPrice = parseFloat(e.target.value) || 0;
-                                setEditItems(prev => prev.map((it, i) => i === idx ? { ...it, unitPrice: newPrice, total: (it.quantity * newPrice) - (it.discount || 0) } : it));
-                              }}
-                              className="w-24 px-1.5 py-0.5 rounded-md border border-slate-300 text-center font-bold"
-                            />
-                          </td>
-                          <td className="px-2 py-1 text-center font-black text-blue-900 tabular-nums">
-                            {fmt((item.quantity * item.unitPrice) - (item.discount || 0))} {currencyLabel}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  {t('أصناف الفاتورة (انقر للتعديل السريع أو بالزر الأيمن للخيارات):', 'Invoice Items (Click to Edit Inline or Right-Click for Options):')}
+                </label>
+                <EditableItemGrid
+                  rows={editItems.map((it, idx) => ({
+                    ...it,
+                    rowKey: `${it.productId}-${it.unit}-${idx}`,
+                  }))}
+                  products={products}
+                  warehouses={warehouses}
+                  currency={settings.currency}
+                  priceMode="selling"
+                  showPriceColumns
+                  allowUnitEdit
+                  allowQtyEdit
+                  allowPriceEdit
+                  canDelete={editItems.length > 1}
+                  canDuplicate={false}
+                  canAddNew={false}
+                  hideCostInfo={currentUser?.role === 'representative'}
+                  recalcPriceOnUnitChange
+                  onUpdateRow={(idx, patch) => {
+                    setEditItems((prev) =>
+                      prev.map((it, i) => {
+                        if (i !== idx) return it;
+                        const nextUnit = patch.unit ?? it.unit;
+                        const nextFactor = patch.unitFactor ?? it.unitFactor;
+                        const nextQty = patch.quantity !== undefined ? Math.max(0.001, patch.quantity) : it.quantity;
+                        const nextPrice = patch.unitPrice !== undefined ? Math.max(0, patch.unitPrice) : it.unitPrice;
+                        const nextDisc = patch.discount !== undefined ? Math.max(0, patch.discount) : (it.discount || 0);
+                        return {
+                          ...it,
+                          unit: nextUnit,
+                          unitFactor: nextFactor,
+                          quantity: nextQty,
+                          unitPrice: nextPrice,
+                          discount: nextDisc,
+                          total: computeLineTotal(nextQty, nextPrice, nextDisc),
+                        };
+                      })
+                    );
+                  }}
+                  onDeleteRow={(idx) => {
+                    if (editItems.length <= 1) return;
+                    setEditItems((prev) => prev.filter((_, i) => i !== idx));
+                  }}
+                  onNotify={(msg) => setActionMessage({ type: 'success', text: msg })}
+                  maxHeightClass="max-h-60"
+                />
               </div>
 
               <div>
@@ -1721,7 +1715,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
 
               {/* Recalculated Summary */}
               {(() => {
-                const subtotal = editItems.reduce((acc, it) => acc + (it.quantity * it.unitPrice), 0);
+                const subtotal = editItems.reduce((acc, it) => acc + computeLineTotal(it.quantity, it.unitPrice, it.discount || 0), 0);
                 const grand = Math.max(0, subtotal - editDiscount);
                 const diff = grand - editModalInvoice.grandTotal;
                 return (
@@ -1828,17 +1822,26 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
             <form onSubmit={handleSubmitQuote} className="space-y-2 text-xs">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-0.5">{t('العميل:', 'Customer:')}</label>
-                  <select
+                  <SearchableFilterSelect
+                    id="quote-modal-customer"
+                    label={t('العميل', 'Customer')}
                     value={quoteCustomerId}
-                    onChange={(e) => setQuoteCustomerId(e.target.value)}
-                    className="w-full h-8 px-2 py-1 rounded-md border border-slate-300 bg-white font-bold"
-                  >
-                    <option value="">{t('-- عميل عام / نقدي --', '-- General / Cash Customer --')}</option>
-                    {customers.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
+                    onChange={setQuoteCustomerId}
+                    onValueSelected={() => {
+                      window.setTimeout(() => quoteGroupTriggerRef.current?.focus(), 25);
+                    }}
+                    options={customers.map((c) => ({
+                      value: c.id,
+                      label: c.shopName ? `${c.shopName} (${c.name})` : c.name,
+                      subtitle: c.phone || undefined,
+                      searchText: `${c.name} ${c.shopName || ''} ${c.phone || ''}`,
+                    }))}
+                    allOptionLabel={t('-- عميل عام / نقدي --', '-- General / Cash Customer --')}
+                    allOptionValue=""
+                    searchPlaceholder={t('ابحث باسم العميل أو الهاتف...', 'Search customer or phone...')}
+                    allowClear
+                    buttonClassName="rounded-md h-8"
+                  />
                 </div>
                 <div>
                   <label className="block font-bold text-slate-700 mb-0.5">{t('المستودع المقترح:', 'Suggested Warehouse:')}</label>
@@ -1870,6 +1873,12 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                   categories={categories}
                   selectedGroupId={quoteGroupFilter}
                   selectedCategoryId={quoteCategoryFilter}
+                  groupTriggerRef={quoteGroupTriggerRef}
+                  categoryTriggerRef={quoteCategoryTriggerRef}
+                  autoAdvanceOnSelect
+                  onCategoryAfterSelect={() => {
+                    window.setTimeout(() => quoteProductSearchRef.current?.focus(), 20);
+                  }}
                   onFilterChange={(nextGroupId, nextCategoryId) => {
                     setQuoteGroupFilter(nextGroupId);
                     setQuoteCategoryFilter(nextCategoryId);
@@ -1889,6 +1898,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                 <div className="flex flex-col sm:flex-row gap-2">
                   <div className="flex-1">
                     <ProductSearchSelect
+                      inputRef={quoteProductSearchRef}
                       products={scopedQuoteProducts}
                       warehouses={warehouses}
                       warehouseId={quoteWarehouseId}
@@ -1897,16 +1907,27 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                         setQuoteSelectedProductId(p.id);
                         handleAddQuoteItem(p.id);
                       }}
+                      onAfterSelect={() => {
+                        window.setTimeout(() => quoteProductSearchRef.current?.focus(), 25);
+                      }}
                       clearOnSelect
                       currency={currencyLabel}
                     />
                   </div>
                   <div className="w-28">
                     <QuantityInput
+                      inputRef={quoteQtyInputRef}
                       allowDecimals
                       min={0.001}
                       value={quoteQty}
                       onChange={setQuoteQty}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          quoteProductSearchRef.current?.focus();
+                        }
+                      }}
                       ariaLabel={t('الكمية', 'Qty')}
                       inputClassName="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-center font-mono font-bold bg-white"
                     />
@@ -1914,79 +1935,61 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                 </div>
               </div>
 
-              <div className="border border-slate-200 rounded-lg overflow-hidden awlad-table-scroll">
-                <table className="w-full text-start text-xs">
-                  <thead>
-                    <tr className="bg-slate-100 font-bold text-slate-700 border-b">
-                      <th className="p-2">{t('الصنف', 'Product')}</th>
-                      <th className="p-2 text-center">{t('الوحدة', 'Unit')}</th>
-                      <th className="p-2 text-center">{t('الكمية', 'Qty')}</th>
-                      <th className="p-2 text-center">{t('السعر', 'Price')}</th>
-                      <th className="p-2 text-center">{t('الإجمالي', 'Total')}</th>
-                      <th className="p-2 text-center">{t('حذف', 'Delete')}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {quoteItems.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="p-4 text-center text-slate-400">{t('لم تُضف أصناف بعد', 'No items added yet')}</td>
-                      </tr>
-                    ) : (
-                      quoteItems.map((it, idx) => (
-                        <tr key={`${it.productId}-${idx}`}>
-                          <td className="p-2 font-bold">{it.productName}</td>
-                          <td className="p-2 text-center">{t(it.unit)}</td>
-                          <td className="p-2 text-center">
-                            <QuantityInput
-                              allowDecimals
-                              min={0.001}
-                              value={it.quantity}
-                              onChange={(val) =>
-                                setQuoteItems((prev) =>
-                                  prev.map((row, i) =>
-                                    i === idx ? { ...row, quantity: val, total: computeLineTotal(val, row.unitPrice, row.discount || 0) } : row
-                                  )
-                                )
-                              }
-                              ariaLabel={`${t('كمية', 'Qty')} ${it.productName}`}
-                              inputClassName="w-20 p-1 rounded-md border border-slate-300 text-center font-mono font-bold"
-                            />
-                          </td>
-                          <td className="p-2 text-center">
-                            <input
-                              type="number"
-                              min={0}
-                              step="0.5"
-                              value={it.unitPrice}
-                              onChange={(e) => {
-                                const price = parseFloat(e.target.value) || 0;
-                                setQuoteItems((prev) =>
-                                  prev.map((row, i) =>
-                                    i === idx ? { ...row, unitPrice: price, total: computeLineTotal(row.quantity, price, row.discount || 0) } : row
-                                  )
-                                );
-                              }}
-                              className="w-24 p-1 rounded-md border border-slate-300 text-center font-mono font-bold"
-                            />
-                          </td>
-                          <td className="p-2 text-center font-black text-blue-900 tabular-nums">
-                            {fmt(it.total)} {currencyLabel}
-                          </td>
-                          <td className="p-2 text-center">
-                            <button
-                              type="button"
-                              onClick={() => setQuoteItems((prev) => prev.filter((_, i) => i !== idx))}
-                              className="text-red-500 hover:text-red-700 font-bold cursor-pointer"
-                            >
-                              {t('حذف', 'Delete')}
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+              <EditableItemGrid
+                rows={quoteItems.map((it, idx) => ({
+                  ...it,
+                  rowKey: `${it.productId}-${it.unit}-${idx}`,
+                }))}
+                products={products}
+                warehouses={warehouses}
+                currency={settings.currency}
+                priceMode="selling"
+                showPriceColumns
+                allowUnitEdit
+                allowQtyEdit
+                allowPriceEdit
+                canDelete
+                canDuplicate
+                canAddNew
+                hideCostInfo={currentUser?.role === 'representative'}
+                recalcPriceOnUnitChange
+                onUpdateRow={(idx, patch) => {
+                  setQuoteItems((prev) =>
+                    prev.map((row, i) => {
+                      if (i !== idx) return row;
+                      const nextUnit = patch.unit ?? row.unit;
+                      const nextFactor = patch.unitFactor ?? row.unitFactor;
+                      const nextQty = patch.quantity !== undefined ? Math.max(0.001, patch.quantity) : row.quantity;
+                      const nextPrice = patch.unitPrice !== undefined ? Math.max(0, patch.unitPrice) : row.unitPrice;
+                      const nextDisc = patch.discount !== undefined ? Math.max(0, patch.discount) : (row.discount || 0);
+                      return {
+                        ...row,
+                        unit: nextUnit,
+                        unitFactor: nextFactor,
+                        quantity: nextQty,
+                        unitPrice: nextPrice,
+                        discount: nextDisc,
+                        total: computeLineTotal(nextQty, nextPrice, nextDisc),
+                      };
+                    })
+                  );
+                }}
+                onDuplicateRow={(idx) => {
+                  const target = quoteItems[idx];
+                  if (!target) return;
+                  setQuoteItems((prev) => {
+                    const next = [...prev];
+                    next.splice(idx + 1, 0, { ...target });
+                    return next;
+                  });
+                }}
+                onDeleteRow={(idx) => setQuoteItems((prev) => prev.filter((_, i) => i !== idx))}
+                onAddNewItem={() => window.setTimeout(() => quoteProductSearchRef.current?.focus(), 20)}
+                onGridAdvanceOut={() => window.setTimeout(() => quoteProductSearchRef.current?.focus(), 20)}
+                onNotify={(msg) => setActionMessage({ type: 'success', text: msg })}
+                emptyStateText={t('لم تُضف أصناف بعد', 'No items added yet')}
+                maxHeightClass="max-h-56"
+              />
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>

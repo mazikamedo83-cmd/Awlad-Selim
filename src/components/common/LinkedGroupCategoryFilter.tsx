@@ -1,6 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import { Product, ProductCategory, ProductGroup } from '../../types';
 import { usePreferences } from '../../context/PreferencesContext';
+import { SearchableFilterSelect, SearchableFilterOption } from './SearchableFilterSelect';
 
 export function getScopedCategoriesForGroup(
   categories: ProductCategory[],
@@ -106,6 +107,11 @@ interface LinkedGroupCategoryFilterProps {
   onGroupChange?: (groupId: string) => void;
   onCategoryChange?: (categoryId: string) => void;
   onFilterChange?: (nextGroupId: string, nextCategoryId: string) => void;
+  groupTriggerRef?: React.RefObject<HTMLButtonElement | null>;
+  categoryTriggerRef?: React.RefObject<HTMLButtonElement | null>;
+  autoAdvanceOnSelect?: boolean;
+  onGroupAfterSelect?: () => void;
+  onCategoryAfterSelect?: () => void;
   allLabel?: string;
   compact?: boolean;
   showLabels?: boolean;
@@ -120,6 +126,11 @@ export const LinkedGroupCategoryFilter: React.FC<LinkedGroupCategoryFilterProps>
   onGroupChange,
   onCategoryChange,
   onFilterChange,
+  groupTriggerRef: externalGroupRef,
+  categoryTriggerRef: externalCategoryRef,
+  autoAdvanceOnSelect = false,
+  onGroupAfterSelect,
+  onCategoryAfterSelect,
   allLabel,
   compact = true,
   showLabels = false,
@@ -127,6 +138,10 @@ export const LinkedGroupCategoryFilter: React.FC<LinkedGroupCategoryFilterProps>
 }) => {
   const { t } = usePreferences();
   const resolvedAllLabel = allLabel || t('الكل', 'All');
+  const internalGroupRef = useRef<HTMLButtonElement | null>(null);
+  const internalCategoryRef = useRef<HTMLButtonElement | null>(null);
+  const groupRef = externalGroupRef || internalGroupRef;
+  const categoryRef = externalCategoryRef || internalCategoryRef;
 
   const activeGroups = useMemo(
     () => productGroups.filter((g) => g.status !== 'suspended'),
@@ -136,6 +151,31 @@ export const LinkedGroupCategoryFilter: React.FC<LinkedGroupCategoryFilterProps>
   const scopedCategories = useMemo(
     () => getScopedCategoriesForGroup(categories, selectedGroupId || 'all', false),
     [categories, selectedGroupId]
+  );
+
+  const groupOptions = useMemo<SearchableFilterOption[]>(
+    () =>
+      activeGroups.map((g) => ({
+        value: g.id,
+        label: g.name,
+        searchText: `${g.name}`,
+      })),
+    [activeGroups]
+  );
+
+  const categoryOptions = useMemo<SearchableFilterOption[]>(
+    () =>
+      scopedCategories.map((c) => ({
+        value: c.id,
+        label:
+          !selectedGroupId || selectedGroupId === 'all'
+            ? c.groupName
+              ? `${t(c.name)} (${c.groupName})`
+              : t(c.name)
+            : t(c.name),
+        searchText: `${c.name} ${t(c.name)} ${c.groupName || ''}`,
+      })),
+    [scopedCategories, selectedGroupId, t]
   );
 
   const handleGroupSelect = (nextGroupId: string) => {
@@ -158,64 +198,50 @@ export const LinkedGroupCategoryFilter: React.FC<LinkedGroupCategoryFilterProps>
     }
   };
 
+  const handleCategorySelect = (nextCategoryId: string) => {
+    if (onFilterChange) {
+      onFilterChange(selectedGroupId || 'all', nextCategoryId);
+    } else {
+      onCategoryChange?.(nextCategoryId);
+    }
+  };
+
   return (
     <div className={`grid grid-cols-2 gap-2 ${className}`}>
-      <div>
-        {showLabels && (
-          <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
-            {t('المجموعة:', 'Group:')}
-          </label>
-        )}
-        <select
-          aria-label={t('تصفية حسب المجموعة', 'Filter by group')}
-          value={selectedGroupId || 'all'}
-          onChange={(e) => handleGroupSelect(e.target.value)}
-          className={`w-full ${compact ? 'h-8' : 'h-9'} bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC]`}
-        >
-          <option value="all">
-            {t('المجموعة:', 'Group:')} {resolvedAllLabel}
-          </option>
-          {activeGroups.map((g) => (
-            <option key={g.id} value={g.id}>
-              {g.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div>
-        {showLabels && (
-          <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
-            {t('التصنيف:', 'Category:')}
-          </label>
-        )}
-        <select
-          aria-label={t('تصفية حسب التصنيف', 'Filter by category')}
-          value={selectedCategoryId || 'all'}
-          onChange={(e) => {
-            const nextCategoryId = e.target.value;
-            if (onFilterChange) {
-              onFilterChange(selectedGroupId || 'all', nextCategoryId);
-            } else {
-              onCategoryChange?.(nextCategoryId);
-            }
-          }}
-          className={`w-full ${compact ? 'h-8' : 'h-9'} bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-bold text-slate-800 dark:text-[#EEF4FC]`}
-        >
-          <option value="all">
-            {t('التصنيف:', 'Category:')} {resolvedAllLabel}
-          </option>
-          {scopedCategories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {t(c.name)}
-              {!selectedGroupId || selectedGroupId === 'all'
-                ? c.groupName
-                  ? ` (${c.groupName})`
-                  : ''
-                : ''}
-            </option>
-          ))}
-        </select>
-      </div>
+      <SearchableFilterSelect
+        label={showLabels ? t('المجموعة:', 'Group:') : undefined}
+        inlinePrefix={!showLabels ? t('المجموعة', 'Group') : undefined}
+        value={selectedGroupId || 'all'}
+        onChange={handleGroupSelect}
+        options={groupOptions}
+        allOptionLabel={resolvedAllLabel}
+        allOptionValue="all"
+        searchPlaceholder={t('ابحث باسم المجموعة...', 'Search group...')}
+        triggerRef={groupRef}
+        onAfterSelect={() => {
+          if (onGroupAfterSelect) {
+            onGroupAfterSelect();
+          } else if (autoAdvanceOnSelect) {
+            categoryRef.current?.focus();
+          }
+        }}
+        buttonClassName={compact ? 'h-8' : 'h-9'}
+      />
+      <SearchableFilterSelect
+        label={showLabels ? t('التصنيف:', 'Category:') : undefined}
+        inlinePrefix={!showLabels ? t('التصنيف', 'Category') : undefined}
+        value={selectedCategoryId || 'all'}
+        onChange={handleCategorySelect}
+        options={categoryOptions}
+        allOptionLabel={resolvedAllLabel}
+        allOptionValue="all"
+        searchPlaceholder={t('ابحث باسم التصنيف...', 'Search category...')}
+        triggerRef={categoryRef}
+        onAfterSelect={() => {
+          onCategoryAfterSelect?.();
+        }}
+        buttonClassName={compact ? 'h-8' : 'h-9'}
+      />
     </div>
   );
 };

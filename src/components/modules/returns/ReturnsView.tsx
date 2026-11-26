@@ -10,6 +10,7 @@ import { Modal } from '../../common/Modal';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { exportToExcel } from '../../common/ExcelExporter';
 import { QuantityInput } from '../../common/QuantityInput';
+import { EditableItemGrid } from '../../common/EditableItemGrid';
 import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 import {
   LinkedGroupCategoryFilter,
@@ -27,6 +28,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
     invoiceReturns,
     invoices,
     products,
+    warehouses = [],
     productGroups = [],
     categories = [],
     cashboxes,
@@ -88,6 +90,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
   const [refundType, setRefundType] = useState<'balance' | 'cash'>('balance');
   const [refundCashboxId, setRefundCashboxId] = useState(cashboxes[0]?.id || '');
   const [returnQuantities, setReturnQuantities] = useState<Record<string, number | ''>>({});
+  const [returnUnitPrices, setReturnUnitPrices] = useState<Record<string, number>>({});
   const [retGroupFilter, setRetGroupFilter] = useState('all');
   const [retCatFilter, setRetCatFilter] = useState('all');
   const [error, setError] = useState<string | null>(null);
@@ -309,10 +312,15 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
     const inv = invoices.find(i => i.id === id);
     if (inv) {
       const qMap: Record<string, number | ''> = {};
+      const pMap: Record<string, number> = {};
       inv.items.forEach(it => {
         qMap[it.productId] = '';
+        pMap[it.productId] = Number(it.unitPrice || 0);
       });
       setReturnQuantities(qMap);
+      setReturnUnitPrices(pMap);
+    } else {
+      setReturnUnitPrices({});
     }
   };
 
@@ -375,10 +383,11 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
     let total = 0;
     for (const item of selectedInvoice.items) {
       const q = Number(returnQuantities[item.productId] || 0);
-      total += q * item.unitPrice;
+      const price = returnUnitPrices[item.productId] ?? item.unitPrice;
+      total += q * price;
     }
     return total;
-  }, [selectedInvoice, returnQuantities]);
+  }, [selectedInvoice, returnQuantities, returnUnitPrices]);
 
   const handleSubmitReturn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -391,6 +400,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
       .filter(item => Number(returnQuantities[item.productId] || 0) > 0)
       .map(item => {
         const q = Number(returnQuantities[item.productId] || 0);
+        const price = returnUnitPrices[item.productId] ?? item.unitPrice;
         const catalogProd = products.find((p) => p.id === item.productId);
         return {
           productId: item.productId,
@@ -401,8 +411,8 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
           categoryName: item.categoryName || catalogProd?.category,
           unit: item.unit,
           quantity: q,
-          unitPrice: item.unitPrice,
-          total: q * item.unitPrice,
+          unitPrice: price,
+          total: q * price,
         };
       });
 
@@ -1162,55 +1172,75 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                 categories={categories}
                 selectedGroupId={retGroupFilter}
                 selectedCategoryId={retCatFilter}
+                autoAdvanceOnSelect
                 onFilterChange={(nextGroupId, nextCategoryId) => {
                   setRetGroupFilter(nextGroupId);
                   setRetCatFilter(nextCategoryId);
                 }}
               />
-              <table className="w-full text-start text-xs bg-white rounded-md border border-slate-200">
-                <thead>
-                  <tr className="bg-slate-100 border-b border-slate-200">
-                    <th className="px-2 py-1.5">{t('الصنف', 'Item')}</th>
-                    <th className="px-2 py-1.5 text-center">{t('الوحدة', 'Unit')}</th>
-                    <th className="px-2 py-1.5 text-center">{t('الكمية الأصلية', 'Original Qty')}</th>
-                    <th className="px-2 py-1.5 text-center">{t('السعر', 'Price')}</th>
-                    <th className="px-2 py-1.5 text-center w-24">{t('الكمية المرتجعة', 'Return Qty')}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredReturnInvoiceItems.map(it => {
-                    const alreadyRet = selectedInvoice.returnedQuantityByItem?.[it.productId] || 0;
-                    const maxAllowed = it.quantity - alreadyRet;
-
-                    return (
-                      <tr key={it.productId}>
-                        <td className="px-2 py-1 font-bold">{it.productName}</td>
-                        <td className="px-2 py-1 text-center">{t(it.unit)}</td>
-                        <td className="px-2 py-1 text-center font-bold">
-                          {it.quantity} {alreadyRet > 0 && <span className="text-red-600 text-[10px] block">{t(`تم إرجاع ${alreadyRet} سابقاً`, `${alreadyRet} previously returned`)}</span>}
-                        </td>
-                        <td className="px-2 py-1 text-center font-mono">{it.unitPrice}</td>
-                        <td className="px-2 py-1 text-center">
-                          <QuantityInput
-                            allowDecimals
-                            min={0}
-                            max={maxAllowed}
-                            value={returnQuantities[it.productId] ?? ''}
-                            onChange={(q) =>
-                              setReturnQuantities((prev) => ({
-                                ...prev,
-                                [it.productId]: Math.min(maxAllowed, Math.max(0, q)),
-                              }))
-                            }
-                            ariaLabel={`${t('كمية المرتجع', 'Return Qty')} ${it.productName}`}
-                            inputClassName="w-20 h-7 border border-slate-300 rounded-md px-1 text-center font-mono font-bold outline-hidden focus:border-blue-700"
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              <EditableItemGrid
+                rows={filteredReturnInvoiceItems.map((it) => {
+                  const alreadyRet = selectedInvoice.returnedQuantityByItem?.[it.productId] || 0;
+                  const maxAllowed = Math.max(0, it.quantity - alreadyRet);
+                  const currentQty = Number(returnQuantities[it.productId] || 0);
+                  const currentPrice = returnUnitPrices[it.productId] ?? it.unitPrice;
+                  return {
+                    rowKey: it.productId,
+                    productId: it.productId,
+                    productName: it.productName,
+                    barcode: it.barcode,
+                    unit: it.unit,
+                    unitFactor: it.unitFactor || 1,
+                    quantity: currentQty,
+                    maxQuantity: maxAllowed,
+                    unitPrice: currentPrice,
+                    total: currentQty * currentPrice,
+                    availableStock: maxAllowed,
+                    secondaryBadge:
+                      alreadyRet > 0
+                        ? t(`سابق: ${alreadyRet}`, `Prev ret: ${alreadyRet}`)
+                        : undefined,
+                  };
+                })}
+                products={products}
+                warehouses={warehouses}
+                currency={settings.currency}
+                priceMode={returnType === 'purchase_return' ? 'purchase' : 'selling'}
+                showPriceColumns
+                showStockColumn
+                stockColumnLabel={t('المتاح للإرجاع', 'Max Returnable')}
+                qtyColumnLabel={t('الكمية المرتجعة', 'Return Qty')}
+                allowUnitEdit={false}
+                allowQtyEdit
+                allowPriceEdit
+                minQty={0}
+                canDelete={false}
+                canDuplicate={false}
+                canAddNew={false}
+                hideCostInfo={isRepRole}
+                onUpdateRow={(idx, patch) => {
+                  const targetItem = filteredReturnInvoiceItems[idx];
+                  if (!targetItem) return;
+                  const alreadyRet = selectedInvoice.returnedQuantityByItem?.[targetItem.productId] || 0;
+                  const maxAllowed = Math.max(0, targetItem.quantity - alreadyRet);
+                  if (patch.quantity !== undefined) {
+                    const clamped = Math.min(maxAllowed, Math.max(0, patch.quantity));
+                    setReturnQuantities((prev) => ({
+                      ...prev,
+                      [targetItem.productId]: clamped === 0 ? '' : clamped,
+                    }));
+                  }
+                  if (patch.unitPrice !== undefined) {
+                    setReturnUnitPrices((prev) => ({
+                      ...prev,
+                      [targetItem.productId]: Math.max(0, patch.unitPrice!),
+                    }));
+                  }
+                }}
+                onNotify={(msg) => setRequestBanner({ type: 'success', text: msg })}
+                maxHeightClass="max-h-60"
+                compact
+              />
 
               <div className="flex justify-between items-center pt-1">
                 <span className="font-bold text-slate-700">{t('إجمالي قيمة المرتجع المحتسب:', 'Calculated Return Total:')}</span>

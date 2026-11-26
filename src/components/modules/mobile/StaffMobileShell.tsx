@@ -40,7 +40,7 @@ import type { NavItemKey } from '../../layout/Sidebar';
 import { MobileNotificationsSheet } from './MobileNotificationsSheet';
 import { MobileServerModal } from './MobileServerModal';
 import { MobileAddProductModal } from './MobileAddProductModal';
-import { MobileSendReceiveScreen } from './MobileSendReceiveScreen';
+import { SendReceiveView } from '../sync/SendReceiveView';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import {
   SalesInvoiceIcon,
@@ -928,7 +928,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         )}
 
         {!isMoreViewOpen && currentPage === 'refresh-sync' ? (
-          <MobileSendReceiveScreen onBack={() => onNavigate('dashboard')} />
+          <SendReceiveView onBack={() => onNavigate('dashboard')} />
         ) : isMoreViewOpen ? (
           <section aria-label={t('جميع الأقسام والعمليات', 'All Sections & Operations')} className="space-y-2 no-print">
             <div className="bg-white rounded-lg border border-slate-200 p-1.5">

@@ -42,7 +42,8 @@ import { getCurrentLocationSafe, isNativeCapacitor, parseLatLngCoords, reverseGe
 import { QuantityInput } from '../../common/QuantityInput';
 import { computeLineTotal, roundCurrency } from '../../../utils/quantity';
 import { compressImageFileToDataUrl } from '../../../utils/image';
-import { MobileSendReceiveScreen } from './MobileSendReceiveScreen';
+import { SendReceiveView } from '../sync/SendReceiveView';
+import { EditableItemGrid } from '../../common/EditableItemGrid';
 import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { ProductSearchSelect } from '../../common/ProductSearchSelect';
@@ -212,6 +213,36 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const data = useData();
   const { themePreference, setThemePreference, language, setLanguage, t, dir, isRtl } = usePreferences();
   const isNative = isNativeCapacitor();
+
+  // Keyboard progression refs across RepPortal entry tabs
+  const invGroupTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const invCatTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const invProductSearchRef = useRef<HTMLInputElement | null>(null);
+  const invQtyRef = useRef<HTMLInputElement | null>(null);
+  const invPriceRef = useRef<HTMLInputElement | null>(null);
+
+  const purGroupTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const purCatTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const purProductSearchRef = useRef<HTMLInputElement | null>(null);
+  const purQtyRef = useRef<HTMLInputElement | null>(null);
+  const purPriceRef = useRef<HTMLInputElement | null>(null);
+
+  const quoteGroupTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const quoteCatTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const quoteProductSearchRef = useRef<HTMLInputElement | null>(null);
+  const quoteQtyRef = useRef<HTMLInputElement | null>(null);
+  const quotePriceRef = useRef<HTMLInputElement | null>(null);
+
+  const reqGroupTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const reqCatTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const reqProductSearchRef = useRef<HTMLInputElement | null>(null);
+  const reqQtyRef = useRef<HTMLInputElement | null>(null);
+
+  const ordGroupTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const ordCatTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const ordProductSearchRef = useRef<HTMLInputElement | null>(null);
+  const ordQtyRef = useRef<HTMLInputElement | null>(null);
+  const ordPriceRef = useRef<HTMLInputElement | null>(null);
 
   const repNotifStorageKey = `awlad_selim_notif_prefs_${currentUser?.id || 'guest'}`;
   const [repNotifPrefs, setRepNotifPrefs] = useState<{
@@ -1493,28 +1524,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     setInvUnitName('');
     setInvQty('');
     setInvPrice('');
-  };
-
-  const handleUpdateInvItemQty = (idx: number, nextQty: number) => {
-    const q = Math.max(0.001, roundQty3(nextQty));
-    setInvItems((prev) =>
-      prev.map((it, i) =>
-        i === idx
-          ? {
-              ...it,
-              quantity: q,
-              total: computeLineTotal(q, it.unitPrice, it.discount || 0),
-            }
-          : it
-      )
-    );
-  };
-
-  const handleUpdateInvItemPrice = (idx: number, newPrice: number) => {
-    const p = Math.max(0, roundCurrency(newPrice));
-    setInvItems((prev) =>
-      prev.map((it, i) => (i === idx ? { ...it, unitPrice: p, total: computeLineTotal(it.quantity, p, it.discount || 0) } : it))
-    );
+    window.setTimeout(() => invProductSearchRef.current?.focus(), 20);
   };
 
   const invGrossSubtotal = useMemo(
@@ -2118,29 +2128,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     setPurUnitName('');
     setPurQty('');
     setPurPrice('');
-  };
-
-  const handleUpdatePurItemQty = (idx: number, nextQty: number) => {
-    const q = Math.max(0.001, roundQty3(nextQty));
-    setPurItems((prev) =>
-      prev.map((it, i) => (i === idx ? { ...it, quantity: q, total: computeLineTotal(q, it.unitPrice, it.discount || 0) } : it))
-    );
-  };
-
-  const handleUpdatePurItemPrice = (idx: number, nextPrice: number) => {
-    const p = Math.max(0, roundCurrency(nextPrice));
-    setPurItems((prev) =>
-      prev.map((it, i) =>
-        i === idx
-          ? {
-              ...it,
-              unitPrice: p,
-              purchasePriceAtTime: (it.unitFactor || 1) > 0 ? roundCurrency(p / (it.unitFactor || 1)) : p,
-              total: computeLineTotal(it.quantity, p, it.discount || 0),
-            }
-          : it
-      )
-    );
+    window.setTimeout(() => purProductSearchRef.current?.focus(), 20);
   };
 
   const handleStartEditPurchase = (inv: Invoice) => {
@@ -3182,6 +3170,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     setQuoteProductId('');
     setQuoteQty('');
     setQuotePrice('');
+    window.setTimeout(() => quoteProductSearchRef.current?.focus(), 20);
   };
 
   const handleCreateQuote = async (e: React.FormEvent) => {
@@ -3359,6 +3348,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     setOrdProductId('');
     setOrdQty('');
     setOrdPrice('');
+    window.setTimeout(() => ordProductSearchRef.current?.focus(), 20);
   };
 
   const ordTotalAmount = useMemo(
@@ -3880,25 +3870,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     setReqProdId('');
     setReqUnitName('');
     setReqQty('');
-  };
-
-  const handleUpdateReqItemQty = (idx: number, nextQty: number) => {
-    const q = Math.max(0.001, roundQty3(nextQty));
-    setReqItems((prev) =>
-      prev.map((it, i) => {
-        if (i !== idx) return it;
-        const prod = activeProducts.find((p) => p.id === it.productId);
-        const vanQty = prod ? prod.stockPerWarehouse?.[effectiveVanId] || 0 : it.availableInVanQty;
-        const reqBase = q * (it.unitFactor || 1);
-        return {
-          ...it,
-          requestedQty: q,
-          refTotal: computeLineTotal(q, it.refPrice || 0, 0),
-          availableInVanQty: vanQty,
-          shortageQty: Math.max(0, roundQty3(reqBase - vanQty)),
-        };
-      })
-    );
+    window.setTimeout(() => reqProductSearchRef.current?.focus(), 20);
   };
 
   const handleSendDirectItemTransfer = async (e?: React.FormEvent) => {
@@ -5046,7 +5018,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       )}
 
       {/* ==================== MOBILE SEND & RECEIVE SCREEN ==================== */}
-      {activeTab === 'refresh' && <MobileSendReceiveScreen onBack={() => onTabChange('home')} />}
+      {activeTab === 'refresh' && <SendReceiveView onBack={() => onTabChange('home')} />}
 
       {/* ==================== ALLOWED CUSTOMERS LIST (Compact Actions, Collapsible KPI Strip & Table) ==================== */}
       {activeTab === 'customers' && (
@@ -5459,6 +5431,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 searchPlaceholder={t('ابحث باسم العميل أو المحل أو الهاتف...', 'Search by customer, shop or phone...')}
                 allowClear
                 buttonClassName="h-8 rounded-md"
+                onAfterSelect={() => window.setTimeout(() => invGroupTriggerRef.current?.focus(), 20)}
               />
             </div>
             <div>
@@ -5517,6 +5490,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 categories={productCategories}
                 selectedGroupId={invGroupFilter}
                 selectedCategoryId={invCatFilter}
+                groupTriggerRef={invGroupTriggerRef}
+                categoryTriggerRef={invCatTriggerRef}
+                autoAdvanceOnSelect
+                onCategoryAfterSelect={() => window.setTimeout(() => invProductSearchRef.current?.focus(), 20)}
                 onFilterChange={(nextGroupId, nextCategoryId) => {
                   const res = resolveGroupCategoryCascade(
                     filteredInvoiceProducts,
@@ -5541,9 +5518,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   {t('اختيار الصنف:', 'Select Item:')}
                 </label>
                 <ProductSearchSelect
+                  inputRef={invProductSearchRef}
                   products={scopedInvoicePickerProducts}
                   selectedProductId={invProductId}
                   onSelect={(prod) => handleSelectProduct(prod.id)}
+                  onAfterSelect={() => window.setTimeout(() => invQtyRef.current?.focus(), 20)}
                   warehouseId={effectiveVanId}
                   warehouses={data.warehouses}
                   priceMode="selling"
@@ -5574,10 +5553,21 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   <div>
                     <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('الكمية:', 'Qty:')}</label>
                     <QuantityInput
+                      inputRef={invQtyRef}
                       allowDecimals
                       min={0.001}
                       value={invQty}
                       onChange={setInvQty}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          window.setTimeout(() => {
+                            invPriceRef.current?.focus();
+                            invPriceRef.current?.select();
+                          }, 10);
+                        }
+                      }}
                       ariaLabel={t('الكمية', 'Quantity')}
                       inputClassName="w-full h-8 rounded-md border border-slate-300 bg-white text-center font-mono font-bold text-xs"
                     />
@@ -5585,11 +5575,19 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   <div>
                     <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('السعر:', 'Price:')}</label>
                     <input
+                      ref={invPriceRef}
                       type="number"
                       step="0.5"
                       min={0}
                       value={invPrice}
                       onChange={(e) => setInvPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleAddInvoiceItem();
+                        }
+                      }}
                       className="w-full h-8 rounded-md border border-slate-300 bg-white text-center font-mono font-bold text-xs"
                     />
                   </div>
@@ -5630,71 +5628,66 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             )}
           </div>
 
-          <div className="border border-slate-200 rounded-lg overflow-hidden awlad-table-scroll">
-            <table className="w-full text-[11px] text-start border-collapse">
-              <thead className="bg-slate-100 text-slate-700 font-black border-b border-slate-200">
-                <tr>
-                  <th className="p-1.5 text-center w-8">#</th>
-                  <th className="p-1.5 text-start">{t('الصنف', 'Item')}</th>
-                  <th className="p-1.5 text-center">{t('الوحدة', 'Unit')}</th>
-                  <th className="p-1.5 text-center w-20">{t('الكمية', 'Qty')}</th>
-                  <th className="p-1.5 text-center w-20">{t('السعر', 'Price')}</th>
-                  <th className="p-1.5 text-center">{t('الإجمالي', 'Total')}</th>
-                  <th className="p-1.5 text-center w-8"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {invItems.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="p-4 text-center text-slate-400 font-bold">
-                      {t('لم يتم إضافة أصناف بعد', 'No items added yet')}
-                    </td>
-                  </tr>
-                ) : (
-                  invItems.map((it, idx) => (
-                    <tr key={`${it.productId}-${it.unit}-${idx}`} className="hover:bg-slate-50">
-                      <td className="p-1.5 text-center font-mono text-slate-500">{formatLocaleNumber(idx + 1)}</td>
-                      <td className="p-1.5 font-bold text-slate-800">{it.productName}</td>
-                      <td className="p-1.5 text-center font-semibold text-slate-600">{t(it.unit)}</td>
-                      <td className="p-1">
-                        <QuantityInput
-                          allowDecimals
-                          min={0.001}
-                          value={it.quantity}
-                          onChange={(q) => handleUpdateInvItemQty(idx, Number(q || 0.001))}
-                          ariaLabel={it.productName}
-                          inputClassName="w-full h-7 rounded border border-slate-300 text-center font-mono font-bold text-[11px]"
-                        />
-                      </td>
-                      <td className="p-1">
-                        <input
-                          type="number"
-                          step="0.5"
-                          min={0}
-                          value={it.unitPrice}
-                          onChange={(e) => handleUpdateInvItemPrice(idx, Number(e.target.value || 0))}
-                          className="w-full h-7 rounded border border-slate-300 text-center font-mono font-bold text-[11px]"
-                        />
-                      </td>
-                      <td className="p-1.5 text-center font-mono font-black text-slate-900">
-                        {formatLocaleNumber(it.total)}
-                      </td>
-                      <td className="p-1 text-center">
-                        <button
-                          type="button"
-                          onClick={() => setInvItems((prev) => prev.filter((_, i) => i !== idx))}
-                          className="p-1 rounded text-red-600 hover:bg-red-50 cursor-pointer"
-                          title={t('حذف', 'Delete')}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          <EditableItemGrid
+            compact
+            rows={invItems.map((it, idx) => ({
+              ...it,
+              rowKey: `${it.productId}-${it.unit}-${idx}`,
+            }))}
+            products={data.products}
+            warehouses={data.warehouses}
+            currency={data.settings.currency}
+            priceMode="selling"
+            showPriceColumns
+            showDiscountColumn
+            allowUnitEdit
+            allowQtyEdit
+            allowPriceEdit
+            allowDiscountEdit
+            canDelete
+            canDuplicate
+            canAddNew
+            hideCostInfo={isRepRoleAccount}
+            recalcPriceOnUnitChange
+            onUpdateRow={(idx, patch) => {
+              setInvItems((prev) =>
+                prev.map((row, i) => {
+                  if (i !== idx) return row;
+                  const nextUnit = patch.unit ?? row.unit;
+                  const nextFactor = patch.unitFactor ?? row.unitFactor;
+                  const nextQty = patch.quantity !== undefined ? Math.max(0.001, roundQty3(patch.quantity)) : row.quantity;
+                  const nextPrice = patch.unitPrice !== undefined ? Math.max(0, roundCurrency(patch.unitPrice)) : row.unitPrice;
+                  const nextDisc = patch.discount !== undefined ? Math.max(0, roundCurrency(patch.discount)) : (row.discount || 0);
+                  return {
+                    ...row,
+                    unit: nextUnit,
+                    unitFactor: nextFactor,
+                    quantity: nextQty,
+                    unitPrice: nextPrice,
+                    purchasePriceAtTime: patch.purchasePriceAtTime ?? row.purchasePriceAtTime,
+                    discount: nextDisc,
+                    total: patch.total ?? computeLineTotal(nextQty, nextPrice, nextDisc),
+                  };
+                })
+              );
+            }}
+            onDeleteRow={(idx) => setInvItems((prev) => prev.filter((_, i) => i !== idx))}
+            onDuplicateRow={(idx) =>
+              setInvItems((prev) => {
+                const target = prev[idx];
+                if (!target) return prev;
+                return [...prev.slice(0, idx + 1), { ...target }, ...prev.slice(idx + 1)];
+              })
+            }
+            onAddNewItem={() => window.setTimeout(() => invProductSearchRef.current?.focus(), 20)}
+            onNotify={(text, type = 'info') =>
+              setFeedback({
+                type: type === 'warning' ? 'warning' : type === 'error' ? 'error' : 'success',
+                text,
+              })
+            }
+            emptyStateText={t('لم يتم إضافة أصناف بعد', 'No items added yet')}
+          />
 
           {shortageItems.length > 0 && (
             <div className="p-2 rounded-md bg-amber-50 border border-amber-300 space-y-1 text-xs text-amber-950">
@@ -6254,6 +6247,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     categories={productCategories}
                     selectedGroupId={purGroupFilter}
                     selectedCategoryId={purCatFilter}
+                    groupTriggerRef={purGroupTriggerRef}
+                    categoryTriggerRef={purCatTriggerRef}
+                    autoAdvanceOnSelect
+                    onCategoryAfterSelect={() => window.setTimeout(() => purProductSearchRef.current?.focus(), 20)}
                     onFilterChange={(nextGroupId, nextCategoryId) => {
                       const res = resolveGroupCategoryCascade(
                         activeProducts,
@@ -6278,9 +6275,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       {t('اختيار الصنف:', 'Select Item:')}
                     </label>
                     <ProductSearchSelect
+                      inputRef={purProductSearchRef}
                       products={scopedPurchasePickerProducts}
                       selectedProductId={purProductId}
                       onSelect={(prod) => handleSelectPurProduct(prod.id)}
+                      onAfterSelect={() => window.setTimeout(() => purQtyRef.current?.focus(), 20)}
                       warehouseId={purWarehouseId || mainWarehouse?.id || ''}
                       warehouses={data.warehouses}
                       priceMode="purchase"
@@ -6309,10 +6308,21 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     <div>
                       <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('الكمية:', 'Qty:')}</label>
                       <QuantityInput
+                        inputRef={purQtyRef}
                         allowDecimals
                         min={0.001}
                         value={purQty}
                         onChange={setPurQty}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            window.setTimeout(() => {
+                              purPriceRef.current?.focus();
+                              purPriceRef.current?.select();
+                            }, 10);
+                          }
+                        }}
                         ariaLabel={t('الكمية', 'Quantity')}
                         inputClassName="w-full h-8 rounded-md border border-slate-300 bg-white text-center font-mono font-bold text-xs"
                       />
@@ -6320,11 +6330,19 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     <div>
                       <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('سعر الشراء:', 'Buy Price:')}</label>
                       <input
+                        ref={purPriceRef}
                         type="number"
                         step="0.5"
                         min={0}
                         value={purPrice}
                         onChange={(e) => setPurPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleAddPurItem();
+                          }
+                        }}
                         className="w-full h-8 rounded-md border border-slate-300 bg-white text-center font-mono font-bold text-xs"
                       />
                     </div>
@@ -6350,78 +6368,68 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             )}
           </div>
 
-          <div className="border border-slate-200 rounded-lg overflow-hidden awlad-table-scroll">
-            <table className="w-full text-[11px] text-start border-collapse">
-              <thead className="bg-slate-100 text-slate-700 font-black border-b border-slate-200">
-                <tr>
-                  <th className="p-1.5 text-center w-8">#</th>
-                  <th className="p-1.5 text-start">{t('الصنف', 'Item')}</th>
-                  <th className="p-1.5 text-center">{t('الوحدة', 'Unit')}</th>
-                  <th className="p-1.5 text-center w-20">{t('الكمية', 'Qty')}</th>
-                  <th className="p-1.5 text-center w-20">{t('سعر الشراء', 'Buy Price')}</th>
-                  <th className="p-1.5 text-center">{t('الإجمالي', 'Total')}</th>
-                  <th className="p-1.5 text-center w-8"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {purItems.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="p-4 text-center text-slate-400 font-bold">
-                      {t('لم يتم إضافة أصناف بعد', 'No items added yet')}
-                    </td>
-                  </tr>
-                ) : (
-                  purItems.map((it, idx) => (
-                    <tr key={`${it.productId || it.productName}-${it.unit}-${idx}`} className="hover:bg-slate-50">
-                      <td className="p-1.5 text-center font-mono text-slate-500">{formatLocaleNumber(idx + 1)}</td>
-                      <td className="p-1.5 font-bold text-slate-800">
-                        <span>{it.productName}</span>
-                        {it.newProduct && (
-                          <span className="ms-1 inline-block px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[9px] font-black">
-                            {t('جديد', 'New')}
-                          </span>
-                        )}
-                      </td>
-                      <td className="p-1.5 text-center font-semibold text-slate-600">{t(it.unit)}</td>
-                      <td className="p-1">
-                        <QuantityInput
-                          allowDecimals
-                          min={0.001}
-                          value={it.quantity}
-                          onChange={(q) => handleUpdatePurItemQty(idx, Number(q || 0.001))}
-                          ariaLabel={it.productName}
-                          inputClassName="w-full h-7 rounded border border-slate-300 text-center font-mono font-bold text-[11px]"
-                        />
-                      </td>
-                      <td className="p-1">
-                        <input
-                          type="number"
-                          step="0.5"
-                          min={0}
-                          value={it.unitPrice}
-                          onChange={(e) => handleUpdatePurItemPrice(idx, Number(e.target.value || 0))}
-                          className="w-full h-7 rounded border border-slate-300 text-center font-mono font-bold text-[11px]"
-                        />
-                      </td>
-                      <td className="p-1.5 text-center font-mono font-black text-slate-900">
-                        {formatLocaleNumber(it.total)}
-                      </td>
-                      <td className="p-1 text-center">
-                        <button
-                          type="button"
-                          onClick={() => setPurItems((prev) => prev.filter((_, i) => i !== idx))}
-                          className="p-1 rounded text-red-600 hover:bg-red-50 cursor-pointer"
-                          title={t('حذف', 'Delete')}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          <EditableItemGrid
+            compact
+            rows={purItems.map((it, idx) => ({
+              ...it,
+              rowKey: `${it.productId || it.productName}-${it.unit}-${idx}`,
+              secondaryBadge: it.newProduct ? t('جديد', 'New') : undefined,
+            }))}
+            products={data.products}
+            warehouses={data.warehouses}
+            currency={data.settings.currency}
+            priceMode="purchase"
+            showPriceColumns
+            showDiscountColumn
+            allowUnitEdit
+            allowQtyEdit
+            allowPriceEdit
+            allowDiscountEdit
+            canDelete
+            canDuplicate
+            canAddNew
+            hideCostInfo={isRepRoleAccount}
+            recalcPriceOnUnitChange
+            onUpdateRow={(idx, patch) => {
+              setPurItems((prev) =>
+                prev.map((row, i) => {
+                  if (i !== idx) return row;
+                  const nextUnit = patch.unit ?? row.unit;
+                  const nextFactor = patch.unitFactor ?? row.unitFactor;
+                  const nextQty = patch.quantity !== undefined ? Math.max(0.001, roundQty3(patch.quantity)) : row.quantity;
+                  const nextPrice = patch.unitPrice !== undefined ? Math.max(0, roundCurrency(patch.unitPrice)) : row.unitPrice;
+                  const nextDisc = patch.discount !== undefined ? Math.max(0, roundCurrency(patch.discount)) : (row.discount || 0);
+                  const factorSafe = nextFactor || 1;
+                  return {
+                    ...row,
+                    unit: nextUnit,
+                    unitFactor: nextFactor,
+                    quantity: nextQty,
+                    unitPrice: nextPrice,
+                    purchasePriceAtTime: factorSafe > 0 ? roundCurrency(nextPrice / factorSafe) : nextPrice,
+                    discount: nextDisc,
+                    total: patch.total ?? computeLineTotal(nextQty, nextPrice, nextDisc),
+                  };
+                })
+              );
+            }}
+            onDeleteRow={(idx) => setPurItems((prev) => prev.filter((_, i) => i !== idx))}
+            onDuplicateRow={(idx) =>
+              setPurItems((prev) => {
+                const target = prev[idx];
+                if (!target) return prev;
+                return [...prev.slice(0, idx + 1), { ...target }, ...prev.slice(idx + 1)];
+              })
+            }
+            onAddNewItem={() => window.setTimeout(() => purProductSearchRef.current?.focus(), 20)}
+            onNotify={(text, type = 'info') =>
+              setFeedback({
+                type: type === 'warning' ? 'warning' : type === 'error' ? 'error' : 'success',
+                text,
+              })
+            }
+            emptyStateText={t('لم يتم إضافة أصناف بعد', 'No items added yet')}
+          />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div className="bg-slate-50 p-2 rounded-lg border border-slate-200 space-y-2">
@@ -7091,49 +7099,46 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           </div>
 
           {pRetItems.length > 0 && (
-            <UnifiedDataTable
+            <EditableItemGrid
               compact
-              paginated={false}
-              searchable={false}
-              title={`${t('أصناف مرتجع المشتريات', 'Purchase Return Items')} (${formatLocaleNumber(pRetItems.length)})`}
-              data={pRetItems}
-              rowKey={(it, idx) => `${it.productId}-${idx}`}
-              columns={[
-                { key: 'productName', header: t('الصنف', 'Item'), render: (it) => <span className="font-bold">{it.productName}</span> },
-                {
-                  key: 'quantity',
-                  header: t('الكمية', 'Qty'),
-                  align: 'center',
-                  render: (it) => <span className="font-mono">{formatLocaleNumber(it.quantity)} {t(it.unit)}</span>,
-                },
-                {
-                  key: 'unitPrice',
-                  header: t('السعر', 'Price'),
-                  align: 'center',
-                  render: (it) => <span className="font-mono">{formatLocaleNumber(it.unitPrice)}</span>,
-                },
-                {
-                  key: 'total',
-                  header: t('الإجمالي', 'Total'),
-                  align: 'center',
-                  render: (it) => <strong className="font-mono text-[#011E58]">{formatLocaleNumber(it.total)}</strong>,
-                },
-                {
-                  key: 'actions',
-                  header: t('حذف', 'Remove'),
-                  align: 'center',
-                  sortable: false,
-                  render: (_it, idx) => (
-                    <button
-                      type="button"
-                      onClick={() => setPRetItems((prev) => prev.filter((_, i) => i !== idx))}
-                      className="h-7 w-7 rounded-md hover:bg-red-50 inline-flex items-center justify-center text-red-600 cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  ),
-                },
-              ]}
+              rows={pRetItems.map((it, idx) => ({
+                ...it,
+                rowKey: `${it.productId}-${it.unit}-${idx}`,
+              }))}
+              products={data.products}
+              warehouses={data.warehouses}
+              currency={data.settings.currency}
+              priceMode="purchase"
+              showPriceColumns
+              allowUnitEdit={false}
+              allowQtyEdit
+              allowPriceEdit
+              canDelete
+              canDuplicate={false}
+              canAddNew={false}
+              hideCostInfo={isRepRoleAccount}
+              onUpdateRow={(idx, patch) => {
+                setPRetItems((prev) =>
+                  prev.map((row, i) => {
+                    if (i !== idx) return row;
+                    const nextQty = patch.quantity !== undefined ? Math.max(0.001, roundQty3(patch.quantity)) : row.quantity;
+                    const nextPrice = patch.unitPrice !== undefined ? Math.max(0, roundCurrency(patch.unitPrice)) : row.unitPrice;
+                    return {
+                      ...row,
+                      quantity: nextQty,
+                      unitPrice: nextPrice,
+                      total: patch.total ?? computeLineTotal(nextQty, nextPrice),
+                    };
+                  })
+                );
+              }}
+              onDeleteRow={(idx) => setPRetItems((prev) => prev.filter((_, i) => i !== idx))}
+              onNotify={(text, type = 'info') =>
+                setFeedback({
+                  type: type === 'warning' ? 'warning' : type === 'error' ? 'error' : 'success',
+                  text,
+                })
+              }
             />
           )}
 
@@ -8173,16 +8178,22 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               <h3 className="text-xs sm:text-sm font-black text-blue-950">{t('إنشاء عرض سعر (بدون خصم مخزني أو قيد مالي)', 'Create Price Quote (Zero Stock / Ledger Impact)')}</h3>
               <p className="text-[10px] text-slate-500">{t('يمكن تحويل عرض السعر لاحقاً لفاتورة مبيعات معتمدة بضغطة واحدة.', 'Price quotes can later be converted into a confirmed sales invoice in one click.')}</p>
             </div>
-            <select
+            <SearchableFilterSelect
               value={quoteCustomerId}
-              onChange={(e) => setQuoteCustomerId(e.target.value)}
-              className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold bg-white"
-            >
-              <option value="">{t('-- اختر العميل (أو عميل عام) --', '-- Select Customer (or Walk-in) --')}</option>
-              {data.customers.map((c) => (
-                <option key={c.id} value={c.id}>{c.shopName || c.name}</option>
-              ))}
-            </select>
+              onChange={setQuoteCustomerId}
+              options={data.customers.map((c) => ({
+                value: c.id,
+                label: c.shopName ? `${c.shopName} (${c.name})` : c.name,
+                subtitle: c.phone || c.address,
+                searchText: `${c.name} ${c.shopName || ''} ${c.phone || ''} ${c.code || ''}`,
+              }))}
+              allOptionLabel={t('-- اختر العميل (أو عميل عام) --', '-- Select Customer (or Walk-in) --')}
+              allOptionValue=""
+              searchPlaceholder={t('ابحث باسم العميل أو المحل أو الهاتف...', 'Search by customer, shop or phone...')}
+              allowClear
+              buttonClassName="h-8 rounded-md"
+              onAfterSelect={() => window.setTimeout(() => quoteGroupTriggerRef.current?.focus(), 20)}
+            />
 
             <div className="p-2 rounded-md bg-blue-50/70 border border-blue-200 space-y-1.5">
               <LinkedGroupCategoryFilter
@@ -8190,6 +8201,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 categories={productCategories}
                 selectedGroupId={quoteGroupFilter}
                 selectedCategoryId={quoteCatFilter}
+                groupTriggerRef={quoteGroupTriggerRef}
+                categoryTriggerRef={quoteCatTriggerRef}
+                autoAdvanceOnSelect
+                onCategoryAfterSelect={() => window.setTimeout(() => quoteProductSearchRef.current?.focus(), 20)}
                 onFilterChange={(nextGroupId, nextCategoryId) => {
                   const res = resolveGroupCategoryCascade(
                     activeProducts,
@@ -8209,25 +8224,38 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   }
                 }}
               />
-              <select
-                value={quoteProductId}
-                onChange={(e) => handleSelectQuoteProduct(e.target.value)}
-                className="w-full h-8 rounded-md border border-blue-300 px-2 font-bold bg-white"
-              >
-                <option value="">{t('-- اختر الصنف لعرض السعر --', '-- Select Item for Quote --')}</option>
-                {scopedQuoteProducts.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name} ({formatLocaleNumber(p.sellingPrice)} {t(data.settings.currency)})</option>
-                ))}
-              </select>
+              <ProductSearchSelect
+                inputRef={quoteProductSearchRef}
+                products={scopedQuoteProducts}
+                selectedProductId={quoteProductId}
+                onSelect={(prod) => handleSelectQuoteProduct(prod.id)}
+                onAfterSelect={() => window.setTimeout(() => quoteQtyRef.current?.focus(), 20)}
+                warehouseId={effectiveVanId || mainWarehouse?.id || ''}
+                warehouses={data.warehouses}
+                priceMode="selling"
+                currency={data.settings.currency}
+                placeholder={t('ابحث باسم الصنف لعرض السعر أو الكود...', 'Search item for price quote...')}
+              />
               {quoteProductId && (
                 <div className="grid grid-cols-3 gap-1.5 items-end">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('الكمية', 'Quantity')}</label>
                     <QuantityInput
+                      inputRef={quoteQtyRef}
                       allowDecimals
                       min={0.001}
                       value={quoteQty}
                       onChange={setQuoteQty}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          window.setTimeout(() => {
+                            quotePriceRef.current?.focus();
+                            quotePriceRef.current?.select();
+                          }, 10);
+                        }
+                      }}
                       ariaLabel={t('كمية عرض السعر', 'Quote quantity')}
                       inputClassName="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
                     />
@@ -8235,11 +8263,19 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   <div>
                     <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('السعر', 'Price')}</label>
                     <input
+                      ref={quotePriceRef}
                       type="number"
                       min={0}
                       step="0.5"
                       value={quotePrice}
                       onChange={(e) => setQuotePrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleAddQuoteItem();
+                        }
+                      }}
                       className="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
                     />
                   </div>
@@ -8255,19 +8291,62 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             </div>
 
             {quoteItems.length > 0 && (
-              <UnifiedDataTable
+              <EditableItemGrid
                 compact
-                paginated={false}
-                searchable={false}
-                title={`${t('أصناف عرض السعر', 'Quote Items')} (${formatLocaleNumber(quoteItems.length)})`}
-                data={quoteItems}
-                rowKey={(it, idx) => `${it.productId}-${idx}`}
-                columns={[
-                  { key: 'productName', header: t('الصنف', 'Item'), render: (it) => <span className="font-bold">{it.productName}</span> },
-                  { key: 'quantity', header: t('الكمية', 'Qty'), align: 'center', render: (it) => <span className="font-mono">{formatLocaleNumber(it.quantity)}</span> },
-                  { key: 'unitPrice', header: t('السعر', 'Price'), align: 'center', render: (it) => <span className="font-mono">{formatLocaleNumber(it.unitPrice)}</span> },
-                  { key: 'total', header: t('الإجمالي', 'Total'), align: 'center', render: (it) => <strong className="font-mono text-blue-950">{formatLocaleNumber(it.total)}</strong> },
-                ]}
+                rows={quoteItems.map((it, idx) => ({
+                  ...it,
+                  rowKey: `${it.productId}-${it.unit}-${idx}`,
+                }))}
+                products={data.products}
+                warehouses={data.warehouses}
+                currency={data.settings.currency}
+                priceMode="selling"
+                showPriceColumns
+                allowUnitEdit
+                allowQtyEdit
+                allowPriceEdit
+                canDelete
+                canDuplicate
+                canAddNew
+                hideCostInfo={isRepRoleAccount}
+                recalcPriceOnUnitChange
+                onUpdateRow={(idx, patch) => {
+                  setQuoteItems((prev) =>
+                    prev.map((row, i) => {
+                      if (i !== idx) return row;
+                      const nextUnit = patch.unit ?? row.unit;
+                      const nextFactor = patch.unitFactor ?? row.unitFactor;
+                      const nextQty = patch.quantity !== undefined ? Math.max(0.001, roundQty3(patch.quantity)) : row.quantity;
+                      const nextPrice = patch.unitPrice !== undefined ? Math.max(0, roundCurrency(patch.unitPrice)) : row.unitPrice;
+                      const nextDisc = patch.discount !== undefined ? Math.max(0, roundCurrency(patch.discount)) : (row.discount || 0);
+                      return {
+                        ...row,
+                        unit: nextUnit,
+                        unitFactor: nextFactor,
+                        quantity: nextQty,
+                        unitPrice: nextPrice,
+                        purchasePriceAtTime: patch.purchasePriceAtTime ?? row.purchasePriceAtTime,
+                        discount: nextDisc,
+                        total: patch.total ?? computeLineTotal(nextQty, nextPrice, nextDisc),
+                      };
+                    })
+                  );
+                }}
+                onDeleteRow={(idx) => setQuoteItems((prev) => prev.filter((_, i) => i !== idx))}
+                onDuplicateRow={(idx) =>
+                  setQuoteItems((prev) => {
+                    const target = prev[idx];
+                    if (!target) return prev;
+                    return [...prev.slice(0, idx + 1), { ...target }, ...prev.slice(idx + 1)];
+                  })
+                }
+                onAddNewItem={() => window.setTimeout(() => quoteProductSearchRef.current?.focus(), 20)}
+                onNotify={(text, type = 'info') =>
+                  setFeedback({
+                    type: type === 'warning' ? 'warning' : type === 'error' ? 'error' : 'success',
+                    text,
+                  })
+                }
               />
             )}
 
@@ -9273,6 +9352,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       categories={productCategories}
                       selectedGroupId={reqGroupFilter}
                       selectedCategoryId={reqCatFilter}
+                      groupTriggerRef={reqGroupTriggerRef}
+                      categoryTriggerRef={reqCatTriggerRef}
+                      autoAdvanceOnSelect
+                      onCategoryAfterSelect={() => window.setTimeout(() => reqProductSearchRef.current?.focus(), 20)}
                       onFilterChange={(nextGroupId, nextCategoryId) => {
                         const res = resolveGroupCategoryCascade(
                           activeProducts,
@@ -9294,9 +9377,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     <div>
                       <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('اختيار الصنف:', 'Select Item:')}</label>
                       <ProductSearchSelect
+                        inputRef={reqProductSearchRef}
                         products={scopedReqProducts}
                         selectedProductId={reqProdId}
                         onSelect={handleSelectReqProduct}
+                        onAfterSelect={() => window.setTimeout(() => reqQtyRef.current?.focus(), 20)}
                         warehouseId={mainWarehouse?.id || ''}
                         warehouses={data.warehouses}
                         priceMode="purchase"
@@ -9325,10 +9410,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       <div>
                         <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('الكمية المطلوبة:', 'Requested Qty:')}</label>
                         <QuantityInput
+                          inputRef={reqQtyRef}
                           allowDecimals
                           min={0.001}
                           value={reqQty}
                           onChange={setReqQty}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleAddReqItem();
+                            }
+                          }}
                           ariaLabel={t('الكمية المطلوبة', 'Requested Qty')}
                           inputClassName="w-full h-8 rounded-md border border-slate-300 bg-white text-center font-mono font-bold text-xs"
                         />
@@ -9347,62 +9440,82 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   )}
                 </div>
 
-                <div className="border border-slate-200 rounded-lg overflow-hidden awlad-table-scroll">
-                  <table className="w-full text-[11px] text-start border-collapse">
-                    <thead className="bg-slate-100 text-slate-700 font-black border-b border-slate-200">
-                      <tr>
-                        <th className="p-1.5 text-center w-8">#</th>
-                        <th className="p-1.5 text-start">{t('الصنف', 'Item')}</th>
-                        <th className="p-1.5 text-center">{t('الوحدة', 'Unit')}</th>
-                        <th className="p-1.5 text-center">{t('المتاح بالسيارة', 'In Van')}</th>
-                        <th className="p-1.5 text-center w-20">{t('الكمية المطلوبة', 'Req. Qty')}</th>
-                        <th className="p-1.5 text-center">{t('العجز', 'Shortage')}</th>
-                        <th className="p-1.5 text-center w-8"></th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {reqItems.length === 0 ? (
-                        <tr>
-                          <td colSpan={7} className="p-4 text-center text-slate-400 font-bold">
-                            {t('لم يتم إضافة أصناف بعد', 'No items added yet')}
-                          </td>
-                        </tr>
-                      ) : (
-                        reqItems.map((it, idx) => (
-                          <tr key={`${it.productId}-${it.unit}-${idx}`} className="hover:bg-slate-50">
-                            <td className="p-1.5 text-center font-mono text-slate-500">{formatLocaleNumber(idx + 1)}</td>
-                            <td className="p-1.5 font-bold text-slate-800">{it.productName}</td>
-                            <td className="p-1.5 text-center font-semibold text-slate-600">{t(it.unit)}</td>
-                            <td className="p-1.5 text-center font-mono text-slate-600">{formatLocaleNumber(it.availableInVanQty)}</td>
-                            <td className="p-1">
-                              <QuantityInput
-                                allowDecimals
-                                min={0.001}
-                                value={it.requestedQty}
-                                onChange={(q) => handleUpdateReqItemQty(idx, Number(q || 0.001))}
-                                ariaLabel={it.productName}
-                                inputClassName="w-full h-7 rounded border border-slate-300 text-center font-mono font-bold text-[11px]"
-                              />
-                            </td>
-                            <td className="p-1.5 text-center font-mono font-bold text-amber-700">
-                              {formatLocaleNumber(it.shortageQty)}
-                            </td>
-                            <td className="p-1 text-center">
-                              <button
-                                type="button"
-                                onClick={() => setReqItems((prev) => prev.filter((_, i) => i !== idx))}
-                                className="p-1 rounded text-red-600 hover:bg-red-50 cursor-pointer"
-                                title={t('حذف', 'Delete')}
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                <EditableItemGrid
+                  compact
+                  rows={reqItems.map((it, idx) => ({
+                    rowKey: `${it.productId}-${it.unit}-${idx}`,
+                    productId: it.productId,
+                    productName: it.productName,
+                    barcode: it.barcode,
+                    unit: it.unit,
+                    unitFactor: it.unitFactor || 1,
+                    quantity: it.requestedQty,
+                    unitPrice: it.refPrice || 0,
+                    total: it.refTotal || 0,
+                    availableStock: it.availableInVanQty,
+                    secondaryBadge:
+                      it.shortageQty > 0
+                        ? `${t('عجز:', 'Shortage:')} ${formatLocaleNumber(it.shortageQty)}`
+                        : undefined,
+                  }))}
+                  products={data.products}
+                  warehouses={data.warehouses}
+                  currency={data.settings.currency}
+                  priceMode="none"
+                  showPriceColumns={false}
+                  showStockColumn
+                  stockColumnLabel={t('المتاح بالسيارة', 'In Van')}
+                  qtyColumnLabel={t('الكمية المطلوبة', 'Req. Qty')}
+                  allowUnitEdit
+                  allowQtyEdit
+                  allowPriceEdit={false}
+                  canDelete
+                  canDuplicate
+                  canAddNew
+                  hideCostInfo={isRepRoleAccount}
+                  recalcPriceOnUnitChange={false}
+                  onUpdateRow={(idx, patch) => {
+                    setReqItems((prev) =>
+                      prev.map((row, i) => {
+                        if (i !== idx) return row;
+                        const nextUnit = patch.unit ?? row.unit;
+                        const nextFactor = patch.unitFactor ?? row.unitFactor ?? 1;
+                        const nextQty = patch.quantity !== undefined ? Math.max(0.001, roundQty3(patch.quantity)) : row.requestedQty;
+                        const prod = activeProducts.find((p) => p.id === row.productId);
+                        const vanQty = prod ? prod.stockPerWarehouse?.[effectiveVanId] || 0 : row.availableInVanQty;
+                        const reqBase = nextQty * nextFactor;
+                        const uObj = prod?.units?.find((u) => u.name === nextUnit);
+                        const nextRefPrice = prod ? roundCurrency(uObj?.purchasePrice || prod.purchasePrice * nextFactor) : (row.refPrice || 0);
+                        return {
+                          ...row,
+                          unit: nextUnit,
+                          unitFactor: nextFactor,
+                          requestedQty: nextQty,
+                          refPrice: nextRefPrice,
+                          refTotal: computeLineTotal(nextQty, nextRefPrice, 0),
+                          availableInVanQty: vanQty,
+                          shortageQty: Math.max(0, roundQty3(reqBase - vanQty)),
+                        };
+                      })
+                    );
+                  }}
+                  onDeleteRow={(idx) => setReqItems((prev) => prev.filter((_, i) => i !== idx))}
+                  onDuplicateRow={(idx) =>
+                    setReqItems((prev) => {
+                      const target = prev[idx];
+                      if (!target) return prev;
+                      return [...prev.slice(0, idx + 1), { ...target }, ...prev.slice(idx + 1)];
+                    })
+                  }
+                  onAddNewItem={() => window.setTimeout(() => reqProductSearchRef.current?.focus(), 20)}
+                  onNotify={(text, type = 'info') =>
+                    setFeedback({
+                      type: type === 'warning' ? 'warning' : type === 'error' ? 'error' : 'success',
+                      text,
+                    })
+                  }
+                  emptyStateText={t('لم يتم إضافة أصناف بعد', 'No items added yet')}
+                />
 
                 <div>
                   <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('ملاحظات الطلب:', 'Request Notes:')}</label>
@@ -9712,18 +9825,22 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-1.5"
           >
             <h3 className="text-xs sm:text-sm font-black text-slate-900">{t('إرسال طلب شراء للإدارة', 'Submit Purchase Order to Management')}</h3>
-            <select
+            <SearchableFilterSelect
               value={ordCustomerId}
-              onChange={(e) => setOrdCustomerId(e.target.value)}
-              className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold bg-white"
-            >
-              <option value="">{t('-- اختر العميل --', '-- Select Customer --')}</option>
-              {data.customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.shopName ? `${c.shopName} (${c.name})` : c.name}
-                </option>
-              ))}
-            </select>
+              onChange={setOrdCustomerId}
+              options={data.customers.map((c) => ({
+                value: c.id,
+                label: c.shopName ? `${c.shopName} (${c.name})` : c.name,
+                subtitle: c.phone || c.address,
+                searchText: `${c.name} ${c.shopName || ''} ${c.phone || ''} ${c.code || ''}`,
+              }))}
+              allOptionLabel={t('-- اختر العميل --', '-- Select Customer --')}
+              allOptionValue=""
+              searchPlaceholder={t('ابحث باسم العميل أو المحل أو الهاتف...', 'Search by customer, shop or phone...')}
+              allowClear
+              buttonClassName="h-8 rounded-md"
+              onAfterSelect={() => window.setTimeout(() => ordGroupTriggerRef.current?.focus(), 20)}
+            />
 
             <div className="p-2 rounded-md bg-blue-50/60 border border-blue-200 space-y-1.5">
               <LinkedGroupCategoryFilter
@@ -9731,6 +9848,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 categories={productCategories}
                 selectedGroupId={ordGroupFilter}
                 selectedCategoryId={ordCatFilter}
+                groupTriggerRef={ordGroupTriggerRef}
+                categoryTriggerRef={ordCatTriggerRef}
+                autoAdvanceOnSelect
+                onCategoryAfterSelect={() => window.setTimeout(() => ordProductSearchRef.current?.focus(), 20)}
                 onFilterChange={(nextGroupId, nextCategoryId) => {
                   const res = resolveGroupCategoryCascade(
                     activeProducts,
@@ -9750,16 +9871,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   }
                 }}
               />
-              <select
-                value={ordProductId}
-                onChange={(e) => handleSelectOrderProduct(e.target.value)}
-                className="w-full h-8 rounded-md border border-blue-300 px-2 font-bold bg-white"
-              >
-                <option value="">{t('-- اختر الصنف للطلب --', '-- Select Item for Order --')}</option>
-                {scopedOrderProducts.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name} ({t(p.baseUnit)})</option>
-                ))}
-              </select>
+              <ProductSearchSelect
+                inputRef={ordProductSearchRef}
+                products={scopedOrderProducts}
+                selectedProductId={ordProductId}
+                onSelect={(prod) => handleSelectOrderProduct(prod.id)}
+                onAfterSelect={() => window.setTimeout(() => ordQtyRef.current?.focus(), 20)}
+                warehouseId={effectiveVanId || mainWarehouse?.id || ''}
+                warehouses={data.warehouses}
+                priceMode="selling"
+                currency={data.settings.currency}
+                placeholder={t('ابحث باسم الصنف للطلب أو الكود...', 'Search item for order...')}
+              />
 
               {selectedOrderProduct && (
                 <div className="grid grid-cols-4 gap-1.5 items-end">
@@ -9779,10 +9902,21 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   <div>
                     <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('الكمية', 'Qty')}</label>
                     <QuantityInput
+                      inputRef={ordQtyRef}
                       allowDecimals
                       min={0.001}
                       value={ordQty}
                       onChange={setOrdQty}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          window.setTimeout(() => {
+                            ordPriceRef.current?.focus();
+                            ordPriceRef.current?.select();
+                          }, 10);
+                        }
+                      }}
                       ariaLabel={t('كمية الصنف في الطلب', 'Item Quantity in Order')}
                       inputClassName="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
                     />
@@ -9790,11 +9924,19 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   <div>
                     <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('السعر', 'Price')}</label>
                     <input
+                      ref={ordPriceRef}
                       type="number"
                       step="0.5"
                       min={0}
                       value={ordPrice}
                       onChange={(e) => setOrdPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleAddOrderItem();
+                        }
+                      }}
                       className="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
                     />
                   </div>
@@ -9811,32 +9953,64 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             </div>
 
             {ordItems.length > 0 && (
-              <UnifiedDataTable
+              <EditableItemGrid
                 compact
-                paginated={false}
-                searchable={false}
-                title={t(`أصناف الطلب (${ordItems.length})`, `Order Items (${ordItems.length})`)}
-                data={ordItems}
-                rowKey={(it, idx) => `${it.productId}-${it.unit}-${idx}`}
-                columns={[
-                  { key: 'productName', header: t('الصنف', 'Item'), render: (it) => <span className="font-bold text-slate-900">{it.productName}</span> },
-                  { key: 'quantity', header: t('الكمية', 'Qty'), align: 'center', render: (it) => <span className="font-mono">{formatLocaleNumber(it.quantity)} {t(it.unit)}</span> },
-                  {
-                    key: 'actions',
-                    header: t('حذف', 'Delete'),
-                    align: 'center',
-                    sortable: false,
-                    render: (_it, idx) => (
-                      <button
-                        type="button"
-                        onClick={() => setOrdItems((prev) => prev.filter((_, i) => i !== idx))}
-                        className="h-7 w-7 rounded-md hover:bg-red-50 inline-flex items-center justify-center text-red-600 cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    ),
-                  },
-                ]}
+                rows={ordItems.map((it, idx) => ({
+                  rowKey: `${it.productId}-${it.unit}-${idx}`,
+                  productId: it.productId,
+                  productName: it.productName,
+                  unit: it.unit,
+                  unitFactor: it.unitFactor,
+                  quantity: it.quantity,
+                  unitPrice: it.unitPrice,
+                  total: computeLineTotal(it.quantity, it.unitPrice),
+                }))}
+                products={data.products}
+                warehouses={data.warehouses}
+                currency={data.settings.currency}
+                priceMode="selling"
+                showPriceColumns
+                allowUnitEdit
+                allowQtyEdit
+                allowPriceEdit
+                canDelete
+                canDuplicate
+                canAddNew
+                hideCostInfo={isRepRoleAccount}
+                recalcPriceOnUnitChange
+                onUpdateRow={(idx, patch) => {
+                  setOrdItems((prev) =>
+                    prev.map((row, i) => {
+                      if (i !== idx) return row;
+                      const nextUnit = patch.unit ?? row.unit;
+                      const nextFactor = patch.unitFactor ?? row.unitFactor;
+                      const nextQty = patch.quantity !== undefined ? Math.max(0.001, roundQty3(patch.quantity)) : row.quantity;
+                      const nextPrice = patch.unitPrice !== undefined ? Math.max(0, roundCurrency(patch.unitPrice)) : row.unitPrice;
+                      return {
+                        ...row,
+                        unit: nextUnit,
+                        unitFactor: nextFactor,
+                        quantity: nextQty,
+                        unitPrice: nextPrice,
+                      };
+                    })
+                  );
+                }}
+                onDeleteRow={(idx) => setOrdItems((prev) => prev.filter((_, i) => i !== idx))}
+                onDuplicateRow={(idx) =>
+                  setOrdItems((prev) => {
+                    const target = prev[idx];
+                    if (!target) return prev;
+                    return [...prev.slice(0, idx + 1), { ...target }, ...prev.slice(idx + 1)];
+                  })
+                }
+                onAddNewItem={() => window.setTimeout(() => ordProductSearchRef.current?.focus(), 20)}
+                onNotify={(text, type = 'info') =>
+                  setFeedback({
+                    type: type === 'warning' ? 'warning' : type === 'error' ? 'error' : 'success',
+                    text,
+                  })
+                }
               />
             )}
 

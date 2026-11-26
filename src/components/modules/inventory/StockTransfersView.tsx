@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   ArrowLeftRight, Plus, CheckCircle2, XCircle, Send, Eye, Play,
-  Trash2, Download, FileDown, Printer, FileText, AlertCircle, Truck, Warehouse as WarehouseIcon
+  Download, FileDown, Printer, FileText, AlertCircle, Truck, Warehouse as WarehouseIcon
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -16,6 +16,7 @@ import {
   filterProductsByGroupCategory,
   resolveGroupCategoryCascade,
 } from '../../common/LinkedGroupCategoryFilter';
+import { EditableItemGrid } from '../../common/EditableItemGrid';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { exportToExcel } from '../../common/ExcelExporter';
 import { exportTableToPdf } from '../../common/PdfExporter';
@@ -73,6 +74,8 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const groupTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const categoryTriggerRef = useRef<HTMLButtonElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const qtyInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -425,6 +428,10 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
             categories={categories}
             selectedGroupId={transferGroupFilter}
             selectedCategoryId={transferCatFilter}
+            groupTriggerRef={groupTriggerRef}
+            categoryTriggerRef={categoryTriggerRef}
+            autoAdvanceOnSelect
+            onCategoryAfterSelect={() => window.setTimeout(() => searchInputRef.current?.focus(), 20)}
             onFilterChange={(nextGroupId, nextCategoryId) => {
               setTransferGroupFilter(nextGroupId);
               setTransferCatFilter(nextCategoryId);
@@ -544,49 +551,66 @@ export const CreateStockTransferModal: React.FC<CreateStockTransferModalProps> =
           )}
         </div>
 
-        {/* Added items table */}
-        <div className="border border-slate-200 rounded-lg awlad-table-scroll max-h-56 overflow-y-auto">
-          <table className="w-full text-start text-[11px]">
-            <thead className="bg-slate-100 text-slate-700 font-bold border-b">
-              <tr>
-                <th className="p-1.5">{t('م', '#')}</th>
-                <th className="p-1.5">{t('الصنف', 'Item')}</th>
-                <th className="p-1.5 text-center">{t('المتاح بالمصدر', 'Source Available')}</th>
-                <th className="p-1.5 text-center">{t('الكمية المطلوبة', 'Requested Qty')}</th>
-                <th className="p-1.5">{t('ملاحظة', 'Note')}</th>
-                <th className="p-1.5 text-center">{t('حذف', 'Delete')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {items.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="p-3 text-center text-slate-400">
-                    {t('أضف صنفاً واحداً أو أكثر لقائمة التحويل.', 'Add one or more items to the transfer list.')}
-                  </td>
-                </tr>
-              ) : (
-                items.map((it, idx) => (
-                  <tr key={idx}>
-                    <td className="p-1.5 text-slate-500 font-mono">{fmt(idx + 1)}</td>
-                    <td className="p-1.5 font-bold">{it.productName}</td>
-                    <td className="p-1.5 text-center font-mono">{fmt(it.available)} {t(it.unit)}</td>
-                    <td className="p-1.5 text-center font-mono font-black text-blue-900">{fmt(it.requestedQty)} {t(it.unit)}</td>
-                    <td className="p-1.5 text-slate-500">{it.notes || '-'}</td>
-                    <td className="p-1.5 text-center">
-                      <button
-                        type="button"
-                        onClick={() => setItems((prev) => prev.filter((_, i) => i !== idx))}
-                        className="text-red-600 hover:text-red-800 cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        {/* Editable Transfer Items Grid */}
+        <EditableItemGrid
+          rows={items.map((it, idx) => ({
+            rowKey: `${it.productId}-${it.unit}-${idx}`,
+            productId: it.productId,
+            productName: it.productName,
+            unit: it.unit,
+            unitFactor: it.unitFactor,
+            quantity: it.requestedQty,
+            unitPrice: 0,
+            total: 0,
+            availableStock: it.available,
+            secondaryBadge: it.notes || undefined,
+          }))}
+          products={products}
+          warehouses={warehouses}
+          currency={settings.currency}
+          priceMode="none"
+          showPriceColumns={false}
+          showStockColumn
+          stockColumnLabel={t('المتاح بالمصدر', 'Source Available')}
+          qtyColumnLabel={t('الكمية المطلوبة', 'Requested Qty')}
+          allowUnitEdit
+          allowQtyEdit
+          allowPriceEdit={false}
+          recalcPriceOnUnitChange={false}
+          onUpdateRow={(idx, patch) => {
+            setItems((prev) =>
+              prev.map((it, i) => {
+                if (i !== idx) return it;
+                const prod = products.find((p) => p.id === it.productId);
+                const avail = effectiveSourceWarehouseId && prod
+                  ? Number(prod.stockPerWarehouse?.[effectiveSourceWarehouseId] || 0)
+                  : it.available;
+                return {
+                  ...it,
+                  unit: patch.unit ?? it.unit,
+                  unitFactor: patch.unitFactor ?? it.unitFactor,
+                  requestedQty: patch.quantity !== undefined ? Math.max(0.001, patch.quantity) : it.requestedQty,
+                  available: avail,
+                };
+              })
+            );
+          }}
+          onDuplicateRow={(idx) => {
+            const target = items[idx];
+            if (!target) return;
+            setItems((prev) => {
+              const next = [...prev];
+              next.splice(idx + 1, 0, { ...target });
+              return next;
+            });
+          }}
+          onDeleteRow={(idx) => setItems((prev) => prev.filter((_, i) => i !== idx))}
+          onAddNewItem={() => window.setTimeout(() => searchInputRef.current?.focus(), 20)}
+          onGridAdvanceOut={() => window.setTimeout(() => searchInputRef.current?.focus(), 20)}
+          maxHeightClass="max-h-56"
+          emptyStateText={t('أضف صنفاً واحداً أو أكثر لقائمة التحويل.', 'Add one or more items to the transfer list.')}
+          compact
+        />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
           <div>

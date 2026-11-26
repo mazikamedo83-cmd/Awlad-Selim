@@ -42,7 +42,8 @@ import { CustomerPortal, CustomerTabKey } from './CustomerPortal';
 import { RepPortal, RepTabKey } from './RepPortal';
 import { MobileNotificationsSheet } from './MobileNotificationsSheet';
 import { MobileServerModal } from './MobileServerModal';
-import { SyncCenterModal } from '../../common/SyncCenterModal';
+import { SendReceiveView } from '../sync/SendReceiveView';
+import { Modal } from '../../common/Modal';
 
 export const MobilePortal: React.FC = () => {
   const {
@@ -333,8 +334,8 @@ export const MobilePortal: React.FC = () => {
                     ? 'bg-amber-600 hover:bg-amber-700'
                     : 'bg-white/10 hover:bg-white/20'
                 }`}
-                title={t('مركز المزامنة', 'Sync Center')}
-                aria-label={t('مركز المزامنة', 'Sync Center')}
+                title={t('الإرسال والاستلام', 'Send & Receive')}
+                aria-label={t('الإرسال والاستلام', 'Send & Receive')}
               >
                 <CloudOff className="w-4 h-4" />
                 {syncBadgeCount > 0 && (
@@ -476,7 +477,7 @@ export const MobilePortal: React.FC = () => {
                 onClick={() => setIsSyncCenterOpen(true)}
                 className="px-2 py-1 rounded-md bg-white border border-blue-300 text-blue-900 text-[11px] font-bold cursor-pointer"
               >
-                {t('مركز المزامنة', 'Sync Center')}
+                {t('الإرسال والاستلام', 'Send & Receive')}
               </button>
               <button
                 type="button"
@@ -616,10 +617,14 @@ export const MobilePortal: React.FC = () => {
         }}
       />
 
-      <SyncCenterModal
+      <Modal
         isOpen={isSyncCenterOpen}
         onClose={() => setIsSyncCenterOpen(false)}
-      />
+        title={t('الإرسال والاستلام', 'Send & Receive')}
+        maxWidth="4xl"
+      >
+        <SendReceiveView onBack={() => setIsSyncCenterOpen(false)} />
+      </Modal>
 
       {isSettingsModalOpen && (
         <div

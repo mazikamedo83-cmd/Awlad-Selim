@@ -5,7 +5,6 @@ import {
   Plus,
   Printer,
   Save,
-  Trash2,
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -21,6 +20,7 @@ import {
   LinkedGroupCategoryFilter,
   resolveGroupCategoryCascade,
 } from '../../common/LinkedGroupCategoryFilter';
+import { EditableItemGrid } from '../../common/EditableItemGrid';
 import { QuantityInput } from '../../common/QuantityInput';
 import { computeLineTotal, roundCurrency } from '../../../utils/quantity';
 
@@ -71,8 +71,12 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
   const { currentUser } = useAuth();
   const { registerHandler } = useShortcuts();
   const { t, language } = usePreferences();
+  const groupTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const categoryTriggerRef = useRef<HTMLButtonElement | null>(null);
   const productSearchRef = useRef<HTMLInputElement | null>(null);
   const qtyInputRef = useRef<HTMLInputElement | null>(null);
+  const unitPriceInputRef = useRef<HTMLInputElement | null>(null);
+  const [gridNotice, setGridNotice] = useState<{ text: string; type: 'success' | 'info' | 'warning' | 'error' } | null>(null);
 
   // Header & Payment states
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
@@ -427,25 +431,6 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     }, 30);
   };
 
-  // Classic Added-Items Table Editing Handlers
-  const handleUpdateRowQty = (idx: number, newQty: number) => {
-    const qty = Math.max(0.001, newQty);
-    setItems((prev) =>
-      prev.map((it, i) =>
-        i === idx ? { ...it, quantity: qty, total: computeLineTotal(qty, it.unitPrice, it.discount || 0) } : it
-      )
-    );
-  };
-
-  const handleUpdateRowPrice = (idx: number, newPrice: number) => {
-    const p = Math.max(0, newPrice);
-    setItems((prev) =>
-      prev.map((it, i) =>
-        i === idx ? { ...it, unitPrice: p, total: computeLineTotal(it.quantity, p, it.discount || 0) } : it
-      )
-    );
-  };
-
   const handleRemoveItem = (index: number) => {
     setItems((prev) => prev.filter((_, i) => i !== index));
   };
@@ -771,6 +756,9 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
               allowClear={!sourceOrder}
               minPanelWidth={260}
               buttonClassName="rounded-md h-8"
+              onAfterSelect={() => {
+                window.setTimeout(() => groupTriggerRef.current?.focus(), 20);
+              }}
             />
           </div>
           <div>
@@ -828,6 +816,12 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
             categories={categories}
             selectedGroupId={itemGroupFilter}
             selectedCategoryId={itemCategoryFilter}
+            groupTriggerRef={groupTriggerRef}
+            categoryTriggerRef={categoryTriggerRef}
+            autoAdvanceOnSelect
+            onCategoryAfterSelect={() => {
+              window.setTimeout(() => productSearchRef.current?.focus(), 20);
+            }}
             onFilterChange={(nextGroupId, nextCategoryId) => {
               setItemGroupFilter(nextGroupId);
               setItemCategoryFilter(nextCategoryId);
@@ -877,6 +871,9 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                 currency={settings.currency}
                 placeholder={t('ابحث باسم الصنف أو الكود أو الباركود...', 'Search item by name, code, or barcode...')}
                 onSelect={(prod) => handleProductSelect(prod.id)}
+                onAfterSelect={() => {
+                  window.setTimeout(() => qtyInputRef.current?.focus(), 20);
+                }}
               />
             </div>
           </div>
@@ -914,6 +911,16 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                 disabled={!selectedProduct}
                 value={inputQuantity}
                 onChange={(val) => setInputQuantity(val)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.setTimeout(() => {
+                      unitPriceInputRef.current?.focus();
+                      unitPriceInputRef.current?.select();
+                    }, 10);
+                  }
+                }}
                 placeholder=""
                 ariaLabel={t('الكمية', 'Quantity')}
                 inputClassName="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-center font-mono font-bold text-xs disabled:bg-slate-100"
@@ -924,12 +931,20 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                 {t('سعر الوحدة', 'Unit Price')} ({currencyLabel}):
               </label>
               <input
+                ref={unitPriceInputRef}
                 type="number"
                 min={0}
                 step="0.5"
                 disabled={!selectedProduct}
                 value={inputUnitPrice}
                 onChange={(e) => setInputUnitPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleAddItem();
+                  }
+                }}
                 className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-center font-mono font-bold text-xs disabled:bg-slate-100"
               />
             </div>
@@ -973,72 +988,93 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
           )}
         </div>
 
-        {/* Classic Added Items Table */}
-        <div className="border border-slate-200 rounded-lg overflow-hidden awlad-table-scroll max-h-60 overflow-y-auto">
-          <table className="w-full text-start text-xs">
-            <thead className="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold">
-              <tr>
-                <th className="p-2 w-10 text-center">#</th>
-                <th className="p-2">{t('الصنف', 'Product')}</th>
-                <th className="p-2 text-center">{t('الوحدة', 'Unit')}</th>
-                <th className="p-2 text-center w-24">{t('الكمية', 'Qty')}</th>
-                <th className="p-2 text-center w-28">{t('السعر', 'Price')}</th>
-                <th className="p-2 text-center">{t('الإجمالي', 'Total')}</th>
-                <th className="p-2 text-center w-12">{t('حذف', 'Del')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {items.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="p-5 text-center text-slate-400 font-semibold">
-                    {t('لم يتم إضافة أي أصناف بعد — ابحث عن الصنف أو امسح الباركود للإضافة', 'No items added yet — search an item or scan barcode to add')}
-                  </td>
-                </tr>
-              ) : (
-                items.map((item, idx) => (
-                  <tr key={`${item.productId}-${item.unit}-${idx}`} className="hover:bg-slate-50/80">
-                    <td className="p-2 text-center font-mono text-slate-500">{formatLocaleNumber(idx + 1)}</td>
-                    <td className="p-2 font-bold text-slate-800">{item.productName}</td>
-                    <td className="p-2 text-center text-slate-600 font-semibold">{t(item.unit)}</td>
-                    <td className="p-2 text-center">
-                      <QuantityInput
-                        allowDecimals
-                        min={0.001}
-                        value={item.quantity}
-                        onChange={(newQty) => handleUpdateRowQty(idx, newQty)}
-                        ariaLabel={`${t('كمية', 'Qty')} ${item.productName}`}
-                        inputClassName="w-20 h-7 px-1.5 rounded border border-slate-300 text-center font-mono font-bold bg-white"
-                      />
-                    </td>
-                    <td className="p-2 text-center">
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.5"
-                        value={item.unitPrice}
-                        onChange={(e) => handleUpdateRowPrice(idx, Math.max(0, Number(e.target.value) || 0))}
-                        className="w-24 h-7 px-1.5 rounded border border-slate-300 text-center font-mono font-bold bg-white"
-                      />
-                    </td>
-                    <td className="p-2 text-center font-black text-blue-950 font-mono tabular-nums">
-                      {formatLocaleNumber(item.total)} {currencyLabel}
-                    </td>
-                    <td className="p-2 text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveItem(idx)}
-                        className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded cursor-pointer"
-                        title={t('حذف الصنف', 'Delete Item')}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        {gridNotice && (
+          <div
+            className={`px-2.5 py-1.5 rounded-md border text-[11px] font-bold flex items-center justify-between gap-2 ${
+              gridNotice.type === 'success'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                : gridNotice.type === 'warning'
+                ? 'bg-amber-50 border-amber-200 text-amber-800'
+                : gridNotice.type === 'error'
+                ? 'bg-rose-50 border-rose-200 text-rose-800'
+                : 'bg-blue-50 border-blue-200 text-blue-900'
+            }`}
+          >
+            <span>{gridNotice.text}</span>
+            <button
+              type="button"
+              onClick={() => setGridNotice(null)}
+              className="text-[10px] underline cursor-pointer"
+            >
+              {t('إغلاق', 'Close')}
+            </button>
+          </div>
+        )}
+
+        <EditableItemGrid
+          rows={items.map((item, idx) => ({
+            ...item,
+            rowKey: `${item.productId}-${item.unit}-${idx}`,
+          }))}
+          products={products}
+          warehouses={warehouses}
+          currency={settings.currency}
+          priceMode="selling"
+          showPriceColumns
+          showDiscountColumn
+          allowUnitEdit
+          allowQtyEdit
+          allowPriceEdit
+          allowDiscountEdit
+          canDelete
+          canDuplicate
+          canAddNew
+          hideCostInfo={currentUser?.role === 'representative'}
+          recalcPriceOnUnitChange
+          maxHeightClass="max-h-60"
+          onUpdateRow={(idx, patch) => {
+            setItems((prev) =>
+              prev.map((row, i) => {
+                if (i !== idx) return row;
+                const nextUnit = patch.unit ?? row.unit;
+                const nextFactor = patch.unitFactor ?? row.unitFactor;
+                const nextQty = patch.quantity !== undefined ? Math.max(0.001, patch.quantity) : row.quantity;
+                const nextPrice = patch.unitPrice !== undefined ? Math.max(0, patch.unitPrice) : row.unitPrice;
+                const nextDisc = patch.discount !== undefined ? Math.max(0, patch.discount) : (row.discount || 0);
+                return {
+                  ...row,
+                  unit: nextUnit,
+                  unitFactor: nextFactor,
+                  quantity: nextQty,
+                  unitPrice: nextPrice,
+                  purchasePriceAtTime: patch.purchasePriceAtTime ?? row.purchasePriceAtTime,
+                  discount: nextDisc,
+                  total: patch.total ?? computeLineTotal(nextQty, nextPrice, nextDisc),
+                };
+              })
+            );
+          }}
+          onDeleteRow={handleRemoveItem}
+          onDuplicateRow={(idx) => {
+            setItems((prev) => {
+              const target = prev[idx];
+              if (!target) return prev;
+              const copy = { ...target };
+              return [...prev.slice(0, idx + 1), copy, ...prev.slice(idx + 1)];
+            });
+          }}
+          onAddNewItem={() => window.setTimeout(() => productSearchRef.current?.focus(), 20)}
+          onNotify={(text, type = 'info') => {
+            setGridNotice({ text, type });
+            window.setTimeout(() => {
+              setGridNotice((cur) => (cur?.text === text ? null : cur));
+            }, 2500);
+          }}
+          emptyStateText={t(
+            'لم يتم إضافة أي أصناف بعد — ابحث عن الصنف أو امسح الباركود للإضافة',
+            'No items added yet — search an item or scan barcode to add'
+          )}
+        />
 
         {/* Shortage Warning */}
         {shortageItems.length > 0 && invoiceStatusMode === 'confirmed' && (

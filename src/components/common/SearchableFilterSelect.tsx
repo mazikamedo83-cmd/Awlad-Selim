@@ -33,6 +33,9 @@ interface SearchableFilterSelectProps {
   allowClear?: boolean;
   emptyText?: string;
   minPanelWidth?: number;
+  triggerRef?: React.RefObject<HTMLButtonElement | null>;
+  onAfterSelect?: (value: string) => void;
+  onValueSelected?: (value: string) => void;
 }
 
 export function normalizeArabicSearchText(input: string): string {
@@ -68,6 +71,9 @@ export const SearchableFilterSelect: React.FC<SearchableFilterSelectProps> = ({
   allowClear = false,
   emptyText,
   minPanelWidth = 240,
+  triggerRef: externalTriggerRef,
+  onAfterSelect,
+  onValueSelected,
 }) => {
   const { t, dir: activeDir } = usePreferences();
   const dir = dirProp ?? activeDir;
@@ -93,7 +99,8 @@ export const SearchableFilterSelect: React.FC<SearchableFilterSelectProps> = ({
     placement: 'bottom',
   });
 
-  const triggerRef = useRef<HTMLButtonElement>(null);
+  const internalTriggerRef = useRef<HTMLButtonElement>(null);
+  const triggerRef = externalTriggerRef || internalTriggerRef;
   const panelRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -223,8 +230,12 @@ export const SearchableFilterSelect: React.FC<SearchableFilterSelectProps> = ({
 
   const selectValue = (nextVal: string) => {
     onChange(nextVal);
+    onValueSelected?.(nextVal);
     setIsOpen(false);
     setQuery('');
+    if (onAfterSelect) {
+      window.setTimeout(() => onAfterSelect(nextVal), 20);
+    }
   };
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {

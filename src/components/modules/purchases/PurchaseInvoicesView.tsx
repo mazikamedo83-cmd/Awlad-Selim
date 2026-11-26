@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
-  Plus, Printer, Trash2, Save, CheckCircle2, XCircle, PackagePlus, AlertTriangle,
+  Plus, Printer, Save, CheckCircle2, XCircle, PackagePlus, AlertTriangle,
   Eye, Edit, AlertCircle, History, Clock, Send, UserCheck, Barcode
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
@@ -19,6 +19,7 @@ import {
 } from '../../common/LinkedGroupCategoryFilter';
 import { SearchableFilterSelect } from '../../common/SearchableFilterSelect';
 import { SearchableTaxonomySelect } from '../../common/SearchableTaxonomySelect';
+import { EditableItemGrid, EditableGridRow } from '../../common/EditableItemGrid';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { QuantityInput } from '../../common/QuantityInput';
 import { UnifiedDataTable } from '../../common/UnifiedDataTable';
@@ -132,8 +133,17 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     (canApprovePurchase || hasPermission('canReceive'));
   const { registerHandler } = useShortcuts();
 
+  const purchaseGroupTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const purchaseCategoryTriggerRef = useRef<HTMLButtonElement | null>(null);
   const productSearchRef = useRef<HTMLInputElement | null>(null);
   const qtyInputRef = useRef<HTMLInputElement | null>(null);
+  const unitPriceInputRef = useRef<HTMLInputElement | null>(null);
+
+  const editGroupTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const editCategoryTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const editProductSearchRef = useRef<HTMLInputElement | null>(null);
+  const editQtyInputRef = useRef<HTMLInputElement | null>(null);
+  const editPriceInputRef = useRef<HTMLInputElement | null>(null);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'rep_incoming' | 'confirmed' | 'draft' | 'cancelled'>(initialStatusFilter);
@@ -1295,6 +1305,9 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 label={t('المورد', 'Supplier')}
                 value={selectedSupplierId}
                 onChange={setSelectedSupplierId}
+                onValueSelected={() => {
+                  window.setTimeout(() => purchaseGroupTriggerRef.current?.focus(), 25);
+                }}
                 options={suppliers.map((s) => ({
                   value: s.id,
                   label: s.name,
@@ -1638,6 +1651,12 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   categories={categories}
                   selectedGroupId={purchaseGroupFilter}
                   selectedCategoryId={purchaseCatFilter}
+                  groupTriggerRef={purchaseGroupTriggerRef}
+                  categoryTriggerRef={purchaseCategoryTriggerRef}
+                  autoAdvanceOnSelect
+                  onCategoryAfterSelect={() => {
+                    window.setTimeout(() => productSearchRef.current?.focus(), 20);
+                  }}
                   onFilterChange={(nextGroupId, nextCategoryId) => {
                     setPurchaseGroupFilter(nextGroupId);
                     setPurchaseCatFilter(nextCategoryId);
@@ -1699,6 +1718,14 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       disabled={!selectedPurchaseProduct}
                       value={itemQty}
                       onChange={(val) => setItemQty(val)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          unitPriceInputRef.current?.focus();
+                          unitPriceInputRef.current?.select();
+                        }
+                      }}
                       ariaLabel={t('الكمية', 'Qty')}
                       inputClassName="w-full h-8 px-2 rounded-md border border-slate-300 bg-white text-center font-mono font-bold disabled:bg-slate-100"
                     />
@@ -1706,12 +1733,20 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   <div className="sm:col-span-2">
                     <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('سعر الشراء:', 'Buy Price:')}</label>
                     <input
+                      ref={unitPriceInputRef}
                       type="number"
                       min={0}
                       step="0.5"
                       disabled={!selectedPurchaseProduct}
                       value={itemPrice}
                       onChange={(e) => setItemPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleAddItem();
+                        }
+                      }}
                       className="w-full h-8 px-2 rounded-md border border-slate-300 bg-white text-center font-mono font-bold disabled:bg-slate-100"
                     />
                   </div>
@@ -1730,102 +1765,68 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
             )}
           </div>
 
-          {/* Classic Added Items Table */}
-          <div className="border border-slate-200 rounded-lg overflow-hidden awlad-table-scroll max-h-56 overflow-y-auto">
-            <table className="w-full text-start text-xs">
-              <thead className="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold">
-                <tr>
-                  <th className="p-2 w-10 text-center">#</th>
-                  <th className="p-2">{t('الصنف', 'Item')}</th>
-                  <th className="p-2 text-center">{t('الوحدة', 'Unit')}</th>
-                  <th className="p-2 text-center w-24">{t('الكمية', 'Qty')}</th>
-                  <th className="p-2 text-center w-28">{t('سعر الشراء', 'Buy Price')}</th>
-                  <th className="p-2 text-center">{t('الإجمالي', 'Total')}</th>
-                  <th className="p-2 text-center w-12">{t('حذف', 'Del')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {items.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="p-5 text-center text-slate-400 font-semibold">
-                      {t('لم يتم إضافة أصناف بعد — ابحث عن صنف أو أضف صنفاً جديداً', 'No items added yet — search a product or add a new item')}
-                    </td>
-                  </tr>
-                ) : (
-                  items.map((item, idx) => (
-                    <tr key={`${item.productId || item.productName}-${idx}`} className="hover:bg-slate-50/80">
-                      <td className="p-2 text-center font-mono text-slate-500">{formatLocaleNumber(idx + 1)}</td>
-                      <td className="p-2 font-bold text-slate-800">
-                        <span>{item.productName}</span>
-                        {item.newProduct && (
-                          <span className="ms-1.5 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-bold">
-                            {t('صنف جديد', 'New')}
-                          </span>
-                        )}
-                      </td>
-                      <td className="p-2 text-center text-slate-600 font-semibold">{t(item.unit)}</td>
-                      <td className="p-2 text-center">
-                        <QuantityInput
-                          allowDecimals
-                          min={0.001}
-                          value={item.quantity}
-                          onChange={(q) => {
-                            setItems((prev) =>
-                              prev.map((row, rIdx) =>
-                                rIdx === idx
-                                  ? { ...row, quantity: q, total: computeLineTotal(q, row.unitPrice, row.discount || 0) }
-                                  : row
-                              )
-                            );
-                          }}
-                          ariaLabel={`${t('كمية', 'Qty')} ${item.productName}`}
-                          inputClassName="w-20 h-7 px-1.5 rounded border border-slate-300 text-center font-mono font-bold bg-white"
-                        />
-                      </td>
-                      <td className="p-2 text-center">
-                        <input
-                          type="number"
-                          min={0}
-                          step="0.5"
-                          value={item.unitPrice}
-                          onChange={(e) => {
-                            const p = Math.max(0, Number(e.target.value) || 0);
-                            setItems((prev) =>
-                              prev.map((row, rIdx) =>
-                                rIdx === idx
-                                  ? {
-                                      ...row,
-                                      unitPrice: p,
-                                      purchasePriceAtTime: p,
-                                      total: computeLineTotal(row.quantity, p, row.discount || 0),
-                                      newProduct: row.newProduct ? { ...row.newProduct, purchasePrice: p } : undefined,
-                                    }
-                                  : row
-                              )
-                            );
-                          }}
-                          className="w-24 h-7 px-1.5 rounded border border-slate-300 text-center font-mono font-bold bg-white"
-                        />
-                      </td>
-                      <td className="p-2 text-center font-black text-blue-950 font-mono tabular-nums">
-                        {formatLocaleNumber(item.total)} {t(settings.currency)}
-                      </td>
-                      <td className="p-2 text-center">
-                        <button
-                          type="button"
-                          onClick={() => setItems((prev) => prev.filter((_, i) => i !== idx))}
-                          className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded cursor-pointer"
-                          title={t('حذف البند', 'Delete Item')}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          {/* Editable Added Items Grid */}
+          <EditableItemGrid
+            rows={items.map((it, idx) => ({
+              ...it,
+              rowKey: `${it.productId || it.productName}-${it.unit}-${idx}`,
+              secondaryBadge: it.newProduct ? t('صنف جديد', 'New') : undefined,
+            }))}
+            products={products}
+            warehouses={warehouses}
+            currency={settings.currency}
+            priceMode="purchase"
+            showPriceColumns
+            showDiscountColumn
+            allowUnitEdit
+            allowQtyEdit
+            allowPriceEdit
+            allowDiscountEdit
+            recalcPriceOnUnitChange
+            onUpdateRow={(idx, patch: Partial<EditableGridRow>) => {
+              setItems((prev) =>
+                prev.map((row, rIdx) => {
+                  if (rIdx !== idx) return row;
+                  const nextUnit = patch.unit ?? row.unit;
+                  const nextFactor = patch.unitFactor ?? row.unitFactor;
+                  const nextQty = patch.quantity !== undefined ? Math.max(0.001, patch.quantity) : row.quantity;
+                  const nextPrice = patch.unitPrice !== undefined ? Math.max(0, patch.unitPrice) : row.unitPrice;
+                  const nextDisc = patch.discount !== undefined ? Math.max(0, patch.discount) : (row.discount || 0);
+                  return {
+                    ...row,
+                    unit: nextUnit,
+                    unitFactor: nextFactor,
+                    quantity: nextQty,
+                    unitPrice: nextPrice,
+                    purchasePriceAtTime: nextPrice,
+                    discount: nextDisc,
+                    total: computeLineTotal(nextQty, nextPrice, nextDisc),
+                    newProduct: row.newProduct
+                      ? { ...row.newProduct, baseUnit: nextUnit, purchasePrice: nextPrice }
+                      : undefined,
+                  };
+                })
+              );
+            }}
+            onDuplicateRow={(idx) => {
+              const target = items[idx];
+              if (!target) return;
+              setItems((prev) => {
+                const next = [...prev];
+                next.splice(idx + 1, 0, { ...target });
+                return next;
+              });
+            }}
+            onDeleteRow={(idx) => setItems((prev) => prev.filter((_, i) => i !== idx))}
+            onAddNewItem={() => window.setTimeout(() => productSearchRef.current?.focus(), 20)}
+            onGridAdvanceOut={() => window.setTimeout(() => productSearchRef.current?.focus(), 20)}
+            onNotify={(msg) => setActionMessage({ type: 'success', text: msg })}
+            maxHeightClass="max-h-56"
+            emptyStateText={t(
+              'لم يتم إضافة أصناف بعد — ابحث عن صنف أو أضف صنفاً جديداً',
+              'No items added yet — search a product or add a new item'
+            )}
+          />
 
           {/* Target Manager Routing Notice */}
           <div className="bg-[#EEF3FA] border border-[#DCE6F5] rounded-lg p-2 flex flex-wrap items-center justify-between gap-2 text-xs">
@@ -2495,6 +2496,12 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   categories={categories}
                   selectedGroupId={editGroupFilter}
                   selectedCategoryId={editCatFilter}
+                  groupTriggerRef={editGroupTriggerRef}
+                  categoryTriggerRef={editCategoryTriggerRef}
+                  autoAdvanceOnSelect
+                  onCategoryAfterSelect={() => {
+                    window.setTimeout(() => editProductSearchRef.current?.focus(), 20);
+                  }}
                   onFilterChange={(nextGroupId, nextCategoryId) => {
                     setEditGroupFilter(nextGroupId);
                     setEditCatFilter(nextCategoryId);
@@ -2518,6 +2525,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   <div className="sm:col-span-5">
                     <label className="block font-bold text-slate-700 mb-1">{t('إضافة صنف آخر للفاتورة:', 'Add Another Item to Invoice:')}</label>
                     <ProductSearchSelect
+                      inputRef={editProductSearchRef}
                       products={filteredEditProducts}
                       selectedProductId={editAddProdId}
                       warehouseId={editWarehouseId}
@@ -2526,15 +2534,30 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       currency={settings.currency}
                       placeholder={t('ابحث لإضافة صنف...', 'Search to add item...')}
                       onSelect={handleEditPickProduct}
+                      onAfterSelect={() => {
+                        window.setTimeout(() => {
+                          editQtyInputRef.current?.focus();
+                          editQtyInputRef.current?.select();
+                        }, 25);
+                      }}
                     />
                   </div>
                   <div className="sm:col-span-2">
                     <label className="block font-bold text-slate-700 mb-1">{t('الكمية:', 'Qty:')}</label>
                     <QuantityInput
+                      inputRef={editQtyInputRef}
                       allowDecimals
                       min={0.001}
                       value={editAddQty}
                       onChange={setEditAddQty}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          editPriceInputRef.current?.focus();
+                          editPriceInputRef.current?.select();
+                        }
+                      }}
                       ariaLabel={t('كمية صنف مضاف', 'Added Item Qty')}
                       inputClassName="w-full px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-center font-mono font-bold"
                     />
@@ -2542,11 +2565,19 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   <div className="sm:col-span-3">
                     <label className="block font-bold text-slate-700 mb-1">{t('سعر الشراء:', 'Buy Price:')}</label>
                     <input
+                      ref={editPriceInputRef}
                       type="number"
                       min={0}
                       step="0.5"
                       value={editAddPrice}
                       onChange={(e) => setEditAddPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleAddItemToEdit();
+                        }
+                      }}
                       className="w-full px-2 py-1.5 rounded-lg border border-slate-300 bg-white text-center font-mono font-bold"
                     />
                   </div>
@@ -2563,117 +2594,64 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
               </div>
 
               {/* Editable items table */}
-              <div className="border border-slate-200 rounded-lg overflow-hidden awlad-table-scroll">
-                <table className="w-full text-start text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold">
-                      <th className="p-2">{t('الصنف', 'Item')}</th>
-                      <th className="p-2 text-center">{t('الوحدة', 'Unit')}</th>
-                      <th className="p-2 text-center w-24">{t('الكمية', 'Qty')}</th>
-                      <th className="p-2 text-center w-28">{t('سعر الشراء', 'Buy Price')}</th>
-                      <th className="p-2 text-center">{t('الإجمالي', 'Total')}</th>
-                      <th className="p-2 text-center w-12">{t('حذف', 'Del')}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {editItems.map((item, idx) => {
-                      const prodObj = products.find((p) => p.id === item.productId);
-                      const unitOptions = prodObj
-                        ? [
-                            { name: prodObj.baseUnit, factor: 1 },
-                            ...(prodObj.units || []).map((u) => ({ name: u.name, factor: u.conversionFactor || 1 })),
-                          ]
-                        : [{ name: item.unit, factor: item.unitFactor || 1 }];
-                      return (
-                        <tr key={`${item.productId}-${idx}`}>
-                          <td className="p-2.5 font-bold text-slate-800">{item.productName}</td>
-                          <td className="p-2.5 text-center">
-                            <select
-                              value={item.unit}
-                              onChange={(e) => {
-                                const chosen = unitOptions.find((u) => u.name === e.target.value) || { name: e.target.value, factor: 1 };
-                                setEditItems((prev) =>
-                                  prev.map((it, i) =>
-                                    i === idx
-                                      ? {
-                                          ...it,
-                                          unit: chosen.name,
-                                          unitFactor: chosen.factor,
-                                          purchasePriceAtTime: chosen.factor > 0 ? Number((it.unitPrice / chosen.factor).toFixed(2)) : it.unitPrice,
-                                        }
-                                      : it
-                                  )
-                                );
-                              }}
-                              className="p-1.5 rounded-lg border border-slate-300 bg-white font-semibold"
-                            >
-                              {unitOptions.map((u) => (
-                                <option key={u.name} value={u.name}>{t(u.name)}</option>
-                              ))}
-                            </select>
-                          </td>
-                          <td className="p-2.5 text-center">
-                            <QuantityInput
-                              allowDecimals
-                              min={0.001}
-                              value={item.quantity}
-                              onChange={(newQty) => {
-                                setEditItems((prev) =>
-                                  prev.map((it, i) =>
-                                    i === idx
-                                      ? { ...it, quantity: newQty, total: computeLineTotal(newQty, it.unitPrice, it.discount || 0) }
-                                      : it
-                                  )
-                                );
-                              }}
-                              ariaLabel={`${t('كمية', 'Qty')} ${item.productName}`}
-                              inputClassName="w-20 p-1.5 rounded-lg border border-slate-300 text-center font-bold font-mono outline-hidden focus:border-blue-700"
-                            />
-                          </td>
-                          <td className="p-2.5 text-center">
-                            <input
-                              type="number"
-                              min={0}
-                              step="0.5"
-                              value={item.unitPrice}
-                              onChange={(e) => {
-                                const newPrice = Math.max(0, parseFloat(e.target.value) || 0);
-                                setEditItems((prev) =>
-                                  prev.map((it, i) =>
-                                    i === idx
-                                      ? {
-                                          ...it,
-                                          unitPrice: newPrice,
-                                          purchasePriceAtTime: (it.unitFactor || 1) > 0 ? Number((newPrice / (it.unitFactor || 1)).toFixed(2)) : newPrice,
-                                          total: computeLineTotal(it.quantity, newPrice, it.discount || 0),
-                                        }
-                                      : it
-                                  )
-                                );
-                              }}
-                              className="w-24 p-1.5 rounded-lg border border-slate-300 text-center font-bold font-mono"
-                            />
-                          </td>
-                          <td className="p-2.5 text-center font-black text-blue-900">
-                            {formatLocaleNumber(computeLineTotal(item.quantity, item.unitPrice, item.discount || 0))} {t(settings.currency)}
-                          </td>
-                          <td className="p-2.5 text-center">
-                            <button
-                              type="button"
-                              disabled={editItems.length <= 1}
-                              onClick={() => setEditItems((prev) => prev.filter((_, i) => i !== idx))}
-                              className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded disabled:opacity-30 cursor-pointer"
-                              title={t('حذف البند', 'Delete Item')}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <EditableItemGrid
+                rows={editItems.map((it, idx) => ({
+                  ...it,
+                  rowKey: `${it.productId}-${it.unit}-${idx}`,
+                }))}
+                products={products}
+                warehouses={warehouses}
+                currency={settings.currency}
+                priceMode="purchase"
+                showPriceColumns
+                allowUnitEdit
+                allowQtyEdit
+                allowPriceEdit
+                canDelete={editItems.length > 1}
+                canDuplicate
+                canAddNew
+                recalcPriceOnUnitChange
+                onUpdateRow={(idx, patch) => {
+                  setEditItems((prev) =>
+                    prev.map((it, i) => {
+                      if (i !== idx) return it;
+                      const nextUnit = patch.unit ?? it.unit;
+                      const nextFactor = patch.unitFactor ?? it.unitFactor;
+                      const nextQty = patch.quantity !== undefined ? Math.max(0.001, patch.quantity) : it.quantity;
+                      const nextPrice = patch.unitPrice !== undefined ? Math.max(0, patch.unitPrice) : it.unitPrice;
+                      const nextDisc = patch.discount !== undefined ? Math.max(0, patch.discount) : (it.discount || 0);
+                      return {
+                        ...it,
+                        unit: nextUnit,
+                        unitFactor: nextFactor,
+                        quantity: nextQty,
+                        unitPrice: nextPrice,
+                        purchasePriceAtTime:
+                          nextFactor > 0 ? Number((nextPrice / nextFactor).toFixed(2)) : nextPrice,
+                        discount: nextDisc,
+                        total: computeLineTotal(nextQty, nextPrice, nextDisc),
+                      };
+                    })
+                  );
+                }}
+                onDuplicateRow={(idx) => {
+                  const target = editItems[idx];
+                  if (!target) return;
+                  setEditItems((prev) => {
+                    const next = [...prev];
+                    next.splice(idx + 1, 0, { ...target });
+                    return next;
+                  });
+                }}
+                onDeleteRow={(idx) => {
+                  if (editItems.length <= 1) return;
+                  setEditItems((prev) => prev.filter((_, i) => i !== idx));
+                }}
+                onAddNewItem={() => window.setTimeout(() => editProductSearchRef.current?.focus(), 20)}
+                onGridAdvanceOut={() => window.setTimeout(() => editProductSearchRef.current?.focus(), 20)}
+                onNotify={(msg) => setActionMessage({ type: 'success', text: msg })}
+                maxHeightClass="max-h-56"
+              />
 
               <div>
                 <label className="block font-bold text-slate-700 mb-1">{t('ملاحظات الفاتورة:', 'Invoice Notes:')}</label>

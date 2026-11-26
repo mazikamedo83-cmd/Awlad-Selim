@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { 
   ArrowLeftRight, CheckCircle2, XCircle, Clock, AlertCircle, Plus, 
   Printer, History, User, Boxes, Truck, Edit, Eye, Check,
-  Download, PackageCheck, RotateCcw, AlertTriangle, Wallet, RefreshCw, Barcode, Trash2
+  Download, PackageCheck, RotateCcw, AlertTriangle, Wallet, RefreshCw, Barcode
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -17,6 +17,7 @@ import {
   filterProductsByGroupCategory,
   resolveGroupCategoryCascade,
 } from '../../common/LinkedGroupCategoryFilter';
+import { EditableItemGrid } from '../../common/EditableItemGrid';
 import { QuantityInput } from '../../common/QuantityInput';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 
@@ -94,6 +95,8 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
     onConfirm: (inputValue?: string) => Promise<void> | void;
   } | null>(null);
 
+  const itemReqGroupTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const itemReqCategoryTriggerRef = useRef<HTMLButtonElement | null>(null);
   const repProdSearchRef = useRef<HTMLInputElement | null>(null);
   const repProdQtyRef = useRef<HTMLInputElement | null>(null);
 
@@ -2383,6 +2386,10 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
                 categories={categories}
                 selectedGroupId={itemReqGroupFilter}
                 selectedCategoryId={itemReqCatFilter}
+                groupTriggerRef={itemReqGroupTriggerRef}
+                categoryTriggerRef={itemReqCategoryTriggerRef}
+                autoAdvanceOnSelect
+                onCategoryAfterSelect={() => window.setTimeout(() => repProdSearchRef.current?.focus(), 20)}
                 onFilterChange={(nextGroupId, nextCategoryId) => {
                   setItemReqGroupFilter(nextGroupId);
                   setItemReqCatFilter(nextCategoryId);
@@ -2430,7 +2437,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
                     warehouses={warehouses}
                     warehouseId={itemReqSourceWhId}
                     selectedProductId={tempProdId}
-                    priceMode="purchase"
+                    priceMode={isRepUser ? 'selling' : 'purchase'}
                     currency={settings.currency}
                     placeholder={t('ابحث باسم الصنف أو الكود...', 'Search item by name or code...')}
                     onSelect={(prod) => handleSelectTempReqProduct(prod.id)}
@@ -2462,6 +2469,13 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
                     disabled={!activeTempReqProduct}
                     value={tempQty}
                     onChange={(val) => setTempQty(val)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleAddItemToReq();
+                      }
+                    }}
                     ariaLabel={t('كمية التحويل', 'Transfer Qty')}
                     inputClassName="w-full h-8 px-1.5 rounded-md border border-slate-300 bg-white text-center font-mono font-bold disabled:bg-slate-100"
                   />
@@ -2479,61 +2493,79 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
               </div>
             </div>
 
-            {/* Classic Transfer Items Table */}
-            <div className="border border-slate-200 rounded-lg overflow-hidden awlad-table-scroll max-h-56 overflow-y-auto">
-              <table className="w-full text-start text-xs">
-                <thead className="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold">
-                  <tr>
-                    <th className="p-2 w-10 text-center">#</th>
-                    <th className="p-2">{t('الصنف', 'Item')}</th>
-                    <th className="p-2 text-center">{t('الوحدة', 'Unit')}</th>
-                    <th className="p-2 text-center">{t('المتاح بالوجهة', 'Available')}</th>
-                    <th className="p-2 text-center w-28">{t('الكمية المطلوبة', 'Requested Qty')}</th>
-                    <th className="p-2 text-center">{t('العجز', 'Shortage')}</th>
-                    <th className="p-2 text-center w-12">{t('حذف', 'Del')}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {selectedItemsForReq.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="p-5 text-center text-slate-400 font-semibold">
-                        {t('لم يتم إضافة أصناف للتحويل بعد', 'No items added to transfer yet')}
-                      </td>
-                    </tr>
-                  ) : (
-                    selectedItemsForReq.map((item, idx) => (
-                      <tr key={`${item.productId}-${item.unit}-${idx}`} className="hover:bg-slate-50/80">
-                        <td className="p-2 text-center font-mono text-slate-500">{formatLocaleNumber(idx + 1)}</td>
-                        <td className="p-2 font-bold text-slate-800">{item.productName}</td>
-                        <td className="p-2 text-center text-slate-600 font-semibold">{t(item.unit)}</td>
-                        <td className="p-2 text-center font-mono text-slate-600">{formatLocaleNumber(item.availableInVanQty)}</td>
-                        <td className="p-2 text-center">
-                          <QuantityInput
-                            allowDecimals
-                            min={0.001}
-                            value={item.requestedQty}
-                            onChange={(q) => handleUpdateReqRowQty(idx, q)}
-                            ariaLabel={`${t('كمية', 'Qty')} ${item.productName}`}
-                            inputClassName="w-24 h-7 px-1.5 rounded border border-slate-300 text-center font-mono font-bold bg-white"
-                          />
-                        </td>
-                        <td className="p-2 text-center font-mono font-black text-red-600">{formatLocaleNumber(item.shortageQty)}</td>
-                        <td className="p-2 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveItemFromReq(idx)}
-                            className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded cursor-pointer"
-                            title={t('حذف', 'Delete')}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+            {/* Editable Transfer Items Grid */}
+            <EditableItemGrid
+              rows={selectedItemsForReq.map((item, idx) => ({
+                rowKey: `${item.productId}-${item.unit}-${idx}`,
+                productId: item.productId,
+                productName: item.productName,
+                barcode: item.barcode,
+                unit: item.unit,
+                unitFactor: item.unitFactor,
+                quantity: item.requestedQty,
+                unitPrice: 0,
+                total: 0,
+                availableStock: item.availableInVanQty,
+                secondaryBadge:
+                  item.shortageQty > 0
+                    ? `${t('عجز:', 'Shortage:')} ${formatLocaleNumber(item.shortageQty)}`
+                    : undefined,
+              }))}
+              products={products}
+              warehouses={warehouses}
+              currency={settings.currency}
+              priceMode="none"
+              showPriceColumns={false}
+              showStockColumn
+              stockColumnLabel={t('المتاح بالوجهة', 'Available')}
+              qtyColumnLabel={t('الكمية المطلوبة', 'Requested Qty')}
+              allowUnitEdit
+              allowQtyEdit
+              allowPriceEdit={false}
+              hideCostInfo={isRepUser}
+              recalcPriceOnUnitChange={false}
+              onUpdateRow={(idx, patch) => {
+                if (patch.quantity !== undefined && patch.unit === undefined) {
+                  handleUpdateReqRowQty(idx, patch.quantity);
+                  return;
+                }
+                setSelectedItemsForReq((prev) =>
+                  prev.map((it, i) => {
+                    if (i !== idx) return it;
+                    const nextUnit = patch.unit ?? it.unit;
+                    const nextFactor = patch.unitFactor ?? it.unitFactor ?? 1;
+                    const safeQty =
+                      patch.quantity !== undefined ? Math.max(0.001, roundQty3(patch.quantity)) : it.requestedQty;
+                    const prod = products.find((p) => p.id === it.productId);
+                    const vanStock = prod ? prod.stockPerWarehouse[itemReqTargetWhId] || 0 : it.availableInVanQty;
+                    const reqBase = safeQty * nextFactor;
+                    return {
+                      ...it,
+                      unit: nextUnit,
+                      unitFactor: nextFactor,
+                      requestedQty: safeQty,
+                      availableInVanQty: vanStock,
+                      shortageQty: Math.max(0, roundQty3(reqBase - vanStock)),
+                    };
+                  })
+                );
+              }}
+              onDuplicateRow={(idx) => {
+                const target = selectedItemsForReq[idx];
+                if (!target) return;
+                setSelectedItemsForReq((prev) => {
+                  const next = [...prev];
+                  next.splice(idx + 1, 0, { ...target });
+                  return next;
+                });
+              }}
+              onDeleteRow={handleRemoveItemFromReq}
+              onAddNewItem={() => window.setTimeout(() => repProdSearchRef.current?.focus(), 20)}
+              onGridAdvanceOut={() => window.setTimeout(() => repProdSearchRef.current?.focus(), 20)}
+              onNotify={(msg) => setStatusBanner({ type: 'success', text: msg })}
+              maxHeightClass="max-h-56"
+              emptyStateText={t('لم يتم إضافة أصناف للتحويل بعد', 'No items added to transfer yet')}
+            />
 
             <div>
               <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('ملاحظات التحويل:', 'Transfer Notes:')}</label>

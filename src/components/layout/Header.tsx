@@ -247,7 +247,7 @@ export const Header: React.FC<HeaderProps> = ({
 
             {/* Utility Controls: Alerts, Status, Notifications, Server, Language, Theme, Fullscreen, Logout */}
             <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
-              <OfflineIndicator variant="dark" />
+              <OfflineIndicator variant="dark" onOpenSendReceive={() => onNavigate('refresh-sync')} />
 
               {pendingOrdersCount > 0 && canPerm('canManageSales') && (
                 <button

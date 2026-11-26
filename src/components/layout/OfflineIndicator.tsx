@@ -3,13 +3,15 @@ import { Wifi, WifiOff, RefreshCw, AlertCircle, Clock, AlertTriangle, ShieldAler
 import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
 import { usePreferences } from '../../context/PreferencesContext';
-import { SyncCenterModal } from '../common/SyncCenterModal';
+import { SendReceiveView } from '../modules/sync/SendReceiveView';
+import { Modal } from '../common/Modal';
 
 interface OfflineIndicatorProps {
   variant?: 'light' | 'dark';
+  onOpenSendReceive?: () => void;
 }
 
-export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ variant = 'light' }) => {
+export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ variant = 'light', onOpenSendReceive }) => {
   const { isOfflineSession, permissionsMayBeStale, isDatabaseUnavailable } = useAuth();
   const {
     networkStatus,
@@ -100,8 +102,8 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ variant = 'l
       <div className="flex items-center gap-1">
         <button
           type="button"
-          onClick={() => setIsSyncModalOpen(true)}
-          title={`${t('مركز المزامنة', 'Sync Center')}: ${config.label}${lastError ? ` | ${t(lastError)}` : ''} | ${t('آخر فحص', 'Last check')}: ${lastSyncTime}${
+          onClick={() => (onOpenSendReceive ? onOpenSendReceive() : setIsSyncModalOpen(true))}
+          title={`${t('الإرسال والاستلام', 'Send & Receive')}: ${config.label}${lastError ? ` | ${t(lastError)}` : ''} | ${t('آخر فحص', 'Last check')}: ${lastSyncTime}${
             hasTentativeLocalBalances ? ` | ${t('توجد عمليات غير متزامنة (أرصدة محلية مبدئية)', 'Unsynced operations (tentative local balances)')}` : ''
           }`}
           className={`flex items-center gap-1 px-2 py-1 rounded-md border text-xs font-bold ${config.color} transition-all cursor-pointer hover:opacity-90 whitespace-nowrap`}
@@ -122,7 +124,7 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ variant = 'l
         {!isDatabaseUnavailable && (isOfflineSession || permissionsMayBeStale) && (
           <button
             type="button"
-            onClick={() => setIsSyncModalOpen(true)}
+            onClick={() => (onOpenSendReceive ? onOpenSendReceive() : setIsSyncModalOpen(true))}
             title={t('جلسة محلية موثقة — الصلاحيات المطبقة من آخر تحقق وقد تتحدث عند الاتصال', 'Verified offline session — permissions are from last online check and may update on reconnect')}
             className="hidden xl:flex items-center gap-1 px-2 py-1 rounded-md bg-amber-400/20 border border-amber-300/40 text-amber-100 text-[10px] font-bold cursor-pointer whitespace-nowrap"
           >
@@ -146,7 +148,14 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ variant = 'l
         </button>
       </div>
 
-      <SyncCenterModal isOpen={isSyncModalOpen} onClose={() => setIsSyncModalOpen(false)} />
+      <Modal
+        isOpen={isSyncModalOpen}
+        onClose={() => setIsSyncModalOpen(false)}
+        title={t('الإرسال والاستلام', 'Send & Receive')}
+        maxWidth="4xl"
+      >
+        <SendReceiveView onBack={() => setIsSyncModalOpen(false)} />
+      </Modal>
     </>
   );
 };
