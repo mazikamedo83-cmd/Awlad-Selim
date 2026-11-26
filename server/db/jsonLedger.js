@@ -95,6 +95,7 @@ export function createEmptyDatabaseState() {
     syncConflicts: [],
     syncOperationLogs: [],
     syncDispatchBatches: [],
+    userSyncStates: {},
     repCustodyOperations: [],
     identities: [],
     identityRoles: [],
@@ -209,6 +210,9 @@ export function normalizeDbState(raw) {
     db.settings = { ...base.settings, ...db.settings, extraSettings: db.settings.extraSettings || {} };
   }
   db.installationId = typeof db.installationId === 'string' ? db.installationId.trim() : '';
+  db.userSyncStates = db.userSyncStates && typeof db.userSyncStates === 'object' && !Array.isArray(db.userSyncStates)
+    ? db.userSyncStates
+    : {};
   db.sequences = { ...base.sequences, ...(db.sequences || {}) };
   return db;
 }

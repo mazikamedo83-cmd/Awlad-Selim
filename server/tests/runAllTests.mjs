@@ -2825,6 +2825,234 @@ async function runSuiteA_JsonLedgerHttp() {
       // Net customer: +0 +60 -60 = 0
       assert.equal(custAfter, custStart);
     });
+
+    await test('49. Manual Send/Receive sync state, custody receipt gating, All-Reps safe statement & print template persistence', async () => {
+      // 1. Register a fresh representative for clean initial sync state & multi-rep checks
+      const regRepSync = await req(baseUrl, 'POST', '/api/auth/register', {
+        body: {
+          role: 'representative',
+          fullName: 'مندوب مزامنة وكشوف',
+          username: 'rep_sync_test_49',
+          password: 'RepSync!123',
+          phone: '01012345049',
+        },
+      });
+      assert.equal(regRepSync.status, 201);
+      const tokenRep49 = regRepSync.json.accessToken;
+      const rep49Id = regRepSync.json.representativeProfile.id;
+      const rep49VanWhId = regRepSync.json.representativeProfile.warehouseId;
+
+      // Also register another peer rep to verify full rep directory + cashbox/commission privacy
+      const regRepPeer = await req(baseUrl, 'POST', '/api/auth/register', {
+        body: {
+          role: 'representative',
+          fullName: 'مندوب زميل ٤٩',
+          username: 'rep_peer_49',
+          password: 'RepPeer!123',
+          phone: '01099988849',
+        },
+      });
+      assert.equal(regRepPeer.status, 201);
+      const repPeerId = regRepPeer.json.representativeProfile.id;
+
+      // 2. GET /api/sync/state initially has null lastSendAt & lastReceiveAt; background pull does NOT falsify them
+      const state0 = await req(baseUrl, 'GET', '/api/sync/state', { token: tokenRep49 });
+      assert.equal(state0.status, 200);
+      assert.equal(state0.json.state.lastSendAt, null);
+      assert.equal(state0.json.state.lastReceiveAt, null);
+
+      const pull0 = await req(baseUrl, 'GET', '/api/sync/pull', { token: tokenRep49 });
+      assert.equal(pull0.status, 200);
+      assert.equal(pull0.json.syncState.lastSendAt, null);
+      assert.equal(pull0.json.syncState.lastReceiveAt, null);
+      assert.ok(pull0.json.representatives.some((r) => r.id === rep49Id));
+      assert.ok(pull0.json.representatives.some((r) => r.id === repPeerId));
+
+      // 3. Manual POST /api/sync/send -> valid op updates lastSendAt & deduplicates repeat; failing batch preserves lastSendAt
+      const custPayOpId = `sync-op-pay-${Date.now()}`;
+      const custBalBefore = pull0.json.customers.find((c) => c.id === custA.id).currentBalance;
+      const sendOkRes = await req(baseUrl, 'POST', '/api/sync/send', {
+        token: tokenRep49,
+        body: {
+          operations: [
+            {
+              operationId: custPayOpId,
+              operationType: 'record_customer_payment',
+              payload: {
+                customerId: custA.id,
+                amount: 25,
+                paymentMethod: 'cash',
+                notes: 'تحصيل مزامنة يدوي 49',
+              },
+            },
+          ],
+        },
+      });
+      assert.equal(sendOkRes.status, 200);
+      assert.equal(sendOkRes.json.allSucceeded, true);
+      assert.equal(sendOkRes.json.sentCount, 1);
+      assert.ok(sendOkRes.json.syncState.lastSendAt);
+      const savedLastSendAt = sendOkRes.json.syncState.lastSendAt;
+
+      // Duplicate resend of exact same operationId -> deduplicated, customer balance charged once (-25)
+      const dupSendRes = await req(baseUrl, 'POST', '/api/sync/send', {
+        token: tokenRep49,
+        body: {
+          operations: [
+            {
+              operationId: custPayOpId,
+              operationType: 'record_customer_payment',
+              payload: {
+                customerId: custA.id,
+                amount: 25,
+                paymentMethod: 'cash',
+                notes: 'إعادة إرسال مكررة',
+              },
+            },
+          ],
+        },
+      });
+      assert.equal(dupSendRes.status, 200);
+      const custBalAfterSend = (await req(baseUrl, 'GET', '/api/sync/pull', { token: tokenRep49 })).json.customers.find((c) => c.id === custA.id).currentBalance;
+      assert.equal(custBalAfterSend, custBalBefore - 25);
+
+      const savedAfterDupSendAt = dupSendRes.json.syncState.lastSendAt;
+      assert.ok(savedAfterDupSendAt >= savedLastSendAt);
+
+      // Failed operation in send -> allSucceeded: false, lastSendAt NOT overwritten by failed timestamp
+      const sendFailRes = await req(baseUrl, 'POST', '/api/sync/send', {
+        token: tokenRep49,
+        body: {
+          operations: [
+            {
+              operationId: `sync-op-bad-${Date.now()}`,
+              operationType: 'unknown_invalid_op_49',
+              payload: {},
+            },
+          ],
+        },
+      });
+      assert.equal(sendFailRes.status, 200);
+      assert.equal(sendFailRes.json.allSucceeded, false);
+      assert.equal(sendFailRes.json.failedCount, 1);
+      assert.equal(sendFailRes.json.syncState.lastSendAt, savedAfterDupSendAt);
+
+      // 4. Admin dispatches custody items & cash transfer to rep49 -> van stock stays 0 until confirmed receive!
+      const custodyQty = 12;
+      const disp49 = await req(baseUrl, 'POST', '/api/inventory/rep-item-transfers', {
+        token: adminToken,
+        body: {
+          representativeId: rep49Id,
+          sourceWarehouseId: whMainId,
+          targetWarehouseId: rep49VanWhId,
+          transferMode: 'custody_dispatch',
+          autoDispatch: true,
+          notes: 'صرف عهدة استلام يدوي 49',
+          items: [
+            {
+              productId: prodCustody.id,
+              productName: prodCustody.name,
+              unit: 'قطعة',
+              requestedQty: custodyQty,
+            },
+          ],
+        },
+      });
+      assert.equal(disp49.status, 201);
+      const disp49Id = disp49.json.request.id;
+
+      const cashTrPeer = await req(baseUrl, 'POST', '/api/inventory/rep-transfers', {
+        token: adminToken,
+        body: {
+          direction: 'owner_to_rep',
+          representativeId: repPeerId,
+          amount: 500,
+          cashboxId: cashboxMainId,
+          notes: 'عهدة نقدية للزميل 49',
+        },
+      });
+      assert.equal(cashTrPeer.status, 201);
+
+      // Van stock before receive-confirm is still 0
+      const vanPreConfirm = (await req(baseUrl, 'GET', '/api/sync/pull', { token: tokenRep49 })).json.products.find((p) => p.id === prodCustody.id).stockPerWarehouse[rep49VanWhId] || 0;
+      assert.equal(Number(vanPreConfirm), 0);
+
+      // Receive preview lists pending custody dispatch
+      const preview1 = await req(baseUrl, 'GET', '/api/sync/receive-preview', { token: tokenRep49 });
+      assert.equal(preview1.status, 200);
+      assert.ok(preview1.json.items.custodyDispatches.some((c) => c.id === disp49Id));
+
+      // Confirm receipt via /api/sync/receive-confirm
+      const confirmRec = await req(baseUrl, 'POST', '/api/sync/receive-confirm', {
+        token: tokenRep49,
+        body: { confirmCustodyIds: [disp49Id] },
+      });
+      assert.equal(confirmRec.status, 200);
+      assert.equal(confirmRec.json.receivedCount, 1);
+      assert.ok(confirmRec.json.syncState.lastReceiveAt);
+
+      const vanPostConfirm = (await req(baseUrl, 'GET', '/api/sync/pull', { token: tokenRep49 })).json.products.find((p) => p.id === prodCustody.id).stockPerWarehouse[rep49VanWhId] || 0;
+      assert.equal(Number(vanPostConfirm), custodyQty);
+
+      // Repeat preview has no awaiting custody dispatches left for disp49Id
+      const preview2 = await req(baseUrl, 'GET', '/api/sync/receive-preview', { token: tokenRep49 });
+      assert.equal(preview2.status, 200);
+      assert.ok(!preview2.json.items.custodyDispatches.some((c) => c.id === disp49Id));
+
+      // 5. Rep fetches Peer Rep safe statement -> sees owed/balance/movements WITHOUT cashboxId, cashboxName, commissionRate, or peer invoices
+      const peerStmtRes = await req(baseUrl, 'GET', `/api/mobile/representatives/${repPeerId}/statement`, { token: tokenRep49 });
+      assert.equal(peerStmtRes.status, 200);
+      assert.equal(peerStmtRes.json.representative.id, repPeerId);
+      assert.equal(peerStmtRes.json.representative.commissionRate, undefined);
+      assert.equal(typeof peerStmtRes.json.balanceSummary.owedByRep, 'number');
+      assert.equal(typeof peerStmtRes.json.balanceSummary.owedToRep, 'number');
+      assert.ok(Array.isArray(peerStmtRes.json.movements));
+      assert.ok(peerStmtRes.json.movements.length >= 1);
+      for (const mv of peerStmtRes.json.movements) {
+        assert.equal(mv.cashboxId, undefined);
+        assert.equal(mv.cashboxName, undefined);
+      }
+
+      // 6. Persist Print Customization settings (repPhoneConfig & customPrintFields)
+      const printSaveRes = await req(baseUrl, 'PUT', '/api/admin/settings', {
+        token: adminToken,
+        body: {
+          extraSettings: {
+            invoiceTemplate: {
+              showLogo: true,
+              showPreviousBalance: true,
+              showRemainingBalance: true,
+              showSignatureBoxes: true,
+              footerText: 'تذييل مخصص اختبار 49',
+              repPhoneConfig: {
+                showInPrint: true,
+                label: 'جوال المندوب',
+                defaultPhone: '01099887766',
+                placement: 'header',
+              },
+              customPrintFields: [
+                {
+                  id: 'cpf-route-49',
+                  label: 'خط التوزيع',
+                  value: 'قطاع بحري 1',
+                  type: 'text',
+                  placement: 'party_info',
+                  docTypes: ['sales', 'statement'],
+                  visible: true,
+                  order: 1,
+                },
+              ],
+            },
+          },
+        },
+      });
+      assert.equal(printSaveRes.status, 200);
+      const bootPrint = (await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken })).json.data;
+      assert.equal(bootPrint.settings.extraSettings.invoiceTemplate.repPhoneConfig.label, 'جوال المندوب');
+      assert.equal(bootPrint.settings.extraSettings.invoiceTemplate.repPhoneConfig.placement, 'header');
+      assert.equal(bootPrint.settings.extraSettings.invoiceTemplate.customPrintFields.length, 1);
+      assert.equal(bootPrint.settings.extraSettings.invoiceTemplate.customPrintFields[0].label, 'خط التوزيع');
+    });
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

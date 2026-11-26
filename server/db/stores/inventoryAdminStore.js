@@ -217,9 +217,7 @@ export async function getStaffBootstrapData(actor) {
       canViewTreasuryLedger ? pool.query('SELECT * FROM financial_transactions ORDER BY created_at DESC LIMIT 1000') : Promise.resolve({ rows: [] }),
       canViewChequesInstallments ? pool.query('SELECT * FROM cheques ORDER BY created_at DESC') : Promise.resolve({ rows: [] }),
       canViewChequesInstallments ? pool.query('SELECT * FROM installments ORDER BY created_at DESC') : Promise.resolve({ rows: [] }),
-      canViewAllRepresentatives(actor)
-        ? pool.query('SELECT * FROM representatives ORDER BY created_at ASC')
-        : pool.query('SELECT * FROM representatives WHERE user_id = $1 ORDER BY created_at ASC', [actor.id]),
+      pool.query('SELECT * FROM representatives ORDER BY created_at ASC'),
       pool.query("SELECT id, name, warehouse_id, status FROM representatives WHERE status = 'active' ORDER BY created_at ASC"),
       pool.query('SELECT * FROM rep_transfers ORDER BY created_at DESC'),
       pool.query('SELECT * FROM rep_item_transfers ORDER BY created_at DESC'),
@@ -525,6 +523,7 @@ export async function getStaffBootstrapData(actor) {
               phone: r.phone || '',
               vehicleNumber: r.vehicle_number || '',
               warehouseId: r.warehouse_id || undefined,
+              openingBalance: Number(r.opening_balance || 0),
               currentBalance: Number(r.current_balance || 0),
               status: r.status || 'active',
             }
@@ -822,18 +821,18 @@ export async function getStaffBootstrapData(actor) {
     installments: canViewChequesInstallments ? db.installments : [],
     representatives: canViewAllRepresentatives(actor)
       ? db.representatives
-      : (db.representatives || [])
-          .filter((r) => r.userId === actor.id || (repProfile && r.id === repProfile.id))
-          .map((r) => ({
-            id: r.id,
-            userId: r.userId || undefined,
-            name: r.name,
-            phone: r.phone || '',
-            vehicleNumber: r.vehicleNumber || '',
-            warehouseId: r.warehouseId || undefined,
-            currentBalance: Number(r.currentBalance || 0),
-            status: r.status || 'active',
-          })),
+      : (db.representatives || []).map((r) => ({
+          id: r.id,
+          userId: r.userId || undefined,
+          identityId: r.identityId || undefined,
+          name: r.name,
+          phone: r.phone || '',
+          vehicleNumber: r.vehicleNumber || '',
+          warehouseId: r.warehouseId || undefined,
+          openingBalance: Number(r.openingBalance || 0),
+          currentBalance: Number(r.currentBalance || 0),
+          status: r.status || 'active',
+        })),
     repTransferTargets: (db.representatives || [])
       .filter((r) => (r.status || 'active') === 'active')
       .map((r) => ({
@@ -6559,6 +6558,46 @@ export async function updateSystemSettings(updates, actor) {
             ...(updates.mobileConfig || {}),
           };
         }
+        if (updates.extraSettings?.invoiceTemplate !== undefined) {
+          const prevTpl = prevExtra.invoiceTemplate || {};
+          const rawTpl = updates.extraSettings.invoiceTemplate || {};
+          const sanitizedFields = Array.isArray(rawTpl.customPrintFields)
+            ? rawTpl.customPrintFields
+                .slice(0, 50)
+                .map((f, idx) => ({
+                  id: String(f?.id || `CPF-${idx + 1}`).trim(),
+                  label: String(f?.label || '').trim().slice(0, 120),
+                  value: String(f?.value || '').trim().slice(0, 240),
+                  type: ['text', 'number', 'phone', 'date'].includes(f?.type) ? f.type : 'text',
+                  placement: ['header', 'company_info', 'party_info', 'footer'].includes(f?.placement)
+                    ? f.placement
+                    : 'party_info',
+                  visible: f?.visible !== false,
+                  order: Number.isFinite(Number(f?.order)) ? Number(f.order) : idx,
+                  docTypes: Array.isArray(f?.docTypes) && f.docTypes.length > 0
+                    ? f.docTypes.map((d) => String(d).trim()).filter(Boolean)
+                    : ['all'],
+                }))
+                .filter((f) => f.label || f.value)
+            : prevTpl.customPrintFields;
+          mergedExtra.invoiceTemplate = {
+            ...prevTpl,
+            ...rawTpl,
+            ...(rawTpl.repPhoneConfig !== undefined
+              ? {
+                  repPhoneConfig: {
+                    defaultPhone: String(rawTpl.repPhoneConfig?.defaultPhone || '').trim().slice(0, 40),
+                    showInPrint: rawTpl.repPhoneConfig?.showInPrint !== false,
+                    placement: ['header', 'party_box', 'footer'].includes(rawTpl.repPhoneConfig?.placement)
+                      ? rawTpl.repPhoneConfig.placement
+                      : 'party_box',
+                    label: String(rawTpl.repPhoneConfig?.label || '').trim().slice(0, 60) || undefined,
+                  },
+                }
+              : {}),
+            ...(sanitizedFields !== undefined ? { customPrintFields: sanitizedFields } : {}),
+          };
+        }
         const nextBranchNumber =
           updates.branchNumber !== undefined
             ? String(updates.branchNumber || '')
@@ -6642,6 +6681,46 @@ export async function updateSystemSettings(updates, actor) {
         ...(prevExtra.mobileConfig || {}),
         ...(updates.extraSettings?.mobileConfig || {}),
         ...(updates.mobileConfig || {}),
+      };
+    }
+    if (updates.extraSettings?.invoiceTemplate !== undefined) {
+      const prevTpl = prevExtra.invoiceTemplate || {};
+      const rawTpl = updates.extraSettings.invoiceTemplate || {};
+      const sanitizedFields = Array.isArray(rawTpl.customPrintFields)
+        ? rawTpl.customPrintFields
+            .slice(0, 50)
+            .map((f, idx) => ({
+              id: String(f?.id || `CPF-${idx + 1}`).trim(),
+              label: String(f?.label || '').trim().slice(0, 120),
+              value: String(f?.value || '').trim().slice(0, 240),
+              type: ['text', 'number', 'phone', 'date'].includes(f?.type) ? f.type : 'text',
+              placement: ['header', 'company_info', 'party_info', 'footer'].includes(f?.placement)
+                ? f.placement
+                : 'party_info',
+              visible: f?.visible !== false,
+              order: Number.isFinite(Number(f?.order)) ? Number(f.order) : idx,
+              docTypes: Array.isArray(f?.docTypes) && f.docTypes.length > 0
+                ? f.docTypes.map((d) => String(d).trim()).filter(Boolean)
+                : ['all'],
+            }))
+            .filter((f) => f.label || f.value)
+        : prevTpl.customPrintFields;
+      mergedExtra.invoiceTemplate = {
+        ...prevTpl,
+        ...rawTpl,
+        ...(rawTpl.repPhoneConfig !== undefined
+          ? {
+              repPhoneConfig: {
+                defaultPhone: String(rawTpl.repPhoneConfig?.defaultPhone || '').trim().slice(0, 40),
+                showInPrint: rawTpl.repPhoneConfig?.showInPrint !== false,
+                placement: ['header', 'party_box', 'footer'].includes(rawTpl.repPhoneConfig?.placement)
+                  ? rawTpl.repPhoneConfig.placement
+                  : 'party_box',
+                label: String(rawTpl.repPhoneConfig?.label || '').trim().slice(0, 60) || undefined,
+              },
+            }
+          : {}),
+        ...(sanitizedFields !== undefined ? { customPrintFields: sanitizedFields } : {}),
       };
     }
     db.settings = { ...db.settings, ...updates, extraSettings: mergedExtra };
@@ -8323,4 +8402,140 @@ export async function getItemMovementReport(filters = {}, actor) {
     },
   };
 }
+
+/**
+ * كشف حساب مندوب آمن (يعرض المستحق عليه / له والرصيد الحالي والحالة وحركات التحويل دون كشف تكاليف أو أرباح أو أرصدة خزائن للمندوبين)
+ */
+export async function getRepresentativeAccountStatement(repId, actor) {
+  if (!actor || actor.role === 'customer') {
+    throw new AppError(403, 'غير مصرح للعملاء بالوصول إلى حسابات المناديب', 'FORBIDDEN');
+  }
+  const targetId = String(repId || '').trim();
+  if (!targetId) {
+    throw new AppError(400, 'معرّف المندوب مطلوب', 'REPRESENTATIVE_ID_REQUIRED');
+  }
+
+  const isRepViewer = actor.role === 'representative';
+  const hideCashboxMeta = isRepViewer || !canViewCashboxBalances(actor);
+
+  let repRow = null;
+  let repTransfers = [];
+
+  if (await isPgMode()) {
+    const pool = getPool();
+    const rRes = await pool.query('SELECT * FROM representatives WHERE id = $1 LIMIT 1', [targetId]);
+    const r = rRes.rows[0];
+    if (!r) throw new AppError(404, 'المندوب غير موجود', 'REPRESENTATIVE_NOT_FOUND');
+    repRow = {
+      id: r.id,
+      userId: r.user_id || undefined,
+      name: r.name,
+      phone: r.phone || '',
+      vehicleNumber: r.vehicle_number || '',
+      warehouseId: r.warehouse_id || undefined,
+      openingBalance: Number(r.opening_balance || 0),
+      currentBalance: Number(r.current_balance || 0),
+      ...(isRepViewer ? {} : { commissionRate: Number(r.commission_rate || 0), notes: r.notes || '' }),
+      status: r.status || 'active',
+    };
+
+    const rtRes = await pool.query(
+      `SELECT * FROM rep_transfers
+       WHERE representative_id = $1 OR sender_id = $1 OR receiver_id = $1
+       ORDER BY date DESC, created_at DESC`,
+      [targetId]
+    );
+    repTransfers = rtRes.rows.map((rt) => ({
+      id: rt.id,
+      transferNumber: rt.transfer_number,
+      date: isoDateOnly(rt.date),
+      timestamp: isoTimestamp(rt.created_at),
+      direction: rt.direction,
+      senderId: rt.sender_id,
+      senderName: rt.sender_name,
+      receiverId: rt.receiver_id,
+      receiverName: rt.receiver_name,
+      amount: Number(rt.amount || 0),
+      ...(hideCashboxMeta ? {} : { cashboxId: rt.cashbox_id || '', cashboxName: rt.cashbox_name || '' }),
+      notes: rt.notes || '',
+      status: rt.status,
+      sentAt: rt.sent_at ? isoTimestamp(rt.sent_at) : isoTimestamp(rt.created_at),
+      confirmedAt: rt.confirmed_at ? isoTimestamp(rt.confirmed_at) : undefined,
+      confirmedBy: rt.confirmed_by || undefined,
+    }));
+  } else {
+    const db = readJsonDatabase();
+    const r = (db.representatives || []).find((x) => x.id === targetId);
+    if (!r) throw new AppError(404, 'المندوب غير موجود', 'REPRESENTATIVE_NOT_FOUND');
+    repRow = {
+      id: r.id,
+      userId: r.userId || undefined,
+      name: r.name,
+      phone: r.phone || '',
+      vehicleNumber: r.vehicleNumber || '',
+      warehouseId: r.warehouseId || undefined,
+      openingBalance: Number(r.openingBalance || 0),
+      currentBalance: Number(r.currentBalance || 0),
+      ...(isRepViewer ? {} : { commissionRate: Number(r.commissionRate || 0), notes: r.notes || '' }),
+      status: r.status || 'active',
+    };
+    repTransfers = (db.repTransfers || [])
+      .filter((rt) => rt.representativeId === targetId || rt.senderId === targetId || rt.receiverId === targetId)
+      .sort((a, b) => String(b.timestamp || b.date || '').localeCompare(String(a.timestamp || a.date || '')))
+      .map((rt) => ({
+        id: rt.id,
+        transferNumber: rt.transferNumber,
+        date: rt.date,
+        timestamp: rt.timestamp,
+        direction: rt.direction,
+        senderId: rt.senderId,
+        senderName: rt.senderName,
+        receiverId: rt.receiverId,
+        receiverName: rt.receiverName,
+        amount: Number(rt.amount || 0),
+        ...(hideCashboxMeta ? {} : { cashboxId: rt.cashboxId || '', cashboxName: rt.cashboxName || '' }),
+        notes: rt.notes || '',
+        status: rt.status,
+        sentAt: rt.sentAt || rt.timestamp,
+        confirmedAt: rt.confirmedAt,
+        confirmedBy: rt.confirmedBy,
+      }));
+  }
+
+  const currentBalance = round2(repRow.currentBalance || 0);
+  const openingBalance = round2(repRow.openingBalance || 0);
+  const owedByRep = currentBalance > 0.009 ? currentBalance : 0;
+  const owedToRep = currentBalance < -0.009 ? round2(Math.abs(currentBalance)) : 0;
+  const direction = currentBalance > 0.009 ? 'debt' : currentBalance < -0.009 ? 'credit' : 'settled';
+  const statusLabel = direction === 'debt' ? 'عليه' : direction === 'credit' ? 'له' : 'متعادل';
+
+  const receivedToCompanyTotal = round2(
+    repTransfers
+      .filter((t) => t.status === 'received' && (t.senderId === targetId))
+      .reduce((s, t) => s + Number(t.amount || 0), 0)
+  );
+  const issuedToRepTotal = round2(
+    repTransfers
+      .filter((t) => t.status === 'received' && (t.receiverId === targetId))
+      .reduce((s, t) => s + Number(t.amount || 0), 0)
+  );
+  const pendingTransfersCount = repTransfers.filter((t) => t.status === 'awaiting_receipt').length;
+
+  return {
+    representative: repRow,
+    balanceSummary: {
+      openingBalance,
+      currentBalance,
+      owedByRep,
+      owedToRep,
+      direction,
+      statusLabel,
+      issuedToRepTotal,
+      receivedToCompanyTotal,
+      pendingTransfersCount,
+    },
+    movements: repTransfers,
+  };
+}
+
 

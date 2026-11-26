@@ -1,12 +1,21 @@
 import type {
   DispatchRecipientOption,
+  ReceiveConfirmResponse,
+  ServerSendSyncResponse,
+  ServerUserSyncState,
   SyncConflictRecord,
   SyncDispatchBatch,
   SyncDispatchBatchStatus,
   SyncOperationType,
   SyncQueueItem,
 } from '../types';
-import { apiRequest } from './api';
+import {
+  apiRequest,
+  confirmManualReceiveApi,
+  fetchReceivePreviewApi,
+  fetchUserSyncStateApi,
+  sendManualSyncApi,
+} from './api';
 import { localDb } from './localDb';
 import { getOrCreatePersistentDeviceId } from './native';
 import { logDiagnostic } from './diagnostics';
@@ -173,9 +182,37 @@ function isUnreachableError(err: any): boolean {
   return err?.status === 0 || (typeof navigator !== 'undefined' && navigator.onLine === false);
 }
 
-function syncMetaKey(base: 'last_send_summary' | 'last_receive_summary' | 'last_sync_at', userId?: string): string {
+function syncMetaKey(
+  base: 'last_send_summary' | 'last_receive_summary' | 'last_sync_at' | 'server_sync_state',
+  userId?: string
+): string {
   const uid = String(userId || '').trim();
   return uid ? `${base}:${uid}` : base;
+}
+
+export const EMPTY_USER_SYNC_STATE: ServerUserSyncState = {
+  lastSendAt: null,
+  lastSendStatus: 'never',
+  lastSendCount: 0,
+  lastSendSummary: {},
+  lastReceiveAt: null,
+  lastReceiveStatus: 'never',
+  lastReceiveCount: 0,
+  lastReceiveSummary: {},
+};
+
+export async function getStoredUserSyncState(userId?: string): Promise<ServerUserSyncState> {
+  if (!userId) return { ...EMPTY_USER_SYNC_STATE };
+  const stored = await localDb.getMeta<ServerUserSyncState>(syncMetaKey('server_sync_state', userId));
+  return stored ? { ...EMPTY_USER_SYNC_STATE, ...stored } : { ...EMPTY_USER_SYNC_STATE };
+}
+
+export async function saveStoredUserSyncState(userId: string, state: ServerUserSyncState): Promise<void> {
+  if (!userId) return;
+  await localDb.setMeta<ServerUserSyncState>(syncMetaKey('server_sync_state', userId), {
+    ...EMPTY_USER_SYNC_STATE,
+    ...state,
+  });
 }
 
 export async function getSyncRefreshStats(userId?: string): Promise<{
@@ -239,9 +276,18 @@ async function executeSyncCycle(params: {
   mode?: SyncCycleMode;
   includeHeldBatches?: boolean;
   isMandatory?: boolean;
+  silent?: boolean;
   onProgress?: (progress: SyncProgressUpdate) => void;
 }): Promise<SyncCycleOutcome> {
-  const { userId, forceAll = false, mode = 'full', includeHeldBatches = false, isMandatory = false, onProgress } = params;
+  const {
+    userId,
+    forceAll = false,
+    mode = 'full',
+    includeHeldBatches = false,
+    isMandatory = false,
+    silent = false,
+    onProgress,
+  } = params;
   const nowMs = Date.now();
   const queue = await localDb.listSyncQueue(userId);
   const report = (percent: number, stage: string, completed?: number, total?: number) => {
@@ -390,15 +436,17 @@ async function executeSyncCycle(params: {
         failedCount = updatedQueue.filter((q) => q.status === 'failed').length;
         conflictCount = updatedQueue.filter((q) => q.status === 'needs_review').length;
 
-        await recordSyncRefreshSummary('last_send_summary', userId, {
-          at: updateTimestamp,
-          count: syncedCount,
-          failedCount,
-          conflictCount,
-          ok: failedCount === 0 && conflictCount === 0 && syncedCount > 0 ? true : failedCount === 0 && conflictCount === 0,
-          isMandatory,
-          error: failedCount > 0 ? tr('تعذر إرسال بعض العمليات وبقيت محفوظة لإعادة المحاولة.', 'Some operations could not be sent and were kept for retry.') : undefined,
-        });
+        if (!silent) {
+          await recordSyncRefreshSummary('last_send_summary', userId, {
+            at: updateTimestamp,
+            count: syncedCount,
+            failedCount,
+            conflictCount,
+            ok: failedCount === 0 && conflictCount === 0 && syncedCount > 0,
+            isMandatory,
+            error: failedCount > 0 ? tr('تعذر إرسال بعض العمليات وبقيت محفوظة لإعادة المحاولة.', 'Some operations could not be sent and were kept for retry.') : undefined,
+          });
+        }
         report(100, tr('اكتمل الإرسال', 'Sending completed'), orderedOps.length, orderedOps.length);
         if (failedCount > 0 || newConflicts.length > 0) {
           logDiagnostic({
@@ -553,12 +601,18 @@ async function executeSyncCycle(params: {
       (Array.isArray(pullData?.syncDispatchBatches) ? pullData.syncDispatchBatches.length : 0) +
       (Array.isArray(pullData?.customerItemOrders) ? pullData.customerItemOrders.length : 0);
 
-    await recordSyncRefreshSummary('last_receive_summary', userId, {
-      at: nowTime,
-      count: receivedCount,
-      ok: true,
-    });
-    if (mode === 'receive_only') {
+    if (pullData?.syncState) {
+      await saveStoredUserSyncState(userId, pullData.syncState);
+    }
+
+    if (!silent) {
+      await recordSyncRefreshSummary('last_receive_summary', userId, {
+        at: nowTime,
+        count: receivedCount,
+        ok: true,
+      });
+    }
+    if (mode === 'receive_only' && !silent) {
       report(100, tr(`تم استلام وتحديث ${receivedCount} سجل`, `Received and updated ${receivedCount} record(s)`), receivedCount, receivedCount);
     }
 
@@ -621,9 +675,10 @@ export function runSyncCycle(params: {
   mode?: SyncCycleMode;
   includeHeldBatches?: boolean;
   isMandatory?: boolean;
+  silent?: boolean;
   onProgress?: (progress: SyncProgressUpdate) => void;
 }): Promise<SyncCycleOutcome> {
-  const lockKey = `${params.userId}:${params.mode || 'full'}`;
+  const lockKey = `${params.userId}:${params.mode || 'full'}:${params.silent ? 'silent' : 'active'}`;
   const existing = activeLocks.get(lockKey);
   if (existing) return existing;
 
@@ -633,6 +688,271 @@ export function runSyncCycle(params: {
   activeLocks.set(lockKey, job);
   return job;
 }
+
+export async function executeManualSendSync(params: {
+  userId: string;
+  operationIds?: string[];
+  onProgress?: (progress: SyncProgressUpdate) => void;
+}): Promise<{
+  ok: boolean;
+  serverReachable: boolean;
+  authRevoked?: boolean;
+  revokeReason?: string;
+  sentCount: number;
+  deduplicatedCount: number;
+  failedCount: number;
+  conflictCount: number;
+  sentAt: string | null;
+  summary: Record<string, number>;
+  syncState: ServerUserSyncState | null;
+  error?: string;
+}> {
+  const { userId, operationIds, onProgress } = params;
+  const queue = await localDb.listSyncQueue(userId);
+  const selectedSet = operationIds && operationIds.length > 0 ? new Set(operationIds) : null;
+  const targetOps = queue
+    .filter((item) => {
+      if (item.status === 'synced') return false;
+      if (selectedSet && !selectedSet.has(item.operationId)) return false;
+      return true;
+    })
+    .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+
+  if (targetOps.length === 0) {
+    const syncState = await fetchUserSyncStateApi()
+      .then((r) => r.state)
+      .catch(() => getStoredUserSyncState(userId));
+    if (syncState) await saveStoredUserSyncState(userId, syncState);
+    return {
+      ok: true,
+      serverReachable: true,
+      sentCount: 0,
+      deduplicatedCount: 0,
+      failedCount: 0,
+      conflictCount: 0,
+      sentAt: syncState?.lastSendAt || null,
+      summary: {},
+      syncState,
+    };
+  }
+
+  onProgress?.({
+    percent: 20,
+    stage: tr(`جاري إرسال ${targetOps.length} عملية...`, `Sending ${targetOps.length} operation(s)...`),
+    completed: 0,
+    total: targetOps.length,
+  });
+
+  try {
+    const chunkSize = 100;
+    const allResults: ServerSendSyncResponse['results'] = [];
+    let latestRes: ServerSendSyncResponse | null = null;
+
+    for (let offset = 0; offset < targetOps.length; offset += chunkSize) {
+      const chunk = targetOps.slice(offset, offset + chunkSize);
+      const pct = 25 + Math.round((offset / targetOps.length) * 55);
+      onProgress?.({
+        percent: pct,
+        stage: tr(
+          `جاري إرسال (${Math.min(offset + chunk.length, targetOps.length)} / ${targetOps.length})...`,
+          `Sending (${Math.min(offset + chunk.length, targetOps.length)} / ${targetOps.length})...`
+        ),
+        completed: offset,
+        total: targetOps.length,
+      });
+      const res = await sendManualSyncApi(chunk);
+      latestRes = res;
+      if (Array.isArray(res.results)) {
+        allResults.push(...res.results);
+      }
+    }
+
+    const resultMap = new Map(allResults.map((r) => [r.operationId, r]));
+    const nowIso = new Date().toISOString();
+    const newConflicts: SyncConflictRecord[] = [];
+    const updatedQueue = queue.map((item) => {
+      const r = resultMap.get(item.operationId);
+      if (!r) return item;
+      if (r.status === 'synced') {
+        return {
+          ...item,
+          status: 'synced' as const,
+          holdForDispatchBatch: false,
+          lastError: undefined,
+          nextRetryAt: undefined,
+          updatedAt: nowIso,
+        };
+      }
+      if (r.status === 'needs_review') {
+        if (r.conflict) newConflicts.push(r.conflict);
+        return {
+          ...item,
+          status: 'needs_review' as const,
+          attempts: (item.attempts || 0) + 1,
+          conflictId: r.conflictId || r.conflict?.id || item.conflictId,
+          lastError: r.error || r.conflict?.conflictReason || tr('تعارض يحتاج مراجعة', 'Conflict requires review'),
+          nextRetryAt: undefined,
+          updatedAt: nowIso,
+        };
+      }
+      return {
+        ...item,
+        status: 'failed' as const,
+        attempts: (item.attempts || 0) + 1,
+        lastError: r.error || tr('تعذر تنفيذ العملية على السيرفر', 'Could not execute operation on server'),
+        nextRetryAt: Date.now() + 15000,
+        updatedAt: nowIso,
+      };
+    });
+
+    await localDb.saveSyncQueue(userId, updatedQueue);
+    if (newConflicts.length > 0) {
+      const existingConflicts = await localDb.listConflicts(userId);
+      const merged = [...newConflicts];
+      for (const oldCf of existingConflicts) {
+        if (!merged.some((c) => c.id === oldCf.id)) merged.push(oldCf);
+      }
+      await localDb.saveConflicts(userId, merged);
+    }
+
+    const syncedResults = allResults.filter((r) => r.status === 'synced');
+    const deduplicatedCount = syncedResults.filter((r) => r.deduplicated).length;
+    const failedCount = allResults.filter((r) => r.status === 'failed').length;
+    const conflictCount = allResults.filter((r) => r.status === 'needs_review').length;
+    const allSucceeded = failedCount === 0 && conflictCount === 0;
+
+    if (latestRes?.syncState) {
+      await saveStoredUserSyncState(userId, latestRes.syncState);
+    }
+    if (allSucceeded && syncedResults.length > 0) {
+      await recordSyncRefreshSummary('last_send_summary', userId, {
+        at: latestRes?.sentAt || latestRes?.syncState?.lastSendAt || nowIso,
+        count: syncedResults.length,
+        failedCount: 0,
+        conflictCount: 0,
+        ok: true,
+      });
+    } else if (failedCount > 0 || conflictCount > 0) {
+      await recordSyncRefreshSummary('last_send_summary', userId, {
+        at: nowIso,
+        count: 0,
+        failedCount,
+        conflictCount,
+        ok: false,
+        error: tr('تعذر إرسال بعض العمليات وبقيت محفوظة لإعادة المحاولة.', 'Some operations could not be sent and were kept for retry.'),
+      });
+    }
+
+    onProgress?.({ percent: 100, stage: tr('اكتمل الإرسال', 'Sending completed'), completed: targetOps.length, total: targetOps.length });
+
+    return {
+      ok: allSucceeded,
+      serverReachable: true,
+      sentCount: syncedResults.length,
+      deduplicatedCount,
+      failedCount,
+      conflictCount,
+      sentAt: latestRes?.sentAt || latestRes?.syncState?.lastSendAt || null,
+      summary: latestRes?.summary || {},
+      syncState: latestRes?.syncState || null,
+      error: !allSucceeded
+        ? tr('فشل إرسال بعض العمليات وبقيت محفوظة في الطابور لإعادة المحاولة.', 'Some operations failed to send and remain queued for retry.')
+        : undefined,
+    };
+  } catch (err: any) {
+    if (isAuthRevokedError(err)) {
+      return {
+        ok: false,
+        serverReachable: true,
+        authRevoked: true,
+        revokeReason: err?.message,
+        sentCount: 0,
+        deduplicatedCount: 0,
+        failedCount: targetOps.length,
+        conflictCount: 0,
+        sentAt: null,
+        summary: {},
+        syncState: null,
+        error: err?.message,
+      };
+    }
+    const errMsg = err?.message
+      ? tr(err.message)
+      : tr('تعذر الاتصال بالنظام المركزي — بقيت العمليات محفوظة للإرسال لاحقاً', 'Unable to connect — operations preserved locally for retry');
+    return {
+      ok: false,
+      serverReachable: !isUnreachableError(err),
+      sentCount: 0,
+      deduplicatedCount: 0,
+      failedCount: targetOps.length,
+      conflictCount: 0,
+      sentAt: null,
+      summary: {},
+      syncState: null,
+      error: errMsg,
+    };
+  }
+}
+
+export async function executeManualReceiveConfirm(params: {
+  userId: string;
+  idempotencyKey?: string;
+  confirmCustodyIds?: string[];
+  confirmCashTransferIds?: string[];
+  confirmBatchIds?: string[];
+  onProgress?: (progress: SyncProgressUpdate) => void;
+}): Promise<{
+  ok: boolean;
+  serverReachable: boolean;
+  authRevoked?: boolean;
+  revokeReason?: string;
+  response: ReceiveConfirmResponse | null;
+  error?: string;
+}> {
+  const { userId, onProgress, ...body } = params;
+  onProgress?.({ percent: 25, stage: tr('جاري تأكيد الاستلام وتحديث البيانات...', 'Confirming receipt and updating data...') });
+  try {
+    const res = await confirmManualReceiveApi(body);
+    if (res.syncState) {
+      await saveStoredUserSyncState(userId, res.syncState);
+    }
+    if (res.allSucceeded) {
+      await recordSyncRefreshSummary('last_receive_summary', userId, {
+        at: res.receivedAt || res.syncState?.lastReceiveAt || new Date().toISOString(),
+        count: res.receivedCount,
+        ok: true,
+      });
+    }
+    onProgress?.({ percent: 100, stage: tr('تم تأكيد الاستلام', 'Receipt confirmed') });
+    return {
+      ok: res.allSucceeded,
+      serverReachable: true,
+      response: res,
+      error: res.allSucceeded
+        ? undefined
+        : (res.errors || []).map((e) => e.error).join(' · ') || tr('تعذر تأكيد استلام بعض العناصر', 'Could not confirm some items'),
+    };
+  } catch (err: any) {
+    if (isAuthRevokedError(err)) {
+      return {
+        ok: false,
+        serverReachable: true,
+        authRevoked: true,
+        revokeReason: err?.message,
+        response: null,
+        error: err?.message,
+      };
+    }
+    return {
+      ok: false,
+      serverReachable: !isUnreachableError(err),
+      response: null,
+      error: err?.message ? tr(err.message) : tr('تعذر إتمام الاستلام حالياً', 'Could not complete receive right now'),
+    };
+  }
+}
+
+export { fetchReceivePreviewApi };
 
 export async function sendDispatchBatchToServer(params: {
   userId: string;

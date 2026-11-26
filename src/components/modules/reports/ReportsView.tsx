@@ -186,7 +186,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
   const [viewMode, setViewMode] = useState<'unified_grid' | 'item_lifecycle'>(
     initialTab === 'item_movement' ? 'item_lifecycle' : 'unified_grid'
   );
-  const [reportType, setReportType] = useState<ComprehensiveReportTypeKey>('all');
+  const [reportType, setReportType] = useState<ComprehensiveReportTypeKey>('sales_invoices');
   const [periodPreset, setPeriodPreset] = useState<'today' | 'this_month' | 'prev_month' | 'this_year' | 'prev_year' | 'all_time' | 'custom'>(
     initialTab === 'item_movement' ? 'all_time' : 'today'
   );
@@ -254,6 +254,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
     }
     if (initialTab === 'item_movement') {
       setViewMode('item_lifecycle');
+    } else {
+      setViewMode('unified_grid');
+      setReportType('sales_invoices');
     }
   }, [initialTab, initialProductId]);
 
@@ -487,7 +490,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
       textDebounceTimerRef.current = null;
     }
     setPage(1);
-    setReportType('all');
+    setReportType('sales_invoices');
     const t = todayYmd();
     setPeriodPreset('today');
     setDateFrom(t);
@@ -1169,7 +1172,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
             type="button"
             onClick={handleResetFilters}
             className="h-8 px-2 rounded-md bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-700 dark:hover:text-rose-300 hover:border-rose-300 text-slate-700 dark:text-[#DCE6F5] font-bold text-xs flex items-center justify-center gap-1 whitespace-nowrap shrink-0 transition-colors cursor-pointer"
-            title={t('عرض الكل / إعادة ضبط الفلاتر', 'Show All / Reset Filters')}
+            title={t('إعادة ضبط الفلاتر (الافتراضي: فواتير بيع)', 'Reset Filters (Default: Sales Invoices)')}
           >
             <RotateCcw className="w-3.5 h-3.5 shrink-0" />
             <span>{t('إعادة ضبط', 'Reset')}</span>

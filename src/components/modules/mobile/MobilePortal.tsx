@@ -270,6 +270,7 @@ export const MobilePortal: React.FC = () => {
     'purchase-returns-list',
     'custody',
     'suppliers',
+    'reps-accounts',
     'rep-reports',
   ];
 

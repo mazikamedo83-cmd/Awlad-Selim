@@ -1322,3 +1322,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_employees_user_id_unique ON employees(user
 ALTER TABLE users ADD CONSTRAINT fk_users_employee_id FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE SET NULL;
 ALTER TABLE employees ADD CONSTRAINT fk_employees_user_id FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL;
 
+-- 51. حالة الإرسال والاستلام لكل مستخدم (Per-User Manual Send & Receive Status Tracking)
+CREATE TABLE IF NOT EXISTS user_sync_states (
+  user_id VARCHAR(64) PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  last_send_at TIMESTAMPTZ,
+  last_send_status VARCHAR(32) DEFAULT 'never',
+  last_send_count INT NOT NULL DEFAULT 0,
+  last_send_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+  last_receive_at TIMESTAMPTZ,
+  last_receive_status VARCHAR(32) DEFAULT 'never',
+  last_receive_count INT NOT NULL DEFAULT 0,
+  last_receive_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

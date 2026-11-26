@@ -544,7 +544,7 @@ const MainAppContent: React.FC = () => {
         return <InventoryView initialTab="movements" />;
 
       case 'item-movement-report':
-        return <ReportsView initialTab="item_movement" initialProductId={reportProductId} />;
+        return <ReportsView key="item-movement-report" initialTab="item_movement" initialProductId={reportProductId} />;
 
       case 'abu-selim-import':
         return <SettingsView initialTab="abu-selim" />;
@@ -585,7 +585,7 @@ const MainAppContent: React.FC = () => {
         return <EmployeesView />;
 
       case 'reports':
-        return <ReportsView />;
+        return <ReportsView key="reports-default" />;
 
       case 'users':
         return <UsersManagementView initialTab="users" />;

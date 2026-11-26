@@ -1290,3 +1290,47 @@ export async function fetchDispatchBatchDetails(batchId: string): Promise<{
 }> {
   return apiRequest(`/api/sync/dispatches/${encodeURIComponent(batchId)}`);
 }
+
+export async function fetchUserSyncStateApi(): Promise<{
+  ok: boolean;
+  state: import('../types').ServerUserSyncState;
+  serverTime: string;
+}> {
+  return apiRequest('/api/sync/state');
+}
+
+export async function sendManualSyncApi(
+  operations: import('../types').SyncQueueItem[]
+): Promise<import('../types').ServerSendSyncResponse> {
+  return apiRequest('/api/sync/send', {
+    method: 'POST',
+    body: { operations },
+  });
+}
+
+export async function fetchReceivePreviewApi(): Promise<import('../types').ReceivePreviewResponse> {
+  return apiRequest('/api/sync/receive-preview');
+}
+
+export async function confirmManualReceiveApi(payload?: {
+  idempotencyKey?: string;
+  confirmCustodyIds?: string[];
+  confirmCashTransferIds?: string[];
+  confirmBatchIds?: string[];
+}): Promise<import('../types').ReceiveConfirmResponse> {
+  return apiRequest('/api/sync/receive-confirm', {
+    method: 'POST',
+    body: payload || {},
+    idempotencyKey: payload?.idempotencyKey,
+  });
+}
+
+export async function fetchRepresentativeStatementApi(
+  repId: string
+): Promise<{
+  ok: boolean;
+  statement: import('../types').RepresentativeAccountStatement;
+} & import('../types').RepresentativeAccountStatement> {
+  return apiRequest(`/api/mobile/representatives/${encodeURIComponent(repId)}/statement`);
+}
+

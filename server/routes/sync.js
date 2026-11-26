@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getPool, isPgConnectionError } from '../db/postgres.js';
+import { getPool, isPgConnectionError, withTransaction } from '../db/postgres.js';
 import { readJsonDatabase, withJsonTransaction } from '../db/jsonLedger.js';
 import {
   isPgMode,
@@ -776,11 +776,12 @@ router.get(
       });
     }
 
-    const [staffData, rawRepProfile] = await Promise.all([
+    const [staffData, rawRepProfile, syncState] = await Promise.all([
       getStaffBootstrapData(user),
       user.role === 'representative'
         ? Promise.resolve(req.auth.representativeProfile || getRepresentativeByUserId(user.id))
         : Promise.resolve(null),
+      getUserSyncState(user.id),
     ]);
     const safeRepProfile = rawRepProfile
       ? {
@@ -802,6 +803,7 @@ router.get(
       user: sanitizeUser(user),
       representativeProfile: safeRepProfile,
       mobileConfig: settings.mobileConfig,
+      syncState,
       ...staffData,
     });
   })
@@ -1075,4 +1077,592 @@ router.post(
   })
 );
 
+// ============================================================================
+// UNIFIED SEND & RECEIVE SYSTEM (الإرسال والاستلام الموحد لكل مستخدم)
+// ============================================================================
+
+const DEFAULT_USER_SYNC_STATE = {
+  lastSendAt: null,
+  lastSendStatus: 'never',
+  lastSendCount: 0,
+  lastSendSummary: {},
+  lastReceiveAt: null,
+  lastReceiveStatus: 'never',
+  lastReceiveCount: 0,
+  lastReceiveSummary: {},
+};
+
+let ensuredUserSyncTable = false;
+async function ensurePgUserSyncTable(pool) {
+  if (ensuredUserSyncTable) return;
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_sync_states (
+        user_id VARCHAR(64) PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        last_send_at TIMESTAMPTZ,
+        last_send_status VARCHAR(32) DEFAULT 'never',
+        last_send_count INT NOT NULL DEFAULT 0,
+        last_send_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+        last_receive_at TIMESTAMPTZ,
+        last_receive_status VARCHAR(32) DEFAULT 'never',
+        last_receive_count INT NOT NULL DEFAULT 0,
+        last_receive_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    ensuredUserSyncTable = true;
+  } catch {
+    // Table may already exist via schema.sql or user permissions
+  }
+}
+
+export async function getUserSyncState(userId) {
+  if (!userId) return { ...DEFAULT_USER_SYNC_STATE };
+  if (await isPgMode()) {
+    const pool = getPool();
+    await ensurePgUserSyncTable(pool);
+    const res = await pool.query('SELECT * FROM user_sync_states WHERE user_id = $1 LIMIT 1', [userId]);
+    const row = res.rows[0];
+    if (!row) return { ...DEFAULT_USER_SYNC_STATE };
+    return {
+      lastSendAt: row.last_send_at ? isoTimestamp(row.last_send_at) : null,
+      lastSendStatus: row.last_send_status || 'never',
+      lastSendCount: Number(row.last_send_count || 0),
+      lastSendSummary: row.last_send_summary || {},
+      lastReceiveAt: row.last_receive_at ? isoTimestamp(row.last_receive_at) : null,
+      lastReceiveStatus: row.last_receive_status || 'never',
+      lastReceiveCount: Number(row.last_receive_count || 0),
+      lastReceiveSummary: row.last_receive_summary || {},
+    };
+  }
+  const db = readJsonDatabase();
+  const s = (db.userSyncStates || {})[userId];
+  if (!s) return { ...DEFAULT_USER_SYNC_STATE };
+  return { ...DEFAULT_USER_SYNC_STATE, ...s };
+}
+
+async function updateUserSyncState(userId, patch) {
+  if (!userId) return { ...DEFAULT_USER_SYNC_STATE };
+  const now = nowIso();
+  if (await isPgMode()) {
+    const pool = getPool();
+    await ensurePgUserSyncTable(pool);
+    const prev = await getUserSyncState(userId);
+    const next = { ...prev, ...patch };
+    await pool.query(
+      `INSERT INTO user_sync_states (
+         user_id, last_send_at, last_send_status, last_send_count, last_send_summary,
+         last_receive_at, last_receive_status, last_receive_count, last_receive_summary, updated_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       ON CONFLICT (user_id) DO UPDATE SET
+         last_send_at = EXCLUDED.last_send_at,
+         last_send_status = EXCLUDED.last_send_status,
+         last_send_count = EXCLUDED.last_send_count,
+         last_send_summary = EXCLUDED.last_send_summary,
+         last_receive_at = EXCLUDED.last_receive_at,
+         last_receive_status = EXCLUDED.last_receive_status,
+         last_receive_count = EXCLUDED.last_receive_count,
+         last_receive_summary = EXCLUDED.last_receive_summary,
+         updated_at = EXCLUDED.updated_at`,
+      [
+        userId,
+        next.lastSendAt || null,
+        next.lastSendStatus || 'never',
+        Number(next.lastSendCount || 0),
+        JSON.stringify(next.lastSendSummary || {}),
+        next.lastReceiveAt || null,
+        next.lastReceiveStatus || 'never',
+        Number(next.lastReceiveCount || 0),
+        JSON.stringify(next.lastReceiveSummary || {}),
+        now,
+      ]
+    );
+    return next;
+  }
+  return withJsonTransaction((db) => {
+    db.userSyncStates = db.userSyncStates || {};
+    const prev = { ...DEFAULT_USER_SYNC_STATE, ...(db.userSyncStates[userId] || {}) };
+    const next = { ...prev, ...patch, updatedAt: now };
+    db.userSyncStates[userId] = next;
+    return next;
+  });
+}
+
+function summarizeSendOperations(operations, results) {
+  const byCategory = {
+    salesInvoices: 0,
+    purchaseInvoices: 0,
+    returns: 0,
+    collections: 0,
+    customers: 0,
+    orders: 0,
+    transfers: 0,
+    other: 0,
+  };
+  for (let i = 0; i < operations.length; i++) {
+    const op = operations[i];
+    const r = results[i];
+    if (!r || r.status !== 'synced') continue;
+    const t = String(op?.operationType || '');
+    if (t.includes('sales_invoice') || t === 'create_sales_quote') byCategory.salesInvoices++;
+    else if (t.includes('purchase_invoice')) byCategory.purchaseInvoices++;
+    else if (t.includes('return')) byCategory.returns++;
+    else if (t.includes('payment') || t.includes('advance') || t === 'execute_cash_operation') byCategory.collections++;
+    else if (t.includes('customer') && !t.includes('order')) byCategory.customers++;
+    else if (t.includes('order')) byCategory.orders++;
+    else if (t.includes('transfer') || t.includes('custody')) byCategory.transfers++;
+    else byCategory.other++;
+  }
+  return byCategory;
+}
+
+router.get(
+  '/state',
+  asyncHandler(async (req, res) => {
+    const user = req.auth.user;
+    const syncState = await getUserSyncState(user.id);
+    res.json({ ok: true, state: syncState, serverTime: nowIso() });
+  })
+);
+
+router.post(
+  '/send',
+  asyncHandler(async (req, res) => {
+    if (req.body?.operations !== undefined && !Array.isArray(req.body.operations)) {
+      throw new AppError(400, 'تنسيق عمليات الإرسال غير صالح', 'INVALID_SYNC_OPERATIONS');
+    }
+    const operations = Array.isArray(req.body?.operations) ? req.body.operations.slice(0, 200) : [];
+    const user = req.auth.user;
+    if (user.role === 'customer') {
+      throw new AppError(403, 'شاشة الإرسال والاستلام مخصصة للمناديب والإدارة والموظفين فقط', 'FORBIDDEN_STAFF_ONLY');
+    }
+
+    const sentAt = nowIso();
+    const results = [];
+    const localIdMap = new Map();
+
+    for (const rawOp of operations) {
+      if (!rawOp || typeof rawOp !== 'object' || Array.isArray(rawOp) || !rawOp.operationId || !rawOp.operationType) {
+        results.push({
+          operationId: rawOp?.operationId || 'unknown',
+          status: 'failed',
+          error: 'بيانات العملية غير مكتملة',
+        });
+        continue;
+      }
+      if (rawOp.payload !== undefined && (rawOp.payload === null || typeof rawOp.payload !== 'object' || Array.isArray(rawOp.payload))) {
+        results.push({
+          operationId: String(rawOp.operationId),
+          status: 'failed',
+          code: 'INVALID_SYNC_PAYLOAD',
+          error: 'بيانات العملية (payload) غير صالحة',
+        });
+        continue;
+      }
+
+      const op = resolveChainedLocalIdsInOp(rawOp, localIdMap);
+      const existing = await findSyncOpDeduplication(user.id, op.operationId);
+      if (existing && (existing.status === 'synced' || existing.status === 'deduplicated')) {
+        const existingResult = existing.response_json || existing.responseJson || {};
+        registerCreatedLocalIdMapping(op, existingResult, localIdMap);
+        results.push({
+          operationId: op.operationId,
+          status: 'synced',
+          deduplicated: true,
+        });
+        continue;
+      }
+
+      try {
+        const result = await applySingleOperation(op, req.auth);
+        registerCreatedLocalIdMapping(op, result, localIdMap);
+        await recordSyncOpLog({
+          operationId: op.operationId,
+          userId: user.id,
+          deviceId: op.deviceId || req.auth.deviceId,
+          operationType: op.operationType,
+          entityType: op.entityType || 'unknown',
+          entityId: op.entityId || result?.id || result?.order?.id || result?.invoice?.id,
+          status: 'synced',
+          responseJson: { ...(result || {}), sentAt },
+        });
+        results.push({
+          operationId: op.operationId,
+          status: 'synced',
+          result,
+        });
+      } catch (err) {
+        if (isStrictPostgresMode() && (isPgConnectionError(err) || err?.code === 'DATABASE_UNAVAILABLE')) {
+          markPgUnavailable('sync_send_connection_error');
+          throw createDatabaseUnavailableError('sync_send_connection_error');
+        }
+        if (isConflictError(err)) {
+          const conflict = await createConflictRecord({
+            op,
+            user,
+            conflictReason: err.message,
+            serverSnapshot: err.details?.serverSnapshot || {},
+          });
+          results.push({
+            operationId: op.operationId,
+            status: 'needs_review',
+            conflictId: conflict.id,
+            conflict,
+            error: err.message,
+          });
+        } else {
+          results.push({
+            operationId: op.operationId,
+            status: 'failed',
+            code: err?.code || 'SYNC_OP_FAILED',
+            error: err?.message || 'تعذر تنفيذ العملية على السيرفر',
+          });
+        }
+      }
+    }
+
+    const syncedResults = results.filter((r) => r.status === 'synced');
+    const failedCount = results.filter((r) => r.status === 'failed').length;
+    const conflictCount = results.filter((r) => r.status === 'needs_review').length;
+    const deduplicatedCount = syncedResults.filter((r) => r.deduplicated).length;
+    const sentCount = syncedResults.length;
+    const allSucceeded = failedCount === 0 && conflictCount === 0;
+    const summary = summarizeSendOperations(operations, results);
+
+    let syncState = await getUserSyncState(user.id);
+    if (operations.length > 0 && allSucceeded && sentCount > 0) {
+      syncState = await updateUserSyncState(user.id, {
+        lastSendAt: sentAt,
+        lastSendStatus: 'success',
+        lastSendCount: sentCount,
+        lastSendSummary: summary,
+      });
+      await recordAuditLog({
+        userId: user.id,
+        userName: user.fullName || user.username,
+        action: `إرسال يدوي ناجح (${sentCount} عملية، مكرر: ${deduplicatedCount}) عبر شاشة الإرسال والاستلام`,
+        module: 'الإرسال والاستلام',
+        notes: JSON.stringify(summary),
+      });
+    }
+
+    res.json({
+      ok: true,
+      allSucceeded,
+      sentAt: allSucceeded && sentCount > 0 ? sentAt : null,
+      sentCount,
+      deduplicatedCount,
+      failedCount,
+      conflictCount,
+      summary,
+      results,
+      syncState,
+      serverTime: nowIso(),
+    });
+  })
+);
+
+async function computeReceivePreviewData(auth) {
+  const user = auth.user;
+  const isRep = user.role === 'representative';
+  const repProfile = isRep ? (auth.representativeProfile || (await getRepresentativeByUserId(user.id))) : null;
+  const syncState = await getUserSyncState(user.id);
+  const lastReceiveAt = syncState.lastReceiveAt || null;
+
+  let staffData = null;
+  staffData = await getStaffBootstrapData(user);
+
+  const incomingCustodyDispatches = [];
+  const incomingCashTransfers = [];
+  const incomingBatches = [];
+  const updatedDocuments = [];
+
+  if (isRep && repProfile) {
+    for (const rit of staffData.repItemTransfers || []) {
+      if (rit.representativeId === repProfile.id && rit.status === 'executed') {
+        incomingCustodyDispatches.push({
+          id: rit.id,
+          requestNumber: rit.requestNumber,
+          date: rit.date,
+          sourceWarehouseName: rit.sourceWarehouseName,
+          targetWarehouseName: rit.targetWarehouseName,
+          itemsCount: (rit.items || []).length,
+          totalQty: (rit.items || []).reduce((s, it) => s + Number(it.executedQty ?? it.approvedQty ?? it.requestedQty ?? 0), 0),
+          notes: rit.notes || '',
+          createdAt: rit.createdAt,
+        });
+      }
+    }
+    for (const rt of staffData.repTransfers || []) {
+      if (
+        rt.status === 'awaiting_receipt' &&
+        ((rt.direction === 'owner_to_rep' && (rt.receiverId === repProfile.id || rt.representativeId === repProfile.id)) ||
+          (rt.direction === 'rep_to_rep' && rt.receiverId === repProfile.id))
+      ) {
+        incomingCashTransfers.push({
+          id: rt.id,
+          transferNumber: rt.transferNumber,
+          date: rt.date,
+          direction: rt.direction,
+          senderName: rt.senderName,
+          amount: Number(rt.amount || 0),
+          notes: rt.notes || '',
+          sentAt: rt.sentAt,
+        });
+      }
+    }
+  } else {
+    for (const rt of staffData.repTransfers || []) {
+      if (rt.status === 'awaiting_receipt' && rt.direction === 'rep_to_owner') {
+        incomingCashTransfers.push({
+          id: rt.id,
+          transferNumber: rt.transferNumber,
+          date: rt.date,
+          direction: rt.direction,
+          senderName: rt.senderName,
+          amount: Number(rt.amount || 0),
+          notes: rt.notes || '',
+          sentAt: rt.sentAt,
+        });
+      }
+    }
+  }
+
+  const allBatches = await listDispatchBatches(user, {});
+  for (const b of allBatches || []) {
+    if (
+      (b.receiptStatus === 'في انتظار الاستلام' || b.receiptStatus === 'قيد الاستلام') &&
+      (b.recipientUserId === user.id || (!isRep && user.role === 'admin' && b.senderUserId !== user.id))
+    ) {
+      incomingBatches.push({
+        id: b.id,
+        batchNumber: b.batchNumber,
+        senderName: b.senderName,
+        representativeName: b.representativeName || '',
+        salesCount: Number(b.salesCount || 0),
+        collectionsCount: Number(b.collectionsCount || 0),
+        returnsCount: Number(b.returnsCount || 0),
+        totalAmount: Number(b.totalSalesAmount || 0) + Number(b.totalCashAmount || 0),
+        sentAt: b.sentAt,
+        receiptStatus: b.receiptStatus,
+      });
+    }
+  }
+
+  // Informational updated/approved records created after lastReceiveAt (or pending review)
+  if (lastReceiveAt) {
+    const cutoff = new Date(lastReceiveAt).getTime();
+    if (Number.isFinite(cutoff)) {
+      for (const sr of staffData.salesReturnRequests || []) {
+        const ts = new Date(sr.reviewedAt || sr.createdAt || 0).getTime();
+        if (ts > cutoff && sr.status !== 'pending') {
+          updatedDocuments.push({ kind: 'sales_return_request', id: sr.id, number: sr.requestNumber, status: sr.status, date: sr.date });
+        }
+      }
+      for (const pr of staffData.purchaseReturnRequests || []) {
+        const ts = new Date(pr.reviewedAt || pr.createdAt || 0).getTime();
+        if (ts > cutoff && pr.status !== 'pending') {
+          updatedDocuments.push({ kind: 'purchase_return_request', id: pr.id, number: pr.requestNumber, status: pr.status, date: pr.date });
+        }
+      }
+      for (const inv of staffData.invoices || []) {
+        if (inv.type === 'purchase' && inv.createdByUserId === user.id && inv.status !== 'draft') {
+          const ts = new Date(inv.receivedAt || inv.confirmedAt || inv.updatedAt || inv.createdAt || 0).getTime();
+          if (ts > cutoff) {
+            updatedDocuments.push({ kind: 'purchase_approval', id: inv.id, number: inv.invoiceNumber, status: inv.status, date: inv.date });
+          }
+        }
+      }
+    }
+  }
+
+  const actionableCount = incomingCustodyDispatches.length + incomingCashTransfers.length + incomingBatches.length;
+  const totalItemsCount = actionableCount + updatedDocuments.length;
+
+  return {
+    syncState,
+    hasUpdates: totalItemsCount > 0,
+    hasActionableItems: actionableCount > 0,
+    totalItemsCount,
+    actionableCount,
+    summary: {
+      custodyDispatchesCount: incomingCustodyDispatches.length,
+      cashTransfersCount: incomingCashTransfers.length,
+      dispatchBatchesCount: incomingBatches.length,
+      updatedDocumentsCount: updatedDocuments.length,
+    },
+    items: {
+      custodyDispatches: incomingCustodyDispatches,
+      cashTransfers: incomingCashTransfers,
+      dispatchBatches: incomingBatches,
+      updatedDocuments,
+    },
+  };
+}
+
+router.get(
+  '/receive-preview',
+  asyncHandler(async (req, res) => {
+    const user = req.auth.user;
+    if (user.role === 'customer') {
+      throw new AppError(403, 'شاشة الإرسال والاستلام مخصصة للمناديب والإدارة والموظفين فقط', 'FORBIDDEN_STAFF_ONLY');
+    }
+    const preview = await computeReceivePreviewData(req.auth);
+    res.json({
+      ok: true,
+      ...preview,
+      serverTime: nowIso(),
+    });
+  })
+);
+
+router.post(
+  '/receive-confirm',
+  asyncHandler(async (req, res) => {
+    const user = req.auth.user;
+    if (user.role === 'customer') {
+      throw new AppError(403, 'شاشة الإرسال والاستلام مخصصة للمناديب والإدارة والموظفين فقط', 'FORBIDDEN_STAFF_ONLY');
+    }
+
+    const baseIdemKey = String(req.body?.idempotencyKey || req.headers['x-idempotency-key'] || generateServerId('RCV')).trim();
+    const previewBefore = await computeReceivePreviewData(req.auth);
+
+    const requestedCustodyIds = Array.isArray(req.body?.confirmCustodyIds)
+      ? req.body.confirmCustodyIds.map(String)
+      : previewBefore.items.custodyDispatches.map((c) => c.id);
+    const requestedCashTransferIds = Array.isArray(req.body?.confirmCashTransferIds)
+      ? req.body.confirmCashTransferIds.map(String)
+      : previewBefore.items.cashTransfers.map((c) => c.id);
+    const requestedBatchIds = Array.isArray(req.body?.confirmBatchIds)
+      ? req.body.confirmBatchIds.map(String)
+      : previewBefore.items.dispatchBatches.map((b) => b.id);
+
+    const receivedAt = nowIso();
+    let confirmedCustodyCount = 0;
+    let confirmedCashTransfersCount = 0;
+    let confirmedBatchesCount = 0;
+    const errors = [];
+
+    for (const custodyId of requestedCustodyIds) {
+      if (!previewBefore.items.custodyDispatches.some((c) => c.id === custodyId)) continue;
+      try {
+        await updateRepItemTransferStatus(
+          custodyId,
+          { status: 'received', notes: 'تم تأكيد استلام العهدة عبر شاشة الإرسال والاستلام' },
+          user,
+          `${baseIdemKey}:custody:${custodyId}`
+        );
+        confirmedCustodyCount++;
+      } catch (err) {
+        if (err?.code === 'ALREADY_RECEIVED' || err?.status === 409) {
+          // Already received earlier, safe idempotent skip
+        } else {
+          errors.push({ type: 'custody', id: custodyId, error: err?.message || 'فشل تأكيد استلام العهدة' });
+        }
+      }
+    }
+
+    for (const transferId of requestedCashTransferIds) {
+      if (!previewBefore.items.cashTransfers.some((c) => c.id === transferId)) continue;
+      try {
+        await confirmRepTransfer(
+          transferId,
+          { note: 'تم تأكيد استلام التحويل النقدي عبر شاشة الإرسال والاستلام' },
+          user,
+          `${baseIdemKey}:cash:${transferId}`
+        );
+        confirmedCashTransfersCount++;
+      } catch (err) {
+        if (err?.code === 'ALREADY_RECEIVED') {
+          // Safe idempotent skip
+        } else {
+          errors.push({ type: 'cash_transfer', id: transferId, error: err?.message || 'فشل تأكيد استلام التحويل' });
+        }
+      }
+    }
+
+    for (const batchId of requestedBatchIds) {
+      if (!previewBefore.items.dispatchBatches.some((b) => b.id === batchId)) continue;
+      try {
+        await confirmDispatchBatchReceipt(
+          batchId,
+          { notes: 'تم تأكيد الاستلام عبر شاشة الإرسال والاستلام', idempotencyKey: `${baseIdemKey}:batch:${batchId}` },
+          req.auth
+        );
+        confirmedBatchesCount++;
+      } catch (err) {
+        errors.push({ type: 'dispatch_batch', id: batchId, error: err?.message || 'فشل تأكيد استلام الدفعة' });
+      }
+    }
+
+    const totalConfirmed =
+      confirmedCustodyCount +
+      confirmedCashTransfersCount +
+      confirmedBatchesCount +
+      previewBefore.items.updatedDocuments.length;
+
+    const allSucceeded = errors.length === 0;
+    const summary = {
+      custodyDispatchesCount: confirmedCustodyCount,
+      cashTransfersCount: confirmedCashTransfersCount,
+      dispatchBatchesCount: confirmedBatchesCount,
+      updatedDocumentsCount: previewBefore.items.updatedDocuments.length,
+    };
+
+    let syncState = await getUserSyncState(user.id);
+    if (allSucceeded) {
+      syncState = await updateUserSyncState(user.id, {
+        lastReceiveAt: receivedAt,
+        lastReceiveStatus: 'success',
+        lastReceiveCount: totalConfirmed,
+        lastReceiveSummary: summary,
+      });
+      await recordAuditLog({
+        userId: user.id,
+        userName: user.fullName || user.username,
+        action: `استلام يدوي مؤكد (${totalConfirmed} عنصر) عبر شاشة الإرسال والاستلام`,
+        module: 'الإرسال والاستلام',
+        notes: JSON.stringify(summary),
+      });
+    }
+
+    const freshBootstrap = await getStaffBootstrapData(user);
+    const rawRepProfile =
+      user.role === 'representative'
+        ? (req.auth.representativeProfile || (await getRepresentativeByUserId(user.id)))
+        : null;
+    const safeRepProfile = rawRepProfile
+      ? {
+          id: rawRepProfile.id,
+          userId: rawRepProfile.userId || undefined,
+          name: rawRepProfile.name,
+          phone: rawRepProfile.phone || '',
+          vehicleNumber: rawRepProfile.vehicleNumber || '',
+          warehouseId: rawRepProfile.warehouseId || undefined,
+          currentBalance: Number(rawRepProfile.currentBalance || 0),
+          status: rawRepProfile.status || 'active',
+        }
+      : null;
+
+    res.json({
+      ok: allSucceeded,
+      allSucceeded,
+      receivedAt: allSucceeded ? receivedAt : null,
+      receivedCount: totalConfirmed,
+      summary,
+      errors,
+      syncState,
+      bootstrap: {
+        scope: user.role === 'representative' ? 'representative' : 'staff',
+        serverTime: nowIso(),
+        user: sanitizeUser(user),
+        representativeProfile: safeRepProfile,
+        syncState,
+        ...freshBootstrap,
+      },
+    });
+  })
+);
+
 export default router;
+

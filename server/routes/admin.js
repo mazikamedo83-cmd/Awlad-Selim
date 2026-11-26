@@ -22,6 +22,7 @@ import {
   payInstallment,
   addRepresentative,
   updateRepresentative,
+  getRepresentativeAccountStatement,
   addEmployee,
   updateEmployee,
   updateSystemSettings,
@@ -497,6 +498,10 @@ router.post('/representatives', blockRepAndCustomer, requirePermission('canManag
 router.put('/representatives/:id', blockRepAndCustomer, requirePermission('canManageReps'), asyncHandler(async (req, res) => {
   await updateRepresentative(req.params.id, req.body || {}, req.auth.user);
   res.json({ ok: true });
+}));
+router.get('/representatives/:id/statement', asyncHandler(async (req, res) => {
+  const data = await getRepresentativeAccountStatement(req.params.id, req.auth.user);
+  res.json({ ok: true, statement: data, ...data });
 }));
 
 // Employees

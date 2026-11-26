@@ -862,6 +862,30 @@ export interface PrinterSettingItem {
   isActive?: boolean;
 }
 
+export type RepPhonePrintPlacement = 'header' | 'party_box' | 'footer';
+
+export interface RepPhonePrintConfig {
+  showInPrint: boolean;
+  defaultPhone?: string;
+  label?: string;
+  placement: RepPhonePrintPlacement;
+}
+
+export type CustomPrintFieldType = 'text' | 'number' | 'phone' | 'date';
+export type CustomPrintFieldPlacement = 'header' | 'company_info' | 'party_info' | 'footer';
+export type CustomPrintDocType = 'all' | 'sales' | 'purchase' | 'quote' | 'return' | 'statement' | 'custody';
+
+export interface CustomPrintField {
+  id: string;
+  label: string;
+  value: string;
+  type: CustomPrintFieldType;
+  placement: CustomPrintFieldPlacement;
+  docTypes: CustomPrintDocType[];
+  visible: boolean;
+  order: number;
+}
+
 export interface ExtraSettingsConfig {
   branches?: BranchSettingItem[];
   unitsCatalog?: UnitCatalogItem[];
@@ -880,6 +904,8 @@ export interface ExtraSettingsConfig {
     showRemainingBalance: boolean;
     showSignatureBoxes: boolean;
     footerText: string;
+    repPhoneConfig?: RepPhonePrintConfig;
+    customPrintFields?: CustomPrintField[];
   };
   mobileConfig?: {
     enableCustomerApp: boolean;
@@ -2494,6 +2520,150 @@ export interface RepDetailedReportResponse {
     remainingAfter?: number;
     createdBy?: string;
     notes?: string;
+  }>;
+}
+
+export interface ServerUserSyncState {
+  userId?: string;
+  lastSendAt: string | null;
+  lastSendStatus: 'never' | 'success' | 'failed';
+  lastSendCount: number;
+  lastSendSummary?: Record<string, number>;
+  lastReceiveAt: string | null;
+  lastReceiveStatus: 'never' | 'success' | 'failed';
+  lastReceiveCount: number;
+  lastReceiveSummary?: Record<string, number>;
+  updatedAt?: string;
+}
+
+export interface ServerSendSyncResponse {
+  ok: boolean;
+  allSucceeded: boolean;
+  sentAt: string | null;
+  sentCount: number;
+  deduplicatedCount: number;
+  failedCount: number;
+  conflictCount: number;
+  summary: Record<string, number>;
+  results: Array<{
+    operationId: string;
+    status: 'synced' | 'failed' | 'needs_review';
+    deduplicated?: boolean;
+    code?: string;
+    error?: string;
+    conflictId?: string;
+    conflict?: SyncConflictRecord;
+    result?: any;
+  }>;
+  syncState: ServerUserSyncState;
+  serverTime: string;
+}
+
+export interface ReceivePreviewResponse {
+  ok: boolean;
+  syncState: ServerUserSyncState;
+  hasUpdates: boolean;
+  hasActionableItems: boolean;
+  totalItemsCount: number;
+  actionableCount: number;
+  summary: {
+    custodyDispatchesCount: number;
+    cashTransfersCount: number;
+    dispatchBatchesCount: number;
+    updatedDocumentsCount: number;
+  };
+  items: {
+    custodyDispatches: Array<{
+      id: string;
+      requestNumber: string;
+      date: string;
+      sourceWarehouseName: string;
+      targetWarehouseName: string;
+      itemsCount: number;
+      totalQty: number;
+      notes?: string;
+      createdAt: string;
+    }>;
+    cashTransfers: Array<{
+      id: string;
+      transferNumber: string;
+      date: string;
+      direction: string;
+      senderName: string;
+      amount: number;
+      notes?: string;
+      sentAt: string;
+    }>;
+    dispatchBatches: Array<{
+      id: string;
+      batchNumber: string;
+      senderName: string;
+      representativeName?: string;
+      salesCount: number;
+      collectionsCount: number;
+      returnsCount: number;
+      totalAmount: number;
+      sentAt?: string;
+      receiptStatus: string;
+    }>;
+    updatedDocuments: Array<{
+      kind: string;
+      id: string;
+      number: string;
+      status: string;
+      date: string;
+    }>;
+  };
+  serverTime: string;
+}
+
+export interface ReceiveConfirmResponse {
+  ok: boolean;
+  allSucceeded: boolean;
+  receivedAt: string | null;
+  receivedCount: number;
+  summary: {
+    custodyDispatchesCount: number;
+    cashTransfersCount: number;
+    dispatchBatchesCount: number;
+    updatedDocumentsCount: number;
+  };
+  errors: Array<{ type: string; id: string; error: string }>;
+  syncState: ServerUserSyncState;
+  bootstrap?: any;
+}
+
+export interface RepresentativeAccountStatement {
+  representative: Representative;
+  balanceSummary: {
+    openingBalance: number;
+    currentBalance: number;
+    owedByRep: number;
+    owedToRep: number;
+    direction: 'debt' | 'credit' | 'settled';
+    statusLabel: 'عليه' | 'له' | 'متعادل';
+    issuedToRepTotal: number;
+    receivedToCompanyTotal: number;
+    pendingTransfersCount: number;
+  };
+  movements: Array<{
+    id: string;
+    transferNumber: string;
+    date: string;
+    timestamp: string;
+    direction: string;
+    senderId: string;
+    senderName: string;
+    receiverId: string;
+    receiverName: string;
+    amount: number;
+    cashboxId?: string;
+    cashboxName?: string;
+    notes?: string;
+    status: string;
+    sentAt?: string;
+    confirmedAt?: string;
+    confirmedBy?: string;
   }>;
 }
 

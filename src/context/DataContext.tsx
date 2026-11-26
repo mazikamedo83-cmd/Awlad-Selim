@@ -4,6 +4,7 @@ import {
   getEmptyClientDatabaseState,
   generateId,
 } from '../services/storage';
+import { setActivePrintTemplateConfig } from '../components/common/PdfExporter';
 import {
   apiRequest,
   getConfiguredApiBaseUrl,
@@ -24,6 +25,7 @@ import {
   saveStorefrontDraftApi,
   publishStorefrontApi,
   toggleCustomerFavoriteApi,
+  fetchRepresentativeStatementApi,
 } from '../services/api';
 import {
   DEFAULT_STOREFRONT_CONFIG,
@@ -35,10 +37,16 @@ import { getOrCreatePersistentDeviceId, notifyLocal, subscribeAppForeground, sub
 import { localDb } from '../services/localDb';
 import { normalizeServerOrigin, refreshCachedUserAuthorization } from '../services/offlineAuth';
 import {
+  EMPTY_USER_SYNC_STATE,
   enqueueSyncOperation,
+  executeManualReceiveConfirm,
+  executeManualSendSync,
+  fetchReceivePreviewApi,
+  getStoredUserSyncState,
   getSyncRefreshStats,
   normalizeMandatorySendIntervalMinutes,
   runSyncCycle,
+  saveStoredUserSyncState,
   sendDispatchBatchToServer,
   SyncProgressUpdate,
   SyncRefreshSummary,
@@ -101,6 +109,10 @@ import {
   StorefrontConfig,
   SyncDispatchBatch,
   DispatchRecipientOption,
+  ServerUserSyncState,
+  ReceivePreviewResponse,
+  ReceiveConfirmResponse,
+  RepresentativeAccountStatement,
 } from '../types';
 import { useAuth } from './AuthContext';
 
@@ -130,9 +142,11 @@ export interface DataContextType extends DatabaseState {
   refreshCustomerStatement: () => Promise<void>;
   getCustomerStatement: (customerId: string) => Promise<CustomerStatementResponse | null>;
   getSupplierStatement: (supplierId: string) => Promise<SupplierStatementResponse | null>;
+  getRepresentativeStatement: (repId: string) => Promise<RepresentativeAccountStatement | null>;
   getCustomerPriceHistory: (customerId: string, productId?: string) => Promise<Record<string, CustomerPriceHistoryEntry[]>>;
   triggerSync: (forceAll?: boolean) => Promise<void>;
   triggerManualSync: () => Promise<void>;
+  serverSyncState: ServerUserSyncState;
   lastSendSummary: SyncRefreshSummary | null;
   lastReceiveSummary: SyncRefreshSummary | null;
   sendProgressPercent: number;
@@ -147,6 +161,32 @@ export interface DataContextType extends DatabaseState {
   triggerMandatorySendNow: () => Promise<{ ok: boolean; count: number; failedCount: number; error?: string }>;
   syncSendOnly: (options?: { includeHeldBatches?: boolean }) => Promise<{ ok: boolean; count: number; failedCount: number; conflictCount: number; error?: string }>;
   syncReceiveOnly: () => Promise<{ ok: boolean; count: number; error?: string }>;
+  sendSyncOperations: (operationIds?: string[]) => Promise<{
+    ok: boolean;
+    sentCount: number;
+    deduplicatedCount: number;
+    failedCount: number;
+    conflictCount: number;
+    sentAt: string | null;
+    summary: Record<string, number>;
+    syncState: ServerUserSyncState | null;
+    error?: string;
+  }>;
+  previewReceiveUpdates: () => Promise<{
+    ok: boolean;
+    preview: ReceivePreviewResponse | null;
+    error?: string;
+  }>;
+  confirmReceiveUpdates: (options?: {
+    idempotencyKey?: string;
+    confirmCustodyIds?: string[];
+    confirmCashTransferIds?: string[];
+    confirmBatchIds?: string[];
+  }) => Promise<{
+    ok: boolean;
+    response: ReceiveConfirmResponse | null;
+    error?: string;
+  }>;
   syncDispatchBatches: SyncDispatchBatch[];
   dispatchRecipients: DispatchRecipientOption[];
   incomingDispatchCount: number;
@@ -1614,10 +1654,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [customerStatement, setCustomerStatement] = useState<CustomerStatementResponse | null>(null);
   const [mobileNotifications, setMobileNotifications] = useState<MobileNotificationItem[]>([]);
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>([]);
+  const [serverSyncState, setServerSyncState] = useState<ServerUserSyncState>(() => ({ ...EMPTY_USER_SYNC_STATE }));
   const [lastSendSummary, setLastSendSummary] = useState<SyncRefreshSummary | null>(null);
   const [lastReceiveSummary, setLastReceiveSummary] = useState<SyncRefreshSummary | null>(null);
   const [sendProgressPercent, setSendProgressPercent] = useState<number>(0);
   const [sendProgressStage, setSendProgressStage] = useState<string>('');
+
+  useEffect(() => {
+    const tpl = data.settings?.extraSettings?.invoiceTemplate;
+    setActivePrintTemplateConfig({
+      showLogo: tpl?.showLogo,
+      footerText: tpl?.footerText || data.settings?.invoiceNotes,
+      repPhoneConfig: tpl?.repPhoneConfig,
+      customPrintFields: tpl?.customPrintFields,
+    });
+  }, [data.settings]);
   const [receiveProgressPercent, setReceiveProgressPercent] = useState<number>(0);
   const [receiveProgressStage, setReceiveProgressStage] = useState<string>('');
   const [mandatorySendRemainingSeconds, setMandatorySendRemainingSeconds] = useState<number>(15 * 60);
@@ -1663,14 +1714,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!currentUser?.id) {
       setLastSendSummary(null);
       setLastReceiveSummary(null);
+      setServerSyncState({ ...EMPTY_USER_SYNC_STATE });
       return;
     }
-    const stats = await getSyncRefreshStats(currentUser.id).catch(() => ({
-      lastSendSummary: null,
-      lastReceiveSummary: null,
-    }));
+    const [stats, storedSyncState] = await Promise.all([
+      getSyncRefreshStats(currentUser.id).catch(() => ({
+        lastSendSummary: null,
+        lastReceiveSummary: null,
+      })),
+      getStoredUserSyncState(currentUser.id).catch(() => ({ ...EMPTY_USER_SYNC_STATE })),
+    ]);
     setLastSendSummary(stats.lastSendSummary);
     setLastReceiveSummary(stats.lastReceiveSummary);
+    setServerSyncState(storedSyncState);
   }, [currentUser?.id]);
 
   useEffect(() => {
@@ -1863,6 +1919,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       await localDb.saveDispatchBatches(activeUser.id, mergedBatches);
       setSyncDispatchBatches(mergedBatches);
+      if (pullData.syncState) {
+        const nextSyncState = { ...EMPTY_USER_SYNC_STATE, ...pullData.syncState };
+        setServerSyncState(nextSyncState);
+        await saveStoredUserSyncState(activeUser.id, nextSyncState).catch(() => {});
+      }
       setIsUsingOfflineCache(false);
       setLastCacheTimestamp(null);
       const nowServerTime = pullData.serverTime || new Date().toISOString();
@@ -1925,6 +1986,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSyncDispatchBatches([]);
         setDispatchRecipients([]);
         setMobileNotifications([]);
+        setServerSyncState({ ...EMPTY_USER_SYNC_STATE });
         setLastServerSyncAt(null);
         setIsUsingOfflineCache(false);
         setLastCacheTimestamp(null);
@@ -1946,16 +2008,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSyncConflicts([]);
         setSyncDispatchBatches([]);
         setDispatchRecipients([]);
+        setServerSyncState({ ...EMPTY_USER_SYNC_STATE });
         setLastServerSyncAt(null);
         setIsUsingOfflineCache(false);
         setLastCacheTimestamp(null);
 
-        const [snap, queue, conflicts, dispatchBatches, lastSyncMeta] = await Promise.all([
+        const [snap, queue, conflicts, dispatchBatches, lastSyncMeta, storedSyncState] = await Promise.all([
           localDb.getSnapshot(currentUser.id),
           localDb.listSyncQueue(currentUser.id),
           localDb.listConflicts(currentUser.id),
           localDb.listDispatchBatches(currentUser.id),
           localDb.getMeta<string>(`last_sync_at:${currentUser.id}`),
+          getStoredUserSyncState(currentUser.id),
         ]);
         if (cancelled) return;
 
@@ -1963,6 +2027,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSyncConflicts(conflicts);
         setSyncDispatchBatches(dispatchBatches);
         setLastServerSyncAt(lastSyncMeta || null);
+        setServerSyncState(storedSyncState);
 
         const expectedOrigin = normalizeServerOrigin(getConfiguredApiBaseUrl());
         const expectedInstallationId = getStoredInstallationId();
@@ -2013,7 +2078,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isSyncingRef.current = true;
     setIsSyncing(true);
     try {
-      const outcome = await runSyncCycle({ userId: currentUser.id, forceAll: false });
+      const outcome = await runSyncCycle({ userId: currentUser.id, forceAll: false, mode: 'receive_only', silent: true });
       await refreshQueueAndConflictsFromLocal(currentUser.id);
 
       if (outcome.authRevoked) {
@@ -2067,7 +2132,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsSyncing(true);
       try {
         await syncConnectionConfigFromServer({ triggerHeartbeat: true }).catch(() => {});
-        const outcome = await runSyncCycle({ userId: currentUser.id, forceAll });
+        const outcome = await runSyncCycle({ userId: currentUser.id, forceAll, mode: 'receive_only', silent: true });
         await refreshQueueAndConflictsFromLocal(currentUser.id);
 
         if (outcome.authRevoked) {
@@ -2211,6 +2276,237 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }, 600);
     }
   }, [isAuthenticated, currentUser, refreshQueueAndConflictsFromLocal, refreshSyncStatsFromLocal, handleServerAuthRevoked, applyServerPullPayload]);
+
+  const sendSyncOperations = useCallback(
+    async (operationIds?: string[]) => {
+      if (!isAuthenticated || !currentUser) {
+        return {
+          ok: false,
+          sentCount: 0,
+          deduplicatedCount: 0,
+          failedCount: 0,
+          conflictCount: 0,
+          sentAt: null,
+          summary: {},
+          syncState: null,
+          error: tr('المستخدم غير مسجل', 'User is not logged in'),
+        };
+      }
+      if (isSyncingRef.current) {
+        return {
+          ok: false,
+          sentCount: 0,
+          deduplicatedCount: 0,
+          failedCount: 0,
+          conflictCount: 0,
+          sentAt: null,
+          summary: {},
+          syncState: serverSyncState,
+          error: tr('توجد عملية مزامنة قيد التنفيذ حالياً', 'A sync operation is already in progress'),
+        };
+      }
+      setNetworkStatus('synchronizing');
+      isSyncingRef.current = true;
+      setIsSyncing(true);
+      setSendProgressPercent(10);
+      setSendProgressStage(tr('جاري تجهيز العمليات للإرسال...', 'Preparing operations to send...'));
+      try {
+        const res = await executeManualSendSync({
+          userId: currentUser.id,
+          operationIds,
+          onProgress: (p: SyncProgressUpdate) => {
+            setSendProgressPercent(p.percent);
+            setSendProgressStage(p.stage);
+          },
+        });
+        await refreshQueueAndConflictsFromLocal(currentUser.id);
+        await refreshSyncStatsFromLocal();
+        if (res.authRevoked) {
+          await handleServerAuthRevoked(res.revokeReason);
+          return {
+            ok: false,
+            sentCount: 0,
+            deduplicatedCount: 0,
+            failedCount: res.failedCount,
+            conflictCount: res.conflictCount,
+            sentAt: null,
+            summary: {},
+            syncState: null,
+            error: res.revokeReason,
+          };
+        }
+        setIsServerReachable(res.serverReachable);
+        if (res.syncState) {
+          setServerSyncState({ ...EMPTY_USER_SYNC_STATE, ...res.syncState });
+        }
+        setNetworkStatus(
+          !res.serverReachable ? 'disconnected' : res.ok ? (res.failedCount > 0 || res.conflictCount > 0 ? 'pending' : 'connected') : 'error'
+        );
+        if (res.error) setLastError(res.error);
+        else setLastError(null);
+
+        if (res.sentCount > 0) {
+          await loadRoleScopedData().catch(() => {});
+        }
+        if (res.ok && res.failedCount === 0) {
+          resetMandatoryCountdown(currentUser.id);
+          setIsMandatorySendPendingRetry(false);
+          try {
+            localStorage.removeItem(`awlad_selim_mandatory_retry_${currentUser.id}`);
+          } catch {
+            // ignore
+          }
+        }
+        return {
+          ok: res.ok,
+          sentCount: res.sentCount,
+          deduplicatedCount: res.deduplicatedCount,
+          failedCount: res.failedCount,
+          conflictCount: res.conflictCount,
+          sentAt: res.sentAt,
+          summary: res.summary,
+          syncState: res.syncState,
+          error: res.error,
+        };
+      } catch (err: any) {
+        return {
+          ok: false,
+          sentCount: 0,
+          deduplicatedCount: 0,
+          failedCount: 0,
+          conflictCount: 0,
+          sentAt: null,
+          summary: {},
+          syncState: serverSyncState,
+          error: err?.message ? tr(err.message) : tr('تعذر الإرسال حالياً', 'Send failed'),
+        };
+      } finally {
+        isSyncingRef.current = false;
+        setIsSyncing(false);
+        window.setTimeout(() => {
+          setSendProgressPercent(0);
+          setSendProgressStage('');
+        }, 600);
+      }
+    },
+    [
+      isAuthenticated,
+      currentUser,
+      serverSyncState,
+      refreshQueueAndConflictsFromLocal,
+      refreshSyncStatsFromLocal,
+      handleServerAuthRevoked,
+      loadRoleScopedData,
+      resetMandatoryCountdown,
+    ]
+  );
+
+  const previewReceiveUpdates = useCallback(async () => {
+    if (!isAuthenticated || !currentUser) {
+      return { ok: false, preview: null, error: tr('المستخدم غير مسجل', 'User is not logged in') };
+    }
+    setReceiveProgressPercent(25);
+    setReceiveProgressStage(tr('جاري التحقق من التحديثات الواردة...', 'Checking for incoming updates...'));
+    try {
+      const preview = await fetchReceivePreviewApi();
+      setIsServerReachable(true);
+      if (preview.syncState) {
+        setServerSyncState({ ...EMPTY_USER_SYNC_STATE, ...preview.syncState });
+        await saveStoredUserSyncState(currentUser.id, preview.syncState).catch(() => {});
+      }
+      setReceiveProgressPercent(100);
+      setReceiveProgressStage(tr('تم فحص التحديثات', 'Checked updates'));
+      return { ok: true, preview };
+    } catch (err: any) {
+      const networkDown = isNetworkFailure(err);
+      if (networkDown) setIsServerReachable(false);
+      return {
+        ok: false,
+        preview: null,
+        error: err?.message ? tr(err.message) : tr('تعذر جلب معاينة الاستلام', 'Failed to fetch receive preview'),
+      };
+    } finally {
+      window.setTimeout(() => {
+        setReceiveProgressPercent(0);
+        setReceiveProgressStage('');
+      }, 450);
+    }
+  }, [isAuthenticated, currentUser]);
+
+  const confirmReceiveUpdates = useCallback(
+    async (options?: {
+      idempotencyKey?: string;
+      confirmCustodyIds?: string[];
+      confirmCashTransferIds?: string[];
+      confirmBatchIds?: string[];
+    }) => {
+      if (!isAuthenticated || !currentUser) {
+        return { ok: false, response: null, error: tr('المستخدم غير مسجل', 'User is not logged in') };
+      }
+      if (isSyncingRef.current) {
+        return { ok: false, response: null, error: tr('توجد عملية مزامنة قيد التنفيذ حالياً', 'A sync operation is already in progress') };
+      }
+      setNetworkStatus('synchronizing');
+      isSyncingRef.current = true;
+      setIsSyncing(true);
+      setReceiveProgressPercent(15);
+      setReceiveProgressStage(tr('جاري تأكيد الاستلام...', 'Confirming receipt...'));
+      try {
+        const res = await executeManualReceiveConfirm({
+          userId: currentUser.id,
+          idempotencyKey: options?.idempotencyKey,
+          confirmCustodyIds: options?.confirmCustodyIds,
+          confirmCashTransferIds: options?.confirmCashTransferIds,
+          confirmBatchIds: options?.confirmBatchIds,
+          onProgress: (p: SyncProgressUpdate) => {
+            setReceiveProgressPercent(p.percent);
+            setReceiveProgressStage(p.stage);
+          },
+        });
+        if (res.authRevoked) {
+          await handleServerAuthRevoked(res.revokeReason);
+          return { ok: false, response: null, error: res.revokeReason };
+        }
+        setIsServerReachable(res.serverReachable);
+        if (res.response?.syncState) {
+          setServerSyncState({ ...EMPTY_USER_SYNC_STATE, ...res.response.syncState });
+        }
+        if (res.response?.bootstrap) {
+          await applyServerPullPayload(res.response.bootstrap, currentUser);
+        } else if (res.ok) {
+          await loadRoleScopedData().catch(() => {});
+        }
+        await refreshQueueAndConflictsFromLocal(currentUser.id);
+        await refreshSyncStatsFromLocal();
+        setNetworkStatus(res.serverReachable ? (res.ok ? 'connected' : 'error') : 'disconnected');
+        if (res.error) setLastError(res.error);
+        else setLastError(null);
+        return { ok: res.ok, response: res.response, error: res.error };
+      } catch (err: any) {
+        return {
+          ok: false,
+          response: null,
+          error: err?.message ? tr(err.message) : tr('تعذر تأكيد الاستلام', 'Failed to confirm receive'),
+        };
+      } finally {
+        isSyncingRef.current = false;
+        setIsSyncing(false);
+        window.setTimeout(() => {
+          setReceiveProgressPercent(0);
+          setReceiveProgressStage('');
+        }, 600);
+      }
+    },
+    [
+      isAuthenticated,
+      currentUser,
+      applyServerPullPayload,
+      loadRoleScopedData,
+      refreshQueueAndConflictsFromLocal,
+      refreshSyncStatsFromLocal,
+      handleServerAuthRevoked,
+    ]
+  );
 
   useEffect(() => {
     loadRoleScopedData();
@@ -2542,11 +2838,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     });
 
-    // Periodic 20s auto-sync & notifications check when active & online
+    // Periodic 25s read-only check & notifications check when active & online
+    // Never silently pushes queued operations or mutates manual Send/Receive timestamps
     const syncTimer = window.setInterval(() => {
       if (navigator.onLine !== false) {
-        flushQueuedConfirmedBatches().catch(() => {});
-        runSyncCycle({ userId: currentUser.id, forceAll: false })
+        runSyncCycle({ userId: currentUser.id, forceAll: false, mode: 'receive_only', silent: true })
           .then(async (outcome) => {
             await refreshQueueAndConflictsFromLocal(currentUser.id);
             await refreshSyncStatsFromLocal();
@@ -2569,7 +2865,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           })
           .catch(() => {});
       }
-    }, 20000);
+    }, 25000);
 
     const notifTimer = window.setInterval(() => {
       if (navigator.onLine !== false) {
@@ -2832,6 +3128,87 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     },
     [data.customers, data.invoices, data.invoiceReturns, data.financialTransactions]
+  );
+
+  const getRepresentativeStatement = useCallback(
+    async (repId: string): Promise<RepresentativeAccountStatement | null> => {
+      if (!repId) return null;
+      try {
+        const res = await fetchRepresentativeStatementApi(repId);
+        if (res?.statement) return res.statement;
+      } catch {
+        // fallback cleanly to local offline computation below
+      }
+      const repItem = (data.representatives || []).find((r) => r.id === repId);
+      if (!repItem) return null;
+      const isRepViewer = currentUser?.role === 'representative';
+      const currentBalance = Number(repItem.currentBalance || 0);
+      const openingBalance = Number(repItem.openingBalance || 0);
+      const owedByRep = currentBalance > 0.009 ? Number(currentBalance.toFixed(2)) : 0;
+      const owedToRep = currentBalance < -0.009 ? Number(Math.abs(currentBalance).toFixed(2)) : 0;
+      const direction: 'debt' | 'credit' | 'settled' =
+        currentBalance > 0.009 ? 'debt' : currentBalance < -0.009 ? 'credit' : 'settled';
+      const statusLabel: 'عليه' | 'له' | 'متعادل' =
+        direction === 'debt' ? 'عليه' : direction === 'credit' ? 'له' : 'متعادل';
+
+      const movements = (data.repTransfers || [])
+        .filter((rt: any) => rt.representativeId === repId || rt.senderId === repId || rt.receiverId === repId)
+        .sort((a, b) => String(b.timestamp || b.date || '').localeCompare(String(a.timestamp || a.date || '')))
+        .map((rt) => ({
+          id: rt.id,
+          transferNumber: rt.transferNumber,
+          date: rt.date,
+          timestamp: rt.timestamp,
+          direction: rt.direction,
+          senderId: rt.senderId,
+          senderName: rt.senderName,
+          receiverId: rt.receiverId,
+          receiverName: rt.receiverName,
+          amount: Number(rt.amount || 0),
+          ...(isRepViewer ? {} : { cashboxId: rt.cashboxId || '', cashboxName: rt.cashboxName || '' }),
+          notes: rt.notes || '',
+          status: rt.status,
+          sentAt: rt.sentAt || rt.timestamp,
+          confirmedAt: rt.confirmedAt,
+          confirmedBy: rt.confirmedBy,
+        }));
+
+      const receivedToCompanyTotal = Number(
+        movements
+          .filter((m) => m.status === 'received' && m.senderId === repId)
+          .reduce((s, m) => s + Number(m.amount || 0), 0)
+          .toFixed(2)
+      );
+      const issuedToRepTotal = Number(
+        movements
+          .filter((m) => m.status === 'received' && m.receiverId === repId)
+          .reduce((s, m) => s + Number(m.amount || 0), 0)
+          .toFixed(2)
+      );
+
+      return {
+        representative: isRepViewer
+          ? {
+              ...repItem,
+              commissionRate: undefined,
+              notes: undefined,
+            }
+          : repItem,
+        balanceSummary: {
+          openingBalance,
+          currentBalance,
+          owedByRep,
+          owedToRep,
+          direction,
+          statusLabel,
+          issuedToRepTotal,
+          receivedToCompanyTotal,
+          pendingTransfersCount: movements.filter((m) => m.status === 'awaiting_receipt').length,
+        },
+        movements,
+      };
+    },
+    [data.representatives, data.repTransfers, currentUser?.role]
   );
 
   const getSupplierStatement = useCallback(
@@ -5980,9 +6357,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         refreshCustomerStatement,
         getCustomerStatement,
         getSupplierStatement,
+        getRepresentativeStatement,
         getCustomerPriceHistory,
         triggerSync,
         triggerManualSync,
+        serverSyncState,
         lastSendSummary,
         lastReceiveSummary,
         sendProgressPercent,
@@ -5997,6 +6376,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         triggerMandatorySendNow,
         syncSendOnly,
         syncReceiveOnly,
+        sendSyncOperations,
+        previewReceiveUpdates,
+        confirmReceiveUpdates,
         createAndSendDispatchBatch,
         retryDispatchBatch,
         confirmDispatchReceipt,

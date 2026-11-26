@@ -32,6 +32,8 @@ import {
   PurchaseReturnRequest,
   RepCustodyStatementResponse,
   RepDetailedReportResponse,
+  Representative,
+  RepresentativeAccountStatement,
   SalesReturnRequest,
   Supplier,
   SupplierStatementResponse,
@@ -192,6 +194,7 @@ export type RepTabKey =
   | 'purchase-returns-list'
   | 'custody'
   | 'suppliers'
+  | 'reps-accounts'
   | 'rep-reports';
 
 interface RepPortalProps {
@@ -731,6 +734,33 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [supplierStatement, setSupplierStatement] = useState<SupplierStatementResponse | null>(null);
   const [isLoadingSupplierStmt, setIsLoadingSupplierStmt] = useState(false);
   const [supStmtError, setSupStmtError] = useState<string | null>(null);
+
+  // Representative Directory & Account Statement State
+  const [repDirectorySearch, setRepDirectorySearch] = useState('');
+  const [repBalanceFilter, setRepBalanceFilter] = useState<'all' | 'owed_by' | 'owed_to' | 'balanced'>('all');
+  const [selectedRepAccount, setSelectedRepAccount] = useState<Representative | null>(null);
+  const [repStatementData, setRepStatementData] = useState<RepresentativeAccountStatement | null>(null);
+  const [isLoadingRepStatement, setIsLoadingRepStatement] = useState(false);
+  const [repStatementError, setRepStatementError] = useState<string | null>(null);
+
+  const openRepStatementModal = async (repItem: Representative) => {
+    setSelectedRepAccount(repItem);
+    setRepStatementData(null);
+    setRepStatementError(null);
+    setIsLoadingRepStatement(true);
+    try {
+      const statement = await data.getRepresentativeStatement(repItem.id);
+      if (statement) {
+        setRepStatementData(statement);
+      } else {
+        setRepStatementError(t('تعذر تحميل كشف حساب المندوب', 'Could not load representative statement'));
+      }
+    } catch (err: any) {
+      setRepStatementError(err?.message || t('تعذر تحميل كشف حساب المندوب', 'Could not load representative statement'));
+    } finally {
+      setIsLoadingRepStatement(false);
+    }
+  };
 
   const [payingPurchaseTarget, setPayingPurchaseTarget] = useState<Invoice | null>(null);
   const [purPayAmount, setPurPayAmount] = useState<number | ''>('');
@@ -4297,6 +4327,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               ? t('مخزون وعهدة السيارة', 'Van Stock & Custody')
               : activeTab === 'suppliers'
               ? t('الموردون', 'Suppliers')
+              : activeTab === 'reps-accounts'
+              ? t('حسابات المناديب', 'Representatives Accounts')
               : activeTab === 'rep-reports'
               ? t('تقارير المندوب', 'Rep Reports')
               : activeTab === 'refresh'
@@ -4469,6 +4501,20 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 <span className="block text-[11px] font-black text-blue-950 truncate">{t('تقارير المندوب', 'Rep Reports')}</span>
                 <span className="block text-[10px] text-slate-500 font-semibold truncate">
                   {t('المبيعات والتحصيلات', 'Sales & Collections')}
+                </span>
+              </div>
+            </button>
+            <button
+              type="button"
+              data-testid="rep-home-reps-accounts-btn"
+              onClick={() => onTabChange('reps-accounts')}
+              className="bg-white rounded-lg border border-slate-200 hover:border-blue-300 px-2 py-1.5 flex items-center gap-2 text-start cursor-pointer"
+            >
+              <Users className="w-7 h-7 text-[#003589] shrink-0" />
+              <div className="min-w-0">
+                <span className="block text-[11px] font-black text-slate-900 truncate">{t('حسابات المناديب', 'Reps Accounts')}</span>
+                <span className="block text-[10px] text-slate-500 font-semibold truncate">
+                  {formatLocaleNumber((data.representatives || []).length)} {t('مندوب · كشوف وأرصدة', 'reps · statements')}
                 </span>
               </div>
             </button>
@@ -4754,6 +4800,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               { key: 'sales-returns-list' as RepTabKey, label: t('مرتجع البيع', 'Sales Returns'), Icon: SalesReturnIcon, allowed: canSales },
               { key: 'invoices' as RepTabKey, label: t('فواتير البيع', 'Sales Invoices'), Icon: SalesInvoicesListIcon, allowed: canSales },
               { key: 'customers' as RepTabKey, label: t('الحسابات والعملاء', 'Customers & Accounts'), Icon: CustomersGroupIcon, allowed: canAccounts || canSales },
+              { key: 'reps-accounts' as RepTabKey, label: t('حسابات المناديب', 'Representatives Accounts'), Icon: Users, allowed: true },
               { key: 'custody' as RepTabKey, label: t('المخزن والعهدة', 'Warehouse & Custody'), Icon: WarehouseBoxesIcon, allowed: canInventory },
               { key: 'purchase-returns-list' as RepTabKey, label: isRepRoleAccount ? t('طلبات ومرتجعات الشراء', 'Purchase Returns & Requests') : t('مرتجع الشراء', 'Purchase Returns'), Icon: PurchaseReturnIcon, allowed: canCreatePurchase },
               { key: 'orders' as RepTabKey, label: t('الطلبات والتسليمات', 'Orders & Deliveries'), Icon: OrdersClipboardIcon, allowed: canSales },
@@ -10194,6 +10241,157 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         )
       )}
 
+      {/* ==================== ALL REPRESENTATIVES DIRECTORY & STATEMENTS ==================== */}
+      {activeTab === 'reps-accounts' && (() => {
+        const allReps = data.representatives || [];
+        const q = repDirectorySearch.trim().toLowerCase();
+        const filteredReps = allReps.filter((r) => {
+          const bal = Number(r.currentBalance || 0);
+          if (repBalanceFilter === 'owed_by' && bal <= 0.009) return false;
+          if (repBalanceFilter === 'owed_to' && bal >= -0.009) return false;
+          if (repBalanceFilter === 'balanced' && Math.abs(bal) > 0.009) return false;
+          if (!q) return true;
+          return (
+            String(r.name || '').toLowerCase().includes(q) ||
+            String(r.phone || '').toLowerCase().includes(q) ||
+            String(r.vehicleNumber || '').toLowerCase().includes(q) ||
+            String(r.id || '').toLowerCase().includes(q)
+          );
+        });
+
+        return (
+          <div className="space-y-2 text-xs" data-testid="rep-accounts-directory-view">
+            <div className="bg-white dark:bg-[#0E1C36] rounded-lg border border-slate-200 dark:border-[#21375C] p-2.5 space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Users className="w-5 h-5 text-[#003589] dark:text-[#85B8FF] shrink-0" />
+                  <div>
+                    <h3 className="text-xs sm:text-sm font-black text-slate-900 dark:text-[#F3F7FC]">
+                      {t('دليل وحسابات جميع المناديب', 'All Representatives Directory & Accounts')} ({formatLocaleNumber(allReps.length)})
+                    </h3>
+                    <p className="text-[10px] text-slate-500 dark:text-[#A9BCD9]">
+                      {t(
+                        'عرض أرصدة المناديب وكشوف تسوية العهد والتحويلات فقط (دون عرض فواتير المناديب الآخرين أو التكلفة أو الخزائن).',
+                        'Displays representative balances and settlement ledgers only (excludes peer invoices, costs, and cashboxes).'
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="awlad-filter-row" data-testid="rep-accounts-filter-row">
+                <div className="relative flex-1 min-w-[170px] shrink-0">
+                  <input
+                    type="text"
+                    value={repDirectorySearch}
+                    onChange={(e) => setRepDirectorySearch(e.target.value)}
+                    placeholder={t('ابحث باسم المندوب أو رقم الهاتف أو الكود...', 'Search representative by name, phone or code...')}
+                    className="w-full h-8 rounded-md border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#081326] ps-7 pe-2 text-xs font-semibold outline-hidden focus:border-[#003589]"
+                  />
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute start-2 top-2" />
+                </div>
+                <div className="flex flex-nowrap items-center gap-1 text-[11px] font-bold shrink-0">
+                  {[
+                    { id: 'all', label: t('الكل', 'All') },
+                    { id: 'owed_by', label: t('عليه', 'Owed By Rep') },
+                    { id: 'owed_to', label: t('له', 'Owed To Rep') },
+                    { id: 'balanced', label: t('متعادل', 'Balanced') },
+                  ].map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setRepBalanceFilter(tab.id as any)}
+                      className={`h-8 inline-flex items-center px-2.5 rounded-md border cursor-pointer shrink-0 ${
+                        repBalanceFilter === tab.id
+                          ? 'bg-[#003589] text-white border-[#003589] font-black'
+                          : 'bg-slate-50 dark:bg-[#132544] text-slate-700 dark:text-[#DCE6F5] border-slate-200 dark:border-[#21375C]'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <UnifiedDataTable<Representative>
+              compact
+              searchable={false}
+              defaultPageSize={25}
+              title={`${t('جدول حسابات المناديب', 'Representatives Accounts Table')} (${formatLocaleNumber(filteredReps.length)})`}
+              data={filteredReps}
+              rowKey={(r) => r.id}
+              emptyTitle={t('لا يوجد مناديب مطابقون للبحث', 'No representatives match your search')}
+              columns={[
+                {
+                  key: 'name',
+                  header: t('المندوب', 'Representative'),
+                  sortable: true,
+                  sortValue: (r) => r.name || '',
+                  render: (r) => (
+                    <div>
+                      <span className="font-black text-slate-900 dark:text-[#F3F7FC] block">{r.name}</span>
+                      <span className="text-[10px] text-slate-500 dark:text-[#A9BCD9] font-mono">
+                        {r.phone || '—'} {r.vehicleNumber ? `· ${r.vehicleNumber}` : ''}
+                      </span>
+                    </div>
+                  ),
+                },
+                {
+                  key: 'currentBalance',
+                  header: t('حالة الحساب والرصيد', 'Balance Status'),
+                  align: 'center',
+                  sortable: true,
+                  sortValue: (r) => Number(r.currentBalance || 0),
+                  render: (r) => {
+                    const bal = Number(r.currentBalance || 0);
+                    const statusLabel =
+                      bal > 0.009
+                        ? t('عليه', 'Owed By Rep')
+                        : bal < -0.009
+                        ? t('له', 'Owed To Rep')
+                        : t('متعادل', 'Balanced');
+                    return (
+                      <div className="whitespace-nowrap">
+                        <strong
+                          className={`font-mono font-black tabular-nums block ${
+                            bal > 0.009
+                              ? 'text-rose-700 dark:text-rose-400'
+                              : bal < -0.009
+                              ? 'text-emerald-700 dark:text-emerald-400'
+                              : 'text-slate-700 dark:text-[#A9BCD9]'
+                          }`}
+                        >
+                          {formatLocaleNumber(Math.abs(bal))} {t(data.settings.currency)}
+                        </strong>
+                        <span className="text-[10px] font-bold text-slate-500 dark:text-[#A9BCD9]">
+                          {statusLabel}
+                        </span>
+                      </div>
+                    );
+                  },
+                },
+                {
+                  key: 'actions',
+                  header: t('كشف الحساب', 'Statement'),
+                  align: 'center',
+                  sortable: false,
+                  render: (r) => (
+                    <button
+                      type="button"
+                      onClick={() => openRepStatementModal(r)}
+                      className="px-2.5 py-1 rounded-md bg-[#EEF3FA] dark:bg-[#172E56] hover:bg-[#DCE6F5] text-[#003589] dark:text-[#85B8FF] border border-[#DCE6F5] dark:border-[#2A436E] text-[11px] font-black cursor-pointer"
+                    >
+                      {t('كشف الحساب', 'Statement')}
+                    </button>
+                  ),
+                },
+              ]}
+            />
+          </div>
+        );
+      })()}
+
       {/* ==================== DEDICATED REP REPORTS (تقارير المندوب) ==================== */}
       {activeTab === 'rep-reports' && (
         <div className="space-y-2 text-xs">
@@ -12756,6 +12954,178 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         header: t('الرصيد', 'Balance'),
                         align: 'center',
                         render: (entry) => <strong className="font-mono text-[#011E58]">{formatLocaleNumber(Math.abs(Number(entry.runningBalance || 0)))}</strong>,
+                      },
+                    ]}
+                  />
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Representative Account Statement Modal (Strict Privacy Enforced) */}
+      {selectedRepAccount && (() => {
+        const stmt = repStatementData;
+        const summary = stmt?.balanceSummary;
+        const targetRepId = stmt?.representative?.id || selectedRepAccount.id;
+        const curBal = Number(summary?.currentBalance ?? selectedRepAccount.currentBalance ?? 0);
+        const statusLabel =
+          summary?.statusLabel ||
+          (curBal > 0.009 ? 'عليه' : curBal < -0.009 ? 'له' : 'متعادل');
+
+        const computedMovements = (() => {
+          const list = stmt?.movements || [];
+          let running = Number(summary?.openingBalance || 0);
+          return list.map((m) => {
+            const isRepReceiver =
+              m.direction === 'owner_to_rep' ||
+              (m.direction === 'rep_to_rep' && m.receiverId === targetRepId);
+            const debit = isRepReceiver ? Number(m.amount || 0) : 0;
+            const credit = !isRepReceiver ? Number(m.amount || 0) : 0;
+            if (m.status === 'received') {
+              running = running + debit - credit;
+            }
+            const directionLabel =
+              m.direction === 'owner_to_rep'
+                ? 'استلام عهدة من الإدارة'
+                : m.direction === 'rep_to_owner'
+                ? 'توريد نقدي للإدارة'
+                : isRepReceiver
+                ? 'تحويل وارد من زميل'
+                : 'تحويل صادر لزميل';
+            const counterpartyName = isRepReceiver ? m.senderName : m.receiverName;
+            return {
+              ...m,
+              directionLabel,
+              counterpartyName,
+              debit,
+              credit,
+              runningBalance: running,
+            };
+          });
+        })();
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs">
+            <div className="w-full max-w-2xl bg-white dark:bg-[#0E1C36] rounded-t-lg sm:rounded-lg p-3 border border-slate-200 dark:border-[#21375C] max-h-[88vh] overflow-y-auto space-y-2.5 text-xs pb-safe">
+              <div className="flex items-start justify-between gap-2 border-b border-slate-200 dark:border-[#21375C] pb-2">
+                <div>
+                  <h4 className="font-black text-sm text-[#011E58] dark:text-[#F3F7FC]">
+                    {t('كشف حساب المندوب', 'Representative Account Statement')} — {stmt?.representative?.name || selectedRepAccount.name}
+                  </h4>
+                  <p className="text-[11px] text-slate-500 dark:text-[#A9BCD9] font-mono">
+                    {stmt?.representative?.phone || selectedRepAccount.phone || '—'}
+                    {(stmt?.representative?.vehicleNumber || selectedRepAccount.vehicleNumber) ? ` · ${stmt?.representative?.vehicleNumber || selectedRepAccount.vehicleNumber}` : ''}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedRepAccount(null)}
+                  className="h-7 px-2.5 rounded-md text-[11px] bg-slate-100 dark:bg-[#132544] font-bold text-slate-700 dark:text-[#DCE6F5] cursor-pointer shrink-0"
+                >
+                  {t('إغلاق', 'Close')}
+                </button>
+              </div>
+
+              {isLoadingRepStatement ? (
+                <div className="p-4 text-center text-slate-500 font-bold">
+                  {t('جاري تحميل كشف حساب المندوب...', 'Loading representative statement...')}
+                </div>
+              ) : repStatementError ? (
+                <div className="p-2.5 rounded-md bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-200 font-bold">
+                  {repStatementError}
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 tabular-nums">
+                    <div className="p-2 rounded-lg bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800">
+                      <span className="text-[10px] text-rose-700 dark:text-rose-300 font-bold block">{t('عليه للشركة', 'Owed By Rep')}</span>
+                      <strong className="font-mono font-black text-sm text-rose-800 dark:text-rose-200">
+                        {formatLocaleNumber(Number(summary?.owedByRep ?? Math.max(0, curBal)))} {t(data.settings.currency)}
+                      </strong>
+                    </div>
+                    <div className="p-2 rounded-lg bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800">
+                      <span className="text-[10px] text-emerald-700 dark:text-emerald-300 font-bold block">{t('له (مستحق له)', 'Owed To Rep')}</span>
+                      <strong className="font-mono font-black text-sm text-emerald-800 dark:text-emerald-200">
+                        {formatLocaleNumber(Number(summary?.owedToRep ?? Math.max(0, -curBal)))} {t(data.settings.currency)}
+                      </strong>
+                    </div>
+                    <div className="p-2 rounded-lg bg-[#EEF3FA] dark:bg-[#132544] border border-[#DCE6F5] dark:border-[#21375C]">
+                      <span className="text-[10px] text-[#003589] dark:text-[#85B8FF] font-bold block">{t('الرصيد الحالي', 'Current Balance')}</span>
+                      <strong className="font-mono font-black text-sm text-[#011E58] dark:text-[#F3F7FC]">
+                        {formatLocaleNumber(Math.abs(curBal))} ({t(statusLabel)})
+                      </strong>
+                    </div>
+                    <div className="p-2 rounded-lg bg-slate-50 dark:bg-[#132544] border border-slate-200 dark:border-[#21375C]">
+                      <span className="text-[10px] text-slate-500 dark:text-[#A9BCD9] font-bold block">{t('المورد / المستلم', 'Remitted / Received')}</span>
+                      <div className="font-mono text-[11px] font-bold text-slate-800 dark:text-[#F3F7FC]">
+                        {formatLocaleNumber(Number(summary?.receivedToCompanyTotal || 0))} / {formatLocaleNumber(Number(summary?.issuedToRepTotal || 0))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <UnifiedDataTable
+                    compact
+                    paginated={false}
+                    searchable={false}
+                    maxHeightClassName="max-h-[45vh]"
+                    data={computedMovements}
+                    rowKey={(m) => m.id}
+                    emptyTitle={t('لا توجد حركات مالية مسجلة لهذا المندوب', 'No financial movements recorded for this representative')}
+                    columns={[
+                      {
+                        key: 'transferNumber',
+                        header: t('السند / التاريخ', 'Voucher / Date'),
+                        render: (m) => (
+                          <div>
+                            <span className="font-mono font-black text-[#011E58] dark:text-[#85B8FF] block">
+                              {m.transferNumber}
+                            </span>
+                            <span className="font-mono text-[10px] text-slate-500 block">{m.date}</span>
+                          </div>
+                        ),
+                      },
+                      {
+                        key: 'directionLabel',
+                        header: t('البيان والجهة', 'Description & Party'),
+                        render: (m) => (
+                          <div>
+                            <span className="font-bold text-slate-900 dark:text-[#F3F7FC] block">{t(m.directionLabel)}</span>
+                            <span className="text-[10px] text-slate-500 dark:text-[#A9BCD9] block">{m.counterpartyName}</span>
+                            {m.notes && <span className="text-[10px] text-slate-500 block">{m.notes}</span>}
+                          </div>
+                        ),
+                      },
+                      {
+                        key: 'debit',
+                        header: t('عليه', 'Debit'),
+                        align: 'center',
+                        render: (m) => (
+                          <span className="font-mono font-bold text-rose-700 dark:text-rose-400">
+                            {m.debit ? formatLocaleNumber(m.debit) : '—'}
+                          </span>
+                        ),
+                      },
+                      {
+                        key: 'credit',
+                        header: t('له', 'Credit'),
+                        align: 'center',
+                        render: (m) => (
+                          <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400">
+                            {m.credit ? formatLocaleNumber(m.credit) : '—'}
+                          </span>
+                        ),
+                      },
+                      {
+                        key: 'runningBalance',
+                        header: t('الرصيد', 'Balance'),
+                        align: 'center',
+                        render: (m) => (
+                          <strong className="font-mono text-[#011E58] dark:text-[#85B8FF]">
+                            {formatLocaleNumber(Math.abs(Number(m.runningBalance || 0)))}
+                          </strong>
+                        ),
                       },
                     ]}
                   />

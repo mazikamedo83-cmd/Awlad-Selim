@@ -5,7 +5,7 @@ import {
   Server, Wifi, WifiOff, Activity, Monitor, Smartphone, FileSpreadsheet,
   Eye, ArrowLeftRight, CheckCircle2, ShoppingCart, User, Layers,
   Barcode, FileText, Keyboard, Wrench, GitBranch, Plus, Search, Power,
-  Globe, Cloud, Lock, Copy, Radio, Users, Sun, Moon, Languages
+  Globe, Cloud, Lock, Copy, Radio, Users, Sun, Moon, Languages, Phone, ChevronUp, ChevronDown
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -34,6 +34,8 @@ import {
   ServerConnectionSettings, ProductImportCandidate, ConnectionMode, ConnectionProfilesConfig,
   BranchSettingItem, PrinterSettingItem, ExtraSettingsConfig, UserShortcutItem, ShortcutCategory,
   TunnelRuntimeStatus, PairedDevicesSummary,
+  RepPhonePrintConfig, RepPhonePrintPlacement,
+  CustomPrintField, CustomPrintFieldType, CustomPrintFieldPlacement, CustomPrintDocType,
 } from '../../../types';
 
 export type SettingsTabKey =
@@ -191,13 +193,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
   const [newPrinterPort, setNewPrinterPort] = useState('');
   const [newPrinterCopies, setNewPrinterCopies] = useState<number | ''>('');
 
-  const [invoiceTemplate, setInvoiceTemplate] = useState(extra.invoiceTemplate || {
+  const defaultRepPhoneConfig: RepPhonePrintConfig = {
+    showInPrint: true,
+    label: t('هاتف المندوب', 'Rep Phone'),
+    defaultPhone: '',
+    placement: 'party_box',
+  };
+
+  const [invoiceTemplate, setInvoiceTemplate] = useState(() => ({
     showLogo: true,
     showPreviousBalance: true,
     showRemainingBalance: true,
     showSignatureBoxes: true,
     footerText: settings.invoiceNotes || t('شكراً لتعاملكم مع مؤسسة أولاد سليم', 'Thank you for doing business with Awlad Selim'),
-  });
+    ...(extra.invoiceTemplate || {}),
+    repPhoneConfig: {
+      ...defaultRepPhoneConfig,
+      ...(extra.invoiceTemplate?.repPhoneConfig || {}),
+    },
+    customPrintFields: Array.isArray(extra.invoiceTemplate?.customPrintFields)
+      ? extra.invoiceTemplate!.customPrintFields
+      : [],
+  }));
+
+  const [newCustomFieldLabel, setNewCustomFieldLabel] = useState('');
+  const [newCustomFieldValue, setNewCustomFieldValue] = useState('');
+  const [newCustomFieldType, setNewCustomFieldType] = useState<CustomPrintFieldType>('text');
+  const [newCustomFieldPlacement, setNewCustomFieldPlacement] = useState<CustomPrintFieldPlacement>('party_info');
+  const [newCustomFieldDocTypes, setNewCustomFieldDocTypes] = useState<CustomPrintDocType[]>(['all']);
 
   const [mobileConfig, setMobileConfig] = useState(extra.mobileConfig || {
     enableCustomerApp: true,
@@ -228,7 +251,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
       if (settings.extraSettings.branches) setBranches(settings.extraSettings.branches);
       if (settings.extraSettings.barcodeConfig) setBarcodeConfig(settings.extraSettings.barcodeConfig);
       if (settings.extraSettings.printers) setPrinters(settings.extraSettings.printers);
-      if (settings.extraSettings.invoiceTemplate) setInvoiceTemplate(settings.extraSettings.invoiceTemplate);
+      if (settings.extraSettings.invoiceTemplate) {
+        setInvoiceTemplate({
+          ...settings.extraSettings.invoiceTemplate,
+          showLogo: settings.extraSettings.invoiceTemplate.showLogo ?? true,
+          showPreviousBalance: settings.extraSettings.invoiceTemplate.showPreviousBalance ?? true,
+          showRemainingBalance: settings.extraSettings.invoiceTemplate.showRemainingBalance ?? true,
+          showSignatureBoxes: settings.extraSettings.invoiceTemplate.showSignatureBoxes ?? true,
+          footerText: settings.extraSettings.invoiceTemplate.footerText ?? settings.invoiceNotes ?? '',
+          repPhoneConfig: {
+            ...defaultRepPhoneConfig,
+            ...(settings.extraSettings.invoiceTemplate.repPhoneConfig || {}),
+          },
+          customPrintFields: Array.isArray(settings.extraSettings.invoiceTemplate.customPrintFields)
+            ? settings.extraSettings.invoiceTemplate.customPrintFields
+            : [],
+        });
+      }
       if (settings.extraSettings.mobileConfig) setMobileConfig(settings.extraSettings.mobileConfig);
       if (settings.extraSettings.onlineSyncConfig) {
         setOnlineSyncConfig((prev) => ({
@@ -2853,46 +2892,451 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
       )}
 
       {/* TAB: Invoice Design */}
-      {activeTab === 'invoice-design' && (
-        <div className="bg-white p-2.5 sm:p-3 rounded-lg border border-slate-200 shadow-xs space-y-2.5 text-xs">
-          <h3 className="text-xs sm:text-sm font-black text-slate-900 border-b pb-1.5 flex items-center gap-1.5">
-            <FileText className="w-4 h-4 text-blue-900" />
-            <span>{t('إعدادات قالب ومحتوى الفاتورة', 'Invoice Template & Content Settings')}</span>
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
-              <input type="checkbox" checked={invoiceTemplate.showLogo} onChange={(e) => setInvoiceTemplate({ ...invoiceTemplate, showLogo: e.target.checked })} />
-              <span className="font-bold">{t('إظهار شعار أولاد سليم في رأس الفاتورة', 'Show Awlad Selim Logo in Invoice Header')}</span>
-            </label>
-            <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
-              <input type="checkbox" checked={invoiceTemplate.showPreviousBalance} onChange={(e) => setInvoiceTemplate({ ...invoiceTemplate, showPreviousBalance: e.target.checked })} />
-              <span className="font-bold">{t('إظهار الرصيد السابق للعميل', 'Show Customer Previous Balance')}</span>
-            </label>
-            <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
-              <input type="checkbox" checked={invoiceTemplate.showRemainingBalance} onChange={(e) => setInvoiceTemplate({ ...invoiceTemplate, showRemainingBalance: e.target.checked })} />
-              <span className="font-bold">{t('إظهار الرصيد النهائي المستحق بعد الفاتورة', 'Show Final Remaining Balance After Invoice')}</span>
-            </label>
-            <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-md border cursor-pointer">
-              <input type="checkbox" checked={invoiceTemplate.showSignatureBoxes} onChange={(e) => setInvoiceTemplate({ ...invoiceTemplate, showSignatureBoxes: e.target.checked })} />
-              <span className="font-bold">{t('إظهار خانات توقيع المستلم وأمين المخزن', 'Show Receiver & Storekeeper Signature Boxes')}</span>
-            </label>
+      {activeTab === 'invoice-design' && (() => {
+        const repPhoneCfg: RepPhonePrintConfig = {
+          ...defaultRepPhoneConfig,
+          ...(invoiceTemplate.repPhoneConfig || {}),
+        };
+        const customFields: CustomPrintField[] = Array.isArray(invoiceTemplate.customPrintFields)
+          ? [...invoiceTemplate.customPrintFields].sort((a, b) => Number(a.order || 0) - Number(b.order || 0))
+          : [];
+
+        const docTypeChoices: Array<{ id: CustomPrintDocType; label: string }> = [
+          { id: 'all', label: t('الكل', 'All') },
+          { id: 'sales', label: t('فواتير البيع', 'Sales') },
+          { id: 'purchase', label: t('المشتريات', 'Purchases') },
+          { id: 'quote', label: t('عروض الأسعار', 'Quotes') },
+          { id: 'return', label: t('المرتجعات', 'Returns') },
+          { id: 'statement', label: t('كشوف الحساب', 'Statements') },
+          { id: 'custody', label: t('العهد والتحويلات', 'Custody') },
+        ];
+
+        const toggleNewDocType = (docId: CustomPrintDocType) => {
+          if (docId === 'all') {
+            setNewCustomFieldDocTypes(['all']);
+            return;
+          }
+          const filtered = newCustomFieldDocTypes.filter((x) => x !== 'all');
+          const exists = filtered.includes(docId);
+          const next = exists ? filtered.filter((x) => x !== docId) : [...filtered, docId];
+          setNewCustomFieldDocTypes(next.length > 0 ? next : ['all']);
+        };
+
+        const handleAddCustomPrintField = () => {
+          const cleanLabel = newCustomFieldLabel.trim();
+          const cleanValue = newCustomFieldValue.trim();
+          if (!cleanLabel || !cleanValue) return;
+          const nextField: CustomPrintField = {
+            id: `CPF-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            label: cleanLabel,
+            value: cleanValue,
+            type: newCustomFieldType,
+            placement: newCustomFieldPlacement,
+            docTypes: newCustomFieldDocTypes.length > 0 ? newCustomFieldDocTypes : ['all'],
+            visible: true,
+            order: customFields.length + 1,
+          };
+          setInvoiceTemplate({
+            ...invoiceTemplate,
+            customPrintFields: [...customFields, nextField],
+          });
+          setNewCustomFieldLabel('');
+          setNewCustomFieldValue('');
+          setNewCustomFieldDocTypes(['all']);
+        };
+
+        const moveCustomField = (idx: number, delta: -1 | 1) => {
+          const targetIdx = idx + delta;
+          if (targetIdx < 0 || targetIdx >= customFields.length) return;
+          const next = [...customFields];
+          const [moved] = next.splice(idx, 1);
+          next.splice(targetIdx, 0, moved);
+          setInvoiceTemplate({
+            ...invoiceTemplate,
+            customPrintFields: next.map((item, i) => ({ ...item, order: i + 1 })),
+          });
+        };
+
+        const updateCustomField = (id: string, patch: Partial<CustomPrintField>) => {
+          setInvoiceTemplate({
+            ...invoiceTemplate,
+            customPrintFields: customFields.map((f) => (f.id === id ? { ...f, ...patch } : f)),
+          });
+        };
+
+        const deleteCustomField = (id: string) => {
+          setInvoiceTemplate({
+            ...invoiceTemplate,
+            customPrintFields: customFields
+              .filter((f) => f.id !== id)
+              .map((item, i) => ({ ...item, order: i + 1 })),
+          });
+        };
+
+        const visiblePreviewFields = customFields.filter((f) => f.visible !== false);
+
+        return (
+          <div className="space-y-3 text-xs" data-testid="invoice-design-settings">
+            {/* Core Invoice Template Settings */}
+            <div className="bg-white dark:bg-[#0E1C36] p-3 rounded-lg border border-slate-200 dark:border-[#21375C] shadow-xs space-y-2.5">
+              <h3 className="text-xs sm:text-sm font-black text-slate-900 dark:text-[#F3F7FC] border-b border-slate-200 dark:border-[#21375C] pb-1.5 flex items-center gap-1.5">
+                <FileText className="w-4 h-4 text-[#003589] dark:text-[#85B8FF]" />
+                <span>{t('إعدادات قالب ومحتوى الفاتورة والطباعة', 'Invoice & Print Template Settings')}</span>
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <label className="flex items-center gap-2 p-2 bg-slate-50 dark:bg-[#132544] rounded-md border border-slate-200 dark:border-[#21375C] cursor-pointer">
+                  <input type="checkbox" checked={invoiceTemplate.showLogo} onChange={(e) => setInvoiceTemplate({ ...invoiceTemplate, showLogo: e.target.checked })} />
+                  <span className="font-bold">{t('إظهار شعار أولاد سليم في رأس الفاتورة', 'Show Awlad Selim Logo in Invoice Header')}</span>
+                </label>
+                <label className="flex items-center gap-2 p-2 bg-slate-50 dark:bg-[#132544] rounded-md border border-slate-200 dark:border-[#21375C] cursor-pointer">
+                  <input type="checkbox" checked={invoiceTemplate.showPreviousBalance} onChange={(e) => setInvoiceTemplate({ ...invoiceTemplate, showPreviousBalance: e.target.checked })} />
+                  <span className="font-bold">{t('إظهار الرصيد السابق للعميل', 'Show Customer Previous Balance')}</span>
+                </label>
+                <label className="flex items-center gap-2 p-2 bg-slate-50 dark:bg-[#132544] rounded-md border border-slate-200 dark:border-[#21375C] cursor-pointer">
+                  <input type="checkbox" checked={invoiceTemplate.showRemainingBalance} onChange={(e) => setInvoiceTemplate({ ...invoiceTemplate, showRemainingBalance: e.target.checked })} />
+                  <span className="font-bold">{t('إظهار الرصيد النهائي المستحق بعد الفاتورة', 'Show Final Remaining Balance After Invoice')}</span>
+                </label>
+                <label className="flex items-center gap-2 p-2 bg-slate-50 dark:bg-[#132544] rounded-md border border-slate-200 dark:border-[#21375C] cursor-pointer">
+                  <input type="checkbox" checked={invoiceTemplate.showSignatureBoxes} onChange={(e) => setInvoiceTemplate({ ...invoiceTemplate, showSignatureBoxes: e.target.checked })} />
+                  <span className="font-bold">{t('إظهار خانات توقيع المستلم وأمين المخزن', 'Show Receiver & Storekeeper Signature Boxes')}</span>
+                </label>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold mb-0.5">{t('نص تذييل الفاتورة المعتمد:', 'Approved Invoice Footer Text:')}</label>
+                <textarea rows={2} value={invoiceTemplate.footerText} onChange={(e) => setInvoiceTemplate({ ...invoiceTemplate, footerText: e.target.value })} className="w-full border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#081326] rounded-md p-2" />
+              </div>
+            </div>
+
+            {/* Representative Phone Print Settings */}
+            <div className="bg-white dark:bg-[#0E1C36] p-3 rounded-lg border border-slate-200 dark:border-[#21375C] shadow-xs space-y-2.5">
+              <h4 className="text-xs sm:text-sm font-black text-[#011E58] dark:text-[#F3F7FC] border-b border-slate-200 dark:border-[#21375C] pb-1.5 flex items-center gap-1.5">
+                <Phone className="w-4 h-4 text-[#003589] dark:text-[#85B8FF]" />
+                <span>{t('إعدادات هاتف المندوب في الطباعة (A4 والحرارية وPDF)', 'Representative Phone Print Settings (A4, Thermal & PDF)')}</span>
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 items-end">
+                <label className="flex items-center gap-2 p-2 bg-slate-50 dark:bg-[#132544] rounded-md border border-slate-200 dark:border-[#21375C] cursor-pointer h-9">
+                  <input
+                    type="checkbox"
+                    data-testid="rep-phone-show-in-print"
+                    checked={repPhoneCfg.showInPrint}
+                    onChange={(e) =>
+                      setInvoiceTemplate({
+                        ...invoiceTemplate,
+                        repPhoneConfig: { ...repPhoneCfg, showInPrint: e.target.checked },
+                      })
+                    }
+                  />
+                  <span className="font-bold">{t('إظهار هاتف المندوب في الطباعة', 'Show Rep Phone in Print')}</span>
+                </label>
+
+                <div>
+                  <label className="block text-[11px] font-bold mb-0.5">{t('تسمية الحقل في الطباعة:', 'Print Label:')}</label>
+                  <input
+                    type="text"
+                    data-testid="rep-phone-label-input"
+                    value={repPhoneCfg.label}
+                    onChange={(e) =>
+                      setInvoiceTemplate({
+                        ...invoiceTemplate,
+                        repPhoneConfig: { ...repPhoneCfg, label: e.target.value },
+                      })
+                    }
+                    placeholder={t('هاتف المندوب', 'Rep Phone')}
+                    className="w-full h-9 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#081326] rounded-md px-2.5 font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold mb-0.5">{t('رقم هاتف المندوب الافتراضي (اختياري):', 'Default Rep Phone (Fallback):')}</label>
+                  <input
+                    type="text"
+                    dir="ltr"
+                    data-testid="rep-phone-default-input"
+                    value={repPhoneCfg.defaultPhone || ''}
+                    onChange={(e) =>
+                      setInvoiceTemplate({
+                        ...invoiceTemplate,
+                        repPhoneConfig: { ...repPhoneCfg, defaultPhone: e.target.value },
+                      })
+                    }
+                    placeholder="01000000000"
+                    className="w-full h-9 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#081326] rounded-md px-2.5 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold mb-0.5">{t('موضع الظهور:', 'Print Placement:')}</label>
+                  <select
+                    data-testid="rep-phone-placement-select"
+                    value={repPhoneCfg.placement}
+                    onChange={(e) =>
+                      setInvoiceTemplate({
+                        ...invoiceTemplate,
+                        repPhoneConfig: { ...repPhoneCfg, placement: e.target.value as RepPhonePrintPlacement },
+                      })
+                    }
+                    className="w-full h-9 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#081326] rounded-md px-2 font-bold"
+                  >
+                    <option value="header">{t('رأس المستند (Header)', 'Document Header')}</option>
+                    <option value="party_box">{t('بيانات الطرف والمندوب (Party Box)', 'Party Info Box')}</option>
+                    <option value="footer">{t('تذييل المستند (Footer)', 'Document Footer')}</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Dynamic Custom Print Fields Builder */}
+            <div className="bg-white dark:bg-[#0E1C36] p-3 rounded-lg border border-slate-200 dark:border-[#21375C] shadow-xs space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-[#21375C] pb-1.5">
+                <h4 className="text-xs sm:text-sm font-black text-[#011E58] dark:text-[#F3F7FC] flex items-center gap-1.5">
+                  <Plus className="w-4 h-4 text-[#003589] dark:text-[#85B8FF]" />
+                  <span>{t('حقول الطباعة المخصصة الديناميكية', 'Dynamic Custom Print Fields')} ({customFields.length})</span>
+                </h4>
+                <span className="text-[11px] text-slate-500 dark:text-[#A9BCD9]">
+                  {t('تُطبق تلقائياً على طباعة A4 والحراري 80/58 وتصدير PDF', 'Applied automatically to A4, Thermal 80/58mm & PDF exports')}
+                </span>
+              </div>
+
+              {/* Add New Field Form */}
+              <div className="p-2.5 rounded-lg bg-[#EEF3FA]/60 dark:bg-[#132544] border border-[#DCE6F5] dark:border-[#21375C] space-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 items-end">
+                  <div>
+                    <label className="block text-[11px] font-bold mb-0.5">{t('اسم الحقل:', 'Field Label:')}</label>
+                    <input
+                      type="text"
+                      data-testid="new-custom-print-label"
+                      value={newCustomFieldLabel}
+                      onChange={(e) => setNewCustomFieldLabel(e.target.value)}
+                      placeholder={t('مثال: خدمة العملاء / خط السير', 'e.g. Support Hotline / Route')}
+                      className="w-full h-8 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#081326] rounded-md px-2 font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold mb-0.5">{t('القيمة:', 'Field Value:')}</label>
+                    <input
+                      type={newCustomFieldType === 'number' ? 'number' : newCustomFieldType === 'date' ? 'date' : 'text'}
+                      data-testid="new-custom-print-value"
+                      value={newCustomFieldValue}
+                      onChange={(e) => setNewCustomFieldValue(e.target.value)}
+                      placeholder={t('النص أو الرقم المعروض...', 'Displayed value...')}
+                      className="w-full h-8 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#081326] rounded-md px-2 font-semibold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold mb-0.5">{t('النوع:', 'Type:')}</label>
+                    <select
+                      value={newCustomFieldType}
+                      onChange={(e) => setNewCustomFieldType(e.target.value as CustomPrintFieldType)}
+                      className="w-full h-8 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#081326] rounded-md px-2 font-bold"
+                    >
+                      <option value="text">{t('نص', 'Text')}</option>
+                      <option value="number">{t('رقم', 'Number')}</option>
+                      <option value="phone">{t('هاتف', 'Phone')}</option>
+                      <option value="date">{t('تاريخ', 'Date')}</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold mb-0.5">{t('موضع الطباعة:', 'Placement:')}</label>
+                    <select
+                      value={newCustomFieldPlacement}
+                      onChange={(e) => setNewCustomFieldPlacement(e.target.value as CustomPrintFieldPlacement)}
+                      className="w-full h-8 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#081326] rounded-md px-2 font-bold"
+                    >
+                      <option value="header">{t('رأس المستند (Header)', 'Header')}</option>
+                      <option value="company_info">{t('بيانات المؤسسة (Company Info)', 'Company Info')}</option>
+                      <option value="party_info">{t('بيانات الطرف (Party Info)', 'Party Info')}</option>
+                      <option value="footer">{t('تذييل المستند (Footer)', 'Footer')}</option>
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    data-testid="add-custom-print-field-btn"
+                    disabled={!newCustomFieldLabel.trim() || !newCustomFieldValue.trim()}
+                    onClick={handleAddCustomPrintField}
+                    className="h-8 px-3 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-black inline-flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>{t('إضافة الحقل', 'Add Field')}</span>
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <span className="text-[11px] font-bold text-slate-600 dark:text-[#A9BCD9]">{t('المستندات المشمولة:', 'Apply to Docs:')}</span>
+                  {docTypeChoices.map((dc) => {
+                    const checked = newCustomFieldDocTypes.includes(dc.id);
+                    return (
+                      <label key={dc.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#081326] cursor-pointer text-[11px] font-bold">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleNewDocType(dc.id)}
+                        />
+                        <span>{dc.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Existing Custom Fields List */}
+              {customFields.length === 0 ? (
+                <p className="text-slate-500 dark:text-[#A9BCD9] py-2 text-center">
+                  {t('لا توجد حقول طباعة مخصصة بعد — يمكنك إضافة حقول مثل رقم خط السير، خدمة العملاء، ملاحظات ضريبية وغيرها.', 'No custom print fields yet — add custom fields like route info, hotline, or notes.')}
+                </p>
+              ) : (
+                <div className="divide-y divide-slate-200 dark:divide-[#1B2F52] border border-slate-200 dark:border-[#21375C] rounded-lg">
+                  {customFields.map((field, idx) => (
+                    <div key={field.id} className="p-2 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[240px]">
+                        <label className="inline-flex items-center gap-1 cursor-pointer font-bold">
+                          <input
+                            type="checkbox"
+                            checked={field.visible !== false}
+                            onChange={(e) => updateCustomField(field.id, { visible: e.target.checked })}
+                          />
+                          <span className="text-[11px]">{t('إظهار', 'Show')}</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={field.label}
+                          onChange={(e) => updateCustomField(field.id, { label: e.target.value })}
+                          className="h-7 w-36 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#081326] rounded px-2 font-bold"
+                        />
+                        <input
+                          type="text"
+                          value={field.value}
+                          onChange={(e) => updateCustomField(field.id, { value: e.target.value })}
+                          className="h-7 flex-1 min-w-[140px] border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#081326] rounded px-2 font-semibold"
+                        />
+                        <select
+                          value={field.placement}
+                          onChange={(e) => updateCustomField(field.id, { placement: e.target.value as CustomPrintFieldPlacement })}
+                          className="h-7 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#081326] rounded px-1.5 text-[11px] font-bold"
+                        >
+                          <option value="header">{t('رأس المستند', 'Header')}</option>
+                          <option value="company_info">{t('بيانات المؤسسة', 'Company Info')}</option>
+                          <option value="party_info">{t('بيانات الطرف', 'Party Info')}</option>
+                          <option value="footer">{t('التذييل', 'Footer')}</option>
+                        </select>
+                        <span className="text-[10px] font-mono text-slate-500 dark:text-[#A9BCD9]">
+                          {(field.docTypes || ['all']).map((d) => docTypeChoices.find((x) => x.id === d)?.label || d).join(' · ')}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          disabled={idx === 0}
+                          onClick={() => moveCustomField(idx, -1)}
+                          title={t('تحريك لأعلى', 'Move Up')}
+                          className="p-1 rounded border border-slate-200 dark:border-[#2A436E] disabled:opacity-40 cursor-pointer"
+                        >
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={idx === customFields.length - 1}
+                          onClick={() => moveCustomField(idx, 1)}
+                          title={t('تحريك لأسفل', 'Move Down')}
+                          className="p-1 rounded border border-slate-200 dark:border-[#2A436E] disabled:opacity-40 cursor-pointer"
+                        >
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteCustomField(field.id)}
+                          title={t('حذف', 'Delete')}
+                          className="p-1 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Compact Live Print Template Preview */}
+            <div className="bg-slate-50 dark:bg-[#081326] p-3 rounded-lg border border-slate-200 dark:border-[#21375C] space-y-2">
+              <div className="font-black text-[#011E58] dark:text-[#85B8FF]">
+                {t('معاينة حية لمحتوى الطباعة المخصص', 'Live Print Layout Preview')}
+              </div>
+              <div className="bg-white text-slate-900 rounded border border-slate-300 p-3 space-y-2 text-[11px]">
+                <div className="border-b border-blue-900 pb-2 text-center space-y-0.5">
+                  <div className="font-black text-sm text-blue-950">{settings.companyName}</div>
+                  {repPhoneCfg.showInPrint && repPhoneCfg.placement === 'header' && (
+                    <div className="font-mono font-bold text-blue-900">
+                      {repPhoneCfg.label}: {repPhoneCfg.defaultPhone || '01000000000'}
+                    </div>
+                  )}
+                  {visiblePreviewFields
+                    .filter((f) => f.placement === 'company_info' || f.placement === 'header')
+                    .map((cf) => (
+                      <div key={cf.id} className="font-semibold text-slate-700">
+                        <strong>{cf.label}:</strong> {cf.value}
+                      </div>
+                    ))}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 p-2 bg-slate-50 rounded border border-slate-200">
+                  <div><span className="text-slate-500">{t('العميل:', 'Customer:')}</span> <strong>{t('عميل تجريبي', 'Sample Customer')}</strong></div>
+                  <div><span className="text-slate-500">{t('المندوب:', 'Rep:')}</span> <strong>{t('مندوب مبيعات', 'Sales Rep')}</strong></div>
+                  {repPhoneCfg.showInPrint && repPhoneCfg.placement === 'party_box' && (
+                    <div className="font-mono"><span className="text-slate-500">{repPhoneCfg.label}:</span> <strong>{repPhoneCfg.defaultPhone || '01000000000'}</strong></div>
+                  )}
+                  {visiblePreviewFields
+                    .filter((f) => f.placement === 'party_info')
+                    .map((cf) => (
+                      <div key={cf.id}>
+                        <span className="text-slate-500">{cf.label}:</span> <strong>{cf.value}</strong>
+                      </div>
+                    ))}
+                </div>
+
+                <div className="border-t border-slate-200 pt-1.5 text-center text-[10px] text-slate-600 space-y-0.5">
+                  {repPhoneCfg.showInPrint && repPhoneCfg.placement === 'footer' && (
+                    <div className="font-mono font-bold text-blue-900">
+                      {repPhoneCfg.label}: {repPhoneCfg.defaultPhone || '01000000000'}
+                    </div>
+                  )}
+                  {visiblePreviewFields
+                    .filter((f) => f.placement === 'footer')
+                    .map((cf) => (
+                      <div key={cf.id} className="font-semibold text-slate-700">
+                        <strong>{cf.label}:</strong> {cf.value}
+                      </div>
+                    ))}
+                  <div>{invoiceTemplate.footerText}</div>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-1">
+                <button
+                  type="button"
+                  data-testid="save-invoice-design-btn"
+                  onClick={() =>
+                    persistExtraSettings(
+                      {
+                        invoiceTemplate: {
+                          ...invoiceTemplate,
+                          repPhoneConfig: repPhoneCfg,
+                          customPrintFields: customFields,
+                        },
+                      },
+                      t('تم حفظ إعدادات قالب الفاتورة والطباعة بنجاح.', 'Invoice & print template settings saved successfully.')
+                    )
+                  }
+                  className="px-4 py-1.5 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-black cursor-pointer flex items-center gap-1.5"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{t('حفظ إعدادات الفاتورة والطباعة', 'Save Invoice & Print Settings')}</span>
+                </button>
+              </div>
+            </div>
           </div>
-          <div>
-            <label className="block text-[11px] font-bold mb-0.5">{t('نص تذييل الفاتورة المعتمد:', 'Approved Invoice Footer Text:')}</label>
-            <textarea rows={2} value={invoiceTemplate.footerText} onChange={(e) => setInvoiceTemplate({ ...invoiceTemplate, footerText: e.target.value })} className="w-full border border-slate-300 rounded-md p-2" />
-          </div>
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => persistExtraSettings({ invoiceTemplate }, t('تم حفظ إعدادات قالب الفاتورة بنجاح.', 'Invoice template settings saved successfully.'))}
-              className="px-4 py-1.5 bg-blue-900 hover:bg-blue-950 text-white rounded-md font-black cursor-pointer flex items-center gap-1.5"
-            >
-              <Save className="w-3.5 h-3.5" />
-              <span>{t('حفظ إعدادات الفاتورة', 'Save Invoice Settings')}</span>
-            </button>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* TAB: Mobile Config */}
       {activeTab === 'mobile-config' && (

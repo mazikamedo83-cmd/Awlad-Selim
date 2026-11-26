@@ -658,7 +658,7 @@ export const StockCountView: React.FC = () => {
             </div>
           </div>
 
-          <div className="awlad-filter-row justify-between flex-wrap gap-2" data-testid="stockcount-modal-filter-row">
+          <div className="awlad-filter-row justify-between gap-2" data-testid="stockcount-modal-filter-row">
             <div className="relative flex-1 min-w-[180px] shrink-0">
               <input
                 type="text"

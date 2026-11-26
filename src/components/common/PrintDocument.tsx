@@ -4,7 +4,11 @@ import { useData } from '../../context/DataContext';
 import { useOptionalShortcuts } from '../../context/ShortcutsContext';
 import { usePreferences } from '../../context/PreferencesContext';
 import { translateSystemEntityName } from '../../i18n/translator';
-import { exportHtmlToPdf } from './PdfExporter';
+import {
+  exportHtmlToPdf,
+  formatCustomPrintFieldValue,
+  getApplicableCustomPrintFields,
+} from './PdfExporter';
 import { isNativeCapacitor } from '../../services/native';
 
 export interface PrintData {
@@ -53,9 +57,19 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
   const { settings, representatives, warehouses } = useData();
   const shortcutsCtx = useOptionalShortcuts();
   const registerHandler = shortcutsCtx?.registerHandler ?? noopRegisterHandler;
-  const { t, dir } = usePreferences();
+  const { t, dir, locale } = usePreferences();
   const [printFormat, setPrintFormat] = useState<'a4' | 'thermal80' | 'thermal58'>(settings.defaultPrintMode || 'a4');
   const displayCurrency = settings.currency === 'ج.م' ? t('ج.م', 'EGP') : settings.currency;
+
+  const tpl = settings.extraSettings?.invoiceTemplate;
+  const showLogo = tpl?.showLogo !== false;
+  const showPreviousBalance = tpl?.showPreviousBalance !== false;
+  const showRemainingBalance = tpl?.showRemainingBalance !== false;
+  const showSignatureBoxes = tpl?.showSignatureBoxes !== false;
+  const repPhoneConfig = tpl?.repPhoneConfig;
+  const showRepPhone = repPhoneConfig?.showInPrint !== false;
+  const repPhoneLabel = (repPhoneConfig?.label || t('هاتف المندوب', 'Rep Phone')).trim();
+  const repPhonePlacement = repPhoneConfig?.placement || 'party_box';
 
   const activeBranches = settings.extraSettings?.branches || [];
   const matchedWarehouse = data?.warehouseName
@@ -70,6 +84,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
   const resolvedRepPhone = (
     data?.representativePhone ||
     (data?.representativeName ? representatives.find((r) => r.name === data.representativeName)?.phone : '') ||
+    repPhoneConfig?.defaultPhone ||
     ''
   ).trim();
   const resolvedPhonesStr = [settings.phone1?.trim(), settings.phone2?.trim()].filter(Boolean).join(' / ');
@@ -81,6 +96,14 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
     .filter(Boolean)
     .join(' · ');
 
+  const applicableCustomFields = getApplicableCustomPrintFields(tpl?.customPrintFields, data?.docType);
+  const headerCustomFields = applicableCustomFields.filter((f) => f.placement === 'header');
+  const companyInfoCustomFields = applicableCustomFields.filter((f) => f.placement === 'company_info');
+  const partyInfoCustomFields = applicableCustomFields.filter((f) => f.placement === 'party_info');
+  const footerCustomFields = applicableCustomFields.filter((f) => f.placement === 'footer');
+
+  const resolvedFooterText = (tpl?.footerText || settings.invoiceNotes || t('شكراً لتعاملكم مع مؤسسة أولاد سليم', 'Thank you for doing business with Awlad Selim')).trim();
+
   useEffect(() => {
     if (isOpen) {
       setPrintFormat(settings.defaultPrintMode || 'a4');
@@ -89,8 +112,18 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
 
   const buildPdfPayload = () => {
     if (!data) return null;
+    const summaryPairs = [
+      ...(data.subtotal !== undefined ? [{ label: t('المجموع الفرعي', 'Subtotal'), value: `${data.subtotal.toFixed(2)} ${displayCurrency}` }] : []),
+      ...(data.discountTotal ? [{ label: t('الخصم', 'Discount'), value: `-${data.discountTotal.toFixed(2)} ${displayCurrency}` }] : []),
+      { label: t('الصافي الإجمالي', 'Grand Total'), value: `${data.grandTotal.toFixed(2)} ${displayCurrency}`, highlight: true },
+      ...(data.paidAmount !== undefined ? [{ label: t('المدفوع', 'Paid'), value: `${data.paidAmount.toFixed(2)} ${displayCurrency}` }] : []),
+      ...(showRemainingBalance && data.remainingAmount !== undefined ? [{ label: t('المتبقي', 'Remaining'), value: `${data.remainingAmount.toFixed(2)} ${displayCurrency}` }] : []),
+      ...(showPreviousBalance && data.previousBalance !== undefined ? [{ label: t('الرصيد السابق', 'Previous Balance'), value: `${data.previousBalance.toFixed(2)} ${displayCurrency}` }] : []),
+    ];
+
     return {
       title: t(data.docType),
+      docTypeCategory: data.docType,
       subtitle: settings.companySubtitle,
       companyName: settings.companyName,
       address: resolvedAddressStr || undefined,
@@ -99,7 +132,9 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
       branchName: resolvedBranchName || undefined,
       branchNumber: resolvedBranchNumber || undefined,
       representativeName: data.representativeName?.trim() || undefined,
-      representativePhone: resolvedRepPhone || undefined,
+      representativePhone: showRepPhone ? (resolvedRepPhone || undefined) : undefined,
+      repPhoneConfig,
+      customPrintFields: tpl?.customPrintFields,
       commercialRegistration: settings.commercialRegistration?.trim() || undefined,
       taxNumber: settings.taxNumber?.trim() || undefined,
       docNumber: data.docNumber,
@@ -111,7 +146,9 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
         ...(data.warehouseName ? [{ label: t('المستودع', 'Warehouse'), value: translateSystemEntityName(data.warehouseName) }] : []),
         ...(branchLabelStr ? [{ label: t('الفرع', 'Branch'), value: branchLabelStr }] : []),
         ...(data.representativeName ? [{ label: t('المندوب', 'Representative'), value: data.representativeName }] : []),
-        ...(resolvedRepPhone ? [{ label: t('هاتف المندوب', 'Rep Phone'), value: resolvedRepPhone }] : []),
+        ...(showRepPhone && repPhonePlacement === 'party_box' && resolvedRepPhone
+          ? [{ label: repPhoneLabel, value: resolvedRepPhone }]
+          : []),
         ...(data.paymentType ? [{ label: t('طريقة السداد', 'Payment Method'), value: t(data.paymentType) }] : []),
       ],
       tableHeaders: data.items && data.items.length > 0
@@ -136,14 +173,9 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
             it.total.toFixed(2),
           ])
         : undefined,
-      summaryPairs: [
-        ...(data.subtotal !== undefined ? [{ label: t('المجموع الفرعي', 'Subtotal'), value: `${data.subtotal.toFixed(2)} ${displayCurrency}` }] : []),
-        ...(data.discountTotal ? [{ label: t('الخصم', 'Discount'), value: `-${data.discountTotal.toFixed(2)} ${displayCurrency}` }] : []),
-        { label: t('الصافي الإجمالي', 'Grand Total'), value: `${data.grandTotal.toFixed(2)} ${displayCurrency}`, highlight: true },
-        ...(data.paidAmount !== undefined ? [{ label: t('المدفوع', 'Paid'), value: `${data.paidAmount.toFixed(2)} ${displayCurrency}` }] : []),
-        ...(data.remainingAmount !== undefined ? [{ label: t('المتبقي', 'Remaining'), value: `${data.remainingAmount.toFixed(2)} ${displayCurrency}` }] : []),
-      ],
+      summaryPairs,
       notes: data.notes || settings.invoiceNotes,
+      footerText: resolvedFooterText,
     };
   };
 
@@ -251,13 +283,17 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
               <div className="w-[210mm] min-h-[297mm] bg-white p-8 shadow-md border border-slate-300 text-slate-900 rounded-sm text-sm print:p-0 print:border-none print:shadow-none print:w-full">
                 {/* Header with Official Logo */}
                 <div className="flex items-center justify-between border-b-2 border-blue-900 pb-5">
-                  <div className="w-48">
-                    <img 
-                      src="/awlad-selim-logo.png" 
-                      alt="AWLAD SELIM" 
-                      className="max-h-20 object-contain"
-                    />
-                  </div>
+                  {showLogo ? (
+                    <div className="w-48">
+                      <img
+                        src="/awlad-selim-logo.png"
+                        alt="AWLAD SELIM"
+                        className="max-h-20 object-contain"
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-16" />
+                  )}
                   <div className="text-center flex-1 px-4">
                     <h1 className="text-2xl font-black text-blue-950 tracking-tight">{settings.companyName}</h1>
                     {settings.companySubtitle?.trim() && (
@@ -271,6 +307,21 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
                         {resolvedAddressStr && <span>{resolvedAddressStr}</span>}
                         {resolvedAddressStr && resolvedPhonesStr && <span>•</span>}
                         {resolvedPhonesStr && <span>{t('هاتف:', 'Tel:')} {resolvedPhonesStr}</span>}
+                      </div>
+                    )}
+                    {showRepPhone && repPhonePlacement === 'header' && resolvedRepPhone && (
+                      <p className="text-[11px] font-bold text-blue-900 mt-1 font-mono">
+                        {repPhoneLabel}: {resolvedRepPhone}
+                      </p>
+                    )}
+                    {(companyInfoCustomFields.length > 0 || headerCustomFields.length > 0) && (
+                      <div className="mt-1.5 flex flex-wrap justify-center gap-x-4 gap-y-0.5 text-[11px] text-slate-700 font-semibold">
+                        {[...companyInfoCustomFields, ...headerCustomFields].map((cf) => (
+                          <span key={cf.id}>
+                            <strong className="text-blue-950">{cf.label}:</strong>{' '}
+                            <span>{formatCustomPrintFieldValue(cf, locale)}</span>
+                          </span>
+                        ))}
                       </div>
                     )}
                   </div>
@@ -289,13 +340,21 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
                     {data.partyPhone && <div className="flex"><span className="text-slate-500 w-28">{t('رقم الهاتف:', 'Phone:')}</span><span>{data.partyPhone}</span></div>}
                     {data.partyAddress && <div className="flex"><span className="text-slate-500 w-28">{t('العنوان:', 'Address:')}</span><span>{data.partyAddress}</span></div>}
                     {data.representativeName && <div className="flex"><span className="text-slate-500 w-28">{t('المندوب المسؤول:', 'Representative:')}</span><strong className="text-blue-800">{data.representativeName}</strong></div>}
-                    {resolvedRepPhone && <div className="flex"><span className="text-slate-500 w-28">{t('هاتف المندوب:', 'Rep Phone:')}</span><span className="font-mono font-bold text-blue-900">{resolvedRepPhone}</span></div>}
+                    {showRepPhone && repPhonePlacement === 'party_box' && resolvedRepPhone && (
+                      <div className="flex"><span className="text-slate-500 w-28">{repPhoneLabel}:</span><span className="font-mono font-bold text-blue-900">{resolvedRepPhone}</span></div>
+                    )}
                   </div>
                   <div className="space-y-1.5">
                     <div className="flex"><span className="text-slate-500 w-28">{t('تاريخ التحرير:', 'Issue Date:')}</span><strong>{data.date}</strong></div>
                     {data.warehouseName && <div className="flex"><span className="text-slate-500 w-28">{t('المستودع المصروف:', 'Warehouse:')}</span><span>{translateSystemEntityName(data.warehouseName)}</span></div>}
                     {branchLabelStr && <div className="flex"><span className="text-slate-500 w-28">{t('الفرع:', 'Branch:')}</span><span className="font-semibold">{branchLabelStr}</span></div>}
                     {data.paymentType && <div className="flex"><span className="text-slate-500 w-28">{t('نوع الدفع:', 'Payment Type:')}</span><span className="px-2 py-0.5 rounded bg-slate-200 font-bold">{t(data.paymentType)}</span></div>}
+                    {partyInfoCustomFields.map((cf) => (
+                      <div key={cf.id} className="flex">
+                        <span className="text-slate-500 w-28">{cf.label}:</span>
+                        <span className="font-semibold">{formatCustomPrintFieldValue(cf, locale)}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
@@ -333,14 +392,20 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
                 <div className="flex justify-between items-start gap-6 mt-4">
                   <div className="flex-1 text-xs text-slate-600 border border-slate-200 rounded-xl p-3 bg-slate-50">
                     <p className="font-bold text-slate-800 mb-1">{t('ملاحظات وشروط الفاتورة:', 'Invoice Notes & Terms:')}</p>
-                    <p className="leading-relaxed">{data.notes || settings.invoiceNotes}</p>
-                    <div className="mt-3 pt-3 border-t border-slate-200 flex justify-between text-[11px] text-slate-500 font-mono">
+                    <p className="leading-relaxed">{data.notes || resolvedFooterText}</p>
+                    <div className="mt-3 pt-3 border-t border-slate-200 flex flex-wrap justify-between gap-2 text-[11px] text-slate-500 font-mono">
                       <span>{settings.commercialRegistration}</span>
                       <span>{settings.taxNumber}</span>
                     </div>
                   </div>
 
                   <div className="w-72 bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs space-y-2">
+                    {showPreviousBalance && data.previousBalance !== undefined && (
+                      <div className="flex justify-between text-slate-600">
+                        <span>{t('الرصيد السابق:', 'Previous Balance:')}</span>
+                        <span className="font-semibold">{data.previousBalance.toFixed(2)} {displayCurrency}</span>
+                      </div>
+                    )}
                     {data.subtotal !== undefined && (
                       <div className="flex justify-between text-slate-600">
                         <span>{t('المجموع الفرعي:', 'Subtotal:')}</span>
@@ -363,7 +428,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
                         <span>{data.paidAmount.toFixed(2)} {displayCurrency}</span>
                       </div>
                     )}
-                    {data.remainingAmount !== undefined && (
+                    {showRemainingBalance && data.remainingAmount !== undefined && (
                       <div className="flex justify-between text-red-700 font-bold pt-1">
                         <span>{t('المبلغ المتبقي:', 'Remaining Amount:')}</span>
                         <span>{data.remainingAmount.toFixed(2)} {displayCurrency}</span>
@@ -372,23 +437,41 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
                   </div>
                 </div>
 
+                {/* Footer Custom Print Fields & Rep Phone (Footer placement) */}
+                {((showRepPhone && repPhonePlacement === 'footer' && resolvedRepPhone) || footerCustomFields.length > 0) && (
+                  <div className="mt-4 pt-3 border-t border-slate-200 flex flex-wrap gap-x-5 gap-y-1 text-xs font-semibold text-blue-950">
+                    {showRepPhone && repPhonePlacement === 'footer' && resolvedRepPhone && (
+                      <span className="font-mono">
+                        <strong>{repPhoneLabel}:</strong> {resolvedRepPhone}
+                      </span>
+                    )}
+                    {footerCustomFields.map((cf) => (
+                      <span key={cf.id}>
+                        <strong>{cf.label}:</strong> {formatCustomPrintFieldValue(cf, locale)}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
                 {/* Signatures */}
-                <div className="grid grid-cols-3 gap-6 text-center text-xs mt-12 pt-6 border-t border-slate-200">
-                  <div>
-                    <span className="block text-slate-500 font-semibold mb-8">{t('المستلم / العميل', 'Recipient / Customer')}</span>
-                    <span className="border-t border-slate-400 block pt-1 text-slate-400">{t('التوقيع / البصمة', 'Signature')}</span>
-                  </div>
-                  <div>
-                    <span className="block text-slate-500 font-semibold mb-8">{t('أمين المستودع / المحاسب', 'Warehouse / Accountant')}</span>
-                    <span className="border-t border-slate-400 block pt-1 text-slate-400">{t('التوقيع', 'Signature')}</span>
-                  </div>
-                  <div>
-                    <span className="block text-slate-500 font-semibold mb-8">{t('ختم مؤسسة أولاد سليم', 'AWLAD SELIM Stamp')}</span>
-                    <div className="w-20 h-10 border-2 border-dashed border-blue-300 rounded-lg mx-auto flex items-center justify-center text-[10px] text-blue-400">
-                      {t('ختم الإدارة', 'Official Stamp')}
+                {showSignatureBoxes && (
+                  <div className="grid grid-cols-3 gap-6 text-center text-xs mt-12 pt-6 border-t border-slate-200">
+                    <div>
+                      <span className="block text-slate-500 font-semibold mb-8">{t('المستلم / العميل', 'Recipient / Customer')}</span>
+                      <span className="border-t border-slate-400 block pt-1 text-slate-400">{t('التوقيع / البصمة', 'Signature')}</span>
+                    </div>
+                    <div>
+                      <span className="block text-slate-500 font-semibold mb-8">{t('أمين المستودع / المحاسب', 'Warehouse / Accountant')}</span>
+                      <span className="border-t border-slate-400 block pt-1 text-slate-400">{t('التوقيع', 'Signature')}</span>
+                    </div>
+                    <div>
+                      <span className="block text-slate-500 font-semibold mb-8">{t('ختم مؤسسة أولاد سليم', 'AWLAD SELIM Stamp')}</span>
+                      <div className="w-20 h-10 border-2 border-dashed border-blue-300 rounded-lg mx-auto flex items-center justify-center text-[10px] text-blue-400">
+                        {t('ختم الإدارة', 'Official Stamp')}
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
               </div>
             )}
 
@@ -396,15 +479,27 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
             {printFormat === 'thermal80' && (
               <div className="thermal-80 bg-white p-3 shadow-md border border-slate-300 text-slate-900 rounded-sm font-sans text-xs">
                 <div className="text-center pb-2 border-b border-dashed border-slate-400">
-                  <img 
-                    src="/awlad-selim-logo.png" 
-                    alt="AWLAD SELIM" 
-                    className="max-h-12 mx-auto object-contain mb-1"
-                  />
+                  {showLogo && (
+                    <img
+                      src="/awlad-selim-logo.png"
+                      alt="AWLAD SELIM"
+                      className="max-h-12 mx-auto object-contain mb-1"
+                    />
+                  )}
                   <h2 className="font-extrabold text-sm">{settings.companyName}</h2>
                   {branchLabelStr && <p className="text-[10px] font-bold text-slate-700">{branchLabelStr}</p>}
                   {resolvedPhonesStr && <p className="text-[10px] text-slate-600">{resolvedPhonesStr}</p>}
                   {resolvedAddressStr && <p className="text-[10px] text-slate-500">{resolvedAddressStr}</p>}
+                  {showRepPhone && repPhonePlacement === 'header' && resolvedRepPhone && (
+                    <p className="text-[10px] font-mono font-bold text-blue-900">
+                      {repPhoneLabel}: {resolvedRepPhone}
+                    </p>
+                  )}
+                  {[...companyInfoCustomFields, ...headerCustomFields].map((cf) => (
+                    <p key={cf.id} className="text-[10px] text-slate-700 font-semibold">
+                      {cf.label}: {formatCustomPrintFieldValue(cf, locale)}
+                    </p>
+                  ))}
                 </div>
 
                 <div className="my-2 py-1 border-b border-dashed border-slate-400 text-[11px] space-y-0.5">
@@ -428,12 +523,18 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
                       <span>{data.representativeName}</span>
                     </div>
                   )}
-                  {resolvedRepPhone && (
+                  {showRepPhone && repPhonePlacement === 'party_box' && resolvedRepPhone && (
                     <div className="flex justify-between">
-                      <span>{t('هاتف المندوب:', 'Rep Phone:')}</span>
+                      <span>{repPhoneLabel}:</span>
                       <span className="font-mono">{resolvedRepPhone}</span>
                     </div>
                   )}
+                  {partyInfoCustomFields.map((cf) => (
+                    <div key={cf.id} className="flex justify-between">
+                      <span>{cf.label}:</span>
+                      <span>{formatCustomPrintFieldValue(cf, locale)}</span>
+                    </div>
+                  ))}
                 </div>
 
                 {/* Items */}
@@ -472,7 +573,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
                       <span>{data.paidAmount.toFixed(2)}</span>
                     </div>
                   )}
-                  {data.remainingAmount !== undefined && (
+                  {showRemainingBalance && data.remainingAmount !== undefined && (
                     <div className="flex justify-between font-bold text-red-700">
                       <span>{t('المتبقي:', 'Remaining:')}</span>
                       <span>{data.remainingAmount.toFixed(2)}</span>
@@ -480,9 +581,25 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
                   )}
                 </div>
 
+                {((showRepPhone && repPhonePlacement === 'footer' && resolvedRepPhone) || footerCustomFields.length > 0) && (
+                  <div className="mt-2 pt-1 border-t border-dashed border-slate-300 text-[10px] space-y-0.5 text-slate-700">
+                    {showRepPhone && repPhonePlacement === 'footer' && resolvedRepPhone && (
+                      <div className="flex justify-between font-bold">
+                        <span>{repPhoneLabel}:</span>
+                        <span className="font-mono">{resolvedRepPhone}</span>
+                      </div>
+                    )}
+                    {footerCustomFields.map((cf) => (
+                      <div key={cf.id} className="flex justify-between">
+                        <span>{cf.label}:</span>
+                        <span>{formatCustomPrintFieldValue(cf, locale)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 <div className="text-center text-[9px] text-slate-500 mt-3 pt-2 border-t border-dashed border-slate-400">
-                  <p>{t('شكراً لتعاملكم مع مؤسسة أولاد سليم', 'Thank you for doing business with AWLAD SELIM')}</p>
-                  <p className="mt-0.5">{t('نسعد دائماً بخدمتكم', 'Always happy to serve you')}</p>
+                  <p>{resolvedFooterText}</p>
                 </div>
               </div>
             )}
@@ -494,6 +611,16 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
                   <h3 className="font-black text-xs">{settings.companyName || t('أولاد سليم', 'AWLAD SELIM')}</h3>
                   {resolvedBranchNumber && <p className="text-[9px] font-bold">{t('فرع رقم:', 'Branch No:')} {resolvedBranchNumber}</p>}
                   {resolvedPhonesStr && <p className="text-[8px] text-slate-600">{resolvedPhonesStr}</p>}
+                  {showRepPhone && repPhonePlacement === 'header' && resolvedRepPhone && (
+                    <p className="text-[8px] font-mono font-bold text-blue-900">
+                      {repPhoneLabel}: {resolvedRepPhone}
+                    </p>
+                  )}
+                  {[...companyInfoCustomFields, ...headerCustomFields].map((cf) => (
+                    <p key={cf.id} className="text-[8px] text-slate-700 font-semibold">
+                      {cf.label}: {formatCustomPrintFieldValue(cf, locale)}
+                    </p>
+                  ))}
                   <p className="text-[9px]">{t(data.docType)}: {data.docNumber}</p>
                   <p className="text-[8px]">{data.date}</p>
                 </div>
@@ -501,16 +628,23 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
                 {data.partyName && (
                   <p className="font-bold my-1 text-[9px]">{t('العميل:', 'Customer:')} {translateSystemEntityName(data.partyName)}</p>
                 )}
-                {(data.representativeName || resolvedRepPhone) && (
+                {(data.representativeName || (showRepPhone && repPhonePlacement === 'party_box' && resolvedRepPhone)) && (
                   <p className="my-0.5 text-[9px] text-slate-700">
                     {[
                       data.representativeName ? `${t('المندوب:', 'Rep:')} ${data.representativeName}` : '',
-                      resolvedRepPhone ? `${t('ت:', 'Tel:')} ${resolvedRepPhone}` : '',
+                      showRepPhone && repPhonePlacement === 'party_box' && resolvedRepPhone
+                        ? `${repPhoneLabel}: ${resolvedRepPhone}`
+                        : '',
                     ]
                       .filter(Boolean)
                       .join(' · ')}
                   </p>
                 )}
+                {partyInfoCustomFields.map((cf) => (
+                  <p key={cf.id} className="my-0.5 text-[8px] text-slate-700">
+                    {cf.label}: {formatCustomPrintFieldValue(cf, locale)}
+                  </p>
+                ))}
 
                 {data.items && (
                   <div className="divide-y divide-slate-200 my-1 text-[9px]">
@@ -537,7 +671,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
                       <span>{data.paidAmount.toFixed(2)}</span>
                     </div>
                   )}
-                  {data.remainingAmount !== undefined && (
+                  {showRemainingBalance && data.remainingAmount !== undefined && (
                     <div className="flex justify-between text-red-800">
                       <span>{t('المتبقي:', 'Remaining:')}</span>
                       <span>{data.remainingAmount.toFixed(2)}</span>
@@ -545,8 +679,19 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
                   )}
                 </div>
 
+                {((showRepPhone && repPhonePlacement === 'footer' && resolvedRepPhone) || footerCustomFields.length > 0) && (
+                  <div className="mt-1 pt-1 border-t border-dashed border-slate-300 text-[8px] text-slate-700 space-y-0.5">
+                    {showRepPhone && repPhonePlacement === 'footer' && resolvedRepPhone && (
+                      <div>{repPhoneLabel}: {resolvedRepPhone}</div>
+                    )}
+                    {footerCustomFields.map((cf) => (
+                      <div key={cf.id}>{cf.label}: {formatCustomPrintFieldValue(cf, locale)}</div>
+                    ))}
+                  </div>
+                )}
+
                 <div className="text-center text-[8px] text-slate-500 mt-2 pt-1 border-t border-dashed border-slate-300">
-                  {t('شكراً لتعاملكم معنا', 'Thank you for your business')}
+                  {resolvedFooterText}
                 </div>
               </div>
             )}

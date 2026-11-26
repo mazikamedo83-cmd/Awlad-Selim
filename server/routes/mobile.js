@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getMobileNotifications } from '../db/stores/inventoryAdminStore.js';
+import { getMobileNotifications, getRepresentativeAccountStatement } from '../db/stores/inventoryAdminStore.js';
 import { requireAuth, asyncHandler } from '../middleware/auth.js';
 
 const router = Router();
@@ -14,4 +14,13 @@ router.get(
   })
 );
 
+router.get(
+  '/representatives/:id/statement',
+  asyncHandler(async (req, res) => {
+    const data = await getRepresentativeAccountStatement(req.params.id, req.auth.user);
+    res.json({ ok: true, statement: data, ...data });
+  })
+);
+
 export default router;
+
