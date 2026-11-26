@@ -263,7 +263,32 @@ function prepareElectronDataDirectory({
   };
 }
 
+function applyElectronRuntimeEnvironment({
+  isPackaged = false,
+  targetDataDir = '',
+  envFilePath = null,
+  env = process.env,
+} = {}) {
+  const packaged = Boolean(isPackaged);
+  env.AWLAD_ELECTRON = 'true';
+  env.AWLAD_IS_PACKAGED = packaged ? 'true' : 'false';
+  if (packaged) {
+    // Enforce Production Strict Mode (PostgreSQL-only, zero JSON fallback)
+    // automatically for packaged Windows builds before importing server/index.js.
+    env.NODE_ENV = 'production';
+    env.AWLAD_REQUIRE_POSTGRES = 'true';
+  }
+  if (targetDataDir) {
+    env.AWLAD_DATA_DIR = targetDataDir;
+  }
+  if (envFilePath) {
+    env.AWLAD_ENV_FILE = envFilePath;
+  }
+  return env;
+}
+
 module.exports = {
   inspectDatabaseFile,
   prepareElectronDataDirectory,
+  applyElectronRuntimeEnvironment,
 };

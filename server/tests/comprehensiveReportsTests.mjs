@@ -202,7 +202,7 @@ async function runComprehensiveScenario(modeLabel) {
 
     const empRes = await req(baseUrl, 'POST', '/api/admin/employees', {
       token: adminToken,
-      body: { name: 'أحمد محسن', jobTitle: 'محاسب', department: 'المبيعات', basicSalary: 5000, hireDate: '2026-01-01' },
+      body: { name: 'أحمد محسن', jobTitle: 'محاسب', department: 'المبيعات', hireDate: '2026-01-01' },
     });
     assert.equal(empRes.status, 201);
     const empId = empRes.json.employee.id;

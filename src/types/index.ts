@@ -737,7 +737,6 @@ export interface Employee {
   nationalId?: string;
   identityId?: string;
   userId?: string;
-  basicSalary: number;
   hireDate: string;
   status: 'active' | 'suspended';
   notes?: string;

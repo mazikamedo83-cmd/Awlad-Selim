@@ -571,7 +571,7 @@ await (async () => {
       // Seed an employee + a confirmed rep_transfer (توريد) cash_payment_employee row so redaction is actually exercised
       const empRes = await req(baseUrl, 'POST', '/api/admin/employees', {
         token: adminToken,
-        body: { name: 'موظف سري', jobTitle: 'أمين مخزن', basicSalary: 0, phone: '01099990001' },
+        body: { name: 'موظف سري', jobTitle: 'أمين مخزن', phone: '01099990001' },
       });
       assert.equal(empRes.status, 201);
 

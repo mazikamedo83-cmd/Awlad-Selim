@@ -602,7 +602,6 @@ export async function getStaffBootstrapData(actor) {
             jobTitle: e.job_title,
             department: e.department || '',
             nationalId: e.national_id || '',
-            basicSalary: Number(e.basic_salary || 0),
             hireDate: isoDateOnly(e.hire_date),
             status: e.status || 'active',
             notes: e.notes || '',
@@ -5395,24 +5394,21 @@ export async function updateRepresentative(id, updates, actor = null) {
   return { ok: true };
 }
 
-// HR: Employees, Advances, Attendance, Payrolls
+// HR: Employees Registry & Unified Identity Link
 export async function addEmployee(payload, actor = null) {
-  const name = String(payload.name || '').trim();
+  const { basicSalary: _ignoredBasicSalary, ...cleanPayload } = payload || {};
+  const name = String(cleanPayload.name || '').trim();
   if (!name) throw new AppError(400, 'اسم الموظف مطلوب', 'INVALID_EMPLOYEE_NAME');
-  const jobTitle = String(payload.jobTitle || '').trim();
+  const jobTitle = String(cleanPayload.jobTitle || '').trim();
   if (!jobTitle) throw new AppError(400, 'المسمى الوظيفي مطلوب', 'INVALID_JOB_TITLE');
-  const basicSalary = round2(payload.basicSalary ?? 0);
-  if (!Number.isFinite(basicSalary) || basicSalary < 0) {
-    throw new AppError(400, 'الراتب الأساسي غير صالح', 'INVALID_SALARY');
-  }
 
   const id = generateServerId('EMP');
-  const code = String(payload.code || `E-${Date.now().toString().slice(-4)}`).trim();
-  const hireDate = payload.hireDate || todayIso();
-  const status = payload.status || 'active';
-  const phone = String(payload.phone || '').trim();
-  const nationalId = String(payload.nationalId || '').trim();
-  const linkedUserId = String(payload.userId || '').trim() || null;
+  const code = String(cleanPayload.code || `E-${Date.now().toString().slice(-4)}`).trim();
+  const hireDate = cleanPayload.hireDate || todayIso();
+  const status = cleanPayload.status || 'active';
+  const phone = String(cleanPayload.phone || '').trim();
+  const nationalId = String(cleanPayload.nationalId || '').trim();
+  const linkedUserId = String(cleanPayload.userId || '').trim() || null;
   const now = nowIso();
   let resolvedIdentityId;
 
@@ -5450,9 +5446,9 @@ export async function addEmployee(payload, actor = null) {
         allowPhoneOverlap: Boolean(payload.allowPhoneOverlap),
       });
       await client.query(
-        `INSERT INTO employees (id, code, full_name, job_title, department, phone, normalized_phone, national_id, user_id, hire_date, basic_salary, status, notes)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-        [id, code, name, jobTitle, payload.department || '', phone, normalizePhoneDigits(phone), nationalId, linkedUserId, hireDate, basicSalary, status, payload.notes || '']
+        `INSERT INTO employees (id, code, full_name, job_title, department, phone, normalized_phone, national_id, user_id, hire_date, status, notes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+        [id, code, name, jobTitle, cleanPayload.department || '', phone, normalizePhoneDigits(phone), nationalId, linkedUserId, hireDate, status, cleanPayload.notes || '']
       );
       let empIdentityId;
       if (linkedUserId) {
@@ -5507,19 +5503,18 @@ export async function addEmployee(payload, actor = null) {
         allowPhoneOverlap: Boolean(payload.allowPhoneOverlap),
       });
       const newEmp = {
-        ...payload,
+        ...cleanPayload,
         id,
         code,
         name,
         jobTitle,
-        department: payload.department || '',
+        department: cleanPayload.department || '',
         phone,
         nationalId,
         userId: linkedUserId || undefined,
         hireDate,
-        basicSalary,
         status,
-        notes: payload.notes || '',
+        notes: cleanPayload.notes || '',
       };
       db.employees.unshift(newEmp);
       let empIdentityId;
@@ -5528,7 +5523,7 @@ export async function addEmployee(payload, actor = null) {
         empIdentityId = alignEmployeeUserIdentityJsonTx(db, {
           userId: linkedUserId,
           employeeId: id,
-          preferredIdentityId: payload.identityId || null,
+          preferredIdentityId: cleanPayload.identityId || null,
           now,
         });
       } else {
@@ -5539,8 +5534,8 @@ export async function addEmployee(payload, actor = null) {
           fullName: name,
           phone,
           nationalId,
-          notes: payload.notes || '',
-          explicitIdentityId: payload.identityId || null,
+          notes: cleanPayload.notes || '',
+          explicitIdentityId: cleanPayload.identityId || null,
           isPrimary: true,
           now,
         });
@@ -5555,18 +5550,17 @@ export async function addEmployee(payload, actor = null) {
       userId: actor.id,
       userName: actor.fullName,
       action: `إضافة موظف جديد (${name})`,
-      module: 'الموظفون والرواتب',
+      module: 'الموظفون',
       recordId: id,
     });
   }
   return {
-    ...payload,
+    ...cleanPayload,
     id,
     code,
     name,
     jobTitle,
     hireDate,
-    basicSalary,
     status,
     identityId: resolvedIdentityId,
     ...(linkedUserId ? { userId: linkedUserId } : {}),
@@ -5574,11 +5568,9 @@ export async function addEmployee(payload, actor = null) {
 }
 
 export async function updateEmployee(id, updates, actor = null) {
-  if (updates.basicSalary !== undefined && (!Number.isFinite(Number(updates.basicSalary)) || Number(updates.basicSalary) < 0)) {
-    throw new AppError(400, 'الراتب الأساسي غير صالح', 'INVALID_SALARY');
-  }
+  const { basicSalary: _ignoredBasicSalary, ...cleanUpdates } = updates || {};
   const now = nowIso();
-  let empName = updates.name || '';
+  let empName = cleanUpdates.name || '';
   if (await isPgMode()) {
     await withTransaction(async (client) => {
       const existing = await client.query('SELECT * FROM employees WHERE id = $1 FOR UPDATE', [id]);
@@ -5646,21 +5638,20 @@ export async function updateEmployee(id, updates, actor = null) {
       await client.query(
         `UPDATE employees SET
           code = $1, full_name = $2, job_title = $3, department = $4, phone = $5, normalized_phone = $6,
-          national_id = $7, user_id = $8, hire_date = $9, basic_salary = $10, status = $11, notes = $12
-         WHERE id = $13`,
+          national_id = $7, user_id = $8, hire_date = $9, status = $10, notes = $11
+         WHERE id = $12`,
         [
           nextCode,
           empName,
-          updates.jobTitle ?? cur.job_title,
-          updates.department ?? cur.department ?? '',
+          cleanUpdates.jobTitle ?? cur.job_title,
+          cleanUpdates.department ?? cur.department ?? '',
           nextPhone,
           normalizePhoneDigits(nextPhone),
           nextNationalId,
           nextUserId,
-          updates.hireDate ?? isoDateOnly(cur.hire_date),
-          round2(updates.basicSalary ?? cur.basic_salary),
-          updates.status ?? cur.status,
-          updates.notes ?? cur.notes ?? '',
+          cleanUpdates.hireDate ?? isoDateOnly(cur.hire_date),
+          cleanUpdates.status ?? cur.status,
+          cleanUpdates.notes ?? cur.notes ?? '',
           id,
         ]
       );
@@ -5734,13 +5725,14 @@ export async function updateEmployee(id, updates, actor = null) {
           if (u.employeeId === id && u.id !== nextUserId) u.employeeId = undefined;
         }
       }
-      db.employees[idx] = { ...cur, ...updates, id, name: empName, userId: nextUserId };
+      const { basicSalary: _curBasicSalary, ...curClean } = cur;
+      db.employees[idx] = { ...curClean, ...cleanUpdates, id, name: empName, userId: nextUserId };
       if (nextUserId && targetUsr) {
         targetUsr.employeeId = id;
         alignEmployeeUserIdentityJsonTx(db, {
           userId: nextUserId,
           employeeId: id,
-          preferredIdentityId: updates.identityId || null,
+          preferredIdentityId: cleanUpdates.identityId || null,
           now,
         });
       } else {
@@ -5751,8 +5743,8 @@ export async function updateEmployee(id, updates, actor = null) {
           fullName: empName,
           phone: nextPhone,
           nationalId: nextNationalId,
-          notes: updates.notes ?? cur.notes ?? '',
-          explicitIdentityId: updates.identityId || cur.identityId || null,
+          notes: cleanUpdates.notes ?? cur.notes ?? '',
+          explicitIdentityId: cleanUpdates.identityId || cur.identity_id || null,
           now,
         });
         db.employees[idx].identityId = empIdnId;
@@ -5765,7 +5757,7 @@ export async function updateEmployee(id, updates, actor = null) {
       userId: actor.id,
       userName: actor.fullName,
       action: `تحديث بيانات الموظف (${empName})`,
-      module: 'الموظفون والرواتب',
+      module: 'الموظفون',
       recordId: id,
     });
   }

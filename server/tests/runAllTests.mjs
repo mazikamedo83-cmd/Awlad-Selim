@@ -1354,14 +1354,14 @@ async function runSuiteA_JsonLedgerHttp() {
       // Restricted staff gets 403 on HR endpoints
       const hrForbidden = await req(baseUrl, 'POST', '/api/admin/employees', {
         token: tokenStaffRestricted,
-        body: { name: 'موظف', jobTitle: 'عامل', basicSalary: 0 },
+        body: { name: 'موظف', jobTitle: 'عامل' },
       });
       assert.equal(hrForbidden.status, 403);
 
       // Create employee
       const empRes = await req(baseUrl, 'POST', '/api/admin/employees', {
         token: adminToken,
-        body: { code: 'EMP-900', name: 'مصطفى محمود', jobTitle: 'أمين مخزن', department: 'المخازن', basicSalary: 0 },
+        body: { code: 'EMP-900', name: 'مصطفى محمود', jobTitle: 'أمين مخزن', department: 'المخازن' },
       });
       assert.equal(empRes.status, 201);
       const empId = empRes.json.employee.id;

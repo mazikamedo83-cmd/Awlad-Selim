@@ -6,7 +6,7 @@ import { createRequire } from 'node:module';
 import { spawnSync } from 'node:child_process';
 
 const require = createRequire(import.meta.url);
-const { prepareElectronDataDirectory, inspectDatabaseFile } = require('../../electron/dataBootstrap.cjs');
+const { prepareElectronDataDirectory, inspectDatabaseFile, applyElectronRuntimeEnvironment } = require('../../electron/dataBootstrap.cjs');
 
 const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'awlad_electron_verify_'));
 const mockAppData = path.join(sandbox, 'AppData', 'Roaming');
@@ -196,100 +196,180 @@ assert.equal(run2.status, 0, `Child 2 failed:\n${run2.stderr}\n${run2.stdout}`);
 assert.ok(run2.stdout.includes('CHILD2_OK'), `Missing CHILD2_OK: ${run2.stdout}`);
 console.log('  [PASS] 4. Fresh restart loads persisted database from %APPDATA% path and authenticates saved user');
 
-// 5. Clean packaged Windows customer install: zero auto-admin even if env vars present, 401 on protected routes, single bootstrap, 403 on second bootstrap
+// 5. Packaged Windows Electron automatically enforces Strict PostgreSQL Mode, refuses JSON fallback when PG absent, and supports .env switching + clean PG customer install
+const electronMainSource = fs.readFileSync(path.join(process.cwd(), 'electron/main.cjs'), 'utf8');
+assert.ok(
+  electronMainSource.includes('applyElectronRuntimeEnvironment({ isPackaged: app.isPackaged })'),
+  'electron/main.cjs must enforce strict runtime environment BEFORE importing server/index.js'
+);
+
+const appDataPackagedStrict = path.join(sandbox, 'AppDataPackagedStrict', 'Roaming');
+const strictEnvCandidate = path.join(sandbox, 'packaged_customer.env');
+fs.writeFileSync(strictEnvCandidate, 'PGHOST=192.168.1.50\nPGPORT=5432\nPGDATABASE=awlad_selim\n', 'utf8');
+const prepPackagedStrict = prepareElectronDataDirectory({
+  appDataDir: appDataPackagedStrict,
+  legacySourceDirs: [],
+  envFileCandidates: [strictEnvCandidate],
+});
+assert.ok(prepPackagedStrict.envFilePath && fs.existsSync(prepPackagedStrict.envFilePath), 'Packaged Electron must copy/preserve .env for localhost/LAN/VPS switching');
+
+const simulatedMainEnv = {};
+applyElectronRuntimeEnvironment({
+  isPackaged: true,
+  targetDataDir: prepPackagedStrict.targetDataDir,
+  envFilePath: prepPackagedStrict.envFilePath,
+  env: simulatedMainEnv,
+});
+assert.equal(simulatedMainEnv.NODE_ENV, 'production');
+assert.equal(simulatedMainEnv.AWLAD_REQUIRE_POSTGRES, 'true');
+assert.equal(simulatedMainEnv.AWLAD_ELECTRON, 'true');
+assert.equal(simulatedMainEnv.AWLAD_IS_PACKAGED, 'true');
+
+// 5a: Packaged Electron WITHOUT reachable PostgreSQL (even when NODE_ENV & AWLAD_REQUIRE_POSTGRES are omitted) MUST fail and create ZERO database.json
+const appDataStrictNoPg = path.join(sandbox, 'AppDataStrictNoPg', 'Roaming');
+const prepStrictNoPg = prepareElectronDataDirectory({ appDataDir: appDataStrictNoPg, legacySourceDirs: [], envFileCandidates: [] });
+const childPackagedNoPg = `
+  import assert from 'node:assert/strict';
+  process.env.AWLAD_DATA_DIR = ${JSON.stringify(prepStrictNoPg.targetDataDir)};
+  process.env.AWLAD_ELECTRON = 'true';
+  process.env.AWLAD_IS_PACKAGED = 'true';
+  delete process.env.NODE_ENV;
+  delete process.env.AWLAD_REQUIRE_POSTGRES;
+  delete process.env.DATABASE_URL;
+  delete process.env.PG_CONNECTION_STRING;
+  delete process.env.PGHOST;
+  delete process.env.DB_HOST;
+  const { isStrictPostgresMode } = await import('./server/db/postgres.js');
+  assert.equal(isStrictPostgresMode(), true, 'Packaged Electron must automatically enter Strict PostgreSQL Mode');
+  const { startStandaloneServer } = await import('./server/index.js');
+  await assert.rejects(
+    () => startStandaloneServer({ port: 0, host: '127.0.0.1', envFiles: [] }),
+    (err) => err?.code === 'DATABASE_UNAVAILABLE' && /Production Strict Mode/.test(err.message)
+  );
+  console.log('PACKAGED_NO_PG_REFUSED_OK');
+`;
+const runNoPg = spawnSync(process.execPath, ['--input-type=module', '-e', childPackagedNoPg], {
+  cwd: process.cwd(),
+  encoding: 'utf8',
+});
+assert.equal(runNoPg.status, 0, `Packaged no-PG strict refusal failed:\n${runNoPg.stderr}\n${runNoPg.stdout}`);
+assert.ok(runNoPg.stdout.includes('PACKAGED_NO_PG_REFUSED_OK'));
+assert.equal(
+  fs.existsSync(path.join(prepStrictNoPg.targetDataDir, 'database.json')),
+  false,
+  'Packaged Electron MUST NEVER create database.json when PostgreSQL is missing/unavailable'
+);
+
+// 5b: Packaged Windows clean customer install WITH PostgreSQL (pg-mem): zero auto-admin, 401 before setup, single bootstrap, 403 repeat bootstrap, zero database.json
 const appDataClean = path.join(sandbox, 'AppDataClean', 'Roaming');
 const prepClean = prepareElectronDataDirectory({ appDataDir: appDataClean, legacySourceDirs: [], envFileCandidates: [] });
 
 const childClean = `
-  process.env.AWLAD_DATA_DIR = ${JSON.stringify(prepClean.targetDataDir)};
-  process.env.AWLAD_ELECTRON = 'true';
-  process.env.AWLAD_IS_PACKAGED = 'true';
-  process.env.ADMIN_INITIAL_USERNAME = 'leaked_owner_env';
-  process.env.ADMIN_INITIAL_PASSWORD = 'OwnerSecretEnvPassword#1';
-  import('./server/index.js').then(async ({ startStandaloneServer }) => {
-    const srv = await startStandaloneServer({ port: 0, host: '127.0.0.1' });
-    const statusRes = await fetch(srv.localUrl + '/api/auth/status');
-    const statusJson = await statusRes.json();
-    if (!statusJson.ok || statusJson.needsAdminSetup !== true || statusJson.usersCount !== 0 || !statusJson.installationId) {
-      throw new Error('Clean packaged install must require admin setup and ignore env auto-admin: ' + JSON.stringify(statusJson));
-    }
-    const adminBlocked = await fetch(srv.localUrl + '/api/admin/bootstrap');
-    if (adminBlocked.status !== 401) throw new Error('Expected 401 on /api/admin/bootstrap before login, got ' + adminBlocked.status);
-    const dbBlocked = await fetch(srv.localUrl + '/api/database');
-    if (dbBlocked.status !== 401) throw new Error('Expected 401 on /api/database before login, got ' + dbBlocked.status);
+  import { newDb } from 'pg-mem';
+  const db = newDb({ autoCreateForeignKeyIndices: true });
+  const MemPool = db.adapters.createPg().Pool;
+  applyEnv: {
+    process.env.NODE_ENV = 'production';
+    process.env.AWLAD_REQUIRE_POSTGRES = 'true';
+    process.env.AWLAD_ELECTRON = 'true';
+    process.env.AWLAD_IS_PACKAGED = 'true';
+    process.env.AWLAD_DATA_DIR = ${JSON.stringify(prepClean.targetDataDir)};
+    process.env.JWT_SECRET = 'packaged_pg_customer_jwt_secret_key_2026_verified_12345';
+    process.env.ADMIN_INITIAL_USERNAME = 'leaked_owner_env';
+    process.env.ADMIN_INITIAL_PASSWORD = 'OwnerSecretEnvPassword#1';
+  }
+  const { setInjectedPool, isStrictPostgresMode } = await import('./server/db/postgres.js');
+  setInjectedPool(new MemPool());
+  if (!isStrictPostgresMode()) throw new Error('Expected strict mode active');
+  const { startStandaloneServer } = await import('./server/index.js');
+  const srv = await startStandaloneServer({ port: 0, host: '127.0.0.1', envFiles: [] });
+  const statusRes = await fetch(srv.localUrl + '/api/auth/status');
+  const statusJson = await statusRes.json();
+  if (!statusJson.ok || statusJson.needsAdminSetup !== true || statusJson.usersCount !== 0 || !statusJson.installationId) {
+    throw new Error('Clean packaged install must require admin setup and ignore env auto-admin: ' + JSON.stringify(statusJson));
+  }
+  const adminBlocked = await fetch(srv.localUrl + '/api/admin/bootstrap');
+  if (adminBlocked.status !== 401) throw new Error('Expected 401 on /api/admin/bootstrap before login, got ' + adminBlocked.status);
+  const dbBlocked = await fetch(srv.localUrl + '/api/database');
+  if (dbBlocked.status !== 401) throw new Error('Expected 401 on /api/database before login, got ' + dbBlocked.status);
 
-    // First-time customer admin creation must succeed and apply companyName
-    const boot1 = await fetch(srv.localUrl + '/api/auth/bootstrap-admin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        companyName: 'شركة النور المستقلة',
-        fullName: 'محمد محمود',
-        username: 'customer_admin_1',
-        password: 'CustomerStrong#2026',
-      })
-    });
-    if (boot1.status !== 201) throw new Error('Expected 201 on initial customer bootstrap-admin, got ' + boot1.status);
-    const boot2 = await fetch(srv.localUrl + '/api/auth/bootstrap-admin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        fullName: 'Second Admin Attempt',
-        username: 'attacker_admin',
-        password: 'AttackerPassword#2026',
-      })
-    });
-    if (boot2.status !== 403) throw new Error('Expected 403 on second bootstrap-admin, got ' + boot2.status);
-
-    // Owner env user must NEVER exist
-    const envLogin = await fetch(srv.localUrl + '/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: 'leaked_owner_env', password: 'OwnerSecretEnvPassword#1' })
-    });
-    if (envLogin.status !== 401) throw new Error('Env auto-admin must not exist in packaged customer mode, got ' + envLogin.status);
-
-    const custLogin = await fetch(srv.localUrl + '/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: 'customer_admin_1', password: 'CustomerStrong#2026' })
-    });
-    const custJson = await custLogin.json();
-    if (!custJson.ok || !custJson.accessToken || custJson.installationId !== statusJson.installationId) {
-      throw new Error('Customer admin login failed or installationId mismatch: ' + JSON.stringify(custJson));
-    }
-    const meRes = await fetch(srv.localUrl + '/api/auth/me', {
-      headers: { Authorization: 'Bearer ' + custJson.accessToken }
-    });
-    const meJson = await meRes.json();
-    if (!meJson.ok || meJson.installationId !== statusJson.installationId) {
-      throw new Error('/api/auth/me did not verify installationId: ' + JSON.stringify(meJson));
-    }
-    await srv.close();
-    console.log('CHILD_CLEAN_OK:' + JSON.stringify({ installationId: statusJson.installationId, accessToken: custJson.accessToken }));
+  const boot1 = await fetch(srv.localUrl + '/api/auth/bootstrap-admin', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      companyName: 'شركة النور المستقلة',
+      fullName: 'محمد محمود',
+      username: 'customer_admin_1',
+      password: 'CustomerStrong#2026',
+    })
   });
+  if (boot1.status !== 201) throw new Error('Expected 201 on initial customer bootstrap-admin, got ' + boot1.status);
+  const boot2 = await fetch(srv.localUrl + '/api/auth/bootstrap-admin', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      fullName: 'Second Admin Attempt',
+      username: 'attacker_admin',
+      password: 'AttackerPassword#2026',
+    })
+  });
+  if (boot2.status !== 403) throw new Error('Expected 403 on second bootstrap-admin, got ' + boot2.status);
+
+  const envLogin = await fetch(srv.localUrl + '/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'leaked_owner_env', password: 'OwnerSecretEnvPassword#1' })
+  });
+  if (envLogin.status !== 401) throw new Error('Env auto-admin must not exist in packaged customer mode, got ' + envLogin.status);
+
+  const custLogin = await fetch(srv.localUrl + '/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'customer_admin_1', password: 'CustomerStrong#2026' })
+  });
+  const custJson = await custLogin.json();
+  if (!custJson.ok || !custJson.accessToken || custJson.installationId !== statusJson.installationId) {
+    throw new Error('Customer admin login failed or installationId mismatch: ' + JSON.stringify(custJson));
+  }
+  const meRes = await fetch(srv.localUrl + '/api/auth/me', {
+    headers: { Authorization: 'Bearer ' + custJson.accessToken }
+  });
+  const meJson = await meRes.json();
+  if (!meJson.ok || meJson.installationId !== statusJson.installationId) {
+    throw new Error('/api/auth/me did not verify installationId: ' + JSON.stringify(meJson));
+  }
+  await srv.close();
+  console.log('CHILD_CLEAN_OK:' + JSON.stringify({ installationId: statusJson.installationId }));
 `;
 
 const runClean = spawnSync(process.execPath, ['--input-type=module', '-e', childClean], {
   cwd: process.cwd(),
   encoding: 'utf8',
 });
-assert.equal(runClean.status, 0, `Clean customer child failed:\n${runClean.stderr}\n${runClean.stdout}`);
+assert.equal(runClean.status, 0, `Clean packaged PG customer child failed:\n${runClean.stderr}\n${runClean.stdout}`);
 const cleanMarker = runClean.stdout.split('\n').find((l) => l.startsWith('CHILD_CLEAN_OK:'));
 assert.ok(cleanMarker, `Missing CHILD_CLEAN_OK: ${runClean.stdout}`);
-const cleanPayload = JSON.parse(cleanMarker.slice('CHILD_CLEAN_OK:'.length));
-console.log('  [PASS] 5. Packaged customer clean install requires first-time Admin setup, ignores env auto-admin, and blocks repeat bootstrap');
+assert.equal(fs.existsSync(path.join(prepClean.targetDataDir, 'database.json')), false, 'Packaged PG mode must create ZERO database.json');
+console.log('  [PASS] 5. Packaged Windows Electron enters Strict PG Mode automatically, blocks JSON fallback, preserves .env switching & clean PG customer install');
 
-// 6. Cross-company isolation: Token issued for Company A (cleanPayload) must be rejected by Company B even if JWT_SECRET is shared
+// 6. Cross-company isolation: Token issued for Company A must be rejected (401) by Company B even if JWT_SECRET is shared
+const appDataCompanyA = path.join(sandbox, 'AppDataCompanyA', 'Roaming');
+const prepCompanyA = prepareElectronDataDirectory({ appDataDir: appDataCompanyA, legacySourceDirs: [], envFileCandidates: [] });
 const appDataCompanyB = path.join(sandbox, 'AppDataCompanyB', 'Roaming');
 const prepCompanyB = prepareElectronDataDirectory({ appDataDir: appDataCompanyB, legacySourceDirs: [], envFileCandidates: [] });
 const sharedJwtSecret = 'shared_test_jwt_secret_for_cross_company_isolation_check_2026';
 
 const childCompanyA = `
-  process.env.AWLAD_DATA_DIR = ${JSON.stringify(prepClean.targetDataDir)};
+  process.env.AWLAD_DATA_DIR = ${JSON.stringify(prepCompanyA.targetDataDir)};
   process.env.JWT_SECRET = ${JSON.stringify(sharedJwtSecret)};
+  delete process.env.AWLAD_IS_PACKAGED;
   import('./server/index.js').then(async ({ startStandaloneServer }) => {
     const srv = await startStandaloneServer({ port: 0, host: '127.0.0.1' });
+    await fetch(srv.localUrl + '/api/auth/bootstrap-admin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ companyName: 'Company A', fullName: 'Admin A', username: 'customer_admin_1', password: 'CustomerStrong#2026' })
+    });
     const loginRes = await fetch(srv.localUrl + '/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

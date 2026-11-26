@@ -2,7 +2,10 @@ const { app, BrowserWindow, Menu, dialog, ipcMain, shell, clipboard, session, sa
 const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
-const { prepareElectronDataDirectory } = require('./dataBootstrap.cjs');
+const {
+  prepareElectronDataDirectory,
+  applyElectronRuntimeEnvironment,
+} = require('./dataBootstrap.cjs');
 const {
   writeEncryptedOfflineFile: writeVaultEncryptedFile,
   readEncryptedOfflineFile: readVaultEncryptedFile,
@@ -61,7 +64,9 @@ function getEnvFileCandidates(appRoot) {
   if (process.resourcesPath) {
     candidates.push(path.join(process.resourcesPath, '.env'));
   }
-  candidates.push(path.join(appRoot, '.env'));
+  if (!app.isPackaged) {
+    candidates.push(path.join(appRoot, '.env'));
+  }
   return candidates;
 }
 
@@ -424,12 +429,16 @@ async function bootstrapApplication() {
   const appDataBase = process.env.AWLAD_APP_DATA_ROOT || app.getPath('appData');
   const allowLegacyImport = !app.isPackaged || process.env.AWLAD_ALLOW_LEGACY_IMPORT === 'true';
 
+  // Enforce strict PostgreSQL flags immediately when running packaged Windows build
+  // BEFORE bootstrapping data directory or importing any server/database modules.
+  applyElectronRuntimeEnvironment({ isPackaged: app.isPackaged });
+
   let prepResult;
   try {
     prepResult = prepareElectronDataDirectory({
       appDataDir: appDataBase,
       legacySourceDirs: allowLegacyImport ? getLegacySourceCandidates(appRoot) : [],
-      envFileCandidates: allowLegacyImport ? getEnvFileCandidates(appRoot) : [],
+      envFileCandidates: getEnvFileCandidates(appRoot),
     });
   } catch (err) {
     dialog.showErrorBox(
@@ -440,13 +449,12 @@ async function bootstrapApplication() {
     return;
   }
 
-  // Always point embedded server at verified %APPDATA%\AWLAD SELIM\data before loading server modules
-  process.env.AWLAD_ELECTRON = 'true';
-  process.env.AWLAD_IS_PACKAGED = app.isPackaged ? 'true' : 'false';
-  process.env.AWLAD_DATA_DIR = prepResult.targetDataDir;
-  if (prepResult.envFilePath && allowLegacyImport) {
-    process.env.AWLAD_ENV_FILE = prepResult.envFilePath;
-  }
+  // Always apply verified %APPDATA%\AWLAD SELIM\data & .env PostgreSQL config before importing server/index.js
+  applyElectronRuntimeEnvironment({
+    isPackaged: app.isPackaged,
+    targetDataDir: prepResult.targetDataDir,
+    envFilePath: prepResult.envFilePath,
+  });
 
   const offlineClientDir = path.join(path.dirname(prepResult.targetDataDir), 'offline_client');
   const isFreshDatabase =
@@ -467,7 +475,7 @@ async function bootstrapApplication() {
   desktopState.dataDir = prepResult.targetDataDir;
   desktopState.backupsDir = prepResult.backupsDir;
   desktopState.offlineClientDir = offlineClientDir;
-  desktopState.envFilePath = allowLegacyImport ? prepResult.envFilePath : null;
+  desktopState.envFilePath = prepResult.envFilePath || null;
   desktopState.databaseState = prepResult.databaseState;
 
   const devStartUrl = !app.isPackaged ? (process.env.ELECTRON_START_URL || '').trim() : '';
@@ -491,18 +499,32 @@ async function bootstrapApplication() {
     const serverEntryUrl = pathToFileURL(path.join(appRoot, 'server', 'index.js')).href;
     const { startStandaloneServer } = await import(serverEntryUrl);
 
+    const envFiles = Array.from(
+      new Set(
+        [
+          prepResult.envFilePath,
+          path.join(path.dirname(process.execPath), '.env'),
+        ].filter(Boolean)
+      )
+    );
+
     try {
       serverInstance = await startStandaloneServer({
         host: '0.0.0.0',
         port: Number(process.env.PORT || process.env.API_PORT || 3000),
         distDir,
-        envFiles: allowLegacyImport && prepResult.envFilePath ? [prepResult.envFilePath] : [],
+        envFiles,
         allowPortFallback: process.env.AWLAD_ALLOW_PORT_FALLBACK === 'true',
       });
     } catch (err) {
+      const isStrictPgError =
+        err?.code === 'DATABASE_UNAVAILABLE' ||
+        /Production Strict Mode|PostgreSQL/i.test(String(err?.message || ''));
       dialog.showErrorBox(
-        'تعذر تشغيل خادم AWLAD SELIM المحلي',
-        `حدث خطأ أثناء تشغيل الخادم الداخلي على المنفذ ${process.env.PORT || 3000}.\n\n${err.message}\n\nإذا كان هناك خادم قديم أو آخر يعمل على نفس المنفذ، أغلقه ثم أعد فتح البرنامج.`
+        isStrictPgError ? 'قاعدة البيانات المركزية PostgreSQL غير متاحة (503)' : 'تعذر تشغيل خادم AWLAD SELIM المحلي',
+        isStrictPgError
+          ? `تم إيقاف التشغيل في وضع الإنتاج الصارم (DATABASE_UNAVAILABLE) لحماية البيانات ومنع الرجوع إلى JSON.\n\nتأكد من تشغيل PostgreSQL وضبط إعدادات الاتصال (localhost أو الشبكة المحلية أو VPS) داخل ملف الإعدادات الرسمي:\n${path.join(prepResult.appRootDataContainer, '.env')}\n\nالتفاصيل:\n${err.message}`
+          : `حدث خطأ أثناء تشغيل الخادم الداخلي على المنفذ ${process.env.PORT || 3000}.\n\n${err.message}\n\nإذا كان هناك خادم قديم أو آخر يعمل على نفس المنفذ، أغلقه ثم أعد فتح البرنامج.`
       );
       app.exit(1);
       return;

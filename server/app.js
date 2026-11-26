@@ -107,16 +107,22 @@ export async function initializeServerRuntime() {
         health.status === 'not_configured'
           ? 'متغيرات اتصال PostgreSQL (DATABASE_URL أو PGHOST) غير مضبوطة.'
           : `تعذر الاتصال بقاعدة بيانات PostgreSQL (${health.status}): ${sanitizePgErrorMessage(health.error || health.message)}`;
-      throw new Error(
+      const err = new Error(
         `[Production Strict Mode] تم رفض تشغيل السيرفر المركزي لأن PostgreSQL غير متاحة: ${reasonDetail} يُمنع الرجوع إلى JSON Ledger لحماية البيانات ومنع انقسامها.`
       );
+      err.code = DATABASE_UNAVAILABLE_CODE;
+      err.statusCode = 503;
+      throw err;
     }
 
     const schemaRes = await initializeSchema();
     if (!schemaRes?.success) {
-      throw new Error(
+      const err = new Error(
         `[Production Strict Mode] فشل تهيئة/التحقق من جداول PostgreSQL: ${sanitizePgErrorMessage(schemaRes?.error || 'unknown_error')}`
       );
+      err.code = DATABASE_UNAVAILABLE_CODE;
+      err.statusCode = 503;
+      throw err;
     }
 
     markPgAvailable({ schemaReady: true });

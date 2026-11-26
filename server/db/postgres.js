@@ -27,6 +27,9 @@ function notifyPgConnectionFailure(reason) {
 
 export function isStrictPostgresMode() {
   if (process.env.AWLAD_REQUIRE_POSTGRES === 'true') return true;
+  if (process.env.AWLAD_ELECTRON === 'true' && process.env.AWLAD_IS_PACKAGED === 'true') {
+    return true;
+  }
   return process.env.NODE_ENV === 'production';
 }
 
@@ -1220,6 +1223,77 @@ export async function initializeSchema(customPool = null) {
       // Safe non-destructive cleanup of removed product image references without deleting product/order records
       await txClient.query('UPDATE products SET image = NULL WHERE image IS NOT NULL');
       await txClient.query('UPDATE customer_item_order_items SET product_image = NULL WHERE product_image IS NOT NULL');
+
+      // Ensure v15 safe non-destructive archival & removal of retired employee HR systems (advances_deductions, attendance, payrolls, employees.basic_salary)
+      const retiredTablesRes = await txClient.query(
+        `SELECT table_name FROM information_schema.tables
+         WHERE table_schema = 'public' AND table_name IN ('payrolls', 'attendance', 'advances_deductions')`
+      );
+      const retiredTables = new Set((retiredTablesRes.rows || []).map((r) => r.table_name));
+      const retiredSalaryColRes = await txClient.query(
+        `SELECT column_name FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = 'employees' AND column_name = 'basic_salary'`
+      );
+      const hasBasicSalaryCol = Boolean(retiredSalaryColRes.rows && retiredSalaryColRes.rows.length > 0);
+
+      if (retiredTables.size > 0 || hasBasicSalaryCol) {
+        const archivedPayrolls = retiredTables.has('payrolls')
+          ? (await txClient.query('SELECT * FROM payrolls')).rows || []
+          : [];
+        const archivedAdvances = retiredTables.has('advances_deductions')
+          ? (await txClient.query('SELECT * FROM advances_deductions')).rows || []
+          : [];
+        const archivedAttendance = retiredTables.has('attendance')
+          ? (await txClient.query('SELECT * FROM attendance')).rows || []
+          : [];
+        const archivedSalaries = hasBasicSalaryCol
+          ? (await txClient.query(
+              'SELECT id, code, full_name, basic_salary FROM employees WHERE basic_salary IS NOT NULL AND basic_salary <> 0'
+            )).rows || []
+          : [];
+
+        if (
+          archivedPayrolls.length > 0 ||
+          archivedAdvances.length > 0 ||
+          archivedAttendance.length > 0 ||
+          archivedSalaries.length > 0
+        ) {
+          const archiveId = `AUD_V15_HR_ARCHIVE_${Date.now().toString(36).toUpperCase()}`;
+          await txClient.query(
+            `INSERT INTO audit_logs (id, timestamp, user_id, user_name, action, module, record_id, old_values, notes)
+             VALUES ($1, NOW(), NULL, 'النظام (ترقية المخطط)', $2, 'الموظفون', 'schema-v15-hr-cleanup', $3::jsonb, $4)`,
+            [
+              archiveId,
+              'أرشفة وإزالة جداول الحضور والرواتب والسلف القديمة مع الحفاظ الكامل على الحركات المالية التاريخية والموظفين',
+              JSON.stringify({
+                payrollsCount: archivedPayrolls.length,
+                advancesDeductionsCount: archivedAdvances.length,
+                attendanceCount: archivedAttendance.length,
+                employeesWithBasicSalaryCount: archivedSalaries.length,
+                payrolls: archivedPayrolls,
+                advancesDeductions: archivedAdvances,
+                attendance: archivedAttendance,
+                employeeSalaries: archivedSalaries,
+              }),
+              `أرشفة v15: رواتب (${archivedPayrolls.length})، سلف/خصومات (${archivedAdvances.length})، حضور (${archivedAttendance.length})، رواتب أساسية (${archivedSalaries.length}). لم يتم تعديل أو حذف أي قيود في financial_transactions أو cashboxes أو order_advance_payments.`,
+            ]
+          );
+        }
+
+        // Drop in FK-safe order without touching financial_transactions, cashboxes, employees, or customer order_advance_payments
+        if (retiredTables.has('payrolls')) {
+          await txClient.query('DROP TABLE payrolls');
+        }
+        if (retiredTables.has('attendance')) {
+          await txClient.query('DROP TABLE attendance');
+        }
+        if (retiredTables.has('advances_deductions')) {
+          await txClient.query('DROP TABLE advances_deductions');
+        }
+        if (hasBasicSalaryCol) {
+          await txClient.query('ALTER TABLE employees DROP COLUMN basic_salary');
+        }
+      }
     }, currentPool);
 
     return { success: true, message: 'تم تطبيق هيكل الجداول والفهارس والتسلسلات في PostgreSQL بنجاح.' };

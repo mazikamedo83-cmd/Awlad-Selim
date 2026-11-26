@@ -130,7 +130,6 @@ async function runSuite(modeLabel, pgPool = null) {
           nationalId: '29501011234567',
           jobTitle: 'أمين مخزن ومبيعات',
           department: 'المبيعات',
-          basicSalary: 6500,
         },
       });
       assert.equal(eRes.status, 201);
@@ -189,7 +188,6 @@ async function runSuite(modeLabel, pgPool = null) {
           nationalId: '29501011234567',
           jobTitle: 'موظف',
           department: 'المبيعات',
-          basicSalary: 4000,
         },
       });
       assert.equal(dupEmpRes.status, 409);
@@ -255,7 +253,6 @@ async function runSuite(modeLabel, pgPool = null) {
           phone: '01511223344',
           jobTitle: 'مندوب توزيع ميداني',
           department: 'التوزيع',
-          basicSalary: 5500,
         },
       });
       assert.equal(empRepRes.status, 201);
@@ -441,11 +438,11 @@ async function runSuite(modeLabel, pgPool = null) {
       // Create two distinct-phone employees sharing identical Arabic name — should NOT auto-merge
       const empA = await req(baseUrl, 'POST', '/api/admin/employees', {
         token: adminToken,
-        body: { code: 'EMP-AMB-1', name: 'محمد حسن علي', phone: '01077711101', jobTitle: 'سائق', department: 'التوزيع', basicSalary: 4000 },
+        body: { code: 'EMP-AMB-1', name: 'محمد حسن علي', phone: '01077711101', jobTitle: 'سائق', department: 'التوزيع' },
       });
       const empB = await req(baseUrl, 'POST', '/api/admin/employees', {
         token: adminToken,
-        body: { code: 'EMP-AMB-2', name: 'محمد حسن علي', phone: '01077711102', jobTitle: 'أمين مخزن', department: 'المخازن', basicSalary: 4200 },
+        body: { code: 'EMP-AMB-2', name: 'محمد حسن علي', phone: '01077711102', jobTitle: 'أمين مخزن', department: 'المخازن' },
       });
       assert.equal(empA.status, 201);
       assert.equal(empB.status, 201);
@@ -486,7 +483,7 @@ async function runSuite(modeLabel, pgPool = null) {
       // Create linked HR employee + system user acting as sales/inventory operator
       const opEmpRes = await req(baseUrl, 'POST', '/api/admin/employees', {
         token: adminToken,
-        body: { code: 'EMP-ACTOR-1', name: 'أحمد أمين المخزن', phone: '01088811199', jobTitle: 'أمين مخزن', department: 'المخازن', basicSalary: 5000 },
+        body: { code: 'EMP-ACTOR-1', name: 'أحمد أمين المخزن', phone: '01088811199', jobTitle: 'أمين مخزن', department: 'المخازن' },
       });
       assert.equal(opEmpRes.status, 201);
       const opEmpId = opEmpRes.json.employee.id;
@@ -640,14 +637,14 @@ async function runSuite(modeLabel, pgPool = null) {
     await test(`[${modeLabel}] 8. Strict 1:1 Employee<->User uniqueness, symmetric conflict blocking, and customer-employee role guard`, async () => {
       const eA = await req(baseUrl, 'POST', '/api/admin/employees', {
         token: adminToken,
-        body: { code: 'EMP-1TO1-A', name: 'موظف واحد لواحد أ', phone: '01091000001', jobTitle: 'محاسب', department: 'المالية', basicSalary: 5000 },
+        body: { code: 'EMP-1TO1-A', name: 'موظف واحد لواحد أ', phone: '01091000001', jobTitle: 'محاسب', department: 'المالية' },
       });
       assert.equal(eA.status, 201);
       isoEmpAId = eA.json.employee.id;
 
       const eB = await req(baseUrl, 'POST', '/api/admin/employees', {
         token: adminToken,
-        body: { code: 'EMP-1TO1-B', name: 'موظف واحد لواحد ب', phone: '01091000002', jobTitle: 'بائع', department: 'المبيعات', basicSalary: 4500 },
+        body: { code: 'EMP-1TO1-B', name: 'موظف واحد لواحد ب', phone: '01091000002', jobTitle: 'بائع', department: 'المبيعات' },
       });
       assert.equal(eB.status, 201);
       isoEmpBId = eB.json.employee.id;

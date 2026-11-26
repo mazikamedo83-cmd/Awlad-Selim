@@ -24,9 +24,12 @@ const {
   readJsonAuditLogs,
   readJsonIdempotency,
 } = await import('../db/jsonLedger.js');
-const { setInjectedPool, isStrictPostgresMode } = await import('../db/postgres.js');
+const { setInjectedPool, isStrictPostgresMode, initializeSchema } = await import('../db/postgres.js');
 const { resetPgModeCache, DATABASE_UNAVAILABLE_CODE } = await import('../db/stores/mode.js');
-const { rollbackMigration } = await import('../db/migrator.js');
+const { rollbackMigration, runDataMigration } = await import('../db/migrator.js');
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const { applyElectronRuntimeEnvironment } = require('../../electron/dataBootstrap.cjs');
 
 let passed = 0;
 async function test(name, fn) {
@@ -146,7 +149,11 @@ await saveAndRestoreEnv(async () => {
     assert.equal(isStrictPostgresMode(), false, 'dev default should not force strict mode');
 
     process.env.AWLAD_ELECTRON = 'true';
-    assert.equal(isStrictPostgresMode(), false, 'Electron dev/local mode without NODE_ENV=production stays in local JSON mode');
+    assert.equal(isStrictPostgresMode(), false, 'Electron dev/local mode without NODE_ENV=production or packaged flag stays in local JSON mode');
+
+    process.env.AWLAD_IS_PACKAGED = 'true';
+    assert.equal(isStrictPostgresMode(), true, 'Packaged Electron automatically activates Strict PostgreSQL Mode even before NODE_ENV');
+    delete process.env.AWLAD_IS_PACKAGED;
 
     process.env.NODE_ENV = 'production';
     assert.equal(isStrictPostgresMode(), true, 'NODE_ENV=production enforces strict mode even when AWLAD_ELECTRON=true');
@@ -856,6 +863,175 @@ await saveAndRestoreEnv(async () => {
       // Supplier delta: +150 (credit purchase 3*50) -30 (supplier payment) = +120
       assert.equal(Number(bootEnd.suppliers.find((s) => s.id === supplierId).currentBalance || 0), suppPre + 120);
       assertNoJsonLedgerFiles('after Test 12 recovery');
+    });
+
+    await test('13. Packaged Electron strict helper enforces NODE_ENV=production & AWLAD_REQUIRE_POSTGRES=true automatically', async () => {
+      const packagedEnv = applyElectronRuntimeEnvironment({
+        isPackaged: true,
+        targetDataDir: tempDataDir,
+        envFilePath: path.join(tempDataDir, '.env'),
+        env: {},
+      });
+      assert.equal(packagedEnv.AWLAD_ELECTRON, 'true');
+      assert.equal(packagedEnv.AWLAD_IS_PACKAGED, 'true');
+      assert.equal(packagedEnv.NODE_ENV, 'production');
+      assert.equal(packagedEnv.AWLAD_REQUIRE_POSTGRES, 'true');
+      assert.equal(packagedEnv.AWLAD_DATA_DIR, tempDataDir);
+      assertNoJsonLedgerFiles('after Test 13 packaged env check');
+    });
+
+    await test('14. Schema init omits retired employee HR tables/column, safely archives pre-existing HR rows, and preserves financials & customer order advances', async () => {
+      // 14a: Fresh PG database never creates retired HR tables or employees.basic_salary, while keeping order_advance_payments
+      const tblRes = await togglePool.query(
+        `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`
+      );
+      const freshTables = new Set(tblRes.rows.map((r) => r.table_name));
+      assert.equal(freshTables.has('advances_deductions'), false, 'advances_deductions must not exist');
+      assert.equal(freshTables.has('attendance'), false, 'attendance must not exist');
+      assert.equal(freshTables.has('payrolls'), false, 'payrolls must not exist');
+      assert.equal(freshTables.has('employees'), true, 'employees table must be preserved');
+      assert.equal(freshTables.has('order_advance_payments'), true, 'customer order_advance_payments must be preserved');
+
+      const empColsRes = await togglePool.query(
+        `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'employees'`
+      );
+      const freshEmpCols = new Set(empColsRes.rows.map((r) => r.column_name));
+      assert.equal(freshEmpCols.has('basic_salary'), false, 'employees.basic_salary must not exist');
+      assert.equal(freshEmpCols.has('user_id'), true, 'employees.user_id 1:1 link column must be preserved');
+
+      // 14b: Simulate pre-existing legacy PG DB that still had retired HR tables + employees.basic_salary + live financials & customer order_advance_payments
+      const legacyDb = newDb({ autoCreateForeignKeyIndices: true });
+      const legacyPool = new (legacyDb.adapters.createPg().Pool)();
+      await initializeSchema(legacyPool);
+
+      // Temporarily add retired HR tables/column as in older deployments + insert legacy rows alongside real financials
+      await legacyPool.query(`ALTER TABLE employees ADD COLUMN basic_salary NUMERIC(14,2) NOT NULL DEFAULT 0`);
+      await legacyPool.query(`
+        CREATE TABLE advances_deductions (
+          id VARCHAR(64) PRIMARY KEY, employee_id VARCHAR(64) NOT NULL, employee_name TEXT NOT NULL,
+          type VARCHAR(16) NOT NULL, amount NUMERIC(14,2) NOT NULL, date DATE NOT NULL,
+          reason TEXT, cashbox_id VARCHAR(64), is_settled BOOLEAN NOT NULL DEFAULT FALSE,
+          status VARCHAR(16) NOT NULL DEFAULT 'active', created_by VARCHAR(64) NOT NULL DEFAULT 'النظام',
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE TABLE attendance (
+          id VARCHAR(64) PRIMARY KEY, employee_id VARCHAR(64) NOT NULL, employee_name TEXT NOT NULL,
+          date DATE NOT NULL, status VARCHAR(16) NOT NULL, check_in_time VARCHAR(16),
+          check_out_time VARCHAR(16), delay_minutes INT NOT NULL DEFAULT 0, notes TEXT,
+          created_by VARCHAR(64) NOT NULL DEFAULT 'النظام', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+        CREATE TABLE payrolls (
+          id VARCHAR(64) PRIMARY KEY, payroll_number VARCHAR(64) UNIQUE NOT NULL, month VARCHAR(16) NOT NULL,
+          year INT, employee_id VARCHAR(64) NOT NULL, employee_name TEXT NOT NULL,
+          basic_salary NUMERIC(14,2) NOT NULL, allowances NUMERIC(14,2) NOT NULL DEFAULT 0,
+          deductions NUMERIC(14,2) NOT NULL DEFAULT 0, advances NUMERIC(14,2) NOT NULL DEFAULT 0,
+          net_salary NUMERIC(14,2) NOT NULL, payment_status VARCHAR(16) NOT NULL DEFAULT 'paid',
+          payment_date DATE, cashbox_id VARCHAR(64), notes TEXT,
+          created_by VARCHAR(64) NOT NULL DEFAULT 'النظام', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+      `);
+      await legacyPool.query(
+        `INSERT INTO cashboxes (id, name, type, opening_balance, current_balance, is_default)
+         VALUES ('cb-leg', 'خزينة رئيسية', 'cashbox', 1000, 1500, TRUE)`
+      );
+      await legacyPool.query(
+        `INSERT INTO customers (id, code, name, current_balance) VALUES ('cust-leg', 'C-LEG', 'عميل دفعة', -200)`
+      );
+      await legacyPool.query(
+        `INSERT INTO users (id, full_name, username, password_hash, role, permissions)
+         VALUES ('usr-leg', 'أحمد موظف', 'ahmed_emp', 'hash', 'sales', '{}'::jsonb)`
+      );
+      await legacyPool.query(
+        `INSERT INTO employees (id, code, full_name, job_title, department, hire_date, basic_salary, user_id)
+         VALUES ('emp-leg', 'E-LEG', 'أحمد موظف', 'مبيعات', 'المبيعات', '2026-01-01', 4500, 'usr-leg')`
+      );
+      await legacyPool.query(
+        `UPDATE users SET employee_id = 'emp-leg' WHERE id = 'usr-leg'`
+      );
+      await legacyPool.query(
+        `INSERT INTO financial_transactions (id, transaction_number, date, type, cashbox_id, cashbox_name, amount, balance_after, description, created_by)
+         VALUES ('ft-leg', 'FT-LEG-1', '2026-05-01', 'expense', 'cb-leg', 'خزينة رئيسية', 500, 1500, 'قيد مالي تاريخي', 'admin')`
+      );
+      await legacyPool.query(
+        `INSERT INTO customer_item_orders (id, request_number, customer_id, customer_name, total_amount, advance_paid_amount, remaining_amount, status)
+         VALUES ('ord-1', 'ORD-LEG-1', 'cust-leg', 'عميل دفعة', 500, 200, 300, 'approved')`
+      );
+      await legacyPool.query(
+        `INSERT INTO order_advance_payments (id, payment_number, order_id, customer_id, cashbox_id, cashbox_name, payment_method, amount, date, created_by)
+         VALUES ('oap-leg', 'ADV-1', 'ord-1', 'cust-leg', 'cb-leg', 'خزينة رئيسية', 'cash', 200, '2026-05-01', 'admin')`
+      );
+      await legacyPool.query(
+        `INSERT INTO payrolls (id, payroll_number, month, year, employee_id, employee_name, basic_salary, net_salary, cashbox_id)
+         VALUES ('pay-1', 'PAY-001', '05', 2026, 'emp-leg', 'أحمد موظف', 4500, 4500, 'cb-leg')`
+      );
+      await legacyPool.query(
+        `INSERT INTO advances_deductions (id, employee_id, employee_name, type, amount, date)
+         VALUES ('adv-1', 'emp-leg', 'أحمد موظف', 'advance', 300, '2026-05-02')`
+      );
+      await legacyPool.query(
+        `INSERT INTO attendance (id, employee_id, employee_name, date, status)
+         VALUES ('att-1', 'emp-leg', 'أحمد موظف', '2026-05-03', 'present')`
+      );
+
+      // Run safe schema upgrade on pre-existing DB
+      const upgradeRes = await initializeSchema(legacyPool);
+      assert.equal(upgradeRes.success, true, upgradeRes.error);
+
+      // Retired tables & column must be gone cleanly
+      const postTbls = new Set(
+        (await legacyPool.query(`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`)).rows.map((r) => r.table_name)
+      );
+      assert.equal(postTbls.has('payrolls'), false);
+      assert.equal(postTbls.has('attendance'), false);
+      assert.equal(postTbls.has('advances_deductions'), false);
+      const postEmpCols = new Set(
+        (await legacyPool.query(`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'employees'`)).rows.map((r) => r.column_name)
+      );
+      assert.equal(postEmpCols.has('basic_salary'), false);
+
+      // Historical data & 1:1 link & customer advances must be 100% preserved + legacy HR archived in audit_logs
+      const empKept = await legacyPool.query(`SELECT id, user_id, full_name FROM employees WHERE id = 'emp-leg'`);
+      assert.equal(empKept.rows.length, 1);
+      assert.equal(empKept.rows[0].user_id, 'usr-leg');
+      const ftKept = await legacyPool.query(`SELECT id, amount FROM financial_transactions WHERE id = 'ft-leg'`);
+      assert.equal(Number(ftKept.rows[0].amount), 500);
+      const oapKept = await legacyPool.query(`SELECT id, amount FROM order_advance_payments WHERE id = 'oap-leg'`);
+      assert.equal(Number(oapKept.rows[0].amount), 200);
+      const archiveAudit = await legacyPool.query(
+        `SELECT record_id, old_values FROM audit_logs WHERE record_id = 'schema-v15-hr-cleanup'`
+      );
+      assert.equal(archiveAudit.rows.length, 1, 'Legacy HR rows must be archived into audit_logs before dropping tables');
+      assert.equal(archiveAudit.rows[0].old_values.payrollsCount, 1);
+      assert.equal(archiveAudit.rows[0].old_values.advancesDeductionsCount, 1);
+      assert.equal(archiveAudit.rows[0].old_values.attendanceCount, 1);
+      assert.equal(archiveAudit.rows[0].old_values.employeesWithBasicSalaryCount, 1);
+
+      // 14c: Legacy JSON->PG migration via runDataMigration archives HR arrays without creating retired tables
+      const migDb = newDb({ autoCreateForeignKeyIndices: true });
+      const migPool = new (migDb.adapters.createPg().Pool)();
+      await initializeSchema(migPool);
+      const migRes = await runDataMigration(
+        {
+          warehouses: [{ id: 'wh-1', name: 'رئيسي', code: 'W1', isDefault: true, status: 'active' }],
+          cashboxes: [{ id: 'cb-1', name: 'خزينة', type: 'cashbox', openingBalance: 0, currentBalance: 900, isDefault: true }],
+          customers: [{ id: 'c-1', code: 'C1', name: 'عميل', currentBalance: 0 }],
+          customerItemOrders: [{ id: 'ord-10', requestNumber: 'ORD-10', customerId: 'c-1', customerName: 'عميل', totalAmount: 500, advancePaidAmount: 250, remainingAmount: 250, status: 'approved' }],
+          employees: [{ id: 'e-1', code: 'E1', name: 'موظف قديم', jobTitle: 'محاسب', hireDate: '2026-01-01', basicSalary: 3200 }],
+          payrolls: [{ id: 'p-old', netSalary: 3200 }],
+          attendance: [{ id: 'a-old', status: 'present' }],
+          advancesDeductions: [{ id: 'adv-old', amount: 150 }],
+          orderAdvancePayments: [{ id: 'oap-1', paymentNumber: 'ADV-10', orderId: 'ord-10', customerId: 'c-1', cashboxId: 'cb-1', amount: 250, date: '2026-05-01' }],
+          financialTransactions: [{ id: 'ft-1', transactionNumber: 'FT-1', date: '2026-05-01', type: 'cash_deposit', cashboxId: 'cb-1', cashboxName: 'خزينة', amount: 900, balanceAfter: 900 }],
+        },
+        'tester',
+        { targetPool: migPool, skipBackupFile: true, skipLogFile: true }
+      );
+      assert.equal(migRes.success, true, migRes.error);
+      const migAudit = await migPool.query(`SELECT old_values FROM audit_logs WHERE module = 'الموظفون'`);
+      assert.equal(migAudit.rows.length, 1);
+      assert.equal(migAudit.rows[0].old_values.payrollsCount, 1);
+      const migAdv = await migPool.query(`SELECT amount FROM order_advance_payments WHERE id = 'oap-1'`);
+      assert.equal(Number(migAdv.rows[0].amount), 250);
     });
   } finally {
     await new Promise((resolve) => server.close(resolve));

@@ -342,14 +342,16 @@ export async function bootstrapAdmin(
   const cleanCompany = String(companyName || '').trim();
   const isProd = process.env.NODE_ENV === 'production';
   const expectedSecret = String(process.env.BOOTSTRAP_ADMIN_SECRET || '').trim();
-  const rawIp = String(meta.ipAddress || '').trim();
-  const isLoopbackCaller =
-    !rawIp ||
+  const rawIp = String(meta.socketRemoteAddress || meta.ipAddress || '').trim();
+  const isLoopbackSocket =
     rawIp === '127.0.0.1' ||
     rawIp === '::1' ||
     rawIp === '::ffff:127.0.0.1';
   const isElectronLocalLoopback =
-    process.env.AWLAD_ELECTRON === 'true' && !isStrictPostgresMode() && isLoopbackCaller;
+    process.env.AWLAD_ELECTRON === 'true' &&
+    Boolean(meta.socketRemoteAddress) &&
+    isLoopbackSocket &&
+    !meta.hasForwardedFor;
   if ((isProd && !isElectronLocalLoopback) || expectedSecret) {
     const providedSecret = String(meta.bootstrapSecret || bootstrapSecret || '').trim();
     if (!expectedSecret || !constantTimeEqualSecret(providedSecret, expectedSecret)) {

@@ -521,61 +521,8 @@ CREATE TABLE IF NOT EXISTS employees (
   national_id VARCHAR(32),
   address TEXT,
   hire_date DATE NOT NULL,
-  basic_salary NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
   status VARCHAR(16) NOT NULL DEFAULT 'active',
   notes TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- 24. السلف والخصومات للموظفين (Advances & Deductions)
-CREATE TABLE IF NOT EXISTS advances_deductions (
-  id VARCHAR(64) PRIMARY KEY,
-  employee_id VARCHAR(64) NOT NULL REFERENCES employees(id) ON DELETE RESTRICT,
-  employee_name TEXT NOT NULL,
-  type VARCHAR(16) NOT NULL,
-  amount NUMERIC(14, 2) NOT NULL,
-  date DATE NOT NULL,
-  reason TEXT,
-  cashbox_id VARCHAR(64),
-  is_settled BOOLEAN NOT NULL DEFAULT FALSE,
-  status VARCHAR(16) NOT NULL DEFAULT 'active',
-  created_by VARCHAR(64) NOT NULL DEFAULT 'النظام',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- 25. الحضور والغياب (Attendance)
-CREATE TABLE IF NOT EXISTS attendance (
-  id VARCHAR(64) PRIMARY KEY,
-  employee_id VARCHAR(64) NOT NULL REFERENCES employees(id) ON DELETE RESTRICT,
-  employee_name TEXT NOT NULL,
-  date DATE NOT NULL,
-  status VARCHAR(16) NOT NULL,
-  check_in_time VARCHAR(16),
-  check_out_time VARCHAR(16),
-  delay_minutes INT NOT NULL DEFAULT 0,
-  notes TEXT,
-  created_by VARCHAR(64) NOT NULL DEFAULT 'النظام',
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- 26. مسير الرواتب (Payrolls)
-CREATE TABLE IF NOT EXISTS payrolls (
-  id VARCHAR(64) PRIMARY KEY,
-  payroll_number VARCHAR(64) UNIQUE NOT NULL,
-  month VARCHAR(16) NOT NULL,
-  year INT,
-  employee_id VARCHAR(64) NOT NULL REFERENCES employees(id) ON DELETE RESTRICT,
-  employee_name TEXT NOT NULL,
-  basic_salary NUMERIC(14, 2) NOT NULL,
-  allowances NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
-  deductions NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
-  advances NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
-  net_salary NUMERIC(14, 2) NOT NULL,
-  payment_status VARCHAR(16) NOT NULL DEFAULT 'paid',
-  payment_date DATE,
-  cashbox_id VARCHAR(64),
-  notes TEXT,
-  created_by VARCHAR(64) NOT NULL DEFAULT 'النظام',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

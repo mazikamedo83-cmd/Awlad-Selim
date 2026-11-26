@@ -76,6 +76,8 @@ router.post(
   asyncHandler(async (req, res) => {
     const user = await bootstrapAdmin(req.body || {}, {
       ipAddress: getClientIp(req),
+      socketRemoteAddress: req.socket?.remoteAddress || '',
+      hasForwardedFor: Boolean(req.get('x-forwarded-for') || req.get('forwarded')),
       deviceInfo: req.get('user-agent') || '',
       bootstrapSecret: req.get('x-bootstrap-secret') || req.body?.bootstrapSecret || '',
     });

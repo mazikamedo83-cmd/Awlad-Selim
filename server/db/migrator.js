@@ -1107,7 +1107,7 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
           details.financialTransactions++;
         }
 
-        // 17. Cheques, Installments, Employees, Advances, Attendance, Payrolls, Expenses/Incomes, Audit Logs
+        // 17. Cheques, Installments, Employees, Expenses/Incomes, Audit Logs
         for (const ch of cheques) {
           await client.query(`
             INSERT INTO cheques (id, cheque_number, type, bank_name, amount, issue_date, due_date, party_type, party_id, party_name, status, cashbox_id, notes, created_at)
@@ -1130,16 +1130,59 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
         for (const emp of employees) {
           const safeEmpUserId = verifiedEmpToUser.get(emp.id) || null;
           await client.query(`
-            INSERT INTO employees (id, code, full_name, job_title, department, phone, national_id, hire_date, basic_salary, status, notes, identity_id, user_id)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            INSERT INTO employees (id, code, full_name, job_title, department, phone, national_id, hire_date, status, notes, identity_id, user_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             ON CONFLICT (id) DO UPDATE SET
               full_name = EXCLUDED.full_name,
-              basic_salary = EXCLUDED.basic_salary,
               status = EXCLUDED.status,
               identity_id = COALESCE(EXCLUDED.identity_id, employees.identity_id),
               user_id = COALESCE(EXCLUDED.user_id, employees.user_id);
-          `, [emp.id, emp.code, emp.name || emp.fullName, emp.jobTitle, emp.department || '', emp.phone || '', emp.nationalId || '', emp.hireDate, Number(emp.basicSalary || 0), emp.status || 'active', emp.notes || '', emp.identityId || null, safeEmpUserId]);
+          `, [emp.id, emp.code, emp.name || emp.fullName, emp.jobTitle, emp.department || '', emp.phone || '', emp.nationalId || '', emp.hireDate, emp.status || 'active', emp.notes || '', emp.identityId || null, safeEmpUserId]);
           details.employees++;
+        }
+
+        const legacyAdvances = Array.isArray(sourceData.advancesDeductions) ? sourceData.advancesDeductions : [];
+        const legacyAttendance = Array.isArray(sourceData.attendance) ? sourceData.attendance : [];
+        const legacyPayrolls = Array.isArray(sourceData.payrolls) ? sourceData.payrolls : [];
+        const legacyEmployeeSalaries = employees
+          .filter((e) => Number(e.basicSalary || 0) !== 0)
+          .map((e) => ({ id: e.id, code: e.code, name: e.name || e.fullName, basicSalary: Number(e.basicSalary) }));
+        if (
+          legacyAdvances.length > 0 ||
+          legacyAttendance.length > 0 ||
+          legacyPayrolls.length > 0 ||
+          legacyEmployeeSalaries.length > 0
+        ) {
+          const archiveId = `AUD_MIG_HR_${migrationId}`;
+          const archiveSnapshot = {
+            advancesDeductionsCount: legacyAdvances.length,
+            attendanceCount: legacyAttendance.length,
+            payrollsCount: legacyPayrolls.length,
+            employeeSalariesCount: legacyEmployeeSalaries.length,
+            advancesDeductions: legacyAdvances,
+            attendance: legacyAttendance,
+            payrolls: legacyPayrolls,
+            employeeSalaries: legacyEmployeeSalaries,
+          };
+          await client.query(`
+            INSERT INTO audit_logs (id, timestamp, user_id, user_name, action, module, record_id, old_values, notes)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
+            ON CONFLICT (id) DO NOTHING;
+          `, [
+            archiveId,
+            new Date().toISOString(),
+            null,
+            executedBy || 'النظام',
+            'أرشفة بيانات الحضور والرواتب والسلف القديمة أثناء الترحيل دون إنشاء جداول محذوفة ودون المساس بالقيود المالية',
+            'الموظفون',
+            migrationId,
+            JSON.stringify(archiveSnapshot),
+            `أرشفة آمنة: رواتب (${legacyPayrolls.length})، سلف/خصومات (${legacyAdvances.length})، حضور (${legacyAttendance.length})، رواتب أساسية (${legacyEmployeeSalaries.length}).`,
+          ]);
+          details.auditLogs++;
+          details.warnings.push(
+            `تمت أرشفة بيانات الحضور/الرواتب/السلف القديمة في سجل التدقيق (${archiveId}) دون إعادة إنشاء الجداول المحذوفة مع الحفاظ الكامل على الحركات المالية التاريخية.`
+          );
         }
 
         // Safely apply verified symmetrical 1:1 users.employee_id links after employees exist
@@ -1504,7 +1547,7 @@ export async function rollbackMigration(migrationIdOrBackup, executedBy = 'مد�
         'invoice_return_items', 'invoice_returns', 'invoice_payments', 'invoice_items', 'invoices',
         'rep_custody_operations', 'rep_item_transfer_items', 'rep_item_transfers', 'rep_transfers',
         'stock_movements', 'financial_transactions', 'cheques', 'installments',
-        'advances_deductions', 'attendance', 'payrolls', 'expenses_incomes',
+        'expenses_incomes',
         'product_units', 'products', 'product_categories', 'customers', 'suppliers',
         'representatives', 'warehouses', 'cashboxes', 'employees', 'identity_conflicts', 'identity_roles', 'identities', 'user_sessions', 'users', 'system_settings',
       ];
