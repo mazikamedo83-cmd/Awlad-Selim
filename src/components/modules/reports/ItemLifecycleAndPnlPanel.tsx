@@ -11,7 +11,7 @@ import {
 import type { ItemLifecyclePayload, ItemPnlSummary } from '../../../types';
 import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 import { usePreferences } from '../../../context/PreferencesContext';
-import { formatLocaleNumber } from '../../../i18n/translator';
+import { formatLocaleNumber, translateSystemEntityName } from '../../../i18n/translator';
 
 interface ItemLifecycleAndPnlPanelProps {
   lifecycle: ItemLifecyclePayload | null;
@@ -198,8 +198,8 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
                     {lifecycle.warehouseBalances.map((wb) => (
                       <tr key={wb.warehouseId} className="hover:bg-slate-50">
                         <td className="px-2 py-1">
-                          <strong className="text-slate-800 block">{wb.warehouseName}</strong>
-                          <span className="text-[10px] text-slate-500">{wb.branchName}</span>
+                          <strong className="text-slate-800 block">{translateSystemEntityName(wb.warehouseName)}</strong>
+                          <span className="text-[10px] text-slate-500">{translateSystemEntityName(wb.branchName)}</span>
                         </td>
                         <td className="px-2 py-1 text-end font-mono tabular-nums">
                           <strong className={wb.quantity > 0 ? 'text-emerald-700' : wb.quantity < 0 ? 'text-rose-700' : 'text-slate-500'}>
@@ -282,17 +282,17 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
                 key: 'warehouseName',
                 header: t('المخزن / المسار', 'Warehouse / Route'),
                 sortable: true,
-                sortValue: (ev) => ev.warehouseName,
-                exportValue: (ev) => ev.warehouseName,
-                render: (ev) => <span className="whitespace-nowrap">{ev.warehouseName}</span>,
+                sortValue: (ev) => translateSystemEntityName(ev.warehouseName),
+                exportValue: (ev) => translateSystemEntityName(ev.warehouseName),
+                render: (ev) => <span className="whitespace-nowrap">{translateSystemEntityName(ev.warehouseName)}</span>,
               },
               {
                 key: 'partyName',
                 header: t('الطرف', 'Party'),
                 sortable: true,
-                sortValue: (ev) => ev.partyName,
-                exportValue: (ev) => ev.partyName,
-                render: (ev) => <span className="whitespace-nowrap">{ev.partyName}</span>,
+                sortValue: (ev) => translateSystemEntityName(ev.partyName),
+                exportValue: (ev) => translateSystemEntityName(ev.partyName),
+                render: (ev) => <span className="whitespace-nowrap">{translateSystemEntityName(ev.partyName)}</span>,
               },
               {
                 key: 'unit',
@@ -489,9 +489,9 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
                 key: 'partyName',
                 header: t('العميل / المخزن', 'Customer / Warehouse'),
                 sortable: true,
-                sortValue: (lt) => lt.partyName,
-                exportValue: (lt) => lt.partyName,
-                render: (lt) => <span>{t(lt.partyName)}</span>,
+                sortValue: (lt) => translateSystemEntityName(lt.partyName),
+                exportValue: (lt) => translateSystemEntityName(lt.partyName),
+                render: (lt) => <span>{translateSystemEntityName(lt.partyName)}</span>,
               },
               {
                 key: 'quantity',

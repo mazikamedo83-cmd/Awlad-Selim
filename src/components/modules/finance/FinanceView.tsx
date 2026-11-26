@@ -393,7 +393,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
         custPaymentTarget.id,
         custPayAmount,
         custPayCashboxId,
-        custPayNotes || `تحصيل دفعة حساب من ${custPaymentTarget.name}`,
+        custPayNotes || t(`تحصيل دفعة حساب من ${custPaymentTarget.name}`, `Account payment collection from ${custPaymentTarget.name}`),
         custPayMethod
       );
       if (!res.success) {
@@ -401,17 +401,18 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
         return;
       }
       const nextBal = Number((Number(custPaymentTarget.currentBalance || 0) - custPayAmount).toFixed(2));
+      const currLabel = t(settings.currency);
       setStatusBanner({
         type: 'success',
         text:
           nextBal < 0
             ? t(
-                `تم تحصيل ${formatLocaleNumber(custPayAmount)} ${settings.currency} من (${custPaymentTarget.name}) — تم قيد الزيادة كرصيد دائن / دفعة مقدمة للعميل (${formatLocaleNumber(Math.abs(nextBal))} ${settings.currency}).`,
-                `Collected ${formatLocaleNumber(custPayAmount)} ${settings.currency} from (${custPaymentTarget.name}) — excess recorded as customer credit / advance (${formatLocaleNumber(Math.abs(nextBal))} ${settings.currency}).`
+                `تم تحصيل ${formatLocaleNumber(custPayAmount)} ${currLabel} من (${custPaymentTarget.name}) — تم قيد الزيادة كرصيد دائن / دفعة مقدمة للعميل (${formatLocaleNumber(Math.abs(nextBal))} ${currLabel}).`,
+                `Collected ${formatLocaleNumber(custPayAmount)} ${currLabel} from (${custPaymentTarget.name}) — excess recorded as customer credit / advance (${formatLocaleNumber(Math.abs(nextBal))} ${currLabel}).`
               )
             : t(
-                `تم تحصيل ${formatLocaleNumber(custPayAmount)} ${settings.currency} من العميل (${custPaymentTarget.name}) بنجاح.`,
-                `Successfully collected ${formatLocaleNumber(custPayAmount)} ${settings.currency} from customer (${custPaymentTarget.name}).`
+                `تم تحصيل ${formatLocaleNumber(custPayAmount)} ${currLabel} من العميل (${custPaymentTarget.name}) بنجاح.`,
+                `Successfully collected ${formatLocaleNumber(custPayAmount)} ${currLabel} from customer (${custPaymentTarget.name}).`
               ),
       });
       if (custStatementTarget?.id === custPaymentTarget.id) {
@@ -454,22 +455,23 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
         suppPaymentTarget.id,
         suppPayAmount,
         suppPayCashboxId,
-        suppPayNotes || `سداد دفعة للمورد ${suppPaymentTarget.name}`
+        suppPayNotes || t(`سداد دفعة للمورد ${suppPaymentTarget.name}`, `Payment to supplier ${suppPaymentTarget.name}`)
       );
       if (!res.success) {
         setSuppPayError(res.error ? t(res.error) : t('تعذر تسجيل السداد للمورد', 'Failed to record supplier payment'));
         return;
       }
+      const currLabel = t(settings.currency);
       setStatusBanner({
         type: 'success',
         text: res.isAdvancePayment
           ? t(
-              `تم سداد ${formatLocaleNumber(suppPayAmount)} ${settings.currency} للمورد (${suppPaymentTarget.name}) وقيد الزيادة كدفعة مقدمة لنا عند المورد.`,
-              `Paid ${formatLocaleNumber(suppPayAmount)} ${settings.currency} to supplier (${suppPaymentTarget.name}) and recorded excess as our advance payment.`
+              `تم سداد ${formatLocaleNumber(suppPayAmount)} ${currLabel} للمورد (${suppPaymentTarget.name}) وقيد الزيادة كدفعة مقدمة لنا عند المورد.`,
+              `Paid ${formatLocaleNumber(suppPayAmount)} ${currLabel} to supplier (${suppPaymentTarget.name}) and recorded excess as our advance payment.`
             )
           : t(
-              `تم سداد مبلغ ${formatLocaleNumber(suppPayAmount)} ${settings.currency} للمورد (${suppPaymentTarget.name}) بنجاح.`,
-              `Successfully paid ${formatLocaleNumber(suppPayAmount)} ${settings.currency} to supplier (${suppPaymentTarget.name}).`
+              `تم سداد مبلغ ${formatLocaleNumber(suppPayAmount)} ${currLabel} للمورد (${suppPaymentTarget.name}) بنجاح.`,
+              `Successfully paid ${formatLocaleNumber(suppPayAmount)} ${currLabel} to supplier (${suppPaymentTarget.name}).`
             ),
       });
       if (suppStatementTarget?.id === suppPaymentTarget.id) {
@@ -498,8 +500,8 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
         setStatusBanner({
           type: 'success',
           text: t(
-            `تمت تسوية دفعة مقدمة بمبلغ ${formatLocaleNumber(settleAmount)} ${settings.currency} للمورد (${settleSupplierTarget.name}) دون حركة خزينة.`,
-            `Settled an advance payment of ${formatLocaleNumber(settleAmount)} ${settings.currency} for supplier (${settleSupplierTarget.name}) without cashbox movement.`
+            `تمت تسوية دفعة مقدمة بمبلغ ${formatLocaleNumber(settleAmount)} ${t(settings.currency)} للمورد (${settleSupplierTarget.name}) دون حركة خزينة.`,
+            `Settled an advance payment of ${formatLocaleNumber(settleAmount)} ${t(settings.currency)} for supplier (${settleSupplierTarget.name}) without cashbox movement.`
           ),
         });
         setIsConfirmingSettle(false);
@@ -535,12 +537,12 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
         ? [
             { label: t('الفاتورة الأصلية', 'Original Invoice'), value: linkedRet.originalInvoiceNumber },
             { label: t('طريقة التسوية', 'Settlement Method'), value: linkedRet.refundType === 'cash' ? t('رد نقدي', 'Cash Refund') : t('خصم من الرصيد', 'Balance Credit') },
-            { label: t('إجمالي المرتجع', 'Return Total'), value: `${formatLocaleNumber(Number(linkedRet.grandTotal || 0))} ${settings.currency}` },
+            { label: t('إجمالي المرتجع', 'Return Total'), value: `${formatLocaleNumber(Number(linkedRet.grandTotal || 0))} ${t(settings.currency)}` },
           ]
         : [
-            { label: t('مدين (مستحق لنا)', 'Debit (Receivable)'), value: `${formatLocaleNumber(Number(entry.debit || 0))} ${settings.currency}` },
-            { label: t('دائن (تحصيل/سداد)', 'Credit (Paid)'), value: `${formatLocaleNumber(Number(entry.credit || 0))} ${settings.currency}` },
-            { label: t('الرصيد بعد الحركة', 'Balance After Entry'), value: `${formatLocaleNumber(Math.abs(Number(entry.runningBalance || 0)))} ${settings.currency}` },
+            { label: t('مدين (مستحق لنا)', 'Debit (Receivable)'), value: `${formatLocaleNumber(Number(entry.debit || 0))} ${t(settings.currency)}` },
+            { label: t('دائن (تحصيل/سداد)', 'Credit (Paid)'), value: `${formatLocaleNumber(Number(entry.credit || 0))} ${t(settings.currency)}` },
+            { label: t('الرصيد بعد الحركة', 'Balance After Entry'), value: `${formatLocaleNumber(Math.abs(Number(entry.runningBalance || 0)))} ${t(settings.currency)}` },
           ],
     });
   };
@@ -567,12 +569,12 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
         ? [
             { label: t('الفاتورة الأصلية', 'Original Invoice'), value: linkedRet.originalInvoiceNumber },
             { label: t('طريقة التسوية', 'Settlement Method'), value: linkedRet.refundType === 'cash' ? t('استرداد نقدي', 'Cash Refund') : t('خصم من رصيد المورد', 'Deducted from Supplier Balance') },
-            { label: t('إجمالي المرتجع', 'Return Total'), value: `${formatLocaleNumber(Number(linkedRet.grandTotal || 0))} ${settings.currency}` },
+            { label: t('إجمالي المرتجع', 'Return Total'), value: `${formatLocaleNumber(Number(linkedRet.grandTotal || 0))} ${t(settings.currency)}` },
           ]
         : [
-            { label: t('له / مشتريات', 'Credit / Purchases'), value: `${formatLocaleNumber(Number(entry.credit || 0))} ${settings.currency}` },
-            { label: t('سداد / مرتجع', 'Payment / Return'), value: `${formatLocaleNumber(Number(entry.debit || 0))} ${settings.currency}` },
-            { label: t('الرصيد بعد الحركة', 'Balance After Entry'), value: `${formatLocaleNumber(Math.abs(Number(entry.runningBalance || 0)))} ${settings.currency}` },
+            { label: t('له / مشتريات', 'Credit / Purchases'), value: `${formatLocaleNumber(Number(entry.credit || 0))} ${t(settings.currency)}` },
+            { label: t('سداد / مرتجع', 'Payment / Return'), value: `${formatLocaleNumber(Number(entry.debit || 0))} ${t(settings.currency)}` },
+            { label: t('الرصيد بعد الحركة', 'Balance After Entry'), value: `${formatLocaleNumber(Math.abs(Number(entry.runningBalance || 0)))} ${t(settings.currency)}` },
           ],
     });
   };
@@ -596,7 +598,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
     }
     setIsSubmittingTransfer(true);
     try {
-      const res = await transferBetweenCashboxes(fromCbId, toCbId, numTransferAmount, transferNotes || 'تحويل مالي بين الخزائن');
+      const res = await transferBetweenCashboxes(fromCbId, toCbId, numTransferAmount, transferNotes || t('تحويل مالي بين الخزائن', 'Financial transfer between cashboxes'));
       if (!res.success) {
         setTransferError(res.error ? t(res.error) : t('فشل التحويل', 'Transfer failed'));
       } else {
@@ -606,8 +608,8 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
         setStatusBanner({
           type: 'success',
           text: t(
-            `تم تنفيذ التحويل المالي بمبلغ ${formatLocaleNumber(numTransferAmount)} ${settings.currency} بنجاح.`,
-            `Successfully transferred ${formatLocaleNumber(numTransferAmount)} ${settings.currency}.`
+            `تم تنفيذ التحويل المالي بمبلغ ${formatLocaleNumber(numTransferAmount)} ${t(settings.currency)} بنجاح.`,
+            `Successfully transferred ${formatLocaleNumber(numTransferAmount)} ${t(settings.currency)}.`
           ),
         });
       }
@@ -678,7 +680,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
         cashboxId: selectedCashboxId,
         cashboxName: cb?.name || '',
         paymentMethod: 'نقدي',
-        recipientOrPayer: recipientOrPayer.trim() || (recordType === 'expense' ? 'جهة صرف' : 'جهة تحصيل'),
+        recipientOrPayer: recipientOrPayer.trim() || (recordType === 'expense' ? t('جهة صرف', 'Disbursement Party') : t('جهة تحصيل', 'Collection Party')),
         notes: notes.trim(),
       });
 
@@ -692,12 +694,12 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
         text:
           recordType === 'expense'
             ? t(
-                `تم تسجيل سند صرف (${category.trim()}) بمبلغ ${formatLocaleNumber(numAmount)} ${settings.currency}.`,
-                `Recorded expense voucher (${category.trim()}) for ${formatLocaleNumber(numAmount)} ${settings.currency}.`
+                `تم تسجيل سند صرف (${category.trim()}) بمبلغ ${formatLocaleNumber(numAmount)} ${t(settings.currency)}.`,
+                `Recorded expense voucher (${category.trim()}) for ${formatLocaleNumber(numAmount)} ${t(settings.currency)}.`
               )
             : t(
-                `تم تسجيل سند قبض إيراد (${category.trim()}) بمبلغ ${formatLocaleNumber(numAmount)} ${settings.currency}.`,
-                `Recorded income voucher (${category.trim()}) for ${formatLocaleNumber(numAmount)} ${settings.currency}.`
+                `تم تسجيل سند قبض إيراد (${category.trim()}) بمبلغ ${formatLocaleNumber(numAmount)} ${t(settings.currency)}.`,
+                `Recorded income voucher (${category.trim()}) for ${formatLocaleNumber(numAmount)} ${t(settings.currency)}.`
               ),
       });
 
@@ -748,14 +750,14 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
     if (bal > 0.005) {
       return (
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-red-50 text-red-800 border border-red-200 text-[10px] font-black tabular-nums">
-          {t('لنا (مستحق):', 'Receivable:')} {formatLocaleNumber(bal)} {settings.currency}
+          {t('لنا (مستحق):', 'Receivable:')} {formatLocaleNumber(bal)} {t(settings.currency)}
         </span>
       );
     }
     if (bal < -0.005) {
       return (
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-black tabular-nums">
-          {t('علينا (دفعة مقدمة):', 'Credit (Advance):')} {formatLocaleNumber(Math.abs(bal))} {settings.currency}
+          {t('علينا (دفعة مقدمة):', 'Credit (Advance):')} {formatLocaleNumber(Math.abs(bal))} {t(settings.currency)}
         </span>
       );
     }
@@ -770,14 +772,14 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
     if (bal > 0.005) {
       return (
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-50 text-amber-900 border border-amber-200 text-[10px] font-black tabular-nums">
-          {t('علينا للمورد:', 'Payable to Supplier:')} {formatLocaleNumber(bal)} {settings.currency}
+          {t('علينا للمورد:', 'Payable to Supplier:')} {formatLocaleNumber(bal)} {t(settings.currency)}
         </span>
       );
     }
     if (bal < -0.005) {
       return (
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-black tabular-nums">
-          {t('لنا (دفعة مقدمة):', 'Our Advance:')} {formatLocaleNumber(Math.abs(bal))} {settings.currency}
+          {t('لنا (دفعة مقدمة):', 'Our Advance:')} {formatLocaleNumber(Math.abs(bal))} {t(settings.currency)}
         </span>
       );
     }
@@ -901,7 +903,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
               <span className="text-[10px] font-bold text-slate-600 dark:text-[#A9BCD9] block">{t('إجمالي مستحقاتنا عند العملاء (لنا)', 'Total Customer Receivables (Due to Us)')}</span>
               <div className="text-sm font-black font-mono tabular-nums text-red-700 dark:text-rose-400">
-                {formatLocaleNumber(customerKpis.receivableTotal)} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">{settings.currency}</span>
+                {formatLocaleNumber(customerKpis.receivableTotal)} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">{t(settings.currency)}</span>
               </div>
               <span className="text-[10px] font-bold text-red-600 dark:text-rose-300">{t('عدد', 'Count:')} {customerKpis.debtorsCount} {t('عميل مدين', 'debtor customers')}</span>
             </div>
@@ -909,7 +911,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
               <span className="text-[10px] font-bold text-slate-600 dark:text-[#A9BCD9] block">{t('إجمالي الدفعات المقدمة للعملاء (علينا)', 'Total Customer Advances (Credit Liability)')}</span>
               <div className="text-sm font-black font-mono tabular-nums text-emerald-700 dark:text-emerald-400">
-                {formatLocaleNumber(customerKpis.advanceTotal)} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">{settings.currency}</span>
+                {formatLocaleNumber(customerKpis.advanceTotal)} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">{t(settings.currency)}</span>
               </div>
               <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300">{t('عدد', 'Count:')} {customerKpis.creditorsCount} {t('عميل برصيد دائن', 'credit-balance customers')}</span>
             </div>
@@ -917,7 +919,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-1.5">
               <span className="text-[10px] font-bold text-slate-600 dark:text-[#A9BCD9] block">{t('إجمالي التحصيلات من العملاء', 'Total Collections from Customers')}</span>
               <div className="text-sm font-black font-mono tabular-nums text-blue-950 dark:text-[#85B8FF]">
-                {formatLocaleNumber(customerKpis.totalCollections)} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">{settings.currency}</span>
+                {formatLocaleNumber(customerKpis.totalCollections)} <span className="text-[10px] font-sans text-slate-500 dark:text-[#97AECE]">{t(settings.currency)}</span>
               </div>
               <span className="text-[10px] text-slate-500 dark:text-[#97AECE]">{t('نقدي الفواتير + سندات القبض', 'Invoice Cash + Receipt Vouchers')}</span>
             </div>
@@ -1059,7 +1061,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             <div className="bg-white px-3 py-2">
               <span className="text-[10px] font-bold text-slate-600 block">{t('إجمالي مستحقات الموردين (علينا)', 'Total Supplier Payables (Due)')}</span>
               <div className="text-base font-black font-mono tabular-nums text-amber-800">
-                {formatLocaleNumber(supplierKpis.payableTotal)} <span className="text-[10px] font-sans text-slate-500">{settings.currency}</span>
+                {formatLocaleNumber(supplierKpis.payableTotal)} <span className="text-[10px] font-sans text-slate-500">{t(settings.currency)}</span>
               </div>
               <span className="text-[10px] font-bold text-amber-700">{t('عدد', 'Count:')} {supplierKpis.payablesCount} {t('مورد مستحق لهم', 'suppliers payable')}</span>
             </div>
@@ -1067,7 +1069,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             <div className="bg-white px-3 py-2">
               <span className="text-[10px] font-bold text-slate-600 block">{t('إجمالي الدفعات المقدمة عند الموردين (لنا)', 'Total Advances with Suppliers (Our Credit)')}</span>
               <div className="text-base font-black font-mono tabular-nums text-emerald-700">
-                {formatLocaleNumber(supplierKpis.advanceTotal)} <span className="text-[10px] font-sans text-slate-500">{settings.currency}</span>
+                {formatLocaleNumber(supplierKpis.advanceTotal)} <span className="text-[10px] font-sans text-slate-500">{t(settings.currency)}</span>
               </div>
               <span className="text-[10px] font-bold text-emerald-700">{t('عدد', 'Count:')} {supplierKpis.advancesCount} {t('مورد لديهم رصيد لنا', 'suppliers with advance credit')}</span>
             </div>
@@ -1075,7 +1077,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             <div className="bg-white px-3 py-2">
               <span className="text-[10px] font-bold text-slate-600 block">{t('إجمالي المدفوعات للموردين', 'Total Paid to Suppliers')}</span>
               <div className="text-base font-black font-mono tabular-nums text-blue-950">
-                {formatLocaleNumber(supplierKpis.totalPayments)} <span className="text-[10px] font-sans text-slate-500">{settings.currency}</span>
+                {formatLocaleNumber(supplierKpis.totalPayments)} <span className="text-[10px] font-sans text-slate-500">{t(settings.currency)}</span>
               </div>
               <span className="text-[10px] text-slate-500">{t('سداد فواتير الشراء + سندات الصرف', 'Purchase Invoices + Payment Vouchers')}</span>
             </div>
@@ -1206,7 +1208,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                           onClick={() => {
                             const firstInv = openInvoices[0];
                             setSettleError(null);
-                            setSettleNotes('تسوية دفعة مقدمة على فاتورة المشتريات');
+                            setSettleNotes(t('تسوية دفعة مقدمة على فاتورة المشتريات', 'Settle advance payment against purchase invoice'));
                             setSettleSupplierTarget(s);
                             setSettleInvoiceId(firstInv?.id || '');
                             setSettleAmount(firstInv ? Math.min(availableAdvance, Number(firstInv.remainingAmount || 0)) : 0);
@@ -1290,7 +1292,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               exportValue: (cb) => (cb.balanceHidden ? t('محجوب', 'Hidden') : Number(cb.currentBalance ?? 0)),
               render: (cb) => (
                 <span className="font-mono text-sm font-black text-blue-950 tabular-nums">
-                  {cb.balanceHidden ? t('محجوب', 'Hidden') : `${formatLocaleNumber(cb.currentBalance ?? 0)} ${settings.currency}`}
+                  {cb.balanceHidden ? t('محجوب', 'Hidden') : `${formatLocaleNumber(cb.currentBalance ?? 0)} ${t(settings.currency)}`}
                 </span>
               ),
             },
@@ -1355,7 +1357,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               exportValue: (tx) => tx.amount,
               render: (tx) => (
                 <span className="font-mono font-black text-sm text-blue-950 tabular-nums">
-                  {formatLocaleNumber(tx.amount)} {settings.currency}
+                  {formatLocaleNumber(tx.amount)} {t(settings.currency)}
                 </span>
               ),
             },
@@ -1455,7 +1457,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               exportValue: (rec) => rec.amount,
               render: (rec) => (
                 <span className={`font-mono font-black text-sm tabular-nums ${rec.type === 'expense' ? 'text-amber-800' : 'text-emerald-700'}`}>
-                  {formatLocaleNumber(rec.amount)} {settings.currency}
+                  {formatLocaleNumber(rec.amount)} {t(settings.currency)}
                 </span>
               ),
             },
@@ -1490,31 +1492,31 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                 <div className="px-2.5 py-2 bg-slate-50 dark:bg-[#132544]">
                   <span className="text-[10px] font-bold text-slate-500 dark:text-[#A9BCD9] block">{t('رصيد أول المدة', 'Opening Balance')}</span>
                   <span className="font-mono font-black text-sm text-slate-900 dark:text-[#F3F7FC]">
-                    {formatLocaleNumber(Number(custStatementData.summary.openingBalance || 0))} {settings.currency}
+                    {formatLocaleNumber(Number(custStatementData.summary.openingBalance || 0))} {t(settings.currency)}
                   </span>
                 </div>
                 <div className="px-2.5 py-2 bg-blue-50 dark:bg-[#16366B]/60">
                   <span className="text-[10px] font-bold text-blue-700 dark:text-[#85B8FF] block">{t('إجمالي المبيعات', 'Total Sales')}</span>
                   <span className="font-mono font-black text-sm text-blue-950 dark:text-[#F3F7FC]">
-                    {formatLocaleNumber(Number(custStatementData.summary.totalSales ?? custStatementData.summary.totalDebit ?? 0))} {settings.currency}
+                    {formatLocaleNumber(Number(custStatementData.summary.totalSales ?? custStatementData.summary.totalDebit ?? 0))} {t(settings.currency)}
                   </span>
                 </div>
                 <div className="px-2.5 py-2 bg-emerald-50 dark:bg-emerald-950/40">
                   <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 block">{t('إجمالي المدفوعات', 'Total Payments')}</span>
                   <span className="font-mono font-black text-sm text-emerald-900 dark:text-emerald-200">
-                    {formatLocaleNumber(Number(custStatementData.summary.totalPaid ?? custStatementData.summary.totalCredit ?? 0))} {settings.currency}
+                    {formatLocaleNumber(Number(custStatementData.summary.totalPaid ?? custStatementData.summary.totalCredit ?? 0))} {t(settings.currency)}
                   </span>
                 </div>
                 <div className="px-2.5 py-2 bg-red-50 dark:bg-rose-950/40">
                   <span className="text-[10px] font-bold text-red-700 dark:text-rose-300 block">{t('مستحق لنا (لنا)', 'Receivable (Owed to Us)')}</span>
                   <span className="font-mono font-black text-sm text-red-700 dark:text-rose-200">
-                    {formatLocaleNumber(Number(custStatementData.summary.debtAmount ?? Math.max(0, Number(custStatementData.summary.currentBalance || 0))))} {settings.currency}
+                    {formatLocaleNumber(Number(custStatementData.summary.debtAmount ?? Math.max(0, Number(custStatementData.summary.currentBalance || 0))))} {t(settings.currency)}
                   </span>
                 </div>
                 <div className="px-2.5 py-2 bg-[#EEF3FA] dark:bg-[#132544]">
                   <span className="text-[10px] font-bold text-[#003589] dark:text-[#85B8FF] block">{t('رصيد دائن للعميل (علينا)', 'Customer Credit (We Owe)')}</span>
                   <span className="font-mono font-black text-sm text-[#011E58] dark:text-[#F3F7FC]">
-                    {formatLocaleNumber(Number(custStatementData.summary.creditAmount ?? Math.max(0, -Number(custStatementData.summary.currentBalance || 0))))} {settings.currency}
+                    {formatLocaleNumber(Number(custStatementData.summary.creditAmount ?? Math.max(0, -Number(custStatementData.summary.currentBalance || 0))))} {t(settings.currency)}
                   </span>
                 </div>
               </div>
@@ -1709,31 +1711,31 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                 <div className="px-2.5 py-2 bg-slate-50 dark:bg-[#132544]">
                   <span className="text-[10px] font-bold text-slate-500 dark:text-[#A9BCD9] block">{t('رصيد أول المدة', 'Opening Balance')}</span>
                   <span className="font-mono font-black text-sm text-slate-900 dark:text-[#F3F7FC]">
-                    {formatLocaleNumber(Number(suppStatementData.summary.openingBalance || 0))} {settings.currency}
+                    {formatLocaleNumber(Number(suppStatementData.summary.openingBalance || 0))} {t(settings.currency)}
                   </span>
                 </div>
                 <div className="px-2.5 py-2 bg-[#EEF3FA] dark:bg-[#16366B]/60">
                   <span className="text-[10px] font-bold text-[#003589] dark:text-[#85B8FF] block">{t('إجمالي المشتريات', 'Total Purchases')}</span>
                   <span className="font-mono font-black text-sm text-[#011E58] dark:text-[#F3F7FC]">
-                    {formatLocaleNumber(Number(suppStatementData.summary.totalPurchases || 0))} {settings.currency}
+                    {formatLocaleNumber(Number(suppStatementData.summary.totalPurchases || 0))} {t(settings.currency)}
                   </span>
                 </div>
                 <div className="px-2.5 py-2 bg-emerald-50 dark:bg-emerald-950/40">
                   <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 block">{t('إجمالي المدفوعات', 'Total Payments')}</span>
                   <span className="font-mono font-black text-sm text-emerald-900 dark:text-emerald-200">
-                    {formatLocaleNumber(Number(suppStatementData.summary.totalPaid || 0))} {settings.currency}
+                    {formatLocaleNumber(Number(suppStatementData.summary.totalPaid || 0))} {t(settings.currency)}
                   </span>
                 </div>
                 <div className="px-2.5 py-2 bg-amber-50 dark:bg-amber-950/40">
                   <span className="text-[10px] font-bold text-amber-800 dark:text-amber-300 block">{t('مستحق للمورد (علينا)', 'Payable (We Owe)')}</span>
                   <span className="font-mono font-black text-sm text-amber-900 dark:text-amber-200">
-                    {formatLocaleNumber(Number(suppStatementData.summary.payableAmount || 0))} {settings.currency}
+                    {formatLocaleNumber(Number(suppStatementData.summary.payableAmount || 0))} {t(settings.currency)}
                   </span>
                 </div>
                 <div className="px-2.5 py-2 bg-emerald-50/70 dark:bg-emerald-950/30">
                   <span className="text-[10px] font-bold text-emerald-800 dark:text-emerald-300 block">{t('دفعة مقدمة عند المورد (لنا)', 'Advance Credit (For Us)')}</span>
                   <span className="font-mono font-black text-sm text-emerald-900 dark:text-emerald-200">
-                    {formatLocaleNumber(Number(suppStatementData.summary.advanceCreditAmount || 0))} {settings.currency}
+                    {formatLocaleNumber(Number(suppStatementData.summary.advanceCreditAmount || 0))} {t(settings.currency)}
                   </span>
                 </div>
               </div>
@@ -1932,9 +1934,9 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               <div className="space-y-2.5">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50 px-2.5 py-2 rounded-lg border border-slate-200 font-bold">
                   <div>{t('المستودع', 'Warehouse')}: {previewStatementDoc.invoice.warehouseName || '-'}</div>
-                  <div>{t('المدفوع', 'Paid')}: {formatLocaleNumber(Number(previewStatementDoc.invoice.paidAmount || 0))} {settings.currency}</div>
-                  <div>{t('المتبقي', 'Remaining')}: {formatLocaleNumber(Number(previewStatementDoc.invoice.remainingAmount || 0))} {settings.currency}</div>
-                  <div>{t('الإجمالي', 'Total')}: {formatLocaleNumber(Number(previewStatementDoc.invoice.grandTotal || 0))} {settings.currency}</div>
+                  <div>{t('المدفوع', 'Paid')}: {formatLocaleNumber(Number(previewStatementDoc.invoice.paidAmount || 0))} {t(settings.currency)}</div>
+                  <div>{t('المتبقي', 'Remaining')}: {formatLocaleNumber(Number(previewStatementDoc.invoice.remainingAmount || 0))} {t(settings.currency)}</div>
+                  <div>{t('الإجمالي', 'Total')}: {formatLocaleNumber(Number(previewStatementDoc.invoice.grandTotal || 0))} {t(settings.currency)}</div>
                 </div>
                 <UnifiedDataTable<InvoiceItem>
                   title={t('أصناف المستند', 'Document Items')}
@@ -2009,9 +2011,9 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
           title={t(`تحصيل دفعة من العميل: ${custPaymentTarget.shopName || custPaymentTarget.name}`, `Collect Payment from Customer: ${custPaymentTarget.shopName || custPaymentTarget.name}`)}
           subtitle={
             custPaymentTarget.currentBalance > 0
-              ? `${t('المديونية الحالية (لنا)', 'Current Debt (Receivable)')}: ${formatLocaleNumber(custPaymentTarget.currentBalance)} ${settings.currency}`
+              ? `${t('المديونية الحالية (لنا)', 'Current Debt (Receivable)')}: ${formatLocaleNumber(custPaymentTarget.currentBalance)} ${t(settings.currency)}`
               : custPaymentTarget.currentBalance < 0
-              ? `${t('رصيد دائن للعميل حالياً (علينا)', 'Current Customer Credit (We Owe)')}: ${formatLocaleNumber(Math.abs(custPaymentTarget.currentBalance))} ${settings.currency}`
+              ? `${t('رصيد دائن للعميل حالياً (علينا)', 'Current Customer Credit (We Owe)')}: ${formatLocaleNumber(Math.abs(custPaymentTarget.currentBalance))} ${t(settings.currency)}`
               : t('الحساب متوازن حالياً (0)', 'Account currently settled (0)')
           }
           maxWidth="md"
@@ -2025,7 +2027,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             )}
 
             <div>
-              <label className="block font-bold mb-1">{t(`المبلغ المحصل (${settings.currency}):`, `Collected Amount (${settings.currency}):`)}</label>
+              <label className="block font-bold mb-1">{t(`المبلغ المحصل (${t(settings.currency)}):`, `Collected Amount (${t(settings.currency)}):`)}</label>
               <input
                 type="number"
                 min="0.01"
@@ -2040,8 +2042,8 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             {custPayAmount > Math.max(0, Number(custPaymentTarget.currentBalance || 0)) + 0.009 && (
               <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 font-bold leading-relaxed">
                 {t(
-                  `تنبيه محاسبي: المبلغ المحصل يتجاوز المديونية الحالية (${formatLocaleNumber(Math.max(0, Number(custPaymentTarget.currentBalance || 0)))} ${settings.currency}). سيتم حفظ الزيادة كـ "رصيد دائن / دفعة مقدمة للعميل (علينا)" دون تصفير الرصيد السالب.`,
-                  `Accounting notice: Collected amount exceeds current debt (${formatLocaleNumber(Math.max(0, Number(custPaymentTarget.currentBalance || 0)))} ${settings.currency}). Excess will be saved as customer advance credit without zeroing the negative balance.`
+                  `تنبيه محاسبي: المبلغ المحصل يتجاوز المديونية الحالية (${formatLocaleNumber(Math.max(0, Number(custPaymentTarget.currentBalance || 0)))} ${t(settings.currency)}). سيتم حفظ الزيادة كـ "رصيد دائن / دفعة مقدمة للعميل (علينا)" دون تصفير الرصيد السالب.`,
+                  `Accounting notice: Collected amount exceeds current debt (${formatLocaleNumber(Math.max(0, Number(custPaymentTarget.currentBalance || 0)))} ${t(settings.currency)}). Excess will be saved as customer advance credit without zeroing the negative balance.`
                 )}
               </div>
             )}
@@ -2120,9 +2122,9 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
           title={t(`سداد دفعة للمورد: ${suppPaymentTarget.name}`, `Pay Supplier: ${suppPaymentTarget.name}`)}
           subtitle={
             suppPaymentTarget.currentBalance > 0
-              ? `${t('المستحق للمورد (علينا)', 'Payable to Supplier (We Owe)')}: ${formatLocaleNumber(suppPaymentTarget.currentBalance)} ${settings.currency}`
+              ? `${t('المستحق للمورد (علينا)', 'Payable to Supplier (We Owe)')}: ${formatLocaleNumber(suppPaymentTarget.currentBalance)} ${t(settings.currency)}`
               : suppPaymentTarget.currentBalance < 0
-              ? `${t('دفعة مقدمة لنا عند المورد', 'Our Advance Credit with Supplier')}: ${formatLocaleNumber(Math.abs(suppPaymentTarget.currentBalance))} ${settings.currency}`
+              ? `${t('دفعة مقدمة لنا عند المورد', 'Our Advance Credit with Supplier')}: ${formatLocaleNumber(Math.abs(suppPaymentTarget.currentBalance))} ${t(settings.currency)}`
               : t('حساب المورد متوازن حالياً (0)', 'Supplier account currently settled (0)')
           }
           maxWidth="md"
@@ -2136,7 +2138,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
             )}
 
             <div>
-              <label className="block font-bold mb-1">{t(`المبلغ المسدد (${settings.currency}):`, `Paid Amount (${settings.currency}):`)}</label>
+              <label className="block font-bold mb-1">{t(`المبلغ المسدد (${t(settings.currency)}):`, `Paid Amount (${t(settings.currency)}):`)}</label>
               <input
                 type="number"
                 min="0.01"
@@ -2170,8 +2172,8 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                   </div>
                   <p>
                     {t(
-                      `المبلغ الزائد (${formatLocaleNumber(overpayment)} ${settings.currency}) يتجاوز المديونية الحالية (${formatLocaleNumber(debt)} ${settings.currency}) وسيُسجل كـ "دفعة مقدمة للمورد (لنا)" لحين تسويته مع فواتير مشتريات قادمة.`,
-                      `The excess amount (${formatLocaleNumber(overpayment)} ${settings.currency}) exceeds current debt (${formatLocaleNumber(debt)} ${settings.currency}) and will be recorded as supplier advance credit until settled against future purchase invoices.`
+                      `المبلغ الزائد (${formatLocaleNumber(overpayment)} ${t(settings.currency)}) يتجاوز المديونية الحالية (${formatLocaleNumber(debt)} ${t(settings.currency)}) وسيُسجل كـ "دفعة مقدمة للمورد (لنا)" لحين تسويته مع فواتير مشتريات قادمة.`,
+                      `The excess amount (${formatLocaleNumber(overpayment)} ${t(settings.currency)}) exceeds current debt (${formatLocaleNumber(debt)} ${t(settings.currency)}) and will be recorded as supplier advance credit until settled against future purchase invoices.`
                     )}
                   </p>
                   {!canApproveSupplierOverpayment && (
@@ -2285,14 +2287,14 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
               >
                 {getSupplierAdvanceInfo(settleSupplierTarget).openInvoices.map((inv) => (
                   <option key={inv.id} value={inv.id}>
-                    {inv.invoiceNumber} — {t('متبقي:', 'Remaining:')} {formatLocaleNumber(Number(inv.remainingAmount || 0))} {settings.currency}
+                    {inv.invoiceNumber} — {t('متبقي:', 'Remaining:')} {formatLocaleNumber(Number(inv.remainingAmount || 0))} {t(settings.currency)}
                   </option>
                 ))}
               </select>
             </div>
             <div>
               <label className="block font-bold mb-1">
-                {t(`مبلغ التسوية (${settings.currency}) — المتاح:`, `Settlement Amount (${settings.currency}) — Available:`)} {formatLocaleNumber(getSupplierAdvanceInfo(settleSupplierTarget).availableAdvance)}
+                {t(`مبلغ التسوية (${t(settings.currency)}) — المتاح:`, `Settlement Amount (${t(settings.currency)}) — Available:`)} {formatLocaleNumber(getSupplierAdvanceInfo(settleSupplierTarget).availableAdvance)}
               </label>
               <input
                 type="number"
@@ -2339,8 +2341,8 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
         message={
           settleSupplierTarget
             ? t(
-                `سيتم تسوية مبلغ ${formatLocaleNumber(settleAmount)} ${settings.currency} من رصيد الدفعة المقدمة لحساب المورد (${settleSupplierTarget.name}) على الفاتورة المحددة دون أي سحب جديد من الخزينة.`,
-                `An amount of ${formatLocaleNumber(settleAmount)} ${settings.currency} will be settled from supplier (${settleSupplierTarget.name}) advance balance onto the selected invoice with no new cashbox withdrawal.`
+                `سيتم تسوية مبلغ ${formatLocaleNumber(settleAmount)} ${t(settings.currency)} من رصيد الدفعة المقدمة لحساب المورد (${settleSupplierTarget.name}) على الفاتورة المحددة دون أي سحب جديد من الخزينة.`,
+                `An amount of ${formatLocaleNumber(settleAmount)} ${t(settings.currency)} will be settled from supplier (${settleSupplierTarget.name}) advance balance onto the selected invoice with no new cashbox withdrawal.`
               )
             : ''
         }
@@ -2392,7 +2394,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
           </div>
 
           <div>
-            <label className="block font-bold mb-1">{t(`المبلغ المراد تحويله (${settings.currency}):`, `Amount to Transfer (${settings.currency}):`)}</label>
+            <label className="block font-bold mb-1">{t(`المبلغ المراد تحويله (${t(settings.currency)}):`, `Amount to Transfer (${t(settings.currency)}):`)}</label>
             <input
               type="number"
               min="1"
@@ -2537,7 +2539,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
           </div>
 
           <div>
-            <label className="block font-bold mb-1">{t(`المبلغ (${settings.currency}):`, `Amount (${settings.currency}):`)}</label>
+            <label className="block font-bold mb-1">{t(`المبلغ (${t(settings.currency)}):`, `Amount (${t(settings.currency)}):`)}</label>
             <input
               type="number"
               min="1"
@@ -2641,7 +2643,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                     <strong className="font-mono tabular-nums text-[#003589] dark:text-[#85B8FF]">
                       {previewFinanceItem.item.balanceHidden
                         ? t('محجوب', 'Hidden')
-                        : `${formatLocaleNumber(Number(previewFinanceItem.item.currentBalance ?? 0))} ${settings.currency}`}
+                        : `${formatLocaleNumber(Number(previewFinanceItem.item.currentBalance ?? 0))} ${t(settings.currency)}`}
                     </strong>
                   </div>
                 </>
@@ -2667,7 +2669,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                   <div>
                     <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('المبلغ', 'Amount')}</span>
                     <strong className="font-mono tabular-nums text-[#003589] dark:text-[#85B8FF]">
-                      {formatLocaleNumber(Number(previewFinanceItem.item.amount || 0))} {settings.currency}
+                      {formatLocaleNumber(Number(previewFinanceItem.item.amount || 0))} {t(settings.currency)}
                     </strong>
                   </div>
                   <div>
@@ -2701,7 +2703,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({ initialTab }) => {
                   <div>
                     <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('المبلغ', 'Amount')}</span>
                     <strong className="font-mono tabular-nums text-[#003589] dark:text-[#85B8FF]">
-                      {formatLocaleNumber(Number(previewFinanceItem.item.amount || 0))} {settings.currency}
+                      {formatLocaleNumber(Number(previewFinanceItem.item.amount || 0))} {t(settings.currency)}
                     </strong>
                   </div>
                 </>

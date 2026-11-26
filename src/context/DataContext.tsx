@@ -1428,8 +1428,12 @@ export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueue
           category: p.category ?? prod.category,
           purchasePrice: p.purchasePrice !== undefined ? Number(p.purchasePrice) : prod.purchasePrice,
           sellingPrice: p.sellingPrice !== undefined ? Number(p.sellingPrice) : prod.sellingPrice,
-          wholesalePrice: p.wholesalePrice !== undefined ? Number(p.wholesalePrice) : prod.wholesalePrice,
-          minStockAlert: p.minStockAlert !== undefined ? Number(p.minStockAlert) : prod.minStockAlert,
+          minStockLevel:
+            p.minStockLevel !== undefined
+              ? Number(p.minStockLevel)
+              : p.minStockAlert !== undefined
+              ? Number(p.minStockAlert)
+              : prod.minStockLevel,
           status: p.status ?? prod.status,
           notes: p.notes ?? prod.notes,
         });

@@ -417,6 +417,7 @@ export const AR_TO_EN_MAP: Record<string, string> = {
 
   // Audit Log Modules
   'إدارة المتجر الإلكتروني': 'Storefront Management',
+  'إرسال واستلام': 'Send & Receive',
   'إرسال واستلام المندوبين': 'Rep Send & Receive',
   'إعدادات الاتصال والأجهزة': 'Connection & Device Settings',
   'الإعدادات': 'Settings',
@@ -613,6 +614,12 @@ export const AR_TO_EN_MAP: Record<string, string> = {
   'تحصيل عميل': 'Customer Collection',
   'تحويل مالي بين الخزائن': 'Financial Transfer Between Cashboxes',
   'الرصيد المتاح لا يكفي': 'Available balance is insufficient',
+  'جهة صرف': 'Disbursement Party',
+  'جهة تحصيل': 'Collection Party',
+  'تسوية دفعة مقدمة على فاتورة المشتريات': 'Settle advance payment against purchase invoice',
+  'تم التأكيد والاستلام الفعلي': 'Confirmed and physically received',
+  'تحصيل قسط عبر تطبيق المندوب': 'Installment collected via Rep app',
+  'إثبات توالف عهدة': 'Custody Damage Write-Off',
 };
 
 export function translateDynamicArabic(text: string): string {
@@ -653,6 +660,51 @@ export function translateDynamicArabic(text: string): string {
 
   m = trimmed.match(/^(.*) \(مرتجع شراء\)$/);
   if (m) return `${translateDynamicArabic(m[1])} (Purchase Return)`;
+
+  m = trimmed.match(/^فاتورة مبيعات رقم\s+(.+)$/);
+  if (m) return `Sales Invoice #${m[1]}`;
+
+  m = trimmed.match(/^فاتورة مشتريات رقم\s+(.+)$/);
+  if (m) return `Purchase Invoice #${m[1]}`;
+
+  m = trimmed.match(/^إشعار مرتجع مبيعات\s+(.+)$/);
+  if (m) return `Sales Return Notice ${m[1]}`;
+
+  m = trimmed.match(/^إشعار مرتجع مشتريات\s+(.+)$/);
+  if (m) return `Purchase Return Notice ${m[1]}`;
+
+  m = trimmed.match(/^سند توالف عهدة رقم\s+(.+)$/);
+  if (m) return `Custody Damage Voucher #${m[1]}`;
+
+  m = trimmed.match(/^سند توالف مخزنية\s+(.+)$/);
+  if (m) return `Warehouse Damage Voucher ${m[1]}`;
+
+  m = trimmed.match(/^سند مالي رقم\s+(.+)$/);
+  if (m) return `Financial Voucher #${m[1]}`;
+
+  m = trimmed.match(/^حركة مخزون\s+(.+)$/);
+  if (m) return `Inventory Movement ${m[1]}`;
+
+  m = trimmed.match(/^تسليم من عهدة المندوب للعميل رقم\s+(.+)$/);
+  if (m) return `Custody Delivery to Customer #${m[1]}`;
+
+  m = trimmed.match(/^مرتجع عهدة مندوب إلى المخزن رقم\s+(.+)$/);
+  if (m) return `Custody Return to Warehouse #${m[1]}`;
+
+  m = trimmed.match(/^إثبات تالف عهدة مندوب رقم\s+(.+)$/);
+  if (m) return `Rep Custody Damage Write-Off #${m[1]}`;
+
+  m = trimmed.match(/^عجز عهدة مندوب رقم\s+(.+)$/);
+  if (m) return `Rep Custody Shortage #${m[1]}`;
+
+  m = trimmed.match(/^تسوية عهدة مندوب رقم\s+(.+)$/);
+  if (m) return `Rep Custody Adjustment #${m[1]}`;
+
+  m = trimmed.match(/^حركة عهدة مندوب رقم\s+(.+)$/);
+  if (m) return `Rep Custody Operation #${m[1]}`;
+
+  m = trimmed.match(/^مرتجع مرتبط بالفاتورة\s+(.+)$/);
+  if (m) return `Return linked to invoice ${m[1]}`;
 
   m = trimmed.match(/^تالف عهدة \((.*)\)$/);
   if (m) return `Rep Custody Damaged (${m[1]})`;

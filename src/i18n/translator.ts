@@ -71,6 +71,64 @@ export function tr(arText: string, enText?: string): string {
   return AR_TO_EN_MAP[arText] ?? translateDynamicArabic(arText);
 }
 
+const SYSTEM_ENTITY_AR_TO_EN: Record<string, string> = {
+  'عميل نقدي / عام': 'Cash / Walk-in Customer',
+  'عميل نقدي / عرض سعر عام': 'Cash Customer / General Quote',
+  'عميل نقدي': 'Cash Customer',
+  'نقدي / عام': 'Cash / Walk-in',
+  'نقدي عام': 'Walk-in Cash',
+  'عميل عام': 'Walk-in Customer',
+  'مورد عام': 'General Supplier',
+  'مورد نقدي': 'Cash Supplier',
+  'جهة صرف': 'Disbursement Party',
+  'جهة تحصيل': 'Collection Party',
+  'المستودع الرئيسي': 'Main Warehouse',
+  'المخزن الرئيسي': 'Main Warehouse',
+  'مخزون رئيسي': 'Main Warehouse',
+  'مخزن رئيسي': 'Main Warehouse',
+  'المستودع المحدد': 'Selected Warehouse',
+  'الخزينة الرئيسية': 'Main Cashbox',
+  'الفرع الرئيسي': 'Main Branch',
+  'الفرع الرئيسي (الخزينة)': 'Main Branch (Cashbox)',
+  'الفرع الرئيسي - أولاد سليم': 'Main Branch - AWLAD SELIM',
+  'الإدارة العامة': 'General Administration',
+  'الإدارة': 'Administration',
+  'تحصيل محلي': 'Local Collection',
+  'تحويل داخلي': 'Internal Transfer',
+  'عام': 'General',
+  'أصناف عامة': 'General Items',
+  'رصيد الحساب': 'Account Balance',
+};
+
+/**
+ * Translates ONLY known fixed system defaults (e.g., Main Warehouse, Cash Customer, Rep Van (...))
+ * while strictly leaving all user-entered names (customers, suppliers, companies, persons, products) untouched.
+ */
+export function translateSystemEntityName(value?: string | null): string {
+  const raw = String(value ?? '');
+  if (!raw || activeLanguage !== 'en') return raw;
+  const trimmed = raw.trim();
+  if (!trimmed) return raw;
+  if (SYSTEM_ENTITY_AR_TO_EN[trimmed]) return SYSTEM_ENTITY_AR_TO_EN[trimmed];
+
+  let m = trimmed.match(/^سيارة المندوب\s*\((.+)\)$/);
+  if (m) return `Rep Van (${m[1]})`;
+
+  m = trimmed.match(/^سيارة المندوب\s*[-–—]\s*(.+)$/);
+  if (m) return `Rep Van - ${m[1]}`;
+
+  m = trimmed.match(/^سيارة\s*\((.+)\)$/);
+  if (m) return `Van (${m[1]})`;
+
+  m = trimmed.match(/^سيارة\s*[-–—]\s*(.+)$/);
+  if (m) return `Van - ${m[1]}`;
+
+  m = trimmed.match(/^مخزن المندوب\s*\((.+)\)$/);
+  if (m) return `Rep Warehouse (${m[1]})`;
+
+  return raw;
+}
+
 export function formatLocaleDate(
   value: string | number | Date | undefined | null,
   options?: Intl.DateTimeFormatOptions

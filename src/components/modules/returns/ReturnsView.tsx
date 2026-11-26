@@ -12,7 +12,7 @@ import { exportToExcel } from '../../common/ExcelExporter';
 import { QuantityInput } from '../../common/QuantityInput';
 import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 import { usePreferences } from '../../../context/PreferencesContext';
-import { formatLocaleNumber } from '../../../i18n/translator';
+import { formatLocaleNumber, translateSystemEntityName } from '../../../i18n/translator';
 
 export interface ReturnsViewProps {
   initialTypeFilter?: 'all' | 'sales_return' | 'purchase_return';
@@ -431,8 +431,8 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
       docNumber: ret.returnNumber,
       docType: ret.type === 'sales_return' ? t('مرتجع مبيعات', 'Sales Return') : t('مرتجع مشتريات', 'Purchase Return'),
       date: ret.date,
-      partyName: t(ret.partyName),
-      warehouseName: t(ret.warehouseName),
+      partyName: translateSystemEntityName(ret.partyName),
+      warehouseName: translateSystemEntityName(ret.warehouseName),
       grandTotal: ret.grandTotal,
       paidAmount: ret.refundType === 'cash' ? ret.grandTotal : 0,
       paymentType: ret.refundType === 'cash' ? t('رد نقدي فوري', 'Immediate Cash Refund') : t('خصم من رصيد الحساب', 'Deduct from Account Balance'),
@@ -558,15 +558,15 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
             key: 'partyName',
             header: t('العميل / المورد', 'Customer / Supplier'),
             sortValue: (r) => r.partyName,
-            exportValue: (r) => t(r.partyName),
-            render: (r) => <span className="font-bold text-slate-800">{t(r.partyName)}</span>,
+            exportValue: (r) => translateSystemEntityName(r.partyName),
+            render: (r) => <span className="font-bold text-slate-800">{translateSystemEntityName(r.partyName)}</span>,
           },
           {
             key: 'warehouseName',
             header: t('المستودع', 'Warehouse'),
             sortValue: (r) => r.warehouseName,
-            exportValue: (r) => t(r.warehouseName),
-            render: (r) => <span className="text-slate-600">{t(r.warehouseName)}</span>,
+            exportValue: (r) => translateSystemEntityName(r.warehouseName),
+            render: (r) => <span className="text-slate-600">{translateSystemEntityName(r.warehouseName)}</span>,
           },
           {
             key: 'grandTotal',
@@ -700,11 +700,11 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                 key: 'customerName',
                 header: t('العميل والمستودع', 'Customer & Warehouse'),
                 sortValue: (r) => r.customerName,
-                exportValue: (r) => `${t(r.customerName)} (${t(r.warehouseName)})`,
+                exportValue: (r) => `${translateSystemEntityName(r.customerName)} (${translateSystemEntityName(r.warehouseName)})`,
                 render: (r) => (
                   <div>
-                    <span className="font-bold text-slate-800 block">{t(r.customerName)}</span>
-                    <span className="text-[10px] text-slate-500">{t(r.warehouseName)}</span>
+                    <span className="font-bold text-slate-800 block">{translateSystemEntityName(r.customerName)}</span>
+                    <span className="text-[10px] text-slate-500">{translateSystemEntityName(r.warehouseName)}</span>
                   </div>
                 ),
               },
@@ -913,11 +913,11 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                 key: 'supplierName',
                 header: t('المورد والمستودع', 'Supplier & Warehouse'),
                 sortValue: (r) => r.supplierName,
-                exportValue: (r) => `${r.supplierName} (${t(r.warehouseName)})`,
+                exportValue: (r) => `${translateSystemEntityName(r.supplierName)} (${translateSystemEntityName(r.warehouseName)})`,
                 render: (r) => (
                   <div>
-                    <span className="font-bold text-slate-800 block">{r.supplierName}</span>
-                    <span className="text-[10px] text-slate-500">{t(r.warehouseName)}</span>
+                    <span className="font-bold text-slate-800 block">{translateSystemEntityName(r.supplierName)}</span>
+                    <span className="text-[10px] text-slate-500">{translateSystemEntityName(r.warehouseName)}</span>
                   </div>
                 ),
               },
@@ -1362,7 +1362,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
             <div className="p-2 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
               <div className="flex justify-between">
                 <span className="text-slate-500">{t('العميل:', 'Customer:')}</span>
-                <strong className="text-slate-900">{t(approvingSalesReq.customerName)}</strong>
+                <strong className="text-slate-900">{translateSystemEntityName(approvingSalesReq.customerName)}</strong>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">{t('الفاتورة الأصلية:', 'Original Invoice:')}</span>
@@ -1506,11 +1506,11 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
               </div>
               <div>
                 <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('العميل / المورد', 'Customer / Supplier')}</span>
-                <strong className="text-slate-900 dark:text-[#F3F7FC]">{t(previewReturn.partyName)}</strong>
+                <strong className="text-slate-900 dark:text-[#F3F7FC]">{translateSystemEntityName(previewReturn.partyName)}</strong>
               </div>
               <div>
                 <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('المستودع', 'Warehouse')}</span>
-                <strong className="text-slate-900 dark:text-[#F3F7FC]">{t(previewReturn.warehouseName)}</strong>
+                <strong className="text-slate-900 dark:text-[#F3F7FC]">{translateSystemEntityName(previewReturn.warehouseName)}</strong>
               </div>
               <div>
                 <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('طريقة التسوية', 'Settlement Method')}</span>
@@ -1590,7 +1590,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
         isOpen={!!previewSalesRequest}
         onClose={() => setPreviewSalesRequest(null)}
         title={previewSalesRequest ? `${t('تفاصيل طلب مرتجع مبيعات:', 'Sales Return Request Details:')} ${previewSalesRequest.requestNumber}` : t('تفاصيل طلب مرتجع مبيعات', 'Sales Return Request Details')}
-        subtitle={previewSalesRequest?.customerName ? t(previewSalesRequest.customerName) : undefined}
+        subtitle={previewSalesRequest?.customerName ? translateSystemEntityName(previewSalesRequest.customerName) : undefined}
         maxWidth="2xl"
       >
         {previewSalesRequest && (
@@ -1610,11 +1610,11 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
               </div>
               <div>
                 <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('العميل', 'Customer')}</span>
-                <strong>{t(previewSalesRequest.customerName)}</strong>
+                <strong>{translateSystemEntityName(previewSalesRequest.customerName)}</strong>
               </div>
               <div>
                 <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('المستودع', 'Warehouse')}</span>
-                <strong>{t(previewSalesRequest.warehouseName)}</strong>
+                <strong>{translateSystemEntityName(previewSalesRequest.warehouseName)}</strong>
               </div>
               <div>
                 <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('الإجمالي', 'Total')}</span>
@@ -1706,7 +1706,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
               </div>
               <div>
                 <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('المستودع', 'Warehouse')}</span>
-                <strong>{t(previewPurchaseRequest.warehouseName)}</strong>
+                <strong>{translateSystemEntityName(previewPurchaseRequest.warehouseName)}</strong>
               </div>
               <div>
                 <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('الإجمالي', 'Total')}</span>

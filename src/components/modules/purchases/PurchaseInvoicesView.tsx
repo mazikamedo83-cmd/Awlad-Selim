@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
   Plus, Printer, Trash2, Save, CheckCircle2, XCircle, PackagePlus, AlertTriangle,
-  Eye, Edit, AlertCircle, History, Clock, Send, UserCheck
+  Eye, Edit, AlertCircle, History, Clock, Send, UserCheck, Barcode
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -15,9 +15,9 @@ import { SearchableFilterSelect } from '../../common/SearchableFilterSelect';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { QuantityInput } from '../../common/QuantityInput';
 import { UnifiedDataTable } from '../../common/UnifiedDataTable';
-import { computeLineTotal } from '../../../utils/quantity';
+import { computeLineTotal, roundCurrency } from '../../../utils/quantity';
 import { usePreferences } from '../../../context/PreferencesContext';
-import { formatLocaleDateTime, formatLocaleNumber } from '../../../i18n/translator';
+import { formatLocaleDateTime, formatLocaleNumber, translateSystemEntityName } from '../../../i18n/translator';
 
 export interface PurchaseInvoicesViewProps {
   initialStatusFilter?: 'all' | 'rep_incoming' | 'confirmed' | 'draft' | 'cancelled';
@@ -35,6 +35,7 @@ interface PurchaseDraftItem {
   purchasePriceAtTime: number;
   discount: number;
   total: number;
+  notes?: string;
   newProduct?: InlinePurchaseNewProduct;
 }
 
@@ -171,8 +172,10 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
   // Items
   const [items, setItems] = useState<PurchaseDraftItem[]>([]);
 
-  // Existing item input (blank defaults)
+  // Classic Item Entry states
+  const [barcodeInput, setBarcodeInput] = useState('');
   const [itemProdId, setItemProdId] = useState('');
+  const [itemUnitName, setItemUnitName] = useState('');
   const [itemQty, setItemQty] = useState<number | ''>('');
   const [itemPrice, setItemPrice] = useState<number | ''>('');
 
@@ -195,7 +198,9 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
 
   const resetPurchaseModalForm = useCallback(() => {
     setItems([]);
+    setBarcodeInput('');
     setItemProdId('');
+    setItemUnitName('');
     setItemQty('');
     setItemPrice('');
     setPaidAmount('');
@@ -355,21 +360,90 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     });
   }, [purchaseInvoices, searchTerm, supplierFilter, statusFilter]);
 
+  const selectedPurchaseProduct = useMemo(
+    () => products.find((p) => p.id === itemProdId) || null,
+    [products, itemProdId]
+  );
+
+  const selectedSupplier = useMemo(
+    () => suppliers.find((s) => s.id === selectedSupplierId) || null,
+    [suppliers, selectedSupplierId]
+  );
+
+  const purchaseUnitOptions = useMemo(() => {
+    if (!selectedPurchaseProduct) return [];
+    return [
+      {
+        name: selectedPurchaseProduct.baseUnit,
+        conversionFactor: 1,
+        purchasePrice: selectedPurchaseProduct.purchasePrice,
+      },
+      ...(selectedPurchaseProduct.units || []).map((u) => ({
+        name: u.name,
+        conversionFactor: u.conversionFactor || 1,
+        purchasePrice: u.purchasePrice || selectedPurchaseProduct.purchasePrice * (u.conversionFactor || 1),
+      })),
+    ];
+  }, [selectedPurchaseProduct]);
+
   const handleProductPick = (prodId: string) => {
     setItemProdId(prodId);
-    const p = products.find(prod => prod.id === prodId);
-    if (p) {
-      setItemPrice(p.purchasePrice > 0 ? p.purchasePrice : '');
+    const p = products.find((prod) => prod.id === prodId);
+    if (!p) return;
+    setItemUnitName(p.baseUnit);
+    setItemQty(1);
+    setItemPrice(p.purchasePrice > 0 ? p.purchasePrice : 0);
+    setError(null);
+    window.setTimeout(() => {
+      qtyInputRef.current?.focus();
+      qtyInputRef.current?.select();
+    }, 30);
+  };
+
+  const handlePurchaseUnitSelect = (unitName: string) => {
+    setItemUnitName(unitName);
+    const matched = purchaseUnitOptions.find((u) => u.name === unitName);
+    if (matched) {
+      setItemPrice(matched.purchasePrice);
+    }
+  };
+
+  const handlePurchaseBarcodeSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!barcodeInput.trim()) return;
+    const barcode = barcodeInput.trim();
+    const prod = products.find(
+      (p) =>
+        p.barcode === barcode ||
+        p.code === barcode ||
+        p.units.some((u) => u.barcode === barcode)
+    );
+    if (prod) {
+      const unitMatch = prod.units.find((u) => u.barcode === barcode);
+      setItemProdId(prod.id);
+      setItemUnitName(unitMatch?.name || prod.baseUnit);
+      setItemQty(1);
+      setItemPrice(unitMatch ? unitMatch.purchasePrice : prod.purchasePrice);
+      setBarcodeInput('');
+      setError(null);
+    } else {
+      setError(
+        t(
+          `لم يتم العثور على صنف بالباركود أو الكود: ${barcode}`,
+          `No item found with barcode or code: ${barcode}`
+        )
+      );
     }
   };
 
   const handleUseExistingDuplicateProduct = (prod: Product) => {
     setShowInlineNewProduct(false);
     setItemProdId(prod.id);
-    setItemPrice(prod.purchasePrice > 0 ? prod.purchasePrice : '');
-    if (newProdQty !== '' && Number(newProdQty) > 0) {
-      setItemQty(Number(newProdQty));
-    }
+    setItemUnitName(prod.baseUnit);
+    const price = prod.purchasePrice > 0 ? prod.purchasePrice : 0;
+    const qty = newProdQty !== '' && Number(newProdQty) > 0 ? Number(newProdQty) : 1;
+    setItemPrice(price);
+    setItemQty(qty);
     setError(null);
     window.setTimeout(() => {
       qtyInputRef.current?.focus();
@@ -378,7 +452,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
   };
 
   const handleAddItem = () => {
-    const prod = products.find(p => p.id === itemProdId);
+    const prod = products.find((p) => p.id === itemProdId);
     if (!prod) {
       setError(t('يرجى اختيار الصنف أولاً', 'Please select a product first'));
       return;
@@ -389,10 +463,15 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
       return;
     }
     const priceNum = Math.max(0, Number(itemPrice || 0));
-    const total = computeLineTotal(qtyNum, priceNum);
+    const effectiveUnit = itemUnitName || prod.baseUnit;
+    const unitOpt = purchaseUnitOptions.find((u) => u.name === effectiveUnit);
+    const unitFactor = unitOpt?.conversionFactor || 1;
+    const total = computeLineTotal(qtyNum, priceNum, 0);
 
     setItems((prev) => {
-      const existingIdx = prev.findIndex((it) => it.productId === prod.id && it.unit === prod.baseUnit);
+      const existingIdx = prev.findIndex(
+        (it) => it.productId === prod.id && it.unit === effectiveUnit
+      );
       if (existingIdx >= 0) {
         return prev.map((it, idx) => {
           if (idx !== existingIdx) return it;
@@ -412,8 +491,8 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
           productId: prod.id,
           productName: prod.name,
           barcode: prod.barcode,
-          unit: prod.baseUnit,
-          unitFactor: 1,
+          unit: effectiveUnit,
+          unitFactor,
           quantity: qtyNum,
           unitPrice: priceNum,
           purchasePriceAtTime: priceNum,
@@ -423,6 +502,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
       ];
     });
     setItemProdId('');
+    setItemUnitName('');
     setItemQty('');
     setItemPrice('');
     setError(null);
@@ -528,9 +608,26 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     setError(null);
   };
 
-  const subtotal = useMemo(() => items.reduce((a, b) => a + b.total, 0), [items]);
-  const numericDiscount = useMemo(() => Math.max(0, Number(discountTotal || 0)), [discountTotal]);
-  const grandTotal = useMemo(() => Math.max(0, subtotal - numericDiscount), [subtotal, numericDiscount]);
+  const subtotal = useMemo(
+    () => roundCurrency(items.reduce((a, b) => a + b.quantity * b.unitPrice, 0)),
+    [items]
+  );
+  const itemDiscountsTotal = useMemo(
+    () => roundCurrency(items.reduce((a, b) => a + (b.discount || 0), 0)),
+    [items]
+  );
+  const generalDiscountNum = useMemo(
+    () => Math.max(0, roundCurrency(Number(discountTotal || 0))),
+    [discountTotal]
+  );
+  const numericDiscount = useMemo(
+    () => roundCurrency(itemDiscountsTotal + generalDiscountNum),
+    [itemDiscountsTotal, generalDiscountNum]
+  );
+  const grandTotal = useMemo(
+    () => Math.max(0, roundCurrency(subtotal - numericDiscount)),
+    [subtotal, numericDiscount]
+  );
 
   useEffect(() => {
     if (paymentType === 'cash') {
@@ -548,8 +645,12 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
 
   const remainingAmount = useMemo(() => {
     if (paymentType === 'cash') return 0;
-    return Math.max(0, grandTotal - numericPaid);
+    return Math.max(0, roundCurrency(grandTotal - numericPaid));
   }, [grandTotal, numericPaid, paymentType]);
+
+  const supplierPrevBalance = selectedSupplier ? Number(selectedSupplier.currentBalance || 0) : null;
+  const supplierAfterBalance =
+    supplierPrevBalance !== null ? roundCurrency(supplierPrevBalance + remainingAmount) : null;
 
   const handlePrint = useCallback((inv: Invoice) => {
     setPrintData({
@@ -557,8 +658,8 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
       docNumber: inv.invoiceNumber,
       docType: t('فاتورة مشتريات', 'Purchase Invoice'),
       date: inv.date,
-      partyName: inv.supplierName ? t(inv.supplierName) : undefined,
-      warehouseName: inv.warehouseName ? t(inv.warehouseName) : undefined,
+      partyName: inv.supplierName ? translateSystemEntityName(inv.supplierName) : undefined,
+      warehouseName: inv.warehouseName ? translateSystemEntityName(inv.warehouseName) : undefined,
       grandTotal: inv.grandTotal,
       paidAmount: inv.paidAmount,
       remainingAmount: inv.remainingAmount,
@@ -595,6 +696,11 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
       const effectivePaid = paymentType === 'cash' ? grandTotal : paymentType === 'credit' ? 0 : Math.min(grandTotal, rawPaid);
       const chosenReceiver = purchaseReceivers.find((r) => r.id === newRecipientUserId);
       const createAsDraft = sendToAdmin || !canApprovePurchase;
+      const itemNotesSummary = items
+        .filter((it) => it.notes && it.notes.trim())
+        .map((it) => `${it.productName}: ${it.notes!.trim()}`)
+        .join(' | ');
+      const combinedNotes = [notes.trim(), itemNotesSummary].filter(Boolean).join(' — ');
 
       const res = await createPurchaseInvoice({
         date: invoiceDate,
@@ -602,13 +708,13 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
         supplierName: supp?.name || 'مورد عام',
         warehouseId: selectedWarehouseId,
         warehouseName: wh?.name || 'المستودع الرئيسي',
-        items,
+        items: items.map(({ notes: _n, ...rest }) => rest),
         subtotal,
         discountTotal: numericDiscount,
         taxTotal: 0,
         grandTotal,
         paidAmount: effectivePaid,
-        remainingAmount: Math.max(0, grandTotal - effectivePaid),
+        remainingAmount: Math.max(0, roundCurrency(grandTotal - effectivePaid)),
         paymentType,
         paymentMethod: 'bank',
         cashboxId: selectedCashboxId,
@@ -617,7 +723,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
         sendNow: createAsDraft && sendToAdmin,
         recipientUserId: createAsDraft && sendToAdmin ? chosenReceiver?.id : undefined,
         recipientName: createAsDraft && sendToAdmin ? (chosenReceiver?.fullName || 'الإدارة العامة') : undefined,
-        notes,
+        notes: combinedNotes,
       });
 
       if (res.success) {
@@ -935,7 +1041,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
             exportValue: (inv) => inv.supplierName || '-',
             render: (inv) => (
               <div>
-                <div className="font-bold text-slate-800">{inv.supplierName ? t(inv.supplierName) : '-'}</div>
+                <div className="font-bold text-slate-800">{inv.supplierName ? translateSystemEntityName(inv.supplierName) : '-'}</div>
                 {(inv.representativeName || inv.sentBy) && (
                   <div className="text-[10px] text-[#003589] font-bold mt-0.5">
                     {t('المندوب / المرسل:', 'Rep / Sender:')} {inv.representativeName || inv.sentBy}
@@ -947,8 +1053,8 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
           {
             key: 'warehouseName',
             header: t('المستودع المستلم', 'Receiving Warehouse'),
-            exportValue: (inv) => inv.warehouseName ? t(inv.warehouseName) : '-',
-            render: (inv) => <span className="text-slate-600">{inv.warehouseName ? t(inv.warehouseName) : '-'}</span>,
+            exportValue: (inv) => inv.warehouseName ? translateSystemEntityName(inv.warehouseName) : '-',
+            render: (inv) => <span className="text-slate-600">{inv.warehouseName ? translateSystemEntityName(inv.warehouseName) : '-'}</span>,
           },
           {
             key: 'grandTotal',
@@ -1057,203 +1163,159 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
         ]}
       />
 
-      {/* New Purchase Invoice Modal */}
+      {/* New Purchase Invoice Modal (Classic Stacked Form & Items Table) */}
       <Modal
         isOpen={isNewModalOpen}
         onClose={() => setIsNewModalOpen(false)}
         title={t('إنشاء فاتورة مشتريات وتوريد جديدة', 'Create New Purchase & Supply Invoice')}
         maxWidth="4xl"
       >
-        <div className="space-y-2 text-xs">
+        <div className="space-y-2.5 text-xs">
           {error && (
-            <div className="px-2.5 py-1.5 bg-red-50 border border-red-200 text-red-700 rounded-md font-bold">{error}</div>
+            <div className="p-2 bg-red-50 border border-red-200 text-red-700 rounded-md font-bold flex items-center gap-1.5">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>{error}</span>
+            </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-slate-50 p-2 rounded-lg border border-slate-200">
+          {/* Header Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
             <div>
-              <label className="block font-bold mb-0.5">{t('المورد:', 'Supplier:')}</label>
-              <select
+              <SearchableFilterSelect
+                id="purchase-modal-supplier"
+                label={t('المورد', 'Supplier')}
                 value={selectedSupplierId}
-                onChange={(e) => setSelectedSupplierId(e.target.value)}
-                className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 font-bold"
-              >
-                {suppliers.length === 0 ? (
-                  <option value="">{t('-- لا يوجد موردين مسجلين بعد --', '-- No suppliers registered yet --')}</option>
-                ) : (
-                  suppliers.map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))
-                )}
-              </select>
+                onChange={setSelectedSupplierId}
+                options={suppliers.map((s) => ({
+                  value: s.id,
+                  label: s.name,
+                  subtitle: s.phone || s.companyName || undefined,
+                  badge: `${t('رصيد:', 'Bal:')} ${formatLocaleNumber(s.currentBalance || 0)}`,
+                  searchText: `${s.name} ${s.phone || ''} ${s.companyName || ''}`,
+                }))}
+                allOptionLabel={t('-- مورد نقدي / عام --', '-- Walk-in / General Supplier --')}
+                allOptionValue=""
+                searchPlaceholder={t('ابحث باسم المورد أو الهاتف...', 'Search supplier name or phone...')}
+                allowClear
+                minPanelWidth={260}
+                buttonClassName="rounded-md h-8"
+              />
             </div>
             <div>
-              <label className="block font-bold mb-0.5">{t('المستودع المستلم:', 'Receiving Warehouse:')}</label>
+              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                {t('المستودع المستلم:', 'Receiving Warehouse:')}
+              </label>
               <select
                 value={selectedWarehouseId}
                 onChange={(e) => setSelectedWarehouseId(e.target.value)}
-                className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 font-bold"
+                className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-xs font-bold text-slate-800"
               >
-                {warehouses.map(w => (
-                  <option key={w.id} value={w.id}>{t(w.name)}</option>
+                {warehouses.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {t(w.name)}
+                  </option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="block font-bold mb-0.5">{t('التاريخ:', 'Date:')}</label>
+              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                {t('تاريخ الفاتورة:', 'Invoice Date:')}
+              </label>
               <input
                 type="date"
                 value={invoiceDate}
                 onChange={(e) => setInvoiceDate(e.target.value)}
-                className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 font-mono font-bold"
+                className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 font-mono text-xs font-bold"
               />
             </div>
           </div>
 
-          {/* Add product to purchase using instant search + Inline New Product Creation */}
-          <div className="bg-[#EEF3FA] p-2 rounded-lg border border-[#DCE6F5] space-y-2">
+          {/* Item Add / Inline New Product Section */}
+          <div className="bg-blue-50/60 p-2.5 rounded-lg border border-blue-200 space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="font-black text-slate-800">{t('إضافة أصناف لفاتورة الشراء:', 'Add Items to Purchase Invoice:')}</span>
+              <form onSubmit={handlePurchaseBarcodeSubmit} className="flex-1 min-w-[200px]">
+                <div className="relative flex items-center">
+                  <Barcode className="w-3.5 h-3.5 text-slate-400 absolute start-2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={barcodeInput}
+                    onChange={(e) => setBarcodeInput(e.target.value)}
+                    placeholder={t('امسح الباركود أو اكتب الكود واضغط Enter...', 'Scan barcode or enter code & press Enter...')}
+                    className="w-full h-8 ps-7 pe-2 bg-white border border-slate-300 rounded-md text-xs font-mono"
+                  />
+                </div>
+              </form>
               <button
                 type="button"
                 onClick={() => {
                   setShowInlineNewProduct((prev) => !prev);
                   setError(null);
                 }}
-                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md font-bold border transition-colors cursor-pointer ${
+                className={`inline-flex items-center gap-1 h-8 px-2.5 rounded-md text-xs font-bold border transition-colors cursor-pointer ${
                   showInlineNewProduct
                     ? 'bg-[#011E58] text-white border-[#011E58]'
                     : 'bg-white text-[#011E58] border-[#B8CAE8] hover:bg-[#DCE6F5]'
                 }`}
               >
                 <PackagePlus className="w-3.5 h-3.5" />
-                <span>{showInlineNewProduct ? t('إغلاق إنشاء الصنف الجديد', 'Close New Product Form') : t('إنشاء صنف جديد داخل الفاتورة', 'Create New Product Inline')}</span>
+                <span>{showInlineNewProduct ? t('الرجوع للبحث', 'Back to Search') : t('+ صنف جديد', '+ New Product')}</span>
               </button>
             </div>
 
-            {!showInlineNewProduct ? (
-              <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5 items-end">
-                <div className="sm:col-span-6">
-                  <label className="block font-bold text-slate-700 mb-0.5">{t('ابحث واختر السلعة المشتراة:', 'Search & Select Purchased Item:')}</label>
-                  <ProductSearchSelect
-                    products={products}
-                    selectedProductId={itemProdId}
-                    warehouseId={selectedWarehouseId}
-                    warehouses={warehouses}
-                    priceMode="purchase"
-                    currency={settings.currency}
-                    inputRef={productSearchRef}
-                    placeholder={t('ابحث بالاسم أو الكود أو الباركود...', 'Search by name, code, or barcode...')}
-                    onSelect={(prod) => handleProductPick(prod.id)}
-                    onAfterSelect={() => {
-                      qtyInputRef.current?.focus();
-                      qtyInputRef.current?.select();
-                    }}
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block font-bold text-slate-700 mb-0.5">{t('الكمية:', 'Qty:')}</label>
-                  <QuantityInput
-                    inputRef={qtyInputRef}
-                    allowDecimals
-                    min={0.001}
-                    value={itemQty}
-                    placeholder={t('الكمية', 'Qty')}
-                    onChange={setItemQty}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleAddItem();
-                      }
-                    }}
-                    ariaLabel={t('كمية الشراء', 'Purchase Qty')}
-                    inputClassName="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 text-center font-mono font-bold outline-hidden focus:border-blue-700"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block font-bold text-slate-700 mb-0.5">{t('سعر الشراء:', 'Buy Price:')}</label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    placeholder={t('السعر', 'Price')}
-                    value={itemPrice}
-                    onChange={(e) => {
-                      const raw = e.target.value;
-                      setItemPrice(raw === '' ? '' : Number(raw));
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleAddItem();
-                      }
-                    }}
-                    className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 text-center font-mono font-bold"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <button
-                    type="button"
-                    onClick={handleAddItem}
-                    className="w-full h-8 px-2.5 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-bold cursor-pointer"
-                  >
-                    {t('+ إضافة', '+ Add')}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="bg-white dark:bg-[#0E1C36] p-2.5 rounded-lg border border-blue-200 dark:border-[#2A436E] space-y-2">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <div className="sm:col-span-2">
-                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">{t('اسم الصنف الجديد: *', 'New Product Name: *')}</label>
+            {showInlineNewProduct ? (
+              <div className="bg-white p-2.5 rounded-lg border border-blue-200 space-y-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="col-span-2">
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('اسم الصنف الجديد: *', 'New Product Name: *')}</label>
                     <input
                       type="text"
                       value={newProdName}
                       onChange={(e) => setNewProdName(e.target.value)}
                       placeholder={t('مثال: سكر الضحى 1 كجم', 'e.g., Sugar 1kg')}
-                      className="w-full h-8 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] rounded-md px-2.5 font-bold focus:border-blue-600 outline-hidden"
+                      className="w-full h-8 border border-slate-300 bg-white rounded-md px-2 font-bold focus:border-blue-600 outline-hidden"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">{t('الباركود (اختياري):', 'Barcode (optional):')}</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الباركود:', 'Barcode:')}</label>
                     <input
                       type="text"
                       value={newProdBarcode}
                       onChange={(e) => setNewProdBarcode(e.target.value)}
                       placeholder="622..."
-                      className="w-full h-8 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] rounded-md px-2.5 font-mono focus:border-blue-600 outline-hidden"
+                      className="w-full h-8 border border-slate-300 bg-white rounded-md px-2 font-mono text-xs"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">{t('الكود (اختياري):', 'Code (optional):')}</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الكود:', 'Code:')}</label>
                     <input
                       type="text"
                       value={newProdCode}
                       onChange={(e) => setNewProdCode(e.target.value)}
                       placeholder="PRD-..."
-                      className="w-full h-8 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] rounded-md px-2.5 font-mono focus:border-blue-600 outline-hidden"
+                      className="w-full h-8 border border-slate-300 bg-white rounded-md px-2 font-mono text-xs"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">{t('التصنيف:', 'Category:')}</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('التصنيف:', 'Category:')}</label>
                     <input
                       type="text"
                       value={newProdCategory}
                       onChange={(e) => setNewProdCategory(e.target.value)}
-                      className="w-full h-8 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] rounded-md px-2.5 font-semibold focus:border-blue-600 outline-hidden"
+                      className="w-full h-8 border border-slate-300 bg-white rounded-md px-2 font-semibold text-xs"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">{t('الوحدة الأساسية:', 'Base Unit:')}</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الوحدة:', 'Unit:')}</label>
                     <input
                       type="text"
                       value={newProdBaseUnit}
                       onChange={(e) => setNewProdBaseUnit(e.target.value)}
-                      placeholder={t('قطعة / كرتونة / كجم', 'Piece / Carton / Kg')}
-                      className="w-full h-8 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] rounded-md px-2.5 font-semibold focus:border-blue-600 outline-hidden"
+                      placeholder={t('قطعة / كرتونة', 'Piece / Carton')}
+                      className="w-full h-8 border border-slate-300 bg-white rounded-md px-2 font-semibold text-xs"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">{t('الكمية المشتراة: *', 'Purchased Qty: *')}</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الكمية: *', 'Qty: *')}</label>
                     <QuantityInput
                       allowDecimals
                       min={0.001}
@@ -1261,57 +1323,50 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       placeholder={t('الكمية', 'Qty')}
                       onChange={setNewProdQty}
                       ariaLabel={t('كمية الصنف الجديد', 'New Product Qty')}
-                      inputClassName="w-full h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] text-slate-900 dark:text-[#EEF4FC] rounded-md px-2 text-center font-mono font-bold outline-hidden focus:border-blue-700"
+                      inputClassName="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-center font-mono font-bold text-xs"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">{t('سعر الشراء: *', 'Buy Price: *')}</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('سعر الشراء: *', 'Buy Price: *')}</label>
                     <input
                       type="number"
                       step="0.5"
                       min="0"
-                      placeholder={t('سعر الشراء', 'Buy Price')}
+                      placeholder="0.00"
                       value={newProdPurchasePrice}
-                      onChange={(e) => {
-                        const raw = e.target.value;
-                        setNewProdPurchasePrice(raw === '' ? '' : Number(raw));
-                      }}
-                      className="w-full h-8 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] rounded-md px-2 text-center font-mono font-bold"
+                      onChange={(e) => setNewProdPurchasePrice(e.target.value === '' ? '' : Number(e.target.value))}
+                      className="w-full h-8 border border-slate-300 bg-white rounded-md px-2 text-center font-mono font-bold text-xs"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-1">{t('سعر البيع المقترح:', 'Suggested Sell Price:')}</label>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('سعر البيع المقترح:', 'Suggested Sell Price:')}</label>
                     <input
                       type="number"
                       step="0.5"
                       min="0"
-                      placeholder={t('سعر البيع', 'Sell Price')}
+                      placeholder="0.00"
                       value={newProdSellingPrice}
-                      onChange={(e) => {
-                        const raw = e.target.value;
-                        setNewProdSellingPrice(raw === '' ? '' : Number(raw));
-                      }}
-                      className="w-full h-8 border border-slate-300 dark:border-[#2A436E] bg-white dark:bg-[#10203D] text-slate-900 dark:text-[#EEF4FC] rounded-md px-2 text-center font-mono font-bold"
+                      onChange={(e) => setNewProdSellingPrice(e.target.value === '' ? '' : Number(e.target.value))}
+                      className="w-full h-8 border border-slate-300 bg-white rounded-md px-2 text-center font-mono font-bold text-xs"
                     />
                   </div>
                 </div>
 
-                {/* Live Duplicate Check Alerts */}
                 {duplicateCheckState.exactMatch && (
-                  <div className="p-2 rounded-lg border border-amber-300 bg-amber-50 text-amber-950 flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 font-bold">
-                      <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
+                  <div className="p-2 rounded border border-amber-300 bg-amber-50 text-amber-950 space-y-1 text-xs">
+                    <div className="flex items-center gap-1.5 font-bold">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-700 shrink-0" />
                       <span>
                         {t(
-                          `هذا الصنف مسجل مسبقاً (${duplicateCheckState.exactMatch.name} — ${duplicateCheckState.exactMatch.code})! لن يُنشأ صنف مكرر.`,
-                          `This product is already registered (${duplicateCheckState.exactMatch.name} — ${duplicateCheckState.exactMatch.code})! No duplicate will be created.`
+                          `مسجل مسبقاً (${duplicateCheckState.exactMatch.name})!`,
+                          `Already exists (${duplicateCheckState.exactMatch.name})!`
                         )}
                       </span>
                     </div>
                     <button
                       type="button"
                       onClick={() => handleUseExistingDuplicateProduct(duplicateCheckState.exactMatch!)}
-                      className="px-2.5 py-1 rounded-lg bg-amber-700 hover:bg-amber-800 text-white font-bold cursor-pointer"
+                      className="px-3 py-1 rounded bg-amber-700 hover:bg-amber-800 text-white font-bold cursor-pointer"
                     >
                       {t('استخدام الصنف الموجود', 'Use Existing Product')}
                     </button>
@@ -1319,129 +1374,207 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 )}
 
                 {!duplicateCheckState.exactMatch && duplicateCheckState.similarMatches.length > 0 && (
-                  <div className="p-2 rounded-lg border border-blue-200 bg-blue-50/70 text-blue-950 space-y-1.5">
-                    <div className="font-bold flex items-center gap-1.5">
+                  <div className="p-2 rounded border border-blue-200 bg-blue-50/70 text-blue-950 space-y-1 text-[11px]">
+                    <div className="font-bold flex items-center gap-1">
                       <AlertTriangle className="w-3.5 h-3.5 text-blue-700" />
-                      <span>{t('توجد أصناف متشابهة بالاسم (اختر منها إن كان نفس الصنف):', 'Similar products found (select one if it matches):')}</span>
+                      <span>{t('أصناف متشابهة:', 'Similar items:')}</span>
                     </div>
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex flex-wrap gap-1">
                       {duplicateCheckState.similarMatches.map((sim) => (
                         <button
                           key={sim.id}
                           type="button"
                           onClick={() => handleUseExistingDuplicateProduct(sim)}
-                          className="px-2.5 py-1 rounded-lg bg-white border border-blue-300 hover:bg-blue-100 text-blue-900 font-bold text-[11px] cursor-pointer"
+                          className="px-2 py-0.5 rounded bg-white border border-blue-300 hover:bg-blue-100 text-blue-900 font-bold cursor-pointer"
                         >
-                          {sim.name} ({t(sim.baseUnit)}) — {sim.purchasePrice} {t(settings.currency)}
+                          {sim.name} ({sim.purchasePrice})
                         </button>
                       ))}
                     </div>
                   </div>
                 )}
 
-                <div className="flex items-center justify-end gap-2">
+                <div className="flex items-center justify-end gap-1.5">
                   <button
                     type="button"
                     onClick={() => setShowInlineNewProduct(false)}
-                    className="px-3 py-1.5 rounded-lg border border-slate-300 font-bold text-slate-600 cursor-pointer"
+                    className="h-8 px-3 rounded border border-slate-300 font-bold text-slate-600 cursor-pointer"
                   >
                     {t('إلغاء', 'Cancel')}
                   </button>
                   <button
                     type="button"
                     onClick={handleAddInlineNewProductItem}
-                    className="px-3.5 py-1.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
+                    className="h-8 px-3 rounded bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
                   >
-                    {duplicateCheckState.exactMatch ? t('ربط بالصنف الموجود وإضافته', 'Link & Add Existing Product') : t('+ إضافة الصنف للفاتورة', '+ Add Product to Invoice')}
+                    {duplicateCheckState.exactMatch
+                      ? t('ربط وإضافة', 'Link & Add')
+                      : t('+ إضافة للفاتورة', '+ Add to Invoice')}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
+                <div className="sm:col-span-5">
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('اختيار الصنف:', 'Select Product:')}</label>
+                  <ProductSearchSelect
+                    inputRef={productSearchRef}
+                    products={products}
+                    selectedProductId={itemProdId}
+                    warehouseId={selectedWarehouseId}
+                    warehouses={warehouses}
+                    priceMode="purchase"
+                    currency={settings.currency}
+                    placeholder={t('ابحث لإضافة صنف...', 'Search to add item...')}
+                    onSelect={(p) => handleProductPick(p.id)}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الوحدة:', 'Unit:')}</label>
+                  <select
+                    disabled={!selectedPurchaseProduct}
+                    value={itemUnitName}
+                    onChange={(e) => handlePurchaseUnitSelect(e.target.value)}
+                    className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-xs font-bold disabled:bg-slate-100"
+                  >
+                    {purchaseUnitOptions.length === 0 ? (
+                      <option value="">{t('-- الوحدة --', '-- Unit --')}</option>
+                    ) : (
+                      purchaseUnitOptions.map((u) => (
+                        <option key={u.name} value={u.name}>{t(u.name)}</option>
+                      ))
+                    )}
+                  </select>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الكمية:', 'Qty:')}</label>
+                  <QuantityInput
+                    inputRef={qtyInputRef}
+                    allowDecimals
+                    min={0.001}
+                    disabled={!selectedPurchaseProduct}
+                    value={itemQty}
+                    onChange={(val) => setItemQty(val)}
+                    placeholder={t('الكمية', 'Qty')}
+                    ariaLabel={t('الكمية', 'Qty')}
+                    inputClassName="w-full h-8 px-2 rounded-md border border-slate-300 bg-white text-center font-mono font-bold disabled:bg-slate-100"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('سعر الشراء:', 'Buy Price:')}</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.5"
+                    disabled={!selectedPurchaseProduct}
+                    placeholder="0.00"
+                    value={itemPrice}
+                    onChange={(e) => setItemPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                    className="w-full h-8 px-2 rounded-md border border-slate-300 bg-white text-center font-mono font-bold disabled:bg-slate-100"
+                  />
+                </div>
+                <div className="sm:col-span-1">
+                  <button
+                    type="button"
+                    disabled={!selectedPurchaseProduct}
+                    onClick={handleAddItem}
+                    className="w-full h-8 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer disabled:opacity-50"
+                  >
+                    {t('+', '+')}
                   </button>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Items list */}
-          <div className="border rounded-lg awlad-table-scroll">
-            <table className="w-full text-start">
-              <thead>
-                <tr className="bg-slate-100 font-bold border-b">
-                  <th className="p-1.5">{t('الصنف', 'Item')}</th>
-                  <th className="p-1.5 text-center">{t('الكمية', 'Qty')}</th>
-                  <th className="p-1.5 text-center">{t('سعر الشراء', 'Buy Price')}</th>
-                  <th className="p-1.5 text-center">{t('الإجمالي', 'Total')}</th>
-                  <th className="p-1.5 text-center w-12">{t('حذف', 'Del')}</th>
+          {/* Classic Added Items Table */}
+          <div className="border border-slate-200 rounded-lg overflow-hidden awlad-table-scroll max-h-56 overflow-y-auto">
+            <table className="w-full text-start text-xs">
+              <thead className="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold">
+                <tr>
+                  <th className="p-2 w-10 text-center">#</th>
+                  <th className="p-2">{t('الصنف', 'Item')}</th>
+                  <th className="p-2 text-center">{t('الوحدة', 'Unit')}</th>
+                  <th className="p-2 text-center w-24">{t('الكمية', 'Qty')}</th>
+                  <th className="p-2 text-center w-28">{t('سعر الشراء', 'Buy Price')}</th>
+                  <th className="p-2 text-center">{t('الإجمالي', 'Total')}</th>
+                  <th className="p-2 text-center w-12">{t('حذف', 'Del')}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y">
+              <tbody className="divide-y divide-slate-100">
                 {items.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="p-4 text-center text-slate-400">
-                      {t('لم تتم إضافة أصناف بعد. ابحث عن صنف أعلاه أو أنشئ صنفاً جديداً لإضافته.', 'No items added yet. Search for a product above or create a new one.')}
+                    <td colSpan={7} className="p-5 text-center text-slate-400 font-semibold">
+                      {t('لم يتم إضافة أصناف بعد — ابحث عن صنف أو أضف صنفاً جديداً', 'No items added yet — search a product or add a new item')}
                     </td>
                   </tr>
                 ) : (
-                  items.map((it, i) => (
-                    <tr key={i}>
-                      <td className="p-2 font-bold">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span>{it.productName}</span>
-                          {it.newProduct && (
-                            <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold">
-                              {t('صنف جديد', 'New Item')} ({t(it.unit)})
-                            </span>
-                          )}
-                        </div>
+                  items.map((item, idx) => (
+                    <tr key={`${item.productId || item.productName}-${idx}`} className="hover:bg-slate-50/80">
+                      <td className="p-2 text-center font-mono text-slate-500">{formatLocaleNumber(idx + 1)}</td>
+                      <td className="p-2 font-bold text-slate-800">
+                        <span>{item.productName}</span>
+                        {item.newProduct && (
+                          <span className="ms-1.5 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-bold">
+                            {t('صنف جديد', 'New')}
+                          </span>
+                        )}
                       </td>
+                      <td className="p-2 text-center text-slate-600 font-semibold">{t(item.unit)}</td>
                       <td className="p-2 text-center">
                         <QuantityInput
                           allowDecimals
                           min={0.001}
-                          value={it.quantity}
+                          value={item.quantity}
                           onChange={(q) => {
                             setItems((prev) =>
-                              prev.map((row, idx) =>
-                                idx === i
+                              prev.map((row, rIdx) =>
+                                rIdx === idx
                                   ? { ...row, quantity: q, total: computeLineTotal(q, row.unitPrice, row.discount || 0) }
                                   : row
                               )
                             );
                           }}
-                          ariaLabel={`${t('كمية', 'Qty')} ${it.productName}`}
-                          inputClassName="w-20 border rounded-lg px-2 py-1 text-center font-mono font-bold outline-hidden focus:border-blue-700"
+                          ariaLabel={`${t('كمية', 'Qty')} ${item.productName}`}
+                          inputClassName="w-20 h-7 px-1.5 rounded border border-slate-300 text-center font-mono font-bold bg-white"
                         />
                       </td>
                       <td className="p-2 text-center">
                         <input
                           type="number"
-                          min="0"
+                          min={0}
                           step="0.5"
-                          value={it.unitPrice}
+                          value={item.unitPrice}
                           onChange={(e) => {
-                            const p = Math.max(0, Number(e.target.value));
+                            const p = Math.max(0, Number(e.target.value) || 0);
                             setItems((prev) =>
-                              prev.map((row, idx) =>
-                                idx === i
+                              prev.map((row, rIdx) =>
+                                rIdx === idx
                                   ? {
                                       ...row,
                                       unitPrice: p,
                                       purchasePriceAtTime: p,
-                                      total: row.quantity * p,
+                                      total: computeLineTotal(row.quantity, p, row.discount || 0),
                                       newProduct: row.newProduct ? { ...row.newProduct, purchasePrice: p } : undefined,
                                     }
                                   : row
                               )
                             );
                           }}
-                          className="w-24 border rounded-lg px-2 py-1 text-center font-mono font-bold"
+                          className="w-24 h-7 px-1.5 rounded border border-slate-300 text-center font-mono font-bold bg-white"
                         />
                       </td>
-                      <td className="p-2 text-center font-bold text-blue-900">{formatLocaleNumber(it.total)}</td>
+                      <td className="p-2 text-center font-black text-blue-950 font-mono tabular-nums">
+                        {formatLocaleNumber(item.total)} {t(settings.currency)}
+                      </td>
                       <td className="p-2 text-center">
                         <button
                           type="button"
-                          onClick={() => setItems((prev) => prev.filter((_, idx) => idx !== i))}
+                          onClick={() => setItems((prev) => prev.filter((_, i) => i !== idx))}
                           className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded cursor-pointer"
+                          title={t('حذف البند', 'Delete Item')}
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </td>
                     </tr>
@@ -1451,118 +1584,12 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
             </table>
           </div>
 
-          {/* Payment & Totals */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-slate-50 p-2 rounded-lg border border-slate-200">
-            <div className="space-y-1.5">
-              <div>
-                <label className="block font-bold mb-0.5">{t('طريقة السداد للمورد:', 'Supplier Payment Method:')}</label>
-                <div className="grid grid-cols-3 gap-1.5 font-bold">
-                  <button
-                    type="button"
-                    onClick={() => setPaymentType('cash')}
-                    className={`py-1 px-2 rounded-md border ${paymentType === 'cash' ? 'bg-[#011E58] text-white border-[#011E58]' : 'bg-white text-slate-700 border-slate-300'}`}
-                  >
-                    {t('نقدي كامل', 'Full Cash')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPaymentType('credit')}
-                    className={`py-1 px-2 rounded-md border ${paymentType === 'credit' ? 'bg-[#011E58] text-white border-[#011E58]' : 'bg-white text-slate-700 border-slate-300'}`}
-                  >
-                    {t('آجل بالكامل', 'Full Credit')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPaymentType('partial')}
-                    className={`py-1 px-2 rounded-md border ${paymentType === 'partial' ? 'bg-[#011E58] text-white border-[#011E58]' : 'bg-white text-slate-700 border-slate-300'}`}
-                  >
-                    {t('دفعة + آجل', 'Partial + Credit')}
-                  </button>
-                </div>
-              </div>
-
-              {paymentType !== 'credit' && (
-                <div>
-                  <label className="block font-bold mb-0.5">{t('الخزينة المسدد منها:', 'Paid from Cashbox:')}</label>
-                  <select
-                    value={selectedCashboxId}
-                    onChange={(e) => setSelectedCashboxId(e.target.value)}
-                    className="w-full h-8 bg-white border rounded-md px-2 py-1 font-bold"
-                  >
-                    {cashboxes.map(cb => (
-                      <option key={cb.id} value={cb.id}>{t(cb.name)} ({formatLocaleNumber(cb.currentBalance)})</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {paymentType === 'partial' && (
-                <div>
-                  <label className="block font-bold mb-0.5">{t('المدفوع نقداً للمورد:', 'Cash Paid to Supplier:')}</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max={grandTotal}
-                    placeholder={t('أدخل المبلغ المدفوع', 'Enter paid amount')}
-                    value={paidAmount}
-                    onChange={(e) => {
-                      const raw = e.target.value;
-                      setPaidAmount(raw === '' ? '' : Number(raw));
-                    }}
-                    className="w-full h-8 bg-white border rounded-md px-2 py-1 font-mono font-bold"
-                  />
-                </div>
-              )}
-
-              <div>
-                <label className="block font-bold mb-0.5">{t('ملاحظات الفاتورة:', 'Invoice Notes:')}</label>
-                <input
-                  type="text"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder={t('رقم بوليصة التوريد أو ملاحظات...', 'Supply manifest # or notes...')}
-                  className="w-full h-8 bg-white border rounded-md px-2 py-1"
-                />
-              </div>
-            </div>
-
-            <div className="bg-white p-2 rounded-lg border space-y-1 font-bold">
-              <div className="flex justify-between">
-                <span>{t('المجموع الفرعي:', 'Subtotal:')}</span>
-                <span className="font-mono tabular-nums">{formatLocaleNumber(subtotal)} {t(settings.currency)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span>{t('الخصم المكتسب:', 'Earned Discount:')}</span>
-                <input
-                  type="number"
-                  min="0"
-                  placeholder="0"
-                  value={discountTotal}
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    setDiscountTotal(raw === '' ? '' : Math.max(0, Number(raw)));
-                  }}
-                  className="w-24 h-7 border rounded-md px-2 py-0.5 text-center font-mono text-red-600"
-                />
-              </div>
-              <div className="flex justify-between text-sm font-black text-blue-950 border-t pt-1">
-                <span>{t('الإجمالي الصافي:', 'Net Total:')}</span>
-                <span className="font-mono tabular-nums">{formatLocaleNumber(grandTotal)} {t(settings.currency)}</span>
-              </div>
-              <div className="flex justify-between text-emerald-700">
-                <span>{t('المدفوع:', 'Paid:')}</span>
-                <span className="font-mono tabular-nums">{formatLocaleNumber(numericPaid)}</span>
-              </div>
-              <div className="flex justify-between text-red-700 border-t pt-1">
-                <span>{t('المتبقي للمورد:', 'Balance Due:')}</span>
-                <span className="font-mono tabular-nums">{formatLocaleNumber(remainingAmount)} {t(settings.currency)}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-[#EEF3FA] border border-[#DCE6F5] rounded-lg p-2 flex flex-wrap items-center justify-between gap-2">
+          {/* Target Manager Routing Notice */}
+          <div className="bg-[#EEF3FA] border border-[#DCE6F5] rounded-lg p-2 flex flex-wrap items-center justify-between gap-2 text-xs">
             <div className="flex-1 min-w-[200px]">
-              <label className="block font-bold text-[#011E58] mb-0.5">{t('المسؤول الموجه إليه عند الإرسال للإدارة (اختياري):', 'Target Manager When Sending to Management (optional):')}</label>
+              <label className="block font-bold text-[#011E58] mb-0.5">
+                {t('المسؤول الموجه إليه عند الإرسال للإدارة (اختياري):', 'Target Manager When Sending to Management (optional):')}
+              </label>
               <select
                 value={newRecipientUserId}
                 onChange={(e) => setNewRecipientUserId(e.target.value)}
@@ -1579,43 +1606,184 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
             </span>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t">
+          {/* Payment & Summary Totals */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="space-y-2 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('نظام الدفع:', 'Payment Mode:')}</label>
+                  <div className="grid grid-cols-3 gap-1 font-bold text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentType('cash')}
+                      className={`h-8 rounded border cursor-pointer ${
+                        paymentType === 'cash' ? 'bg-[#003589] text-white border-[#003589]' : 'bg-white text-slate-700 border-slate-300'
+                      }`}
+                    >
+                      {t('نقدي', 'Cash')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentType('partial')}
+                      className={`h-8 rounded border cursor-pointer ${
+                        paymentType === 'partial' ? 'bg-[#003589] text-white border-[#003589]' : 'bg-white text-slate-700 border-slate-300'
+                      }`}
+                    >
+                      {t('جزئي', 'Partial')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentType('credit')}
+                      className={`h-8 rounded border cursor-pointer ${
+                        paymentType === 'credit' ? 'bg-[#003589] text-white border-[#003589]' : 'bg-white text-slate-700 border-slate-300'
+                      }`}
+                    >
+                      {t('آجل', 'Credit')}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الخزينة:', 'Cashbox:')}</label>
+                  <select
+                    value={selectedCashboxId}
+                    onChange={(e) => setSelectedCashboxId(e.target.value)}
+                    className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-xs font-bold"
+                  >
+                    {cashboxes.map((c) => (
+                      <option key={c.id} value={c.id}>{t(c.name)}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الخصم', 'Discount')} ({t(settings.currency)}):</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.5"
+                    placeholder="0"
+                    value={discountTotal}
+                    onChange={(e) => setDiscountTotal(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                    className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-center font-mono font-bold"
+                  />
+                </div>
+                {paymentType === 'partial' ? (
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('المدفوع للمورد:', 'Paid to Supplier:')}</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={grandTotal}
+                      step="0.5"
+                      value={paidAmount}
+                      onChange={(e) => setPaidAmount(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                      className="w-full h-8 bg-white border border-blue-400 rounded-md px-2 text-center font-mono font-black text-blue-950"
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('ملاحظات:', 'Notes:')}</label>
+                    <input
+                      type="text"
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      placeholder={t('ملاحظات فاتورة الشراء...', 'Purchase notes...')}
+                      className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-xs"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {paymentType === 'partial' && (
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('ملاحظات:', 'Notes:')}</label>
+                  <input
+                    type="text"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder={t('ملاحظات فاتورة الشراء...', 'Purchase notes...')}
+                    className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-xs"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="bg-blue-50/50 p-2.5 rounded-lg border border-blue-200 space-y-1 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-600 font-semibold">{t('الإجمالي قبل الخصم:', 'Subtotal:')}</span>
+                <span className="font-mono font-bold text-slate-800">{formatLocaleNumber(subtotal)} {t(settings.currency)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-600 font-semibold">{t('الخصم:', 'Discount:')}</span>
+                <span className="font-mono font-bold text-rose-700">{formatLocaleNumber(numericDiscount)} {t(settings.currency)}</span>
+              </div>
+              <div className="flex justify-between pt-1.5 border-t border-blue-200 text-sm font-black text-[#011E58]">
+                <span>{t('صافي الفاتورة:', 'Net Total:')}</span>
+                <span className="font-mono">{formatLocaleNumber(grandTotal)} {t(settings.currency)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-600 font-semibold">{t('المدفوع:', 'Paid:')}</span>
+                <span className="font-mono font-bold text-emerald-700">{formatLocaleNumber(numericPaid)} {t(settings.currency)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-600 font-semibold">{t('المتبقي (آجل للمورد):', 'Remaining (Due):')}</span>
+                <span className="font-mono font-black text-red-700">{formatLocaleNumber(remainingAmount)} {t(settings.currency)}</span>
+              </div>
+              {supplierPrevBalance !== null && supplierAfterBalance !== null && (
+                <div className="flex justify-between pt-1 border-t border-blue-200 text-[11px] text-slate-600">
+                  <span>{t('رصيد المورد (سابق / بعد):', 'Supplier Balance (Prev / After):')}</span>
+                  <span className="font-mono font-bold">
+                    {formatLocaleNumber(supplierPrevBalance)} → {formatLocaleNumber(supplierAfterBalance)} {t(settings.currency)}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Footer Action Buttons */}
+          <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-200">
             <button
               type="button"
               onClick={() => setIsNewModalOpen(false)}
-              className="px-3 py-1 border rounded-md font-bold cursor-pointer"
+              className="h-8 px-3 rounded-md border border-slate-300 text-slate-600 font-bold cursor-pointer"
             >
               {t('إلغاء', 'Cancel')}
             </button>
-            <div className="flex flex-wrap gap-1.5">
-              <button
-                type="button"
-                disabled={isSubmitting || items.length === 0}
-                onClick={() => handleSubmitPurchase(false, true)}
-                className="flex items-center gap-1 px-3 py-1 bg-[#011E58] hover:bg-[#002160] text-white rounded-md font-bold cursor-pointer disabled:opacity-50"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span>{isSubmitting ? t('جاري الإرسال...', 'Sending...') : t('حفظ وإرسال للإدارة', 'Save & Send to Management')}</span>
-              </button>
-              <button
-                type="button"
-                disabled={isSubmitting || items.length === 0}
-                onClick={() => handleSubmitPurchase(false, false)}
-                className="flex items-center gap-1 px-3 py-1 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-bold cursor-pointer disabled:opacity-50"
-              >
-                <Save className="w-3.5 h-3.5" />
-                <span>{isSubmitting ? t('جاري الحفظ...', 'Saving...') : canApprovePurchase ? t('حفظ واعتماد الفاتورة', 'Save & Approve Invoice') : t('حفظ كمسودة', 'Save as Draft')}</span>
-              </button>
-              <button
-                type="button"
-                disabled={isSubmitting || items.length === 0}
-                onClick={() => handleSubmitPurchase(true, false)}
-                className="flex items-center gap-1 px-3 py-1 bg-[#002160] hover:bg-[#001A49] text-white rounded-md font-bold cursor-pointer disabled:opacity-50"
-              >
-                <Printer className="w-3.5 h-3.5" />
-                <span>{t('حفظ وطباعة الفاتورة', 'Save & Print Invoice')}</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              disabled={isSubmitting || items.length === 0}
+              onClick={() => handleSubmitPurchase(false, true)}
+              className="h-8 flex items-center gap-1.5 px-3 bg-[#011E58] hover:bg-[#002160] text-white rounded-md font-bold cursor-pointer disabled:opacity-50"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>{isSubmitting ? t('جاري الإرسال...', 'Sending...') : t('حفظ وإرسال للإدارة', 'Save & Send to Management')}</span>
+            </button>
+            <button
+              type="button"
+              disabled={isSubmitting || items.length === 0}
+              onClick={() => handleSubmitPurchase(false, false)}
+              className="h-8 flex items-center gap-1.5 px-3 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-bold cursor-pointer disabled:opacity-50"
+            >
+              <Save className="w-3.5 h-3.5" />
+              <span>
+                {isSubmitting
+                  ? t('جاري الحفظ...', 'Saving...')
+                  : canApprovePurchase
+                  ? t('اعتماد الفاتورة', 'Save & Approve')
+                  : t('حفظ مسودة', 'Save Draft')}
+              </span>
+            </button>
+            <button
+              type="button"
+              disabled={isSubmitting || items.length === 0}
+              onClick={() => handleSubmitPurchase(true, false)}
+              className="h-8 flex items-center gap-1.5 px-3 bg-[#002160] hover:bg-[#001A49] text-white rounded-md font-bold cursor-pointer disabled:opacity-50"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>{t('حفظ وطباعة', 'Save & Print')}</span>
+            </button>
           </div>
         </div>
       </Modal>
@@ -1649,8 +1817,8 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs mb-3 p-2.5 bg-slate-50 rounded-lg">
               <div className="space-y-1">
-                <p className="text-slate-500">{t('المورد:', 'Supplier:')} <strong className="text-slate-800">{displayedActiveInvoice.supplierName ? t(displayedActiveInvoice.supplierName) : t('مورد نقدي', 'Cash Supplier')}</strong></p>
-                <p className="text-slate-500">{t('المستودع المستلم:', 'Receiving Warehouse:')} <strong className="text-slate-800">{t(displayedActiveInvoice.warehouseName)}</strong></p>
+                <p className="text-slate-500">{t('المورد:', 'Supplier:')} <strong className="text-slate-800">{displayedActiveInvoice.supplierName ? translateSystemEntityName(displayedActiveInvoice.supplierName) : t('مورد نقدي', 'Cash Supplier')}</strong></p>
+                <p className="text-slate-500">{t('المستودع المستلم:', 'Receiving Warehouse:')} <strong className="text-slate-800">{translateSystemEntityName(displayedActiveInvoice.warehouseName)}</strong></p>
                 <p className="text-slate-500">{t('أنشئت بواسطة:', 'Created by:')} <strong className="text-slate-800">{displayedActiveInvoice.createdBy}</strong></p>
                 {(displayedActiveInvoice.sentBy || displayedActiveInvoice.representativeName) && (
                   <p className="text-[#011E58]">

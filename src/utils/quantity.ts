@@ -30,6 +30,10 @@ export function round2(value: unknown): number {
   return Math.round((num + Number.EPSILON) * 100) / 100;
 }
 
+export function roundCurrency(value: unknown): number {
+  return round2(value);
+}
+
 export function round3(value: unknown): number {
   const num = Number(value);
   if (!Number.isFinite(num)) return 0;

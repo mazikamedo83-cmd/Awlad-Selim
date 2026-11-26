@@ -8,7 +8,7 @@ import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useShortcuts } from '../../../context/ShortcutsContext';
 import { usePreferences } from '../../../context/PreferencesContext';
-import { formatLocaleDateTime, formatLocaleNumber } from '../../../i18n/translator';
+import { formatLocaleDateTime, formatLocaleNumber, translateSystemEntityName } from '../../../i18n/translator';
 import { Invoice, InvoiceItem } from '../../../types';
 import { NewSaleInvoiceModal } from './NewSaleInvoiceModal';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
@@ -212,8 +212,8 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
       docNumber: inv.invoiceNumber,
       docType: isQuote ? t('عرض سعر', 'Price Quote') : t('فاتورة مبيعات', 'Sales Invoice'),
       date: inv.date,
-      partyName: inv.customerName ? t(inv.customerName) : undefined,
-      warehouseName: inv.warehouseName ? t(inv.warehouseName) : undefined,
+      partyName: inv.customerName ? translateSystemEntityName(inv.customerName) : undefined,
+      warehouseName: inv.warehouseName ? translateSystemEntityName(inv.warehouseName) : undefined,
       representativeName: inv.representativeName,
       paymentType: isQuote
         ? t('عرض سعر استرشادي (بلا أثر مخزني أو مالي)', 'Indicative Price Quote (No stock/financial impact)')
@@ -259,9 +259,9 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
     const rows = filteredInvoices.map(inv => [
       inv.invoiceNumber,
       inv.date,
-      inv.customerName ? t(inv.customerName) : t('نقدي', 'Cash'),
+      inv.customerName ? translateSystemEntityName(inv.customerName) : t('نقدي', 'Cash'),
       inv.representativeName || '-',
-      inv.warehouseName ? t(inv.warehouseName) : '-',
+      inv.warehouseName ? translateSystemEntityName(inv.warehouseName) : '-',
       inv.grandTotal,
       inv.paidAmount,
       inv.remainingAmount,
@@ -764,8 +764,8 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
               header: t('العميل', 'Customer'),
               sortable: true,
               sortValue: (inv) => inv.customerName || '',
-              exportValue: (inv) => (inv.customerName ? t(inv.customerName) : t('نقدي عام', 'Walk-in Cash')),
-              render: (inv) => <span className="font-bold text-slate-800">{inv.customerName ? t(inv.customerName) : t('نقدي عام', 'Walk-in Cash')}</span>,
+              exportValue: (inv) => (inv.customerName ? translateSystemEntityName(inv.customerName) : t('نقدي عام', 'Walk-in Cash')),
+              render: (inv) => <span className="font-bold text-slate-800">{inv.customerName ? translateSystemEntityName(inv.customerName) : t('نقدي عام', 'Walk-in Cash')}</span>,
             },
             {
               key: 'representativeName',
@@ -780,8 +780,8 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
               header: t('المستودع', 'Warehouse'),
               sortable: true,
               sortValue: (inv) => inv.warehouseName || '',
-              exportValue: (inv) => (inv.warehouseName ? t(inv.warehouseName) : '-'),
-              render: (inv) => <span className="text-slate-600">{inv.warehouseName ? t(inv.warehouseName) : '-'}</span>,
+              exportValue: (inv) => (inv.warehouseName ? translateSystemEntityName(inv.warehouseName) : '-'),
+              render: (inv) => <span className="text-slate-600">{inv.warehouseName ? translateSystemEntityName(inv.warehouseName) : '-'}</span>,
             },
             {
               key: 'grandTotal',
@@ -1036,14 +1036,14 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
               header: t('العميل', 'Customer'),
               sortable: true,
               sortValue: (q) => q.customerName || '',
-              exportValue: (q) => (q.customerName ? t(q.customerName) : t('عميل نقدي / عرض سعر عام', 'Walk-in / General Quote')),
-              render: (q) => <span className="font-bold text-slate-800">{q.customerName ? t(q.customerName) : t('عميل نقدي / عرض سعر عام', 'Walk-in / General Quote')}</span>,
+              exportValue: (q) => (q.customerName ? translateSystemEntityName(q.customerName) : t('عميل نقدي / عرض سعر عام', 'Walk-in / General Quote')),
+              render: (q) => <span className="font-bold text-slate-800">{q.customerName ? translateSystemEntityName(q.customerName) : t('عميل نقدي / عرض سعر عام', 'Walk-in / General Quote')}</span>,
             },
             {
               key: 'warehouseName',
               header: t('المستودع', 'Warehouse'),
-              exportValue: (q) => (q.warehouseName ? t(q.warehouseName) : '-'),
-              render: (q) => <span className="text-slate-600">{q.warehouseName ? t(q.warehouseName) : '-'}</span>,
+              exportValue: (q) => (q.warehouseName ? translateSystemEntityName(q.warehouseName) : '-'),
+              render: (q) => <span className="text-slate-600">{q.warehouseName ? translateSystemEntityName(q.warehouseName) : '-'}</span>,
             },
             {
               key: 'itemsCount',
@@ -1221,8 +1221,8 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs mb-2 p-2 bg-slate-50 dark:bg-[#132544] rounded-md border border-slate-200 dark:border-[#21375C]">
               <div>
-                <p className="text-slate-500 dark:text-[#97AECE]">{t('العميل:', 'Customer:')} <strong className="text-slate-800 dark:text-[#F3F7FC]">{activeInvoice.customerName ? t(activeInvoice.customerName) : '-'}</strong></p>
-                <p className="text-slate-500 dark:text-[#97AECE]">{t('المستودع:', 'Warehouse:')} <strong className="text-slate-800 dark:text-[#F3F7FC]">{activeInvoice.warehouseName ? t(activeInvoice.warehouseName) : '-'}</strong></p>
+                <p className="text-slate-500 dark:text-[#97AECE]">{t('العميل:', 'Customer:')} <strong className="text-slate-800 dark:text-[#F3F7FC]">{activeInvoice.customerName ? translateSystemEntityName(activeInvoice.customerName) : '-'}</strong></p>
+                <p className="text-slate-500 dark:text-[#97AECE]">{t('المستودع:', 'Warehouse:')} <strong className="text-slate-800 dark:text-[#F3F7FC]">{activeInvoice.warehouseName ? translateSystemEntityName(activeInvoice.warehouseName) : '-'}</strong></p>
                 <p className="text-slate-500 dark:text-[#97AECE]">{t('أنشئت بواسطة:', 'Created by:')} <strong className="text-slate-800 dark:text-[#F3F7FC]">{activeInvoice.createdBy}</strong></p>
                 {activeInvoice.convertedFromQuoteNumber && (
                   <p className="text-slate-500 dark:text-[#97AECE]">{t('محولة من عرض سعر:', 'Converted from quote:')} <strong className="font-mono text-blue-900 dark:text-[#85B8FF]">{activeInvoice.convertedFromQuoteNumber}</strong></p>
@@ -1434,7 +1434,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                   {t('تسجيل دفعة على الفاتورة:', 'Record Payment on Invoice:')} {paymentModalInvoice.invoiceNumber}
                 </h3>
                 <p className="text-[11px] text-slate-500">
-                  {t('العميل:', 'Customer:')} <strong className="text-slate-800">{paymentModalInvoice.customerName ? t(paymentModalInvoice.customerName) : t('نقدي عام', 'Walk-in Cash')}</strong>
+                  {t('العميل:', 'Customer:')} <strong className="text-slate-800">{paymentModalInvoice.customerName ? translateSystemEntityName(paymentModalInvoice.customerName) : t('نقدي عام', 'Walk-in Cash')}</strong>
                 </p>
               </div>
               <button
@@ -1567,7 +1567,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                   {t('تعديل الفاتورة رقم:', 'Edit Invoice #')} {editModalInvoice.invoiceNumber}
                 </h3>
                 <p className="text-[11px] text-slate-500">
-                  {t('العميل:', 'Customer:')} <strong className="text-slate-800">{editModalInvoice.customerName ? t(editModalInvoice.customerName) : '-'}</strong> | {t('المستودع:', 'Warehouse:')} <strong className="text-slate-800">{editModalInvoice.warehouseName ? t(editModalInvoice.warehouseName) : '-'}</strong>
+                  {t('العميل:', 'Customer:')} <strong className="text-slate-800">{editModalInvoice.customerName ? translateSystemEntityName(editModalInvoice.customerName) : '-'}</strong> | {t('المستودع:', 'Warehouse:')} <strong className="text-slate-800">{editModalInvoice.warehouseName ? translateSystemEntityName(editModalInvoice.warehouseName) : '-'}</strong>
                 </p>
               </div>
               <button

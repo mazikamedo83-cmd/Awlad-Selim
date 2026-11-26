@@ -17,6 +17,7 @@ import {
   formatLocaleDateTime,
   formatLocaleNumber,
   formatLocaleTime,
+  translateSystemEntityName,
 } from '../../../i18n/translator';
 import {
   Customer,
@@ -39,13 +40,15 @@ import { apiRequest, fetchRepSummaryReport } from '../../../services/api';
 import { exportHtmlToPdf } from '../../common/PdfExporter';
 import { getCurrentLocationSafe, isNativeCapacitor, parseLatLngCoords, reverseGeocodeCoords } from '../../../services/native';
 import { QuantityInput } from '../../common/QuantityInput';
-import { computeLineTotal } from '../../../utils/quantity';
+import { computeLineTotal, roundCurrency } from '../../../utils/quantity';
 import { compressImageFileToDataUrl } from '../../../utils/image';
 import { MobileSendReceiveScreen } from './MobileSendReceiveScreen';
 import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { ProductSearchSelect } from '../../common/ProductSearchSelect';
 import { SearchableFilterSelect, type SearchableFilterOption } from '../../common/SearchableFilterSelect';
+
+const roundQty3 = (val: number): number => Math.round((Number(val || 0) + Number.EPSILON) * 1000) / 1000;
 import { CustomerLocationPickerModal, PickedCustomerLocation } from '../../common/CustomerLocationPickerModal';
 import { CustomerLocationViewerModal } from '../../common/CustomerLocationViewerModal';
 import { isZeroZeroLocation } from '../../../utils/storefront';
@@ -317,12 +320,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   // ==================== 1. SALES INVOICE STATE (preserved across tab switches) ====================
   const [invCustomerId, setInvCustomerId] = useState<string>('');
   const [invWarehouseId, setInvWarehouseId] = useState<string>('');
+  const [invDate, setInvDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [invBarcodeInput, setInvBarcodeInput] = useState<string>('');
   const [invProductId, setInvProductId] = useState<string>('');
   const [invOnlyVanStock, setInvOnlyVanStock] = useState<boolean>(false);
   const [invUnitName, setInvUnitName] = useState<string>('');
   const [invQty, setInvQty] = useState<number | ''>('');
   const [invPrice, setInvPrice] = useState<number | ''>('');
-  const [invLineDiscount, setInvLineDiscount] = useState<number | ''>('');
+  const [invGeneralDiscount, setInvGeneralDiscount] = useState<number | ''>('');
   const [invPaymentType, setInvPaymentType] = useState<'cash' | 'credit' | 'partial'>('cash');
   const [invPaidAmount, setInvPaidAmount] = useState<number | ''>('');
   const [invCashboxId, setInvCashboxId] = useState<string>(data.cashboxes[0]?.id || 'CASH-01');
@@ -338,6 +343,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     purchasePriceAtTime: number;
     discount: number;
     total: number;
+    notes?: string;
   }>>([]);
   const [priceHistoryMap, setPriceHistoryMap] = useState<Record<string, CustomerPriceHistoryEntry[]>>({});
   const [isSubmittingInvoice, setIsSubmittingInvoice] = useState(false);
@@ -367,6 +373,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [purEditingInvoiceId, setPurEditingInvoiceId] = useState<string | null>(null);
   const [purSupplierId, setPurSupplierId] = useState<string>('');
   const [purWarehouseId, setPurWarehouseId] = useState<string>('');
+  const [purDate, setPurDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [purBarcodeInput, setPurBarcodeInput] = useState<string>('');
   const [purProductId, setPurProductId] = useState<string>('');
   const [purUnitName, setPurUnitName] = useState<string>('');
   const [purQty, setPurQty] = useState<number | ''>('');
@@ -387,6 +395,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     purchasePriceAtTime: number;
     discount: number;
     total: number;
+    notes?: string;
     newProduct?: InlinePurchaseNewProduct;
   }>>([]);
   const [showPurInlineNewProduct, setShowPurInlineNewProduct] = useState(false);
@@ -581,15 +590,24 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [custodyStatement, setCustodyStatement] = useState<RepCustodyStatementResponse | null>(null);
   const [isLoadingCustodyStmt, setIsLoadingCustodyStmt] = useState(false);
+  const [reqDate, setReqDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [reqBarcodeInput, setReqBarcodeInput] = useState<string>('');
   const [reqProdId, setReqProdId] = useState('');
+  const [reqUnitName, setReqUnitName] = useState('');
   const [reqQty, setReqQty] = useState<number | ''>('');
+  const [reqNotes, setReqNotes] = useState('');
   const [reqItems, setReqItems] = useState<Array<{
     productId: string;
     productName: string;
+    barcode?: string;
     unit: string;
+    unitFactor?: number;
     requestedQty: number;
+    refPrice?: number;
+    refTotal?: number;
     availableInVanQty: number;
     shortageQty: number;
+    notes?: string;
   }>>([]);
   const [delivCustomerId, setDelivCustomerId] = useState('');
   const [delivProdId, setDelivProdId] = useState('');
@@ -1245,12 +1263,6 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     [activeProducts, invProductId]
   );
 
-  const selectedProdLastPrices = useMemo(() => {
-    if (!invProductId) return [];
-    const list = priceHistoryMap[invProductId] || [];
-    return list.slice(-3);
-  }, [priceHistoryMap, invProductId]);
-
   const effectiveVanId = invWarehouseId || vanWarehouse?.id || '';
 
   const filteredInvoiceProducts = useMemo(() => {
@@ -1264,26 +1276,77 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     setInvProductId(prodId);
     const prod = activeProducts.find((p) => p.id === prodId);
     if (!prod) return;
-    if (prod.units && prod.units.length > 0) {
-      setInvUnitName(prod.units[0].name);
-      setInvPrice(prod.units[0].sellingPrice);
-    } else {
-      setInvUnitName(prod.baseUnit);
-      setInvPrice(prod.sellingPrice);
-    }
-    setInvQty('');
-    setInvLineDiscount('');
+    setInvUnitName(prod.baseUnit);
+    setInvQty(1);
+    const nextPrice = roundCurrency(prod.sellingPrice || 0);
+    setInvPrice(nextPrice > 0 ? nextPrice : '');
   };
 
   const handleUnitChange = (unitName: string) => {
     setInvUnitName(unitName);
     if (!selectedProduct) return;
     if (unitName === selectedProduct.baseUnit) {
-      setInvPrice(selectedProduct.sellingPrice > 0 ? selectedProduct.sellingPrice : '');
+      const nextPrice = roundCurrency(selectedProduct.sellingPrice || 0);
+      setInvPrice(nextPrice > 0 ? nextPrice : '');
     } else {
       const u = selectedProduct.units.find((x) => x.name === unitName);
-      if (u) setInvPrice(u.sellingPrice > 0 ? u.sellingPrice : '');
+      if (u) {
+        const nextPrice = roundCurrency(u.sellingPrice || selectedProduct.sellingPrice * (u.conversionFactor || 1));
+        setInvPrice(nextPrice > 0 ? nextPrice : '');
+      }
     }
+  };
+
+  const handleInvBarcodeSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const term = invBarcodeInput.trim().toLowerCase();
+    if (!term) return;
+    const matched = filteredInvoiceProducts.find(
+      (p) =>
+        String(p.barcode || '').toLowerCase() === term ||
+        String(p.code || '').toLowerCase() === term ||
+        p.units?.some((u) => String(u.barcode || '').toLowerCase() === term)
+    );
+    if (!matched) {
+      setFeedback({ type: 'error', text: t(`لم يتم العثور على صنف بالباركود أو الكود: ${invBarcodeInput}`, `No product found for barcode/code: ${invBarcodeInput}`) });
+      return;
+    }
+    const uMatch = matched.units?.find((u) => String(u.barcode || '').toLowerCase() === term);
+    const chosenUnit = uMatch?.name || matched.baseUnit;
+    const chosenFactor = uMatch?.conversionFactor || 1;
+    const unitPrice = roundCurrency(uMatch?.sellingPrice || matched.sellingPrice * chosenFactor);
+    const purchaseAtTime = roundCurrency(uMatch?.purchasePrice || matched.purchasePrice * chosenFactor);
+    setInvItems((prev) => {
+      const existingIdx = prev.findIndex((it) => it.productId === matched.id && it.unit === chosenUnit);
+      if (existingIdx >= 0) {
+        return prev.map((it, idx) => {
+          if (idx !== existingIdx) return it;
+          const nextQty = roundQty3(it.quantity + 1);
+          return {
+            ...it,
+            quantity: nextQty,
+            total: computeLineTotal(nextQty, it.unitPrice, it.discount || 0),
+          };
+        });
+      }
+      return [
+        ...prev,
+        {
+          productId: matched.id,
+          productName: matched.name,
+          barcode: matched.barcode,
+          unit: chosenUnit,
+          unitFactor: chosenFactor,
+          quantity: 1,
+          unitPrice,
+          purchasePriceAtTime: purchaseAtTime,
+          discount: 0,
+          total: computeLineTotal(1, unitPrice, 0),
+        },
+      ];
+    });
+    setInvBarcodeInput('');
+    setFeedback(null);
   };
 
   const handleAddInvoiceItem = () => {
@@ -1299,22 +1362,19 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         purchasePriceAtTime = u.purchasePrice || selectedProduct.purchasePrice * unitFactor;
       }
     }
-    const safeDiscount = Math.max(0, Number(invLineDiscount || 0));
-    const total = computeLineTotal(qtyNum, priceNum, safeDiscount);
+    const total = computeLineTotal(qtyNum, priceNum, 0);
     const targetUnit = invUnitName || selectedProduct.baseUnit;
     setInvItems((prev) => {
       const existingIdx = prev.findIndex((it) => it.productId === selectedProduct.id && it.unit === targetUnit);
       if (existingIdx >= 0) {
         return prev.map((it, idx) => {
           if (idx !== existingIdx) return it;
-          const nextQty = Number((it.quantity + qtyNum).toFixed(4));
-          const nextDiscount = Number(((it.discount || 0) + safeDiscount).toFixed(2));
+          const nextQty = roundQty3(it.quantity + qtyNum);
           return {
             ...it,
             quantity: nextQty,
             unitPrice: priceNum,
-            discount: nextDiscount,
-            total: computeLineTotal(nextQty, priceNum, nextDiscount),
+            total: computeLineTotal(nextQty, priceNum, it.discount || 0),
           };
         });
       }
@@ -1329,34 +1389,57 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           quantity: qtyNum,
           unitPrice: priceNum,
           purchasePriceAtTime,
-          discount: safeDiscount,
+          discount: 0,
           total,
         },
       ];
     });
     setInvProductId('');
+    setInvUnitName('');
     setInvQty('');
     setInvPrice('');
-    setInvLineDiscount('');
   };
 
   const handleUpdateInvItemQty = (idx: number, nextQty: number) => {
+    const q = Math.max(0.001, roundQty3(nextQty));
     setInvItems((prev) =>
       prev.map((it, i) =>
         i === idx
           ? {
               ...it,
-              quantity: nextQty,
-              total: computeLineTotal(nextQty, it.unitPrice, it.discount || 0),
+              quantity: q,
+              total: computeLineTotal(q, it.unitPrice, it.discount || 0),
             }
           : it
       )
     );
   };
 
-  const invGrandTotal = useMemo(
-    () => invItems.reduce((sum, it) => sum + it.total, 0),
+  const handleUpdateInvItemPrice = (idx: number, newPrice: number) => {
+    const p = Math.max(0, roundCurrency(newPrice));
+    setInvItems((prev) =>
+      prev.map((it, i) => (i === idx ? { ...it, unitPrice: p, total: computeLineTotal(it.quantity, p, it.discount || 0) } : it))
+    );
+  };
+
+  const invGrossSubtotal = useMemo(
+    () => roundCurrency(invItems.reduce((sum, it) => sum + it.quantity * it.unitPrice, 0)),
     [invItems]
+  );
+
+  const invItemDiscountsTotal = useMemo(
+    () => roundCurrency(invItems.reduce((sum, it) => sum + (it.discount || 0), 0)),
+    [invItems]
+  );
+
+  const invTotalDiscount = useMemo(
+    () => roundCurrency(invItemDiscountsTotal + Math.max(0, roundCurrency(Number(invGeneralDiscount || 0)))),
+    [invItemDiscountsTotal, invGeneralDiscount]
+  );
+
+  const invGrandTotal = useMemo(
+    () => Math.max(0, roundCurrency(invGrossSubtotal - invTotalDiscount)),
+    [invGrossSubtotal, invTotalDiscount]
   );
 
   // Van Custody Guard: sum requested quantities per productId and compare strictly to van warehouse custody balance
@@ -1433,28 +1516,34 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
     const forceDraft = shortageItems.length > 0 || mode !== 'confirmed';
 
+    const invItemNotesSummary = invItems
+      .filter((it) => it.notes && it.notes.trim())
+      .map((it) => `${it.productName}: ${it.notes!.trim()}`)
+      .join(' | ');
+    const combinedInvNotes = [invNotes.trim(), invItemNotesSummary].filter(Boolean).join(' — ');
+
     setIsSubmittingInvoice(true);
     setFeedback(null);
     const res = await data.createSalesInvoice({
-      date: new Date().toISOString().split('T')[0],
+      date: invDate || new Date().toISOString().split('T')[0],
       customerId: invCustomerId,
-      customerName: cust?.name || t('عميل', 'Customer'),
+      customerName: cust?.name || 'عميل نقدي / عام',
       representativeId: rep.id,
       representativeName: rep.name,
       warehouseId: effectiveVanId,
       warehouseName: wh?.name || `${t('سيارة المندوب', 'Rep Van')} (${rep.name})`,
-      items: invItems,
-      subtotal: invGrandTotal,
-      discountTotal: 0,
+      items: invItems.map(({ notes: _n, ...rest }) => rest),
+      subtotal: invGrossSubtotal,
+      discountTotal: invTotalDiscount,
       taxTotal: 0,
       grandTotal: invGrandTotal,
       paidAmount: paid,
-      remainingAmount: Math.max(0, invGrandTotal - paid),
+      remainingAmount: Math.max(0, roundCurrency(invGrandTotal - paid)),
       paymentType: invPaymentType,
       paymentMethod: 'cash',
       cashboxId: isRepRoleAccount || !canCashOps ? '' : invCashboxId,
       status: forceDraft ? 'draft' : 'confirmed',
-      notes: invNotes.trim() || undefined,
+      notes: combinedInvNotes || undefined,
     });
 
     if (!res.success || !res.invoice) {
@@ -1506,6 +1595,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     setIsSubmittingInvoice(false);
     setInvItems([]);
     setInvNotes('');
+    setInvGeneralDiscount('');
     setFeedback({
       type: res.queuedOffline ? 'warning' : 'success',
       text: res.queuedOffline
@@ -1527,8 +1617,32 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   };
 
   // ==================== PURCHASE INVOICE HANDLERS ====================
-  const purSubtotal = useMemo(() => purItems.reduce((s, i) => s + i.total, 0), [purItems]);
-  const purTotal = useMemo(() => Math.max(0, purSubtotal - Math.max(0, Number(purDiscount || 0))), [purSubtotal, purDiscount]);
+  const purGrossSubtotal = useMemo(
+    () => roundCurrency(purItems.reduce((s, i) => s + i.quantity * i.unitPrice, 0)),
+    [purItems]
+  );
+  const purItemDiscountsTotal = useMemo(
+    () => roundCurrency(purItems.reduce((s, i) => s + (i.discount || 0), 0)),
+    [purItems]
+  );
+  const purTotalDiscount = useMemo(
+    () => roundCurrency(purItemDiscountsTotal + Math.max(0, roundCurrency(Number(purDiscount || 0)))),
+    [purItemDiscountsTotal, purDiscount]
+  );
+  const purSubtotal = purGrossSubtotal;
+  const purTotal = useMemo(
+    () => Math.max(0, roundCurrency(purGrossSubtotal - purTotalDiscount)),
+    [purGrossSubtotal, purTotalDiscount]
+  );
+  const selectedPurSupplier = useMemo(
+    () => data.suppliers.find((s) => s.id === purSupplierId) || null,
+    [data.suppliers, purSupplierId]
+  );
+  const effectivePurPaid = useMemo(() => {
+    if (purPaymentType === 'cash') return purTotal;
+    if (purPaymentType === 'credit') return 0;
+    return Math.min(purTotal, Math.max(0, Number(purPaidAmount || 0)));
+  }, [purPaymentType, purTotal, purPaidAmount]);
 
   const getPurchaseDispatchMeta = (inv: Invoice) => {
     if (inv.status === 'cancelled') {
@@ -1638,28 +1752,86 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     const prod = activeProducts.find((p) => p.id === prodId);
     if (!prod) return;
     setPurUnitName(prod.baseUnit);
-    setPurPrice(prod.purchasePrice > 0 ? prod.purchasePrice : '');
-    setPurQty('');
+    setPurQty(1);
+    const nextPrice = roundCurrency(prod.purchasePrice || 0);
+    setPurPrice(nextPrice > 0 ? nextPrice : '');
   };
 
   const handleSelectPurUnit = (unitName: string) => {
     setPurUnitName(unitName);
     if (!selectedPurProduct) return;
-    const matched = purUnitOptions.find((u) => u.name === unitName);
-    const factor = matched?.factor || 1;
-    if (selectedPurProduct.purchasePrice > 0) {
-      setPurPrice(Number((selectedPurProduct.purchasePrice * factor).toFixed(2)));
+    if (unitName === selectedPurProduct.baseUnit) {
+      const nextPrice = roundCurrency(selectedPurProduct.purchasePrice || 0);
+      setPurPrice(nextPrice > 0 ? nextPrice : '');
+    } else {
+      const u = selectedPurProduct.units.find((x) => x.name === unitName);
+      if (u) {
+        const nextPrice = roundCurrency(u.purchasePrice || selectedPurProduct.purchasePrice * (u.conversionFactor || 1));
+        setPurPrice(nextPrice > 0 ? nextPrice : '');
+      }
     }
+  };
+
+  const handlePurBarcodeSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const term = purBarcodeInput.trim().toLowerCase();
+    if (!term) return;
+    const matched = activeProducts.find(
+      (p) =>
+        String(p.barcode || '').toLowerCase() === term ||
+        String(p.code || '').toLowerCase() === term ||
+        p.units?.some((u) => String(u.barcode || '').toLowerCase() === term)
+    );
+    if (!matched) {
+      setFeedback({ type: 'error', text: t(`لم يتم العثور على صنف بالباركود أو الكود: ${purBarcodeInput}`, `No product found matching barcode/code: ${purBarcodeInput}`) });
+      return;
+    }
+    const uMatch = matched.units?.find((u) => String(u.barcode || '').toLowerCase() === term);
+    const chosenUnit = uMatch?.name || matched.baseUnit;
+    const chosenFactor = uMatch?.conversionFactor || 1;
+    const unitPrice = roundCurrency(uMatch?.purchasePrice || matched.purchasePrice * chosenFactor);
+    const perBaseCost = chosenFactor > 0 ? roundCurrency(unitPrice / chosenFactor) : unitPrice;
+    setPurItems((prev) => {
+      const existingIdx = prev.findIndex((it) => it.productId === matched.id && it.unit === chosenUnit);
+      if (existingIdx >= 0) {
+        return prev.map((it, idx) => {
+          if (idx !== existingIdx) return it;
+          const nextQty = roundQty3(it.quantity + 1);
+          return {
+            ...it,
+            quantity: nextQty,
+            total: computeLineTotal(nextQty, it.unitPrice, it.discount || 0),
+          };
+        });
+      }
+      return [
+        ...prev,
+        {
+          productId: matched.id,
+          productName: matched.name,
+          barcode: matched.barcode,
+          unit: chosenUnit,
+          unitFactor: chosenFactor,
+          quantity: 1,
+          unitPrice,
+          purchasePriceAtTime: perBaseCost,
+          discount: 0,
+          total: computeLineTotal(1, unitPrice, 0),
+        },
+      ];
+    });
+    setPurBarcodeInput('');
+    setFeedback(null);
   };
 
   const handleUseExistingPurDuplicateProduct = (prod: Product) => {
     setShowPurInlineNewProduct(false);
     setPurProductId(prod.id);
     setPurUnitName(prod.baseUnit);
-    setPurPrice(prod.purchasePrice > 0 ? prod.purchasePrice : '');
-    if (newPurProdQty !== '' && Number(newPurProdQty) > 0) {
-      setPurQty(Number(newPurProdQty));
-    }
+    const pPrice = prod.purchasePrice > 0 ? prod.purchasePrice : '';
+    setPurPrice(pPrice);
+    const q = newPurProdQty !== '' && Number(newPurProdQty) > 0 ? Number(newPurProdQty) : 1;
+    setPurQty(q);
     setFeedback(null);
   };
 
@@ -1777,13 +1949,13 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       if (u) factor = u.conversionFactor;
     }
     const targetUnit = purUnitName || prod.baseUnit;
-    const perBaseCost = factor > 0 ? Number((priceNum / factor).toFixed(2)) : priceNum;
+    const perBaseCost = factor > 0 ? roundCurrency(priceNum / factor) : priceNum;
     setPurItems((prev) => {
       const existingIdx = prev.findIndex((it) => it.productId === prod.id && it.unit === targetUnit);
       if (existingIdx >= 0) {
         return prev.map((it, idx) => {
           if (idx !== existingIdx) return it;
-          const nextQty = Number((it.quantity + qtyNum).toFixed(4));
+          const nextQty = roundQty3(it.quantity + qtyNum);
           return {
             ...it,
             quantity: nextQty,
@@ -1805,17 +1977,42 @@ export const RepPortal: React.FC<RepPortalProps> = ({
           unitPrice: priceNum,
           purchasePriceAtTime: perBaseCost,
           discount: 0,
-          total: computeLineTotal(qtyNum, priceNum),
+          total: computeLineTotal(qtyNum, priceNum, 0),
         },
       ];
     });
     setPurProductId('');
+    setPurUnitName('');
     setPurQty('');
     setPurPrice('');
   };
 
+  const handleUpdatePurItemQty = (idx: number, nextQty: number) => {
+    const q = Math.max(0.001, roundQty3(nextQty));
+    setPurItems((prev) =>
+      prev.map((it, i) => (i === idx ? { ...it, quantity: q, total: computeLineTotal(q, it.unitPrice, it.discount || 0) } : it))
+    );
+  };
+
+  const handleUpdatePurItemPrice = (idx: number, nextPrice: number) => {
+    const p = Math.max(0, roundCurrency(nextPrice));
+    setPurItems((prev) =>
+      prev.map((it, i) =>
+        i === idx
+          ? {
+              ...it,
+              unitPrice: p,
+              purchasePriceAtTime: (it.unitFactor || 1) > 0 ? roundCurrency(p / (it.unitFactor || 1)) : p,
+              total: computeLineTotal(it.quantity, p, it.discount || 0),
+            }
+          : it
+      )
+    );
+  };
+
   const handleStartEditPurchase = (inv: Invoice) => {
     setPurEditingInvoiceId(inv.id);
+    setPurDate(inv.date || new Date().toISOString().split('T')[0]);
     setPurSupplierId(inv.supplierId || '');
     setPurWarehouseId(inv.warehouseId || mainWarehouse?.id || '');
     setPurItems(
@@ -1832,7 +2029,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         total: it.total,
       }))
     );
-    setPurDiscount(Number(inv.discountTotal || 0));
+    const loadedItemDisc = (inv.items || []).reduce((s, it) => s + Number(it.discount || 0), 0);
+    setPurDiscount(Math.max(0, roundCurrency(Number(inv.discountTotal || 0) - loadedItemDisc)));
     setPurPaymentType(inv.paymentType || 'cash');
     setPurPaidAmount(Number(inv.paidAmount || 0));
     setPurCashboxId(inv.cashboxId || data.cashboxes[0]?.id || 'CASH-01');
@@ -1841,8 +2039,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     onTabChange('new-purchase');
   };
 
-  const handleOpenPurchaseReview = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleOpenPurchaseReview = (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (!purSupplierId || !purItems.length) {
       setFeedback({ type: 'error', text: t('يرجى اختيار المورد وإضافة صنف واحد على الأقل.', 'Please select a supplier and add at least one item.') });
       return;
@@ -1866,23 +2064,29 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         ? 0
         : Math.min(purTotal, Math.max(0, Number(purPaidAmount || 0)));
     const chosenRecipient = (data.purchaseReceivers || []).find((r) => r.id === purRecipientUserId);
+    const purItemNotesSummary = purItems
+      .filter((it) => it.notes && it.notes.trim())
+      .map((it) => `${it.productName}: ${it.notes!.trim()}`)
+      .join(' | ');
+    const combinedPurNotes = [purNotes.trim(), purItemNotesSummary].filter(Boolean).join(' — ');
+    const sanitizedPurItems = purItems.map(({ notes: _n, ...rest }) => rest);
 
     setIsSubmittingPurchase(true);
     setFeedback(null);
 
     if (purEditingInvoiceId) {
       const editRes = await data.editPurchaseInvoice(purEditingInvoiceId, {
-        date: new Date().toISOString().split('T')[0],
+        date: purDate || new Date().toISOString().split('T')[0],
         supplierId: purSupplierId,
-        supplierName: sup?.name || t('مورد', 'Supplier'),
+        supplierName: sup?.name || 'مورد',
         warehouseId: whId,
-        warehouseName: wh?.name || t('المخزن الرئيسي', 'Main Warehouse'),
-        discountTotal: Math.max(0, Number(purDiscount || 0)),
+        warehouseName: wh?.name || 'المخزن الرئيسي',
+        discountTotal: purTotalDiscount,
         paidAmount: paid,
         paymentType: purPaymentType,
-        notes: purNotes.trim() || undefined,
+        notes: combinedPurNotes || undefined,
         reason: t('تعديل فاتورة الشراء قبل الإرسال', 'Purchase invoice edited prior to dispatch'),
-        items: purItems,
+        items: sanitizedPurItems,
       });
       if (!editRes.success) {
         setIsSubmittingPurchase(false);
@@ -1920,20 +2124,20 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     }
 
     const res = await data.createPurchaseInvoice({
-      date: new Date().toISOString().split('T')[0],
+      date: purDate || new Date().toISOString().split('T')[0],
       supplierId: purSupplierId,
-      supplierName: sup?.name || t('مورد', 'Supplier'),
+      supplierName: sup?.name || 'مورد',
       representativeId: rep?.id,
       representativeName: rep?.name,
       warehouseId: whId,
-      warehouseName: wh?.name || t('المخزن الرئيسي', 'Main Warehouse'),
-      items: purItems,
+      warehouseName: wh?.name || 'المخزن الرئيسي',
+      items: sanitizedPurItems,
       subtotal: purSubtotal,
-      discountTotal: Math.max(0, Number(purDiscount || 0)),
+      discountTotal: purTotalDiscount,
       taxTotal: 0,
       grandTotal: purTotal,
       paidAmount: paid,
-      remainingAmount: Math.max(0, purTotal - paid),
+      remainingAmount: Math.max(0, roundCurrency(purTotal - paid)),
       paymentType: purPaymentType,
       paymentMethod: 'cash',
       cashboxId: isRepRoleAccount || !canCashOps ? '' : purCashboxId,
@@ -1943,7 +2147,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       recipientUserId: sendNow ? chosenRecipient?.id : undefined,
       recipientName: sendNow ? (chosenRecipient?.fullName || t('الإدارة العامة', 'General Management')) : undefined,
       isRepPurchase: true,
-      notes: purNotes.trim() || undefined,
+      notes: combinedPurNotes || undefined,
     });
     setIsSubmittingPurchase(false);
     if (res.success) {
@@ -3397,25 +3601,189 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     }
   };
 
-  const handleSendDirectItemTransfer = async (e: React.FormEvent) => {
+  const activeReqProduct = useMemo(
+    () => activeProducts.find((p) => p.id === reqProdId) || null,
+    [activeProducts, reqProdId]
+  );
+
+  const reqUnitOptions = useMemo(() => {
+    if (!activeReqProduct) return [];
+    return [
+      { name: activeReqProduct.baseUnit, factor: 1 },
+      ...(activeReqProduct.units || []).map((u) => ({
+        name: u.name,
+        factor: u.conversionFactor || 1,
+      })),
+    ];
+  }, [activeReqProduct]);
+
+  const handleSelectReqProduct = (prod: Product) => {
+    setReqProdId(prod.id);
+    setReqUnitName(prod.baseUnit);
+    setReqQty(1);
+  };
+
+  const handleReqBarcodeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const term = reqBarcodeInput.trim().toLowerCase();
+    if (!term) return;
+    const matched = activeProducts.find(
+      (p) =>
+        String(p.barcode || '').toLowerCase() === term ||
+        String(p.code || '').toLowerCase() === term ||
+        p.units?.some((u) => String(u.barcode || '').toLowerCase() === term)
+    );
+    if (!matched) {
+      setFeedback({ type: 'error', text: t(`لم يتم العثور على صنف بالباركود أو الكود: ${reqBarcodeInput}`, `No item found for barcode/code: ${reqBarcodeInput}`) });
+      return;
+    }
+    const uMatch = matched.units?.find((u) => String(u.barcode || '').toLowerCase() === term);
+    const chosenUnit = uMatch?.name || matched.baseUnit;
+    const chosenFactor = uMatch?.conversionFactor || 1;
+    const refPrice = roundCurrency(uMatch?.purchasePrice || matched.purchasePrice * chosenFactor);
+    const vanQty = matched.stockPerWarehouse?.[effectiveVanId] || 0;
+    const reqBase = 1 * chosenFactor;
+    setReqItems((prev) => {
+      const existingIdx = prev.findIndex((it) => it.productId === matched.id && it.unit === chosenUnit);
+      if (existingIdx >= 0) {
+        return prev.map((it, idx) => {
+          if (idx !== existingIdx) return it;
+          const nextQty = roundQty3(it.requestedQty + 1);
+          const nextBase = nextQty * (it.unitFactor || 1);
+          return {
+            ...it,
+            requestedQty: nextQty,
+            refTotal: computeLineTotal(nextQty, it.refPrice || 0, 0),
+            availableInVanQty: vanQty,
+            shortageQty: Math.max(0, roundQty3(nextBase - vanQty)),
+          };
+        });
+      }
+      return [
+        ...prev,
+        {
+          productId: matched.id,
+          productName: matched.name,
+          barcode: matched.barcode,
+          unit: chosenUnit,
+          unitFactor: chosenFactor,
+          requestedQty: 1,
+          refPrice,
+          refTotal: computeLineTotal(1, refPrice, 0),
+          availableInVanQty: vanQty,
+          shortageQty: Math.max(0, roundQty3(reqBase - vanQty)),
+        },
+      ];
+    });
+    setReqBarcodeInput('');
+    setFeedback(null);
+  };
+
+  const handleAddReqItem = () => {
+    const prod = activeProducts.find((p) => p.id === reqProdId);
+    const rq = Number(reqQty || 0);
+    if (!prod || rq <= 0) return;
+    const matchedOpt = reqUnitOptions.find((u) => u.name === reqUnitName) || reqUnitOptions[0];
+    const effectiveUnit = matchedOpt?.name || prod.baseUnit;
+    const unitFactor = matchedOpt?.factor || 1;
+    const uObj = prod.units?.find((u) => u.name === effectiveUnit);
+    const refPrice = roundCurrency(uObj?.purchasePrice || prod.purchasePrice * unitFactor);
+    const vanQty = prod.stockPerWarehouse?.[effectiveVanId] || 0;
+    const reqBase = rq * unitFactor;
+    setReqItems((prev) => {
+      const existingIdx = prev.findIndex((it) => it.productId === prod.id && it.unit === effectiveUnit);
+      if (existingIdx >= 0) {
+        return prev.map((it, idx) => {
+          if (idx !== existingIdx) return it;
+          const nextQty = roundQty3(it.requestedQty + rq);
+          const nextBase = nextQty * (it.unitFactor || 1);
+          return {
+            ...it,
+            requestedQty: nextQty,
+            refPrice,
+            refTotal: computeLineTotal(nextQty, refPrice, 0),
+            availableInVanQty: vanQty,
+            shortageQty: Math.max(0, roundQty3(nextBase - vanQty)),
+          };
+        });
+      }
+      return [
+        ...prev,
+        {
+          productId: prod.id,
+          productName: prod.name,
+          barcode: prod.barcode,
+          unit: effectiveUnit,
+          unitFactor,
+          requestedQty: rq,
+          refPrice,
+          refTotal: computeLineTotal(rq, refPrice, 0),
+          availableInVanQty: vanQty,
+          shortageQty: Math.max(0, roundQty3(reqBase - vanQty)),
+        },
+      ];
+    });
+    setReqProdId('');
+    setReqUnitName('');
+    setReqQty('');
+  };
+
+  const handleUpdateReqItemQty = (idx: number, nextQty: number) => {
+    const q = Math.max(0.001, roundQty3(nextQty));
+    setReqItems((prev) =>
+      prev.map((it, i) => {
+        if (i !== idx) return it;
+        const prod = activeProducts.find((p) => p.id === it.productId);
+        const vanQty = prod ? prod.stockPerWarehouse?.[effectiveVanId] || 0 : it.availableInVanQty;
+        const reqBase = q * (it.unitFactor || 1);
+        return {
+          ...it,
+          requestedQty: q,
+          refTotal: computeLineTotal(q, it.refPrice || 0, 0),
+          availableInVanQty: vanQty,
+          shortageQty: Math.max(0, roundQty3(reqBase - vanQty)),
+        };
+      })
+    );
+  };
+
+  const handleSendDirectItemTransfer = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (!rep || !mainWarehouse || !effectiveVanId || reqItems.length === 0) return;
     setIsSendingTransfer(true);
     const wh = data.warehouses.find((w) => w.id === effectiveVanId);
+    const itemNotesSummary = reqItems
+      .filter((it) => it.notes && it.notes.trim())
+      .map((it) => `${it.productName}: ${it.notes!.trim()}`)
+      .join(' | ');
+    const combinedReqNotes = [
+      reqNotes.trim() || t('طلب تغذية عهدة سيارة من تطبيق المندوب', 'Van custody replenishment request from representative app'),
+      itemNotesSummary,
+    ]
+      .filter(Boolean)
+      .join(' — ');
     const res = await data.createRepItemTransfer({
-      date: new Date().toISOString().split('T')[0],
+      date: reqDate || new Date().toISOString().split('T')[0],
       representativeId: rep.id,
       representativeName: rep.name,
       sourceWarehouseId: mainWarehouse.id,
       sourceWarehouseName: mainWarehouse.name,
       targetWarehouseId: effectiveVanId,
       targetWarehouseName: wh?.name || `${t('سيارة المندوب', 'Rep Van')} (${rep.name})`,
-      items: reqItems,
-      notes: t('طلب تغذية عهدة سيارة من تطبيق المندوب', 'Van custody replenishment request from representative app'),
+      items: reqItems.map((it) => ({
+        productId: it.productId,
+        productName: it.productName,
+        unit: it.unit,
+        requestedQty: it.requestedQty,
+        availableInVanQty: it.availableInVanQty,
+        shortageQty: it.shortageQty,
+      })),
+      notes: combinedReqNotes,
     });
     setIsSendingTransfer(false);
     if (res.success) {
       setReqItems([]);
+      setReqNotes('');
       setFeedback({
         type: 'success',
         text: t(
@@ -4886,438 +5254,434 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         </div>
       )}
 
-      {/* ==================== NEW SALES INVOICE (with Van Custody Guard) ==================== */}
+      {/* ==================== NEW SALES INVOICE (Classic Stacked Form + Editable Items Table) ==================== */}
       {activeTab === 'new-invoice' && (
-        <div className="space-y-2">
-          <div className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-2 text-xs">
-            <h3 className="text-xs sm:text-sm font-black text-slate-900">{t('إنشاء فاتورة مبيعات (مقيد بمخزون عهدة السيارة)', 'Create Sales Invoice (Van Custody Stock Restricted)')}</h3>
+        <div className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-2.5 text-xs">
+          <div className="flex items-center justify-between gap-2 flex-wrap pb-1.5 border-b border-slate-100">
+            <h3 className="text-xs sm:text-sm font-black text-slate-900">
+              {t('إنشاء فاتورة مبيعات (مقيد بمخزون عهدة السيارة)', 'Create Sales Invoice (Van Custody Stock Restricted)')}
+            </h3>
+            <button
+              type="button"
+              onClick={() => setInvOnlyVanStock((prev) => !prev)}
+              className={`h-7 px-2.5 rounded-md border text-[11px] font-bold cursor-pointer ${
+                invOnlyVanStock
+                  ? 'bg-[#003589] text-white border-[#011E58]'
+                  : 'bg-slate-50 text-slate-700 border-slate-300'
+              }`}
+            >
+              {invOnlyVanStock ? t('المتاح بالسيارة فقط ✓', 'Van Available Only ✓') : t('تصفية: المتاح بالسيارة', 'Filter: Available in Van')}
+            </button>
+          </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-              <div>
-                <SearchableFilterSelect
-                  id="rep-sale-customer"
-                  label={t('العميل', 'Customer')}
-                  value={invCustomerId}
-                  onChange={setInvCustomerId}
-                  options={data.customers.map((c) => ({
-                    value: c.id,
-                    label: c.shopName ? `${c.shopName} (${c.name})` : c.name,
-                    subtitle: c.phone || c.address,
-                    badge: `${t('رصيد:', 'Bal:')} ${formatLocaleNumber(c.currentBalance)}`,
-                    searchText: `${c.name} ${c.shopName || ''} ${c.phone || ''} ${c.code || ''}`,
-                  }))}
-                  allOptionLabel={t('-- اختر العميل --', '-- Select Customer --')}
-                  allOptionValue=""
-                  searchPlaceholder={t('ابحث باسم العميل أو المحل أو الهاتف...', 'Search by customer, shop or phone...')}
-                  allowClear
-                  buttonClassName="h-8 rounded-md"
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-slate-50 p-2 rounded-lg border border-slate-200">
+            <div>
+              <SearchableFilterSelect
+                id="rep-sale-customer"
+                label={t('العميل', 'Customer')}
+                value={invCustomerId}
+                onChange={setInvCustomerId}
+                options={data.customers.map((c) => ({
+                  value: c.id,
+                  label: c.shopName ? `${c.shopName} (${c.name})` : c.name,
+                  subtitle: c.phone || c.address,
+                  badge: `${t('رصيد:', 'Bal:')} ${formatLocaleNumber(c.currentBalance)}`,
+                  searchText: `${c.name} ${c.shopName || ''} ${c.phone || ''} ${c.code || ''}`,
+                }))}
+                allOptionLabel={t('-- اختر العميل --', '-- Select Customer --')}
+                allOptionValue=""
+                searchPlaceholder={t('ابحث باسم العميل أو المحل أو الهاتف...', 'Search by customer, shop or phone...')}
+                allowClear
+                buttonClassName="h-8 rounded-md"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                {t('مستودع الصرف (السيارة):', 'Issue Warehouse (Van):')}
+              </label>
+              <select
+                value={effectiveVanId}
+                onChange={(e) => setInvWarehouseId(e.target.value)}
+                className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold bg-white text-xs"
+              >
+                {data.warehouses.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {t(w.name)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                {t('تاريخ الفاتورة:', 'Invoice Date:')}
+              </label>
+              <input
+                type="date"
+                value={invDate}
+                onChange={(e) => setInvDate(e.target.value)}
+                className="w-full h-8 rounded-md border border-slate-300 px-2 font-mono font-bold bg-white text-xs"
+              />
+            </div>
+          </div>
+
+          <div className="bg-blue-50/60 p-2 rounded-lg border border-blue-200 space-y-2">
+            <form onSubmit={handleInvBarcodeSubmit} className="flex items-center gap-1.5">
+              <div className="relative flex-1">
+                <Barcode className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  dir="ltr"
+                  value={invBarcodeInput}
+                  onChange={(e) => setInvBarcodeInput(e.target.value)}
+                  placeholder={t('امسح الباركود أو اكتب كود الصنف ثم Enter...', 'Scan barcode or type item code and press Enter...')}
+                  className="w-full h-8 pr-8 pl-2 rounded-md border border-slate-300 bg-white font-mono text-xs"
                 />
               </div>
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('مستودع الصرف (السيارة):', 'Issue Warehouse (Van):')}</label>
-                <select
-                  value={effectiveVanId}
-                  onChange={(e) => setInvWarehouseId(e.target.value)}
-                  className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold bg-white"
-                >
-                  {data.warehouses.map((w) => (
-                    <option key={w.id} value={w.id}>
-                      {w.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+              <button
+                type="submit"
+                className="h-8 px-3 rounded-md bg-[#003589] text-white font-bold text-[11px] cursor-pointer shrink-0"
+              >
+                {t('إضافة', 'Add')}
+              </button>
+            </form>
 
-            <div className="p-2 rounded-md bg-blue-50/60 border border-blue-200 space-y-1.5">
-              <div className="flex flex-wrap items-center justify-between gap-1.5">
-                <label className="font-bold text-slate-800">{t('بحث / باركود وإضافة صنف', 'Search / Barcode & Add Item')} ({formatLocaleNumber(filteredInvoiceProducts.length)}):</label>
-                <button
-                  type="button"
-                  onClick={() => setInvOnlyVanStock((prev) => !prev)}
-                  className={`h-7 px-2 rounded-md border text-[11px] font-bold cursor-pointer ${
-                    invOnlyVanStock
-                      ? 'bg-[#003589] text-white border-[#011E58]'
-                      : 'bg-white text-slate-700 border-slate-300'
-                  }`}
-                >
-                  {invOnlyVanStock ? t('المتاح بالسيارة فقط ✓', 'Van Available Only ✓') : t('تصفية: المتاح بالسيارة', 'Filter: Available in Van')}
-                </button>
-              </div>
-
+            <div>
+              <label className="block text-[10px] font-bold text-slate-700 mb-0.5">
+                {t('اختيار الصنف:', 'Select Item:')}
+              </label>
               <ProductSearchSelect
                 products={filteredInvoiceProducts}
                 selectedProductId={invProductId}
+                onSelect={(prod) => handleSelectProduct(prod.id)}
                 warehouseId={effectiveVanId}
                 warehouses={data.warehouses}
                 priceMode="selling"
                 currency={data.settings.currency}
-                placeholder={t('ابحث بالاسم أو الكود أو امسح الباركود...', 'Search by name, code or scan barcode...')}
-                onSelect={(prod) => handleSelectProduct(prod.id)}
+                placeholder={t('ابحث باسم الصنف أو الكود أو الباركود...', 'Search by item name, code or barcode...')}
               />
+            </div>
 
-              {selectedProduct && invCustomerId && (
-                <div className="p-2 rounded-md bg-white border border-blue-200 space-y-1">
-                  <div className="flex items-center gap-1.5 font-bold text-blue-950 text-[11px]">
-                    <History className="w-3.5 h-3.5 shrink-0" />
-                    <span>
-                      {t('آخر 3 أسعار بيع فعلية لهذا العميل', 'Last 3 actual selling prices for this customer')} ({selectedInvoiceCustomer?.shopName || selectedInvoiceCustomer?.name || ''}) {t('للصنف', 'for item')} ({selectedProduct.name}) — {t('من الأقدم للأحدث:', 'oldest to newest:')}
-                    </span>
-                  </div>
-                  {selectedProdLastPrices.length > 0 ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {selectedProdLastPrices.map((entry, idx) => {
-                        const priceVal = Number(entry.price || 0);
-                        const priceDate = entry.date || '';
-                        const entryUnit = entry.unit || '';
-                        const entryQty = entry.quantity;
-                        const entryFactor = Number(entry.unitFactor || 1);
-                        const orderTag = idx === 0 ? t('الأقدم', 'Oldest') : idx === selectedProdLastPrices.length - 1 ? t('الأحدث', 'Latest') : t('الوسيط', 'Middle');
-                        const activeUnitFactor =
-                          invUnitName === selectedProduct.baseUnit
-                            ? 1
-                            : selectedProduct.units.find((u) => u.name === invUnitName)?.conversionFactor || 1;
-                        const normalizedPerSelectedUnit =
-                          entryUnit && entryUnit !== invUnitName && entryFactor > 0
-                            ? Math.round((priceVal / entryFactor) * activeUnitFactor * 100) / 100
-                            : null;
-                        return (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => setInvPrice(normalizedPerSelectedUnit ?? priceVal)}
-                            title={t('انقر لتطبيق هذا السعر يدوياً', 'Click to apply this price')}
-                            className="px-2 py-1 rounded-md bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-950 text-start cursor-pointer"
-                          >
-                            <span className="font-mono font-bold text-[11px] block">
-                              {formatLocaleNumber(priceVal)} {t(data.settings.currency)}
-                              {entryUnit ? ` / ${entryUnit}` : ''}
-                            </span>
-                            <span className="text-[10px] text-slate-600 block">
-                              {orderTag}
-                              {priceDate ? ` · ${priceDate}` : ''}
-                              {typeof entryQty === 'number' && entryQty > 0 ? ` · ${t('كمية:', 'Qty:')} ${formatLocaleNumber(entryQty)}` : ''}
-                              {normalizedPerSelectedUnit !== null ? ` · ${t('يعادل', 'Equiv.')} ${formatLocaleNumber(normalizedPerSelectedUnit)} / ${invUnitName}` : ''}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="text-[11px] text-slate-500 italic">{t('لا توجد أسعار بيع سابقة لهذا الصنف مع هذا العميل', 'No previous selling prices for this item with this customer')}</p>
-                  )}
-                </div>
-              )}
-
-              {selectedProduct && (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+            {selectedProduct && (
+              <div className="space-y-1.5 pt-1 border-t border-blue-200/70">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 items-end">
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الوحدة', 'Unit')}</label>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('الوحدة:', 'Unit:')}</label>
                     <select
-                      value={invUnitName}
+                      value={invUnitName || selectedProduct.baseUnit}
                       onChange={(e) => handleUnitChange(e.target.value)}
-                      className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-bold"
+                      className="w-full h-8 rounded-md border border-slate-300 px-1.5 bg-white font-bold text-xs"
                     >
-                      {selectedProduct.units.map((u) => (
-                        <option key={u.id} value={u.name}>
-                          {u.name} ({u.conversionFactor})
+                      <option value={selectedProduct.baseUnit}>{t(selectedProduct.baseUnit)}</option>
+                      {(selectedProduct.units || []).map((u) => (
+                        <option key={u.name} value={u.name}>
+                          {t(u.name)}
                         </option>
                       ))}
-                      <option value={selectedProduct.baseUnit}>{selectedProduct.baseUnit}</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الكمية', 'Quantity')}</label>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('الكمية:', 'Qty:')}</label>
                     <QuantityInput
                       allowDecimals
                       min={0.001}
                       value={invQty}
                       onChange={setInvQty}
-                      ariaLabel={t('كمية الصنف', 'Item Quantity')}
-                      inputClassName="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
+                      ariaLabel={t('الكمية', 'Quantity')}
+                      inputClassName="w-full h-8 rounded-md border border-slate-300 bg-white text-center font-mono font-bold text-xs"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('السعر', 'Price')}</label>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('السعر:', 'Price:')}</label>
                     <input
                       type="number"
                       step="0.5"
                       min={0}
                       value={invPrice}
                       onChange={(e) => setInvPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
-                      placeholder="0.00"
-                      className="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
+                      className="w-full h-8 rounded-md border border-slate-300 bg-white text-center font-mono font-bold text-xs"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('خصم البند', 'Line Discount')}</label>
-                    <input
-                      type="number"
-                      step="0.5"
-                      min={0}
-                      value={invLineDiscount}
-                      onChange={(e) => setInvLineDiscount(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
-                      placeholder="0"
-                      className="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
-                    />
+                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('القيمة:', 'Total:')}</label>
+                    <div className="h-8 rounded-md border border-slate-200 bg-slate-100 px-2 flex items-center justify-center font-mono font-black text-slate-800">
+                      {formatLocaleNumber(computeLineTotal(Number(invQty || 0), Number(invPrice || 0), 0))}
+                    </div>
+                  </div>
+                  <div className="col-span-2 sm:col-span-1">
+                    <button
+                      type="button"
+                      onClick={handleAddInvoiceItem}
+                      className="w-full h-8 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white font-black flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>{t('إضافة', 'Add')}</span>
+                    </button>
                   </div>
                 </div>
-              )}
 
-              {selectedProduct && (
-                <button
-                  type="button"
-                  onClick={handleAddInvoiceItem}
-                  className="w-full h-8 rounded-md bg-blue-900 text-white font-black flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>{t('إضافة الصنف للفاتورة', 'Add Item to Invoice')}</span>
-                </button>
-              )}
-            </div>
-
-            {invItems.length > 0 && (
-              <UnifiedDataTable
-                compact
-                paginated={false}
-                searchable={false}
-                title={`${t('أصناف الفاتورة', 'Invoice Items')} (${formatLocaleNumber(invItems.length)})`}
-                data={invItems}
-                rowKey={(it, idx) => `${it.productId}-${it.unit}-${idx}`}
-                columns={[
-                  {
-                    key: 'productName',
-                    header: t('الصنف', 'Product'),
-                    render: (it) => (
-                      <div>
-                        <span className="font-bold text-slate-900 block">{it.productName}</span>
-                        <span className="text-[10px] text-slate-500">
-                          {it.unit} · {t('سعر', 'Price')} {formatLocaleNumber(it.unitPrice)}
-                          {it.discount > 0 ? ` · ${t('خصم', 'Disc.')} ${formatLocaleNumber(it.discount)}` : ''}
-                        </span>
-                      </div>
-                    ),
-                  },
-                  {
-                    key: 'quantity',
-                    header: t('الكمية', 'Qty'),
-                    align: 'center',
-                    render: (it, idx) => (
-                      <div className="inline-flex justify-center">
-                        <QuantityInput
-                          showSteppers
-                          allowDecimals
-                          min={0.001}
-                          value={it.quantity}
-                          onChange={(q) => handleUpdateInvItemQty(idx, q)}
-                          onRemoveWhenZero={() => setInvItems((prev) => prev.filter((_, i) => i !== idx))}
-                          ariaLabel={`${t('كمية', 'Quantity')} ${it.productName}`}
-                        />
-                      </div>
-                    ),
-                  },
-                  {
-                    key: 'total',
-                    header: t('الإجمالي', 'Total'),
-                    align: 'center',
-                    render: (it) => (
-                      <strong className="font-mono text-blue-950 tabular-nums">
-                        {formatLocaleNumber(it.total)} {t(data.settings.currency)}
-                      </strong>
-                    ),
-                  },
-                  {
-                    key: 'actions',
-                    header: t('حذف', 'Delete'),
-                    align: 'center',
-                    sortable: false,
-                    render: (_it, idx) => (
+                {invCustomerId && (priceHistoryMap[selectedProduct.id] || []).length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1 text-[10px]">
+                    <span className="font-bold text-slate-600">{t('أسعار العميل السابقة:', 'Previous Customer Prices:')}</span>
+                    {(priceHistoryMap[selectedProduct.id] || []).slice(0, 3).map((ph, pIdx) => (
                       <button
+                        key={`${ph.invoiceNumber || pIdx}-${ph.price}`}
                         type="button"
-                        onClick={() => setInvItems((prev) => prev.filter((_, i) => i !== idx))}
-                        className="h-7 w-7 rounded-md hover:bg-red-50 inline-flex items-center justify-center text-red-600 cursor-pointer"
-                        aria-label={t('حذف الصنف', 'Remove Item')}
+                        onClick={() => setInvPrice(roundCurrency(ph.price))}
+                        className="px-2 py-0.5 rounded bg-white border border-blue-300 hover:bg-blue-100 text-[#011E58] font-mono font-bold cursor-pointer"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        {formatLocaleNumber(ph.price)} ({t(ph.unit || selectedProduct.baseUnit)})
                       </button>
-                    ),
-                  },
-                ]}
-              />
-            )}
-
-            {shortageItems.length > 0 && (
-              <div className="p-2 rounded-md bg-amber-50 border border-amber-300 space-y-1 text-xs text-amber-950">
-                <div className="flex items-center gap-1.5 font-black">
-                  <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
-                  <span>{t('عجز في مخزون سيارتك لعدد', 'Shortage in van stock for')} ({formatLocaleNumber(shortageItems.length)}) {t('أصناف — لا يمكن الاعتماد المباشر', 'items — cannot confirm directly')}</span>
-                </div>
-                <div className="space-y-0.5 text-[11px]">
-                  {shortageItems.map((sh) => (
-                    <div key={sh.productId} className="flex items-center justify-between font-mono">
-                      <span className="font-sans font-bold">{sh.productName}</span>
-                      <span className="text-red-700">
-                        {t('المتاح بالسيارة:', 'In Van:')} {formatLocaleNumber(sh.availableInVanQty)} · {t('العجز:', 'Shortage:')} {formatLocaleNumber(sh.shortageQty)} {sh.unit}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {invItems.length > 0 && (
-              <div className="space-y-2 pt-2 border-t border-slate-100">
-                <div className="grid grid-cols-3 gap-1.5">
-                  {[
-                    { key: 'cash' as const, label: t('نقدي', 'Cash') },
-                    { key: 'credit' as const, label: t('آجل', 'Credit') },
-                    { key: 'partial' as const, label: t('جزئي', 'Partial') },
-                  ].map((pt) => (
-                    <button
-                      key={pt.key}
-                      type="button"
-                      onClick={() => setInvPaymentType(pt.key)}
-                      className={`h-8 rounded-md border font-bold cursor-pointer ${
-                        invPaymentType === pt.key
-                          ? 'bg-blue-900 text-white border-blue-900'
-                          : 'bg-slate-50 text-slate-700 border-slate-300'
-                      }`}
-                    >
-                      {pt.label}
-                    </button>
-                  ))}
-                </div>
-
-                {invPaymentType === 'partial' && (
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('المدفوع نقداً الآن', 'Cash Paid Now')}</label>
-                    <input
-                      type="number"
-                      min={0}
-                      max={invGrandTotal}
-                      value={invPaidAmount}
-                      onChange={(e) => setInvPaidAmount(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
-                      placeholder="0.00"
-                      className="w-full h-8 rounded-md border border-slate-300 px-2 font-mono font-bold"
-                    />
-                  </div>
-                )}
-
-                {!isRepRoleAccount && canCashOps && invPaymentType !== 'credit' && (
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الخزينة', 'Cashbox')}</label>
-                    <select
-                      value={invCashboxId}
-                      onChange={(e) => setInvCashboxId(e.target.value)}
-                      className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-bold"
-                    >
-                      {data.cashboxes.map((cb) => (
-                        <option key={cb.id} value={cb.id}>
-                          {cb.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                <input
-                  type="text"
-                  value={invNotes}
-                  onChange={(e) => setInvNotes(e.target.value)}
-                  placeholder={t('ملاحظات الفاتورة (اختياري)...', 'Invoice notes (optional)...')}
-                  className="w-full h-8 rounded-md border border-slate-300 px-2"
-                />
-
-                <div className="p-2 rounded-md bg-slate-50 border border-slate-200 space-y-1 tabular-nums">
-                  <div className="flex items-center justify-between font-black text-xs sm:text-sm text-blue-950">
-                    <span>{t('إجمالي الفاتورة:', 'Invoice Total:')}</span>
-                    <span className="font-mono">
-                      {formatLocaleNumber(invGrandTotal)} {t(data.settings.currency)}
-                    </span>
-                  </div>
-                  {selectedInvoiceCustomer && (
-                    <div className="pt-1 border-t border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-1 text-[11px] text-slate-700">
-                      <div>
-                        {t('قبل الفاتورة:', 'Before Invoice:')}{' '}
-                        <strong className="font-mono">
-                          {formatLocaleNumber(selectedInvoiceCustomer.currentBalance)}
-                        </strong>
-                      </div>
-                      <div>
-                        {t('المدفوع:', 'Paid:')}{' '}
-                        <strong className="font-mono text-emerald-700">
-                          {formatLocaleNumber(effectiveInvPaid)}
-                        </strong>
-                      </div>
-                      <div>
-                        {t('المتبقي:', 'Remaining:')}{' '}
-                        <strong className="font-mono text-amber-800">
-                          {formatLocaleNumber(Math.max(0, invGrandTotal - effectiveInvPaid))}
-                        </strong>
-                      </div>
-                      <div>
-                        {t('بعد الفاتورة:', 'After Invoice:')}{' '}
-                        <strong className="font-mono text-blue-950">
-                          {formatLocaleNumber(
-                            Number(selectedInvoiceCustomer.currentBalance || 0) +
-                            Math.max(0, invGrandTotal - effectiveInvPaid)
-                          )}{' '}
-                          {t(data.settings.currency)}
-                        </strong>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {shortageItems.length > 0 ? (
-                  <div className="space-y-1.5">
-                    <button
-                      type="button"
-                      disabled={isSubmittingInvoice}
-                      onClick={() => handleCreateInvoice('draft_with_transfer')}
-                      className="w-full h-9 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-black cursor-pointer disabled:opacity-50"
-                    >
-                      {isSubmittingInvoice ? t('جاري الحفظ...', 'Saving...') : t('حفظ كمسودة وإرسال طلب تحويل للعجز', 'Save Draft & Send Shortage Transfer Request')}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isSubmittingInvoice}
-                      onClick={() => handleCreateInvoice('draft')}
-                      className="w-full h-8 rounded-md bg-slate-200 text-slate-800 font-bold cursor-pointer"
-                    >
-                      {t('حفظ كمسودة فقط', 'Save as Draft Only')}
-                    </button>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <button
-                      type="button"
-                      disabled={isSubmittingInvoice}
-                      onClick={() => handleCreateInvoice('draft')}
-                      className="h-9 rounded-lg bg-slate-200 text-slate-800 font-bold cursor-pointer"
-                    >
-                      {t('حفظ كمسودة', 'Save as Draft')}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isSubmittingInvoice}
-                      onClick={() => handleCreateInvoice('confirmed')}
-                      className="h-9 rounded-lg bg-[#003589] hover:bg-[#0049B0] text-white font-black cursor-pointer disabled:opacity-50"
-                    >
-                      {isSubmittingInvoice ? t('جاري الإصدار...', 'Issuing...') : t('اعتماد وإصدار', 'Confirm & Issue')}
-                    </button>
+                    ))}
                   </div>
                 )}
               </div>
             )}
           </div>
+
+          <div className="border border-slate-200 rounded-lg overflow-hidden awlad-table-scroll">
+            <table className="w-full text-[11px] text-start border-collapse">
+              <thead className="bg-slate-100 text-slate-700 font-black border-b border-slate-200">
+                <tr>
+                  <th className="p-1.5 text-center w-8">#</th>
+                  <th className="p-1.5 text-start">{t('الصنف', 'Item')}</th>
+                  <th className="p-1.5 text-center">{t('الوحدة', 'Unit')}</th>
+                  <th className="p-1.5 text-center w-20">{t('الكمية', 'Qty')}</th>
+                  <th className="p-1.5 text-center w-20">{t('السعر', 'Price')}</th>
+                  <th className="p-1.5 text-center">{t('الإجمالي', 'Total')}</th>
+                  <th className="p-1.5 text-center w-8"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {invItems.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="p-4 text-center text-slate-400 font-bold">
+                      {t('لم يتم إضافة أصناف بعد', 'No items added yet')}
+                    </td>
+                  </tr>
+                ) : (
+                  invItems.map((it, idx) => (
+                    <tr key={`${it.productId}-${it.unit}-${idx}`} className="hover:bg-slate-50">
+                      <td className="p-1.5 text-center font-mono text-slate-500">{formatLocaleNumber(idx + 1)}</td>
+                      <td className="p-1.5 font-bold text-slate-800">{it.productName}</td>
+                      <td className="p-1.5 text-center font-semibold text-slate-600">{t(it.unit)}</td>
+                      <td className="p-1">
+                        <QuantityInput
+                          allowDecimals
+                          min={0.001}
+                          value={it.quantity}
+                          onChange={(q) => handleUpdateInvItemQty(idx, Number(q || 0.001))}
+                          ariaLabel={it.productName}
+                          inputClassName="w-full h-7 rounded border border-slate-300 text-center font-mono font-bold text-[11px]"
+                        />
+                      </td>
+                      <td className="p-1">
+                        <input
+                          type="number"
+                          step="0.5"
+                          min={0}
+                          value={it.unitPrice}
+                          onChange={(e) => handleUpdateInvItemPrice(idx, Number(e.target.value || 0))}
+                          className="w-full h-7 rounded border border-slate-300 text-center font-mono font-bold text-[11px]"
+                        />
+                      </td>
+                      <td className="p-1.5 text-center font-mono font-black text-slate-900">
+                        {formatLocaleNumber(it.total)}
+                      </td>
+                      <td className="p-1 text-center">
+                        <button
+                          type="button"
+                          onClick={() => setInvItems((prev) => prev.filter((_, i) => i !== idx))}
+                          className="p-1 rounded text-red-600 hover:bg-red-50 cursor-pointer"
+                          title={t('حذف', 'Delete')}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {shortageItems.length > 0 && (
+            <div className="p-2 rounded-md bg-amber-50 border border-amber-300 space-y-1 text-xs text-amber-950">
+              <div className="flex items-center gap-1.5 font-black">
+                <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
+                <span>{t('عجز في مخزون سيارتك لعدد', 'Shortage in van stock for')} ({formatLocaleNumber(shortageItems.length)}) {t('أصناف — لا يمكن الاعتماد المباشر', 'items — cannot confirm directly')}</span>
+              </div>
+              <div className="space-y-0.5 text-[11px]">
+                {shortageItems.map((sh) => (
+                  <div key={sh.productId} className="flex items-center justify-between font-mono">
+                    <span className="font-sans font-bold">{sh.productName}</span>
+                    <span className="text-red-700">
+                      {t('المتاح بالسيارة:', 'In Van:')} {formatLocaleNumber(sh.availableInVanQty)} · {t('العجز:', 'Shortage:')} {formatLocaleNumber(sh.shortageQty)} {t(sh.unit)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="bg-slate-50 p-2 rounded-lg border border-slate-200 space-y-2">
+              <div className="grid grid-cols-2 gap-1.5">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('نظام الدفع:', 'Payment Mode:')}</label>
+                  <select
+                    value={invPaymentType}
+                    onChange={(e) => setInvPaymentType(e.target.value as 'cash' | 'credit' | 'partial')}
+                    className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-bold text-xs"
+                  >
+                    <option value="cash">{t('نقدي (كامل)', 'Cash (Full)')}</option>
+                    <option value="credit">{t('آجل', 'Credit')}</option>
+                    <option value="partial">{t('دفع جزئي', 'Partial Payment')}</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('الخصم:', 'Discount:')}</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min={0}
+                    value={invGeneralDiscount}
+                    onChange={(e) => setInvGeneralDiscount(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                    placeholder="0"
+                    className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-mono font-bold text-xs"
+                  />
+                </div>
+              </div>
+
+              {invPaymentType === 'partial' && (
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('المبلغ المدفوع:', 'Paid Amount:')}</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min={0}
+                    max={invGrandTotal}
+                    value={invPaidAmount}
+                    onChange={(e) => setInvPaidAmount(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                    className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-mono font-bold text-xs"
+                  />
+                </div>
+              )}
+
+              {!isRepRoleAccount && canCashOps && invPaymentType !== 'credit' && (
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('الخزينة:', 'Cashbox:')}</label>
+                  <select
+                    value={invCashboxId}
+                    onChange={(e) => setInvCashboxId(e.target.value)}
+                    className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-bold text-xs"
+                  >
+                    {data.cashboxes.map((cb) => (
+                      <option key={cb.id} value={cb.id}>
+                        {translateSystemEntityName(cb.name)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('ملاحظات الفاتورة:', 'Invoice Notes:')}</label>
+                <input
+                  type="text"
+                  value={invNotes}
+                  onChange={(e) => setInvNotes(e.target.value)}
+                  placeholder={t('اختياري...', 'Optional...')}
+                  className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 space-y-1 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-600 font-bold">{t('الإجمالي قبل الخصم:', 'Subtotal:')}</span>
+                <span className="font-mono font-bold">{formatLocaleNumber(invGrossSubtotal)} {t(data.settings.currency)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-600 font-bold">{t('إجمالي الخصم:', 'Discount:')}</span>
+                <span className="font-mono font-bold text-rose-700">{formatLocaleNumber(invTotalDiscount)} {t(data.settings.currency)}</span>
+              </div>
+              <div className="flex justify-between pt-1 border-t border-slate-200 text-sm">
+                <span className="font-black text-slate-900">{t('الصافي المطلوب:', 'Net Total:')}</span>
+                <span className="font-mono font-black text-[#011E58]">{formatLocaleNumber(invGrandTotal)} {t(data.settings.currency)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-600 font-bold">{t('المدفوع:', 'Paid:')}</span>
+                <span className="font-mono font-bold text-emerald-700">{formatLocaleNumber(effectiveInvPaid)} {t(data.settings.currency)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-600 font-bold">{t('المتبقي (آجل):', 'Remaining:')}</span>
+                <span className="font-mono font-bold text-amber-700">
+                  {formatLocaleNumber(Math.max(0, roundCurrency(invGrandTotal - effectiveInvPaid)))} {t(data.settings.currency)}
+                </span>
+              </div>
+              {selectedInvoiceCustomer && (
+                <div className="flex justify-between pt-1 border-t border-slate-200 text-[11px]">
+                  <span className="text-slate-600 font-bold">{t('رصيد العميل بعد الفاتورة:', 'Customer Balance After:')}</span>
+                  <span className="font-mono font-black text-slate-900">
+                    {formatLocaleNumber(roundCurrency(Number(selectedInvoiceCustomer.currentBalance || 0) + Math.max(0, invGrandTotal - effectiveInvPaid)))} {t(data.settings.currency)}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {invItems.length > 0 ? (
+            shortageItems.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  disabled={isSubmittingInvoice}
+                  onClick={() => handleCreateInvoice('draft_with_transfer')}
+                  className="w-full h-9 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-black cursor-pointer disabled:opacity-50"
+                >
+                  {isSubmittingInvoice ? t('جاري الحفظ...', 'Saving...') : t('حفظ كمسودة وإرسال طلب تحويل للعجز', 'Save Draft & Send Shortage Transfer Request')}
+                </button>
+                <button
+                  type="button"
+                  disabled={isSubmittingInvoice}
+                  onClick={() => handleCreateInvoice('draft')}
+                  className="w-full h-9 rounded-lg bg-slate-200 text-slate-800 font-bold cursor-pointer"
+                >
+                  {t('حفظ كمسودة فقط', 'Save as Draft Only')}
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  disabled={isSubmittingInvoice}
+                  onClick={() => handleCreateInvoice('draft')}
+                  className="h-9 rounded-lg bg-slate-200 text-slate-800 font-bold cursor-pointer"
+                >
+                  {t('حفظ كمسودة', 'Save as Draft')}
+                </button>
+                <button
+                  type="button"
+                  disabled={isSubmittingInvoice}
+                  onClick={() => handleCreateInvoice('confirmed')}
+                  className="h-9 rounded-lg bg-[#003589] hover:bg-[#0049B0] text-white font-black cursor-pointer disabled:opacity-50"
+                >
+                  {isSubmittingInvoice ? t('جاري الإصدار...', 'Issuing...') : t('اعتماد وإصدار', 'Confirm & Issue')}
+                </button>
+              </div>
+            )
+          ) : (
+            <div className="text-[11px] text-center text-slate-400 font-bold py-1">
+              {t('أضف صنفاً واحداً على الأقل لإصدار الفاتورة', 'Add at least one item to issue invoice')}
+            </div>
+          )}
         </div>
       )}
 
-      {/* ==================== NEW PURCHASE INVOICE ==================== */}
+      {/* ==================== NEW PURCHASE INVOICE (Classic Stacked Form + Editable Items Table) ==================== */}
       {activeTab === 'new-purchase' && (
-        <form onSubmit={handleOpenPurchaseReview} className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-2 text-xs">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-2.5 text-xs">
+          <div className="flex items-center justify-between gap-2 flex-wrap pb-1.5 border-b border-slate-100">
             <div>
               <h3 className="text-xs sm:text-sm font-black text-slate-900">
                 {purEditingInvoiceId ? t('تعديل فاتورة مشتريات قبل الإرسال', 'Edit Purchase Invoice Before Sending') : t('إنشاء فاتورة مشتريات جديدة', 'Create New Purchase Invoice')}
@@ -5352,17 +5716,18 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-slate-50 p-2 rounded-lg border border-slate-200">
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('المورد:', 'Supplier:')}</label>
               <SearchableFilterSelect
                 id="rep-purchase-supplier"
+                label={t('المورد', 'Supplier')}
                 value={purSupplierId}
                 onChange={setPurSupplierId}
                 options={data.suppliers.map((s) => ({
                   value: s.id,
                   label: s.name,
                   subtitle: s.phone || s.companyName,
+                  badge: `${t('رصيد:', 'Bal:')} ${formatLocaleNumber(s.currentBalance || 0)}`,
                   searchText: `${s.name} ${s.phone || ''} ${s.companyName || ''}`,
                 }))}
                 allOptionLabel={t('-- اختر المورد --', '-- Select Supplier --')}
@@ -5373,107 +5738,78 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               />
             </div>
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('مخزن الاستلام:', 'Receiving Warehouse:')}</label>
+              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('مخزن الاستلام:', 'Receiving Warehouse:')}</label>
               <select
                 value={purWarehouseId}
                 onChange={(e) => setPurWarehouseId(e.target.value)}
-                className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold bg-white"
+                className="w-full h-8 rounded-md border border-slate-300 px-2 font-bold bg-white text-xs"
               >
                 {data.warehouses.map((w) => (
                   <option key={w.id} value={w.id}>
-                    {w.name}
+                    {t(w.name)}
                   </option>
                 ))}
               </select>
             </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('تاريخ الفاتورة:', 'Invoice Date:')}</label>
+              <input
+                type="date"
+                value={purDate}
+                onChange={(e) => setPurDate(e.target.value)}
+                className="w-full h-8 rounded-md border border-slate-300 px-2 font-mono font-bold bg-white text-xs"
+              />
+            </div>
           </div>
 
-          <div className="p-2 rounded-md bg-[#EEF3FA] border border-[#DCE6F5] space-y-1.5">
-            <div className="flex flex-wrap items-center justify-between gap-1.5">
-              <span className="font-black text-[#011E58]">{t('إضافة أصناف لفاتورة الشراء:', 'Add Items to Purchase Invoice:')}</span>
+          <div className="bg-blue-50/60 p-2 rounded-lg border border-blue-200 space-y-2">
+            <div className="flex items-center gap-1.5">
+              <form onSubmit={handlePurBarcodeSubmit} className="flex-1 flex items-center gap-1.5">
+                <div className="relative flex-1">
+                  <Barcode className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    dir="ltr"
+                    value={purBarcodeInput}
+                    onChange={(e) => setPurBarcodeInput(e.target.value)}
+                    placeholder={t('امسح الباركود أو اكتب كود الصنف ثم Enter...', 'Scan barcode or type item code and press Enter...')}
+                    className="w-full h-8 pr-8 pl-2 rounded-md border border-slate-300 bg-white font-mono text-xs"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="h-8 px-3 rounded-md bg-[#003589] text-white font-bold text-[11px] cursor-pointer shrink-0"
+                >
+                  {t('إضافة', 'Add')}
+                </button>
+              </form>
               <button
                 type="button"
                 onClick={() => {
                   setShowPurInlineNewProduct((prev) => !prev);
                   setFeedback(null);
                 }}
-                className={`h-7 inline-flex items-center gap-1 px-2 rounded-md text-[11px] font-bold border transition-colors cursor-pointer ${
+                className={`h-8 inline-flex items-center gap-1 px-2.5 rounded-md text-[11px] font-bold border transition-colors cursor-pointer shrink-0 ${
                   showPurInlineNewProduct
-                    ? 'bg-slate-800 text-white border-slate-800'
-                    : 'bg-white text-[#011E58] border-[#DCE6F5] hover:bg-[#DCE6F5]/60'
+                    ? 'bg-[#011E58] text-white border-[#011E58]'
+                    : 'bg-white text-[#011E58] border-[#B8CAE8] hover:bg-[#DCE6F5]'
                 }`}
               >
                 <PackagePlus className="w-3.5 h-3.5 shrink-0" />
-                <span>{showPurInlineNewProduct ? t('إغلاق إنشاء الصنف الجديد', 'Close New Product Form') : t('إنشاء صنف جديد داخل الفاتورة', 'Create New Product Inside Invoice')}</span>
+                <span>{showPurInlineNewProduct ? t('الرجوع للبحث', 'Back to Search') : t('صنف جديد', 'New Product')}</span>
               </button>
             </div>
 
-            {!showPurInlineNewProduct ? (
-              <>
-                <ProductSearchSelect
-                  products={activeProducts}
-                  selectedProductId={purProductId}
-                  warehouseId={purWarehouseId || mainWarehouse?.id}
-                  warehouses={data.warehouses}
-                  priceMode="purchase"
-                  currency={data.settings.currency}
-                  placeholder={t('ابحث باسم الصنف أو الكود أو الباركود...', 'Search by product name, code or barcode...')}
-                  onSelect={(prod) => handleSelectPurProduct(prod.id)}
-                />
-                {purProductId && (
-                  <div className="grid grid-cols-3 gap-1.5">
-                    <select
-                      value={purUnitName}
-                      onChange={(e) => handleSelectPurUnit(e.target.value)}
-                      className="h-8 rounded-md border border-slate-300 px-2 text-center font-bold bg-white"
-                      aria-label={t('وحدة الشراء', 'Purchase Unit')}
-                    >
-                      {purUnitOptions.map((u) => (
-                        <option key={u.name} value={u.name}>
-                          {u.name}{u.factor > 1 ? ` (×${u.factor})` : ''}
-                        </option>
-                      ))}
-                    </select>
-                    <QuantityInput
-                      allowDecimals
-                      min={0.001}
-                      value={purQty}
-                      onChange={setPurQty}
-                      placeholder={t('الكمية', 'Qty')}
-                      ariaLabel={t('كمية الشراء', 'Purchase Quantity')}
-                      inputClassName="w-full h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
-                    />
-                    <input
-                      type="number"
-                      step="0.5"
-                      min={0}
-                      placeholder={t('سعر الشراء', 'Buy Price')}
-                      value={purPrice}
-                      onChange={(e) => setPurPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
-                      className="h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
-                    />
-                  </div>
-                )}
-                {purProductId && (
-                  <button
-                    type="button"
-                    onClick={handleAddPurItem}
-                    className="w-full h-8 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-black cursor-pointer"
-                  >
-                    {t('إضافة الصنف لفاتورة الشراء', 'Add Item to Purchase Invoice')}
-                  </button>
-                )}
-              </>
-            ) : (
+            {showPurInlineNewProduct ? (
               <div className="bg-white p-2 rounded-md border border-[#DCE6F5] space-y-1.5">
-                <div className="flex items-center gap-1.5 text-[#011E58] font-black">
-                  <ProductAddIcon className="w-4 h-4 shrink-0" />
+                <div className="flex items-center gap-1.5 text-[#011E58] font-black text-[11px]">
+                  <ProductAddIcon className="w-3.5 h-3.5 shrink-0" />
                   <span>{t('بيانات الصنف الجديد (لا يضاف للمخزن إلا بعد اعتماد الإدارة)', 'New Product Details (added to stock only after management approval)')}</span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('اسم الصنف الجديد: *', 'New Product Name: *')}</label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <div className="col-span-2">
+                    <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('اسم الصنف الجديد: *', 'New Product Name: *')}</label>
                     <input
                       type="text"
                       value={newPurProdName}
@@ -5483,49 +5819,49 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الباركود (اختياري):', 'Barcode (optional):')}</label>
+                    <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('الباركود:', 'Barcode:')}</label>
                     <input
                       type="text"
                       dir="ltr"
                       value={newPurProdBarcode}
                       onChange={(e) => setNewPurProdBarcode(e.target.value)}
                       placeholder="622..."
-                      className="w-full h-8 border border-slate-300 rounded-md px-2 font-mono bg-white text-start"
+                      className="w-full h-7 border border-slate-300 rounded-md px-2 font-mono bg-white text-start text-[11px]"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الكود (اختياري):', 'Code (optional):')}</label>
+                    <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('الكود:', 'Code:')}</label>
                     <input
                       type="text"
                       dir="ltr"
                       value={newPurProdCode}
                       onChange={(e) => setNewPurProdCode(e.target.value)}
                       placeholder="PRD-..."
-                      className="w-full h-8 border border-slate-300 rounded-md px-2 font-mono bg-white text-start"
+                      className="w-full h-7 border border-slate-300 rounded-md px-2 font-mono bg-white text-start text-[11px]"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('التصنيف:', 'Category:')}</label>
+                    <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('التصنيف:', 'Category:')}</label>
                     <input
                       type="text"
                       value={newPurProdCategory}
                       onChange={(e) => setNewPurProdCategory(e.target.value)}
-                      placeholder={t('التصنيف (اختياري)', 'Category (optional)')}
-                      className="w-full h-8 border border-slate-300 rounded-md px-2 font-semibold bg-white"
+                      placeholder={t('اختياري', 'Optional')}
+                      className="w-full h-7 border border-slate-300 rounded-md px-2 font-semibold bg-white text-[11px]"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الوحدة الأساسية:', 'Base Unit:')}</label>
+                    <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('الوحدة:', 'Unit:')}</label>
                     <input
                       type="text"
                       value={newPurProdBaseUnit}
                       onChange={(e) => setNewPurProdBaseUnit(e.target.value)}
-                      placeholder={t('قطعة / كرتونة / كجم', 'Piece / Carton / Kg')}
-                      className="w-full h-8 border border-slate-300 rounded-md px-2 font-semibold bg-white"
+                      placeholder={t('قطعة / كرتونة', 'Piece / Carton')}
+                      className="w-full h-7 border border-slate-300 rounded-md px-2 font-semibold bg-white text-[11px]"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الكمية المشتراة: *', 'Purchased Qty: *')}</label>
+                    <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('الكمية: *', 'Qty: *')}</label>
                     <QuantityInput
                       allowDecimals
                       min={0.001}
@@ -5533,11 +5869,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       onChange={setNewPurProdQty}
                       placeholder={t('الكمية', 'Qty')}
                       ariaLabel={t('كمية الصنف الجديد', 'New Product Quantity')}
-                      inputClassName="w-full h-8 bg-white border border-slate-300 rounded-md text-center font-mono font-bold"
+                      inputClassName="w-full h-7 bg-white border border-slate-300 rounded-md text-center font-mono font-bold text-[11px]"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('سعر الشراء: *', 'Purchase Price: *')}</label>
+                    <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('سعر الشراء: *', 'Buy Price: *')}</label>
                     <input
                       type="number"
                       step="0.5"
@@ -5545,11 +5881,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       placeholder={t('سعر الشراء', 'Buy Price')}
                       value={newPurProdBuyPrice}
                       onChange={(e) => setNewPurProdBuyPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
-                      className="w-full h-8 border border-slate-300 rounded-md text-center font-mono font-bold bg-white"
+                      className="w-full h-7 border border-slate-300 rounded-md text-center font-mono font-bold bg-white text-[11px]"
                     />
                   </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('سعر البيع المقترح:', 'Suggested Sell Price:')}</label>
+                  <div className="col-span-2">
+                    <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('سعر البيع المقترح:', 'Suggested Sell Price:')}</label>
                     <input
                       type="number"
                       step="0.5"
@@ -5557,23 +5893,21 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       placeholder={t('سعر البيع', 'Sell Price')}
                       value={newPurProdSellPrice}
                       onChange={(e) => setNewPurProdSellPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
-                      className="w-full h-8 border border-slate-300 rounded-md text-center font-mono font-bold bg-white"
+                      className="w-full h-7 border border-slate-300 rounded-md text-center font-mono font-bold bg-white text-[11px]"
                     />
                   </div>
                 </div>
 
                 {purDuplicateCheckState.exactMatch && (
-                  <div className="p-2 rounded-md border border-amber-300 bg-amber-50 text-amber-950 flex flex-wrap items-center justify-between gap-1.5">
-                    <div className="flex items-center gap-1.5 font-bold">
-                      <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
-                      <span>
-                        {t('هذا الصنف مسجل مسبقاً', 'This product already exists')} ({purDuplicateCheckState.exactMatch.name} — {purDuplicateCheckState.exactMatch.code})! {t('لن يُنشأ صنف مكرر.', 'No duplicate product will be created.')}
-                      </span>
+                  <div className="p-1.5 rounded border border-amber-300 bg-amber-50 text-amber-950 space-y-1 text-[11px]">
+                    <div className="flex items-center gap-1 font-bold">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                      <span>{t('مسجل مسبقاً', 'Already exists')} ({purDuplicateCheckState.exactMatch.name})!</span>
                     </div>
                     <button
                       type="button"
                       onClick={() => handleUseExistingPurDuplicateProduct(purDuplicateCheckState.exactMatch!)}
-                      className="h-7 px-2 rounded-md bg-amber-700 hover:bg-amber-800 text-white text-[11px] font-bold cursor-pointer"
+                      className="w-full py-1 rounded bg-amber-700 hover:bg-amber-800 text-white font-bold cursor-pointer"
                     >
                       {t('استخدام الصنف الموجود', 'Use Existing Product')}
                     </button>
@@ -5581,10 +5915,10 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 )}
 
                 {!purDuplicateCheckState.exactMatch && purDuplicateCheckState.similarMatches.length > 0 && (
-                  <div className="p-2 rounded-md border border-blue-200 bg-blue-50/70 text-blue-950 space-y-1">
-                    <div className="font-bold flex items-center gap-1.5">
-                      <AlertTriangle className="w-3.5 h-3.5 text-blue-700 shrink-0" />
-                      <span>{t('توجد أصناف متشابهة بالاسم (اضغط للاختيار إن كان نفس الصنف):', 'Similar product names found (tap to select if same product):')}</span>
+                  <div className="p-1.5 rounded border border-blue-200 bg-blue-50/70 text-blue-950 space-y-1 text-[10px]">
+                    <div className="font-bold flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3 text-blue-700 shrink-0" />
+                      <span>{t('أصناف متشابهة:', 'Similar items:')}</span>
                     </div>
                     <div className="flex flex-wrap gap-1">
                       {purDuplicateCheckState.similarMatches.map((sim) => (
@@ -5592,10 +5926,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                           key={sim.id}
                           type="button"
                           onClick={() => handleUseExistingPurDuplicateProduct(sim)}
-                          className="h-7 px-2 rounded-md bg-white border border-blue-300 hover:bg-blue-100 text-blue-900 font-bold text-[11px] cursor-pointer"
+                          className="px-2 py-0.5 rounded bg-white border border-blue-300 hover:bg-blue-100 text-blue-900 font-bold cursor-pointer"
                         >
                           {sim.name} ({sim.baseUnit})
-                          {Number(sim.purchasePrice || 0) > 0 ? ` — ${formatLocaleNumber(sim.purchasePrice)} ${t(data.settings.currency)}` : ''}
                         </button>
                       ))}
                     </div>
@@ -5606,169 +5939,287 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowPurInlineNewProduct(false)}
-                    className="h-8 px-2.5 rounded-md border border-slate-300 font-bold text-slate-600 cursor-pointer"
+                    className="h-7 px-2.5 rounded border border-slate-300 font-bold text-slate-600 cursor-pointer text-[11px]"
                   >
                     {t('إلغاء', 'Cancel')}
                   </button>
                   <button
                     type="button"
                     onClick={handleAddPurInlineNewProduct}
-                    className="h-8 px-3 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer"
+                    className="h-7 px-3 rounded bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer text-[11px]"
                   >
-                    {purDuplicateCheckState.exactMatch ? t('ربط بالصنف الموجود وإضافته', 'Link to Existing & Add') : t('+ إضافة الصنف للفاتورة', '+ Add Item to Invoice')}
+                    {purDuplicateCheckState.exactMatch ? t('ربط وإضافة', 'Link & Add') : t('+ إضافة للفاتورة', '+ Add Item')}
                   </button>
                 </div>
               </div>
+            ) : (
+              <>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-700 mb-0.5">
+                    {t('اختيار الصنف:', 'Select Item:')}
+                  </label>
+                  <ProductSearchSelect
+                    products={activeProducts}
+                    selectedProductId={purProductId}
+                    onSelect={(prod) => handleSelectPurProduct(prod.id)}
+                    warehouseId={purWarehouseId || mainWarehouse?.id || ''}
+                    warehouses={data.warehouses}
+                    priceMode="purchase"
+                    currency={data.settings.currency}
+                    placeholder={t('ابحث باسم الصنف أو الكود أو الباركود...', 'Search by item name, code or barcode...')}
+                  />
+                </div>
+
+                {selectedPurProduct && (
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 items-end pt-1 border-t border-blue-200/70">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('الوحدة:', 'Unit:')}</label>
+                      <select
+                        value={purUnitName || selectedPurProduct.baseUnit}
+                        onChange={(e) => handleSelectPurUnit(e.target.value)}
+                        className="w-full h-8 rounded-md border border-slate-300 px-1.5 bg-white font-bold text-xs"
+                      >
+                        {purUnitOptions.map((u) => (
+                          <option key={u.name} value={u.name}>
+                            {t(u.name)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('الكمية:', 'Qty:')}</label>
+                      <QuantityInput
+                        allowDecimals
+                        min={0.001}
+                        value={purQty}
+                        onChange={setPurQty}
+                        ariaLabel={t('الكمية', 'Quantity')}
+                        inputClassName="w-full h-8 rounded-md border border-slate-300 bg-white text-center font-mono font-bold text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('سعر الشراء:', 'Buy Price:')}</label>
+                      <input
+                        type="number"
+                        step="0.5"
+                        min={0}
+                        value={purPrice}
+                        onChange={(e) => setPurPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                        className="w-full h-8 rounded-md border border-slate-300 bg-white text-center font-mono font-bold text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('القيمة:', 'Total:')}</label>
+                      <div className="h-8 rounded-md border border-slate-200 bg-slate-100 px-2 flex items-center justify-center font-mono font-black text-slate-800">
+                        {formatLocaleNumber(computeLineTotal(Number(purQty || 0), Number(purPrice || 0), 0))}
+                      </div>
+                    </div>
+                    <div className="col-span-2 sm:col-span-1">
+                      <button
+                        type="button"
+                        onClick={handleAddPurItem}
+                        className="w-full h-8 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white font-black flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>{t('إضافة', 'Add')}</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
-          {purItems.length > 0 && (
-            <UnifiedDataTable
-              compact
-              paginated={false}
-              searchable={false}
-              title={`${t('أصناف فاتورة الشراء', 'Purchase Invoice Items')} (${formatLocaleNumber(purItems.length)})`}
-              data={purItems}
-              rowKey={(it, idx) => `${it.productId}-${it.unit}-${idx}`}
-              columns={[
-                {
-                  key: 'productName',
-                  header: t('الصنف', 'Product'),
-                  render: (it) => (
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="font-bold text-slate-900">{it.productName}</span>
-                      {it.newProduct && (
-                        <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold">
-                          {t('صنف جديد', 'New Product')}
-                        </span>
-                      )}
-                    </div>
-                  ),
-                },
-                {
-                  key: 'quantity',
-                  header: t('الكمية', 'Qty'),
-                  align: 'center',
-                  render: (it) => (
-                    <span className="font-mono font-bold">
-                      {formatLocaleNumber(it.quantity)} {it.unit}
-                    </span>
-                  ),
-                },
-                {
-                  key: 'unitPrice',
-                  header: t('السعر', 'Price'),
-                  align: 'center',
-                  render: (it) => <span className="font-mono">{formatLocaleNumber(it.unitPrice)}</span>,
-                },
-                {
-                  key: 'total',
-                  header: t('الإجمالي', 'Total'),
-                  align: 'center',
-                  render: (it) => <strong className="font-mono text-[#011E58]">{formatLocaleNumber(it.total)}</strong>,
-                },
-                {
-                  key: 'actions',
-                  header: t('حذف', 'Delete'),
-                  align: 'center',
-                  sortable: false,
-                  render: (_it, idx) => (
-                    <button
-                      type="button"
-                      onClick={() => setPurItems((prev) => prev.filter((_, i) => i !== idx))}
-                      className="h-7 w-7 rounded-md hover:bg-red-50 inline-flex items-center justify-center text-red-600 cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  ),
-                },
-              ]}
-            />
-          )}
-
-          <div className="grid grid-cols-3 gap-1.5">
-            {[
-              { key: 'cash' as const, label: t('نقدي', 'Cash') },
-              { key: 'credit' as const, label: t('آجل', 'Credit') },
-              { key: 'partial' as const, label: t('جزئي', 'Partial') },
-            ].map((pt) => (
-              <button
-                key={pt.key}
-                type="button"
-                onClick={() => setPurPaymentType(pt.key)}
-                className={`h-8 rounded-md border font-bold cursor-pointer ${
-                  purPaymentType === pt.key
-                    ? 'bg-[#003589] text-white border-[#011E58]'
-                    : 'bg-slate-50 text-slate-700 border-slate-300'
-                }`}
-              >
-                {pt.label}
-              </button>
-            ))}
+          <div className="border border-slate-200 rounded-lg overflow-hidden awlad-table-scroll">
+            <table className="w-full text-[11px] text-start border-collapse">
+              <thead className="bg-slate-100 text-slate-700 font-black border-b border-slate-200">
+                <tr>
+                  <th className="p-1.5 text-center w-8">#</th>
+                  <th className="p-1.5 text-start">{t('الصنف', 'Item')}</th>
+                  <th className="p-1.5 text-center">{t('الوحدة', 'Unit')}</th>
+                  <th className="p-1.5 text-center w-20">{t('الكمية', 'Qty')}</th>
+                  <th className="p-1.5 text-center w-20">{t('سعر الشراء', 'Buy Price')}</th>
+                  <th className="p-1.5 text-center">{t('الإجمالي', 'Total')}</th>
+                  <th className="p-1.5 text-center w-8"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {purItems.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="p-4 text-center text-slate-400 font-bold">
+                      {t('لم يتم إضافة أصناف بعد', 'No items added yet')}
+                    </td>
+                  </tr>
+                ) : (
+                  purItems.map((it, idx) => (
+                    <tr key={`${it.productId || it.productName}-${it.unit}-${idx}`} className="hover:bg-slate-50">
+                      <td className="p-1.5 text-center font-mono text-slate-500">{formatLocaleNumber(idx + 1)}</td>
+                      <td className="p-1.5 font-bold text-slate-800">
+                        <span>{it.productName}</span>
+                        {it.newProduct && (
+                          <span className="ms-1 inline-block px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[9px] font-black">
+                            {t('جديد', 'New')}
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-1.5 text-center font-semibold text-slate-600">{t(it.unit)}</td>
+                      <td className="p-1">
+                        <QuantityInput
+                          allowDecimals
+                          min={0.001}
+                          value={it.quantity}
+                          onChange={(q) => handleUpdatePurItemQty(idx, Number(q || 0.001))}
+                          ariaLabel={it.productName}
+                          inputClassName="w-full h-7 rounded border border-slate-300 text-center font-mono font-bold text-[11px]"
+                        />
+                      </td>
+                      <td className="p-1">
+                        <input
+                          type="number"
+                          step="0.5"
+                          min={0}
+                          value={it.unitPrice}
+                          onChange={(e) => handleUpdatePurItemPrice(idx, Number(e.target.value || 0))}
+                          className="w-full h-7 rounded border border-slate-300 text-center font-mono font-bold text-[11px]"
+                        />
+                      </td>
+                      <td className="p-1.5 text-center font-mono font-black text-slate-900">
+                        {formatLocaleNumber(it.total)}
+                      </td>
+                      <td className="p-1 text-center">
+                        <button
+                          type="button"
+                          onClick={() => setPurItems((prev) => prev.filter((_, i) => i !== idx))}
+                          className="p-1 rounded text-red-600 hover:bg-red-50 cursor-pointer"
+                          title={t('حذف', 'Delete')}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
 
-          {purPaymentType === 'partial' && (
-            <input
-              type="number"
-              min={0}
-              max={purTotal}
-              value={purPaidAmount}
-              onChange={(e) => setPurPaidAmount(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
-              placeholder={t('المدفوع للمورد الآن', 'Paid to Supplier Now')}
-              className="w-full h-8 rounded-md border border-slate-300 px-2 font-mono font-bold"
-            />
-          )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="bg-slate-50 p-2 rounded-lg border border-slate-200 space-y-2">
+              <div className="grid grid-cols-2 gap-1.5">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('نظام الدفع:', 'Payment Mode:')}</label>
+                  <select
+                    value={purPaymentType}
+                    onChange={(e) => setPurPaymentType(e.target.value as 'cash' | 'credit' | 'partial')}
+                    className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-bold text-xs"
+                  >
+                    <option value="cash">{t('نقدي (كامل)', 'Cash (Full)')}</option>
+                    <option value="credit">{t('آجل', 'Credit')}</option>
+                    <option value="partial">{t('دفع جزئي', 'Partial Payment')}</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('الخصم:', 'Discount:')}</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min={0}
+                    value={purDiscount}
+                    onChange={(e) => setPurDiscount(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                    placeholder="0"
+                    className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-mono font-bold text-xs"
+                  />
+                </div>
+              </div>
 
-          {!isRepRoleAccount && canCashOps && purPaymentType !== 'credit' && (
-            <select
-              value={purCashboxId}
-              onChange={(e) => setPurCashboxId(e.target.value)}
-              className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-bold"
-            >
-              {data.cashboxes.map((cb) => (
-                <option key={cb.id} value={cb.id}>
-                  {cb.name}
-                </option>
-              ))}
-            </select>
-          )}
+              {purPaymentType === 'partial' && (
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('المبلغ المدفوع:', 'Paid Amount:')}</label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min={0}
+                    max={purTotal}
+                    value={purPaidAmount}
+                    onChange={(e) => setPurPaidAmount(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                    className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-mono font-bold text-xs"
+                  />
+                </div>
+              )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-            <input
-              type="number"
-              min={0}
-              max={purSubtotal}
-              step="0.5"
-              value={purDiscount || ''}
-              onChange={(e) => setPurDiscount(Math.max(0, Number(e.target.value)))}
-              placeholder={`${t('الخصم', 'Discount')} (${t(data.settings.currency)}) - ${t('اختياري', 'Optional')}`}
-              className="w-full h-8 rounded-md border border-slate-300 px-2 font-mono font-bold"
-            />
-            <input
-              type="text"
-              value={purNotes}
-              onChange={(e) => setPurNotes(e.target.value)}
-              placeholder={t('ملاحظات فاتورة الشراء...', 'Purchase invoice notes...')}
-              className="w-full h-8 rounded-md border border-slate-300 px-2"
-            />
-          </div>
+              {!isRepRoleAccount && canCashOps && purPaymentType !== 'credit' && (
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('الخزينة:', 'Cashbox:')}</label>
+                  <select
+                    value={purCashboxId}
+                    onChange={(e) => setPurCashboxId(e.target.value)}
+                    className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white font-bold text-xs"
+                  >
+                    {data.cashboxes.map((cb) => (
+                      <option key={cb.id} value={cb.id}>
+                        {translateSystemEntityName(cb.name)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
-          <div className="px-2.5 py-1.5 rounded-md bg-[#EEF3FA] border border-[#DCE6F5] flex items-center justify-between font-black">
-            <span>{t('صافي إجمالي فاتورة الشراء:', 'Purchase Invoice Net Total:')}</span>
-            <strong className="font-mono text-[#011E58]">
-              {formatLocaleNumber(purTotal)} {t(data.settings.currency)}
-            </strong>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('ملاحظات الفاتورة:', 'Invoice Notes:')}</label>
+                <input
+                  type="text"
+                  value={purNotes}
+                  onChange={(e) => setPurNotes(e.target.value)}
+                  placeholder={t('اختياري...', 'Optional...')}
+                  className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 space-y-1 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-600 font-bold">{t('الإجمالي قبل الخصم:', 'Subtotal:')}</span>
+                <span className="font-mono font-bold">{formatLocaleNumber(purSubtotal)} {t(data.settings.currency)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-600 font-bold">{t('إجمالي الخصم:', 'Discount:')}</span>
+                <span className="font-mono font-bold text-rose-700">{formatLocaleNumber(purTotalDiscount)} {t(data.settings.currency)}</span>
+              </div>
+              <div className="flex justify-between pt-1 border-t border-slate-200 text-sm">
+                <span className="font-black text-slate-900">{t('الصافي المطلوب:', 'Net Total:')}</span>
+                <span className="font-mono font-black text-[#011E58]">{formatLocaleNumber(purTotal)} {t(data.settings.currency)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-600 font-bold">{t('المدفوع:', 'Paid:')}</span>
+                <span className="font-mono font-bold text-emerald-700">{formatLocaleNumber(effectivePurPaid)} {t(data.settings.currency)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-600 font-bold">{t('المتبقي (آجل):', 'Remaining:')}</span>
+                <span className="font-mono font-bold text-amber-700">
+                  {formatLocaleNumber(Math.max(0, roundCurrency(purTotal - effectivePurPaid)))} {t(data.settings.currency)}
+                </span>
+              </div>
+              {selectedPurSupplier && (
+                <div className="flex justify-between pt-1 border-t border-slate-200 text-[11px]">
+                  <span className="text-slate-600 font-bold">{t('رصيد المورد بعد الفاتورة:', 'Supplier Balance After:')}</span>
+                  <span className="font-mono font-black text-slate-900">
+                    {formatLocaleNumber(roundCurrency(Number(selectedPurSupplier.currentBalance || 0) + Math.max(0, purTotal - effectivePurPaid)))} {t(data.settings.currency)}
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
 
           <button
-            type="submit"
+            type="button"
             disabled={isSubmittingPurchase || purItems.length === 0}
+            onClick={() => handleOpenPurchaseReview()}
             className="w-full h-9 rounded-lg bg-[#011E58] hover:bg-[#003589] text-white font-black disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1.5"
           >
             <Eye className="w-4 h-4" />
             <span>{isSubmittingPurchase ? t('جاري المعالجة...', 'Processing...') : t('مراجعة وإرسال الفاتورة', 'Review & Send Invoice')}</span>
           </button>
-        </form>
+        </div>
       )}
 
       {/* ==================== SALES RETURN ==================== */}
@@ -8298,102 +8749,190 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
           {custodySubTab === 'items' && (
             <div className="space-y-2 text-xs">
-              <form
-                onSubmit={handleSendDirectItemTransfer}
-                className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-1.5"
-              >
-                <h4 className="text-xs sm:text-sm font-black text-slate-900">{t('طلب تحويل أصناف من المخزن الرئيسي إلى السيارة', 'Request Stock Transfer from Main Warehouse to Van')}</h4>
-                <div className="flex gap-1.5">
-                  <select
-                    value={reqProdId}
-                    onChange={(e) => setReqProdId(e.target.value)}
-                    className="flex-1 h-8 rounded-md border border-slate-300 px-2 bg-white font-bold"
-                  >
-                    <option value="">{t('-- اختر الصنف --', '-- Select Item --')}</option>
-                    {activeProducts.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} ({t('الرئيسي:', 'Main:')} {formatLocaleNumber(mainWarehouse ? p.stockPerWarehouse?.[mainWarehouse.id] || 0 : 0)})
-                      </option>
-                    ))}
-                  </select>
-                  <QuantityInput
-                    allowDecimals
-                    min={0.001}
-                    value={reqQty}
-                    onChange={setReqQty}
-                    ariaLabel={t('كمية التحويل المطلوبة', 'Requested Transfer Quantity')}
-                    inputClassName="w-16 h-8 rounded-md border border-slate-300 text-center font-mono font-bold bg-white"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const prod = activeProducts.find((p) => p.id === reqProdId);
-                      const rq = Number(reqQty || 0);
-                      if (!prod || rq <= 0) return;
-                      const vanQty = prod.stockPerWarehouse?.[effectiveVanId] || 0;
-                      setReqItems((prev) => [
-                        ...prev,
-                        {
-                          productId: prod.id,
-                          productName: prod.name,
-                          unit: prod.baseUnit,
-                          requestedQty: rq,
-                          availableInVanQty: vanQty,
-                          shortageQty: Math.max(0, rq - vanQty),
-                        },
-                      ]);
-                      setReqProdId('');
-                      setReqQty('');
-                    }}
-                    className="h-8 px-2.5 rounded-md bg-blue-900 text-white font-bold cursor-pointer"
-                  >
-                    {t('إضافة', 'Add')}
-                  </button>
+              <div className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-2">
+                <h4 className="text-xs sm:text-sm font-black text-slate-900">
+                  {t('طلب تحويل أصناف من المخزن الرئيسي إلى السيارة', 'Request Stock Transfer from Main Warehouse to Van')}
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-slate-50 p-2 rounded-lg border border-slate-200">
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-600">{t('المندوب المستلم:', 'Receiving Representative:')}</span>
+                    <div className="font-black text-[#011E58] text-xs mt-0.5">{rep?.name || currentUser?.fullName}</div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <div>
+                      <span className="block text-[10px] font-bold text-slate-500">{t('من مستودع:', 'From WH:')}</span>
+                      <strong className="text-slate-800 text-[11px]">{mainWarehouse ? t(mainWarehouse.name) : '—'}</strong>
+                    </div>
+                    <div>
+                      <span className="block text-[10px] font-bold text-slate-500">{t('إلى مستودع:', 'To WH:')}</span>
+                      <strong className="text-[#011E58] text-[11px]">{vanWarehouse ? t(vanWarehouse.name) : t('سيارة المندوب', 'Rep Van')}</strong>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('التاريخ:', 'Date:')}</label>
+                    <input
+                      type="date"
+                      value={reqDate}
+                      onChange={(e) => setReqDate(e.target.value)}
+                      className="w-full h-8 rounded-md border border-slate-300 px-2 font-mono font-bold bg-white text-xs"
+                    />
+                  </div>
                 </div>
 
-                {reqItems.length > 0 && (
-                  <UnifiedDataTable
-                    compact
-                    paginated={false}
-                    searchable={false}
-                    title={t(`الأصناف المطلوبة للتحويل (${reqItems.length})`, `Requested Transfer Items (${reqItems.length})`)}
-                    data={reqItems}
-                    rowKey={(it, idx) => `${it.productId}-${idx}`}
-                    columns={[
-                      { key: 'productName', header: t('الصنف', 'Item'), render: (it) => <span className="font-bold">{it.productName}</span> },
-                      {
-                        key: 'requestedQty',
-                        header: t('الكمية', 'Qty'),
-                        align: 'center',
-                        render: (it) => <span className="font-mono">{formatLocaleNumber(it.requestedQty)} {t(it.unit)}</span>,
-                      },
-                      {
-                        key: 'actions',
-                        header: t('حذف', 'Delete'),
-                        align: 'center',
-                        sortable: false,
-                        render: (_it, idx) => (
-                          <button
-                            type="button"
-                            onClick={() => setReqItems((prev) => prev.filter((_, i) => i !== idx))}
-                            className="text-red-600 font-bold px-2 cursor-pointer"
-                          >
-                            {t('حذف', 'Delete')}
-                          </button>
-                        ),
-                      },
-                    ]}
+                <div className="bg-blue-50/60 p-2 rounded-lg border border-blue-200 space-y-2">
+                  <form onSubmit={handleReqBarcodeSubmit} className="flex items-center gap-1.5">
+                    <div className="relative flex-1">
+                      <Barcode className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        type="text"
+                        dir="ltr"
+                        value={reqBarcodeInput}
+                        onChange={(e) => setReqBarcodeInput(e.target.value)}
+                        placeholder={t('امسح الباركود أو اكتب كود الصنف ثم Enter...', 'Scan barcode or type item code and press Enter...')}
+                        className="w-full h-8 pr-8 pl-2 rounded-md border border-slate-300 bg-white font-mono text-xs"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      className="h-8 px-3 rounded-md bg-[#003589] text-white font-bold text-[11px] cursor-pointer shrink-0"
+                    >
+                      {t('إضافة', 'Add')}
+                    </button>
+                  </form>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('اختيار الصنف:', 'Select Item:')}</label>
+                    <ProductSearchSelect
+                      products={activeProducts}
+                      selectedProductId={reqProdId}
+                      onSelect={handleSelectReqProduct}
+                      warehouseId={mainWarehouse?.id || ''}
+                      warehouses={data.warehouses}
+                      priceMode="purchase"
+                      currency={data.settings.currency}
+                      placeholder={t('ابحث باسم الصنف أو الكود أو الباركود...', 'Search by item name, code or barcode...')}
+                    />
+                  </div>
+
+                  {activeReqProduct && (
+                    <div className="grid grid-cols-3 gap-1.5 items-end pt-1 border-t border-blue-200/70">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('الوحدة:', 'Unit:')}</label>
+                        <select
+                          value={reqUnitName || activeReqProduct.baseUnit}
+                          onChange={(e) => setReqUnitName(e.target.value)}
+                          className="w-full h-8 rounded-md border border-slate-300 px-1.5 bg-white font-bold text-xs"
+                        >
+                          {reqUnitOptions.map((u) => (
+                            <option key={u.name} value={u.name}>
+                              {t(u.name)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('الكمية المطلوبة:', 'Requested Qty:')}</label>
+                        <QuantityInput
+                          allowDecimals
+                          min={0.001}
+                          value={reqQty}
+                          onChange={setReqQty}
+                          ariaLabel={t('الكمية المطلوبة', 'Requested Qty')}
+                          inputClassName="w-full h-8 rounded-md border border-slate-300 bg-white text-center font-mono font-bold text-xs"
+                        />
+                      </div>
+                      <div>
+                        <button
+                          type="button"
+                          onClick={handleAddReqItem}
+                          className="w-full h-8 rounded-md bg-emerald-700 hover:bg-emerald-800 text-white font-black flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>{t('إضافة للطلب', 'Add Item')}</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="border border-slate-200 rounded-lg overflow-hidden awlad-table-scroll">
+                  <table className="w-full text-[11px] text-start border-collapse">
+                    <thead className="bg-slate-100 text-slate-700 font-black border-b border-slate-200">
+                      <tr>
+                        <th className="p-1.5 text-center w-8">#</th>
+                        <th className="p-1.5 text-start">{t('الصنف', 'Item')}</th>
+                        <th className="p-1.5 text-center">{t('الوحدة', 'Unit')}</th>
+                        <th className="p-1.5 text-center">{t('المتاح بالسيارة', 'In Van')}</th>
+                        <th className="p-1.5 text-center w-20">{t('الكمية المطلوبة', 'Req. Qty')}</th>
+                        <th className="p-1.5 text-center">{t('العجز', 'Shortage')}</th>
+                        <th className="p-1.5 text-center w-8"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {reqItems.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="p-4 text-center text-slate-400 font-bold">
+                            {t('لم يتم إضافة أصناف بعد', 'No items added yet')}
+                          </td>
+                        </tr>
+                      ) : (
+                        reqItems.map((it, idx) => (
+                          <tr key={`${it.productId}-${it.unit}-${idx}`} className="hover:bg-slate-50">
+                            <td className="p-1.5 text-center font-mono text-slate-500">{formatLocaleNumber(idx + 1)}</td>
+                            <td className="p-1.5 font-bold text-slate-800">{it.productName}</td>
+                            <td className="p-1.5 text-center font-semibold text-slate-600">{t(it.unit)}</td>
+                            <td className="p-1.5 text-center font-mono text-slate-600">{formatLocaleNumber(it.availableInVanQty)}</td>
+                            <td className="p-1">
+                              <QuantityInput
+                                allowDecimals
+                                min={0.001}
+                                value={it.requestedQty}
+                                onChange={(q) => handleUpdateReqItemQty(idx, Number(q || 0.001))}
+                                ariaLabel={it.productName}
+                                inputClassName="w-full h-7 rounded border border-slate-300 text-center font-mono font-bold text-[11px]"
+                              />
+                            </td>
+                            <td className="p-1.5 text-center font-mono font-bold text-amber-700">
+                              {formatLocaleNumber(it.shortageQty)}
+                            </td>
+                            <td className="p-1 text-center">
+                              <button
+                                type="button"
+                                onClick={() => setReqItems((prev) => prev.filter((_, i) => i !== idx))}
+                                className="p-1 rounded text-red-600 hover:bg-red-50 cursor-pointer"
+                                title={t('حذف', 'Delete')}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 mb-0.5">{t('ملاحظات الطلب:', 'Request Notes:')}</label>
+                  <input
+                    type="text"
+                    value={reqNotes}
+                    onChange={(e) => setReqNotes(e.target.value)}
+                    placeholder={t('اختياري...', 'Optional...')}
+                    className="w-full h-8 rounded-md border border-slate-300 px-2 bg-white text-xs"
                   />
-                )}
+                </div>
 
                 <button
-                  type="submit"
+                  type="button"
                   disabled={isSendingTransfer || reqItems.length === 0}
-                  className="w-full h-8 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-black disabled:opacity-50 cursor-pointer"
+                  onClick={() => handleSendDirectItemTransfer()}
+                  className="w-full h-9 rounded-lg bg-[#003589] hover:bg-[#0049B0] text-white font-black disabled:opacity-50 cursor-pointer"
                 >
                   {isSendingTransfer ? t('جاري الإرسال...', 'Sending...') : t('إرسال طلب التحويل للإدارة', 'Send Transfer Request to Admin')}
                 </button>
-              </form>
+              </div>
 
               <UnifiedDataTable
                 compact
@@ -8611,7 +9150,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   header: t('الحالة', 'Status'),
                   align: 'center',
                   render: (ord) => (
-                    <span className="font-black text-[#011E58]">{t(REP_ORDER_STATUS_LABELS[ord.status] || ord.status)}</span>
+                    <span className="font-black text-[#011E58]">{t(REP_ORDER_STATUS_LABELS[ord.status] || ord.status, REP_ORDER_STATUS_LABELS_EN[ord.status] || ord.status)}</span>
                   ),
                 },
                 {
@@ -8806,7 +9345,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   key: 'status',
                   header: t('الحالة', 'Status'),
                   align: 'center',
-                  render: (ord) => <span className="font-bold text-[#003589]">{t(REP_ORDER_STATUS_LABELS[ord.status] || ord.status)}</span>,
+                  render: (ord) => <span className="font-bold text-[#003589]">{t(REP_ORDER_STATUS_LABELS[ord.status] || ord.status, REP_ORDER_STATUS_LABELS_EN[ord.status] || ord.status)}</span>,
                 },
               ]}
             />
@@ -10828,7 +11367,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     <span className="text-[11px] font-bold text-slate-600">· {meta.label}</span>
                   </div>
                   <p className="text-[11px] text-slate-600 mt-0.5">
-                    {pur.supplierName || t('مورد', 'Supplier')} · {pur.date} · {t(pur.warehouseName || 'المخزن الرئيسي')}
+                    {pur.supplierName ? translateSystemEntityName(pur.supplierName) : t('مورد', 'Supplier')} · {pur.date} · {translateSystemEntityName(pur.warehouseName || 'المخزن الرئيسي')}
                   </p>
                 </div>
                 <button

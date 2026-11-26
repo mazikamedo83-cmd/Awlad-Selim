@@ -727,6 +727,7 @@ export interface RepTransfer {
   rejectedAt?: string;
   rejectionReason?: string;
   confirmedBy?: string;
+  syncStatus?: SyncQueueStatus | 'synced';
   auditTrail: Array<{
     timestamp: string;
     action: string;
@@ -1019,14 +1020,17 @@ export interface RepItemTransferRequest {
   rejectionReason?: string;
   notes?: string;
   createdBy: string;
+  requestedBy?: string;
   createdAt: string;
   reviewedBy?: string;
   reviewedAt?: string;
+  approvedAt?: string;
   dispatchedBy?: string;
   dispatchedAt?: string;
   executedAt?: string;
   receivedBy?: string;
   receivedAt?: string;
+  syncStatus?: SyncQueueStatus | 'synced';
 }
 
 export interface RepCustodyOperation {

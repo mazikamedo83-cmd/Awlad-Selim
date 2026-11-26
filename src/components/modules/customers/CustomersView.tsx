@@ -836,7 +836,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
           currentBalance: nextBalance,
           notes:
             nextBalance < 0
-              ? `${paymentNotes.trim() || defaultNote} | ${t('رصيد دائن للعميل (دفعة مقدمة):', 'Customer credit balance (advance):')} ${formatLocaleNumber(Math.abs(nextBalance))} ${settings.currency}`
+              ? `${paymentNotes.trim() || defaultNote} | ${t('رصيد دائن للعميل (دفعة مقدمة):', 'Customer credit balance (advance):')} ${formatLocaleNumber(Math.abs(nextBalance))} ${t(settings.currency)}`
               : paymentNotes.trim() || t('تم تحصيل المبلغ وإيداعه في الخزينة المعتمدة بنجاح.', 'Amount collected and deposited to cashbox successfully.'),
         });
         setIsPrintModalOpen(true);
@@ -845,7 +845,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
         setPaymentAmount('');
         setPaymentNotes('');
         setPaymentMethod('cash');
-        setCustomerBanner({ type: 'success', text: `${t('تم تحصيل مبلغ', 'Collected')} ${formatLocaleNumber(numericPayAmt)} ${settings.currency} ${t('من العميل', 'from customer')} (${paymentCustomer.name}) ${t('بنجاح.', 'successfully.')}` });
+        setCustomerBanner({ type: 'success', text: `${t('تم تحصيل مبلغ', 'Collected')} ${formatLocaleNumber(numericPayAmt)} ${t(settings.currency)} ${t('من العميل', 'from customer')} (${paymentCustomer.name}) ${t('بنجاح.', 'successfully.')}` });
       } else {
         setPaymentError(res.error || t('تعذر تسجيل الدفعة', 'Failed to record payment'));
       }
@@ -868,7 +868,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
       grandTotal: selectedCustomer.currentBalance,
       currentBalance: selectedCustomer.currentBalance,
       tableHeaders: [t('م', '#'), t('نوع الحركة والبيان', 'Type & Details'), t('التاريخ', 'Date'), t('العدد', 'Qty'), t('مدين (+)', 'Debit (+)'), t('دائن (-)', 'Credit (-)'), t('الرصيد التراكمي', 'Running Balance')],
-      notes: `${t('رصيد أول المدة:', 'Opening balance:')} ${formatLocaleNumber(selectedCustomer.openingBalance)} ${settings.currency} | ${t('إجمالي عدد الحركات:', 'Total entries:')} ${chronologicalStatement.length}`,
+      notes: `${t('رصيد أول المدة:', 'Opening balance:')} ${formatLocaleNumber(selectedCustomer.openingBalance)} ${t(settings.currency)} | ${t('إجمالي عدد الحركات:', 'Total entries:')} ${chronologicalStatement.length}`,
       items: chronologicalStatement.map(row => ({
         name: `${t(row.type, row.type === 'رصيد أول المدة' ? 'Opening Balance' : row.type === 'دفعة مقدمة على طلب' ? 'Order Advance' : row.type === 'فاتورة مبيعات' ? 'Sales Invoice' : row.type === 'سند قبض نقدية' ? 'Cash Receipt' : 'Sales Return')} (${row.docNumber}) - ${row.description}`,
         unit: row.date,
@@ -943,9 +943,9 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
         meta: [
           { label: t('اسم العميل', 'Customer Name'), value: selectedCustomer.name },
           { label: t('الموبايل', 'Mobile'), value: selectedCustomer.phone },
-          { label: t('الرصيد الحالي', 'Current Balance'), value: `${formatLocaleNumber(selectedCustomer.currentBalance)} ${settings.currency}` },
+          { label: t('الرصيد الحالي', 'Current Balance'), value: `${formatLocaleNumber(selectedCustomer.currentBalance)} ${t(settings.currency)}` },
         ],
-        notes: `${t('رصيد أول المدة:', 'Opening balance:')} ${formatLocaleNumber(selectedCustomer.openingBalance)} ${settings.currency} | ${t('إجمالي عدد الحركات:', 'Total entries:')} ${chronologicalStatement.length}`,
+        notes: `${t('رصيد أول المدة:', 'Opening balance:')} ${formatLocaleNumber(selectedCustomer.openingBalance)} ${t(settings.currency)} | ${t('إجمالي عدد الحركات:', 'Total entries:')} ${chronologicalStatement.length}`,
       }
     );
   };

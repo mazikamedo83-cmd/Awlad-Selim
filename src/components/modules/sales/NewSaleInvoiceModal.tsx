@@ -1,24 +1,42 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
-  Plus, Trash2, Barcode, AlertCircle, History, AlertTriangle, Save, Printer
+  AlertTriangle,
+  Barcode,
+  Plus,
+  Printer,
+  Save,
+  Trash2,
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useShortcuts } from '../../../context/ShortcutsContext';
 import { usePreferences } from '../../../context/PreferencesContext';
-import { formatLocaleNumber } from '../../../i18n/translator';
-import { CustomerItemOrderRequest } from '../../../types';
+import { formatLocaleNumber, translateSystemEntityName } from '../../../i18n/translator';
+import { CustomerItemOrderRequest, CustomerPriceHistoryEntry } from '../../../types';
 import { Modal } from '../../common/Modal';
-import { ProductSearchSelect } from '../../common/ProductSearchSelect';
 import { SearchableFilterSelect } from '../../common/SearchableFilterSelect';
+import { ProductSearchSelect } from '../../common/ProductSearchSelect';
 import { QuantityInput } from '../../common/QuantityInput';
-import { computeLineTotal } from '../../../utils/quantity';
+import { computeLineTotal, roundCurrency } from '../../../utils/quantity';
 
 interface NewSaleInvoiceModalProps {
   isOpen: boolean;
   onClose: () => void;
   onInvoiceCreated?: (invoice: any, shouldPrint?: boolean) => void;
   sourceOrder?: CustomerItemOrderRequest | null;
+}
+
+interface DraftSaleRow {
+  productId: string;
+  productName: string;
+  barcode: string;
+  unit: string;
+  unitFactor: number;
+  quantity: number;
+  unitPrice: number;
+  purchasePriceAtTime: number;
+  discount: number;
+  total: number;
 }
 
 export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
@@ -28,17 +46,24 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
   sourceOrder = null,
 }) => {
   const {
-    products, customers, warehouses, representatives, cashboxes,
-    settings, createSalesInvoice, convertOrderToInvoice, createRepItemTransfer,
+    products,
+    customers,
+    warehouses,
+    representatives,
+    cashboxes,
+    settings,
+    createSalesInvoice,
+    convertOrderToInvoice,
+    createRepItemTransfer,
     getCustomerPriceHistory,
   } = useData();
   const { currentUser } = useAuth();
   const { registerHandler } = useShortcuts();
-  const { t, locale } = usePreferences();
+  const { t, language } = usePreferences();
   const productSearchRef = useRef<HTMLInputElement | null>(null);
   const qtyInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Form states
+  // Header & Payment states
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>(warehouses[0]?.id || 'WH-01');
   const [selectedRepId, setSelectedRepId] = useState<string>(representatives[0]?.id || '');
@@ -52,21 +77,10 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Invoice Items
-  const [items, setItems] = useState<Array<{
-    productId: string;
-    productName: string;
-    barcode: string;
-    unit: string;
-    unitFactor: number;
-    quantity: number;
-    unitPrice: number;
-    purchasePriceAtTime: number;
-    discount: number;
-    total: number;
-  }>>([]);
+  // Added Invoice Items
+  const [items, setItems] = useState<DraftSaleRow[]>([]);
 
-  // Product selector inputs
+  // Classic Item Entry states
   const [barcodeInput, setBarcodeInput] = useState('');
   const [selectedProductId, setSelectedProductId] = useState<string>('');
   const [selectedUnitName, setSelectedUnitName] = useState<string>('');
@@ -76,12 +90,17 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
   const hydratedSourceOrderRef = useRef<CustomerItemOrderRequest | null>(sourceOrder);
   hydratedSourceOrderRef.current = sourceOrder;
 
-  // Hydrate when opening or when sourceOrder identity changes
+  // Hydrate when opening or sourceOrder changes
   useEffect(() => {
     if (!isOpen) return;
     const order = hydratedSourceOrderRef.current;
     setError(null);
     setInvoiceStatusMode('confirmed');
+    setBarcodeInput('');
+    setSelectedProductId('');
+    setSelectedUnitName('');
+    setInputQuantity('');
+    setInputUnitPrice('');
     setSelectedWarehouseId((prev) =>
       warehouses.some((w) => w.id === prev) ? prev : warehouses[0]?.id || 'WH-01'
     );
@@ -101,7 +120,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
       setNotes(
         `${t('تحويل طلب عميل رقم', 'Converted customer order #')} ${order.requestNumber}${order.notes ? ` — ${order.notes}` : ''}`
       );
-      const hydrated = (order.items || []).map((oi) => {
+      const hydrated: DraftSaleRow[] = (order.items || []).map((oi) => {
         const prod = products.find((p) => p.id === oi.productId);
         const unitName = oi.unit || prod?.baseUnit || 'قطعة';
         const matchedUnit = prod?.units?.find((u) => u.name === unitName);
@@ -110,8 +129,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
           matchedUnit?.sellingPrice ??
           (prod && prod.sellingPrice > 0 ? prod.sellingPrice : oi.unitPrice || 0);
         const purchasePriceAtTime =
-          matchedUnit?.purchasePrice ??
-          ((prod?.purchasePrice || 0) * unitFactor);
+          matchedUnit?.purchasePrice ?? (prod?.purchasePrice || 0) * unitFactor;
         return {
           productId: oi.productId,
           productName: prod?.name || oi.productName,
@@ -122,7 +140,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
           unitPrice,
           purchasePriceAtTime,
           discount: 0,
-          total: oi.quantity * unitPrice,
+          total: computeLineTotal(oi.quantity, unitPrice, 0),
         };
       });
       setItems(hydrated);
@@ -148,15 +166,19 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     }
   }, [isOpen, warehouses, cashboxes, selectedWarehouseId, selectedCashboxId]);
 
-  const selectedCustomer = useMemo(() => {
-    return customers.find((c) => c.id === selectedCustomerId);
-  }, [customers, selectedCustomerId]);
+  const selectedCustomer = useMemo(
+    () => customers.find((c) => c.id === selectedCustomerId),
+    [customers, selectedCustomerId]
+  );
 
-  const selectedProduct = useMemo(() => {
-    return products.find((p) => p.id === selectedProductId);
-  }, [products, selectedProductId]);
+  const selectedProduct = useMemo(
+    () => products.find((p) => p.id === selectedProductId),
+    [products, selectedProductId]
+  );
 
-  const [fetchedPriceHistory, setFetchedPriceHistory] = useState<Record<string, Array<{ price: number; date: string; invoiceNumber?: string; unit?: string; quantity?: number; unitFactor?: number } | number>>>({});
+  const [fetchedPriceHistory, setFetchedPriceHistory] = useState<
+    Record<string, Array<CustomerPriceHistoryEntry | number>>
+  >({});
 
   useEffect(() => {
     let cancelled = false;
@@ -172,41 +194,69 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     };
   }, [isOpen, selectedCustomerId, getCustomerPriceHistory]);
 
-  const lastThreePrices = useMemo(() => {
-    if (!selectedCustomer || !selectedProductId) return [];
-    const liveHist = fetchedPriceHistory[selectedProductId];
-    const history = Array.isArray(liveHist) && liveHist.length > 0 ? liveHist : selectedCustomer.priceHistory?.[selectedProductId];
-    if (!history || !Array.isArray(history)) return [];
-    return history.slice(-3);
-  }, [selectedCustomer, selectedProductId, fetchedPriceHistory]);
+  const customerProductHistoryEntries = useMemo(() => {
+    if (!selectedCustomerId || !selectedProduct) return [];
+    const raw =
+      fetchedPriceHistory[selectedProduct.id] ||
+      selectedCustomer?.priceHistory?.[selectedProduct.id] ||
+      [];
+    return raw
+      .slice(0, 3)
+      .map((entry) => {
+        if (typeof entry === 'number') {
+          return { unitPrice: entry, date: '' };
+        }
+        return { unitPrice: Number(entry.price || 0), date: entry.date || '' };
+      })
+      .filter((e) => e.unitPrice > 0);
+  }, [selectedCustomerId, selectedCustomer, selectedProduct, fetchedPriceHistory]);
+
+  const productUnitOptions = useMemo(() => {
+    if (!selectedProduct) return [];
+    return [
+      {
+        name: selectedProduct.baseUnit,
+        conversionFactor: 1,
+        sellingPrice: selectedProduct.sellingPrice,
+        purchasePrice: selectedProduct.purchasePrice,
+      },
+      ...(selectedProduct.units || []).map((u) => ({
+        name: u.name,
+        conversionFactor: u.conversionFactor || 1,
+        sellingPrice: u.sellingPrice,
+        purchasePrice: u.purchasePrice,
+      })),
+    ];
+  }, [selectedProduct]);
 
   const handleProductSelect = (prodId: string) => {
     setSelectedProductId(prodId);
     const prod = products.find((p) => p.id === prodId);
-    if (prod) {
-      if (prod.units && prod.units.length > 0) {
-        const u = prod.units[0];
-        setSelectedUnitName(u.name);
-        setInputUnitPrice(u.sellingPrice);
-      } else {
-        setSelectedUnitName(prod.baseUnit);
-        setInputUnitPrice(prod.sellingPrice);
-      }
-      setInputQuantity(1);
-    }
+    if (!prod) return;
+    const opts = [
+      { name: prod.baseUnit, conversionFactor: 1, sellingPrice: prod.sellingPrice },
+      ...(prod.units || []).map((u) => ({
+        name: u.name,
+        conversionFactor: u.conversionFactor || 1,
+        sellingPrice: u.sellingPrice,
+      })),
+    ];
+    const initialUnit = prod.units && prod.units.length > 0 ? opts[1] || opts[0] : opts[0];
+    setSelectedUnitName(initialUnit.name);
+    setInputQuantity(1);
+    setInputUnitPrice(initialUnit.sellingPrice);
+    setError(null);
+    window.setTimeout(() => {
+      qtyInputRef.current?.focus();
+      qtyInputRef.current?.select();
+    }, 30);
   };
 
   const handleUnitChange = (unitName: string) => {
     setSelectedUnitName(unitName);
-    if (!selectedProduct) return;
-
-    if (unitName === selectedProduct.baseUnit) {
-      setInputUnitPrice(selectedProduct.sellingPrice);
-    } else {
-      const foundUnit = selectedProduct.units.find((u) => u.name === unitName);
-      if (foundUnit) {
-        setInputUnitPrice(foundUnit.sellingPrice);
-      }
+    const matched = productUnitOptions.find((u) => u.name === unitName);
+    if (matched) {
+      setInputUnitPrice(matched.sellingPrice);
     }
   };
 
@@ -216,14 +266,32 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
 
     const barcode = barcodeInput.trim();
     const prod = products.find(
-      (p) => p.barcode === barcode || p.code === barcode || p.units.some((u) => u.barcode === barcode)
+      (p) =>
+        p.barcode === barcode ||
+        p.code === barcode ||
+        p.units.some((u) => u.barcode === barcode)
     );
 
     if (prod) {
-      handleProductSelect(prod.id);
+      const matchedUnit = prod.units.find((u) => u.barcode === barcode);
+      setSelectedProductId(prod.id);
+      if (matchedUnit) {
+        setSelectedUnitName(matchedUnit.name);
+        setInputUnitPrice(matchedUnit.sellingPrice);
+      } else {
+        setSelectedUnitName(prod.baseUnit);
+        setInputUnitPrice(prod.sellingPrice);
+      }
+      setInputQuantity(1);
       setBarcodeInput('');
+      setError(null);
     } else {
-      setError(t(`لم يتم العثور على صنف بالباركود أو الكود: ${barcode}`, `No item found with barcode or code: ${barcode}`));
+      setError(
+        t(
+          `لم يتم العثور على صنف بالباركود أو الكود: ${barcode}`,
+          `No item found with barcode or code: ${barcode}`
+        )
+      );
     }
   };
 
@@ -235,7 +303,12 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     const qtyVal = Number(inputQuantity || 0);
     const priceVal = Number(inputUnitPrice || 0);
     if (qtyVal <= 0) {
-      setError(t('يرجى إدخال كمية صحيحة أكبر من صفر', 'Please enter a valid quantity greater than zero'));
+      setError(
+        t(
+          'يرجى إدخال كمية صحيحة أكبر من صفر',
+          'Please enter a valid quantity greater than zero'
+        )
+      );
       return;
     }
     if (priceVal < 0) {
@@ -245,9 +318,10 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
 
     let unitFactor = 1;
     let purchasePriceAtTime = selectedProduct.purchasePrice;
+    const effectiveUnit = selectedUnitName || selectedProduct.baseUnit;
 
-    if (selectedUnitName !== selectedProduct.baseUnit) {
-      const u = selectedProduct.units.find((un) => un.name === selectedUnitName);
+    if (effectiveUnit !== selectedProduct.baseUnit) {
+      const u = selectedProduct.units.find((un) => un.name === effectiveUnit);
       if (u) {
         unitFactor = u.conversionFactor;
         purchasePriceAtTime = u.purchasePrice || selectedProduct.purchasePrice * unitFactor;
@@ -261,20 +335,27 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
       .reduce((sum, it) => sum + it.quantity * (it.unitFactor || 1), 0);
     const isRepInvoice = Boolean(selectedRepId || currentUser?.role === 'representative');
 
-    if (invoiceStatusMode === 'confirmed' && availInWh < existingBaseForProduct + reqBase && !settings.allowNegativeStock && !isRepInvoice) {
+    if (
+      invoiceStatusMode === 'confirmed' &&
+      availInWh < existingBaseForProduct + reqBase &&
+      !settings.allowNegativeStock &&
+      !isRepInvoice
+    ) {
       setError(
         t(
           `الكمية المتاحة بالمستودع من (${selectedProduct.name}) هي ${availInWh} ${selectedProduct.baseUnit}، وهي غير كافية لإجمالي الكمية المطلوبة (${existingBaseForProduct + reqBase}).`,
-          `Available warehouse stock for (${selectedProduct.name}) is ${availInWh} ${t(selectedProduct.baseUnit)}, which is insufficient for the total requested quantity (${existingBaseForProduct + reqBase}).`
+          `Available warehouse stock for (${selectedProduct.name}) is ${availInWh} ${t(selectedProduct.baseUnit)}, which is insufficient for total requested quantity (${existingBaseForProduct + reqBase}).`
         )
       );
       return;
     }
 
-    const itemTotal = computeLineTotal(qtyVal, priceVal);
+    const itemTotal = computeLineTotal(qtyVal, priceVal, 0);
 
     setItems((prev) => {
-      const existingIdx = prev.findIndex((it) => it.productId === selectedProduct.id && it.unit === selectedUnitName);
+      const existingIdx = prev.findIndex(
+        (it) => it.productId === selectedProduct.id && it.unit === effectiveUnit
+      );
       if (existingIdx >= 0) {
         return prev.map((it, idx) => {
           if (idx !== existingIdx) return it;
@@ -294,7 +375,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
           productId: selectedProduct.id,
           productName: selectedProduct.name,
           barcode: selectedProduct.barcode,
-          unit: selectedUnitName,
+          unit: effectiveUnit,
           unitFactor,
           quantity: qtyVal,
           unitPrice: priceVal,
@@ -306,6 +387,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     });
 
     setSelectedProductId('');
+    setSelectedUnitName('');
     setInputQuantity('');
     setInputUnitPrice('');
     setError(null);
@@ -314,27 +396,21 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     }, 30);
   };
 
-  const handleUpdateRowPrice = (idx: number, newPrice: number) => {
-    setItems((prev) =>
-      prev.map((it, i) =>
-        i === idx
-          ? {
-              ...it,
-              unitPrice: Math.max(0, newPrice),
-              total: computeLineTotal(it.quantity, Math.max(0, newPrice), it.discount || 0),
-            }
-          : it
-      )
-    );
-  };
-
+  // Classic Added-Items Table Editing Handlers
   const handleUpdateRowQty = (idx: number, newQty: number) => {
     const qty = Math.max(0.001, newQty);
     setItems((prev) =>
       prev.map((it, i) =>
-        i === idx
-          ? { ...it, quantity: qty, total: computeLineTotal(qty, it.unitPrice, it.discount || 0) }
-          : it
+        i === idx ? { ...it, quantity: qty, total: computeLineTotal(qty, it.unitPrice, it.discount || 0) } : it
+      )
+    );
+  };
+
+  const handleUpdateRowPrice = (idx: number, newPrice: number) => {
+    const p = Math.max(0, newPrice);
+    setItems((prev) =>
+      prev.map((it, i) =>
+        i === idx ? { ...it, unitPrice: p, total: computeLineTotal(it.quantity, p, it.discount || 0) } : it
       )
     );
   };
@@ -343,22 +419,41 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     setItems((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const subtotal = useMemo(() => {
-    return items.reduce((acc, it) => acc + it.total, 0);
-  }, [items]);
+  // Accounting Summary Totals
+  const grossSubtotal = useMemo(
+    () => roundCurrency(items.reduce((acc, it) => acc + it.quantity * it.unitPrice, 0)),
+    [items]
+  );
 
-  const grandTotal = useMemo(() => {
-    return Math.max(0, subtotal - Number(discountTotal || 0));
-  }, [subtotal, discountTotal]);
+  const itemDiscountsTotal = useMemo(
+    () => roundCurrency(items.reduce((acc, it) => acc + (it.discount || 0), 0)),
+    [items]
+  );
+
+  const generalDiscountNum = useMemo(
+    () => Math.max(0, roundCurrency(Number(discountTotal || 0))),
+    [discountTotal]
+  );
+
+  const totalDiscount = useMemo(
+    () => roundCurrency(itemDiscountsTotal + generalDiscountNum),
+    [itemDiscountsTotal, generalDiscountNum]
+  );
+
+  const grandTotal = useMemo(
+    () => Math.max(0, roundCurrency(grossSubtotal - totalDiscount)),
+    [grossSubtotal, totalDiscount]
+  );
 
   const appliedAdvance = useMemo(() => {
     if (!sourceOrder) return 0;
     return Math.min(grandTotal, Math.max(0, Number(sourceOrder.advancePaidAmount || 0)));
   }, [sourceOrder, grandTotal]);
 
-  const maxCashAtInvoice = useMemo(() => {
-    return Math.max(0, grandTotal - appliedAdvance);
-  }, [grandTotal, appliedAdvance]);
+  const maxCashAtInvoice = useMemo(
+    () => Math.max(0, roundCurrency(grandTotal - appliedAdvance)),
+    [grandTotal, appliedAdvance]
+  );
 
   const effectivePaidAtInvoice = useMemo(() => {
     if (paymentType === 'cash') return maxCashAtInvoice;
@@ -366,9 +461,14 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     return Math.min(maxCashAtInvoice, Math.max(0, Number(paidAmount) || 0));
   }, [paymentType, maxCashAtInvoice, paidAmount]);
 
-  const remainingAmount = useMemo(() => {
-    return Math.max(0, grandTotal - appliedAdvance - effectivePaidAtInvoice);
-  }, [grandTotal, appliedAdvance, effectivePaidAtInvoice]);
+  const remainingAmount = useMemo(
+    () => Math.max(0, roundCurrency(grandTotal - appliedAdvance - effectivePaidAtInvoice)),
+    [grandTotal, appliedAdvance, effectivePaidAtInvoice]
+  );
+
+  const previousBalance = selectedCustomer ? Number(selectedCustomer.currentBalance || 0) : null;
+  const currentBalanceAfter =
+    previousBalance !== null ? roundCurrency(previousBalance + remainingAmount) : null;
 
   const shortageItems = useMemo(() => {
     const list: Array<{
@@ -409,132 +509,168 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     }
   }, [paymentType, maxCashAtInvoice]);
 
-  const handleSubmitInvoice = useCallback(async (shouldPrint = false) => {
-    if (isSubmitting) return;
-    if (items.length === 0) {
-      setError(t('يرجى إضافة صنف واحد على الأقل للفاتورة', 'Please add at least one item to the invoice'));
-      return;
-    }
-    const wh = warehouses.find((w) => w.id === selectedWarehouseId);
-    const canNegative =
-      Boolean(settings.allowNegativeStock) &&
-      (currentUser?.role === 'admin' || Boolean(currentUser?.permissions?.canAllowNegativeInventory));
+  const handleSubmitInvoice = useCallback(
+    async (shouldPrint = false) => {
+      if (isSubmitting) return;
+      if (items.length === 0) {
+        setError(t('يرجى إضافة صنف واحد على الأقل للفاتورة', 'Please add at least one item to the invoice'));
+        return;
+      }
+      const wh = warehouses.find((w) => w.id === selectedWarehouseId);
+      const canNegative =
+        Boolean(settings.allowNegativeStock) &&
+        (currentUser?.role === 'admin' || Boolean(currentUser?.permissions?.canAllowNegativeInventory));
 
-    if (invoiceStatusMode === 'confirmed' && shortageItems.length > 0 && !canNegative) {
-      const names = shortageItems.map((s) => `${s.productName} (${t('متاح', 'avail.')} ${s.availableInVanQty})`).join('، ');
-      setError(
-        t(
-          `لا يمكن اعتماد الفاتورة لعدم كفاية الرصيد في (${wh?.name || 'المستودع المحدد'}): ${names}. يمكنك الحفظ كمسودة أو تنفيذ تحويل مخزني أولاً.`,
-          `Cannot confirm invoice due to insufficient stock in (${wh?.name ? t(wh.name) : t('المستودع المحدد', 'Selected Warehouse')}): ${names}. You can save as draft or make a stock transfer first.`
-        )
-      );
-      return;
-    }
+      if (invoiceStatusMode === 'confirmed' && shortageItems.length > 0 && !canNegative) {
+        const names = shortageItems
+          .map((s) => `${s.productName} (${t('متاح', 'avail.')} ${s.availableInVanQty})`)
+          .join(language === 'en' ? ', ' : '، ');
+        setError(
+          t(
+            `لا يمكن اعتماد الفاتورة لعدم كفاية الرصيد في (${wh?.name || 'المستودع المحدد'}): ${names}. يمكنك الحفظ كمسودة أو تنفيذ تحويل مخزني أولاً.`,
+            `Cannot confirm invoice due to insufficient stock in (${wh?.name ? translateSystemEntityName(wh.name) : t('المستودع المحدد', 'Selected Warehouse')}): ${names}. You can save as draft or make a stock transfer first.`
+          )
+        );
+        return;
+      }
 
-    setError(null);
-    setIsSubmitting(true);
+      setError(null);
+      setIsSubmitting(true);
 
-    try {
-      const rep =
-        representatives.find((r) => r.id === selectedRepId) ||
-        representatives.find((r) => r.userId && r.userId === currentUser?.id) ||
-        (currentUser?.role !== 'representative'
-          ? representatives.find(
-              (r) => !r.userId && r.name.toLowerCase() === currentUser?.fullName?.toLowerCase()
-            )
-          : undefined);
+      try {
+        const rep =
+          representatives.find((r) => r.id === selectedRepId) ||
+          representatives.find((r) => r.userId && r.userId === currentUser?.id) ||
+          (currentUser?.role !== 'representative'
+            ? representatives.find(
+                (r) => !r.userId && r.name.toLowerCase() === currentUser?.fullName?.toLowerCase()
+              )
+            : undefined);
 
-      let linkedTransferId: string | undefined;
-      let linkedTransferNumber: string | undefined;
+        let linkedTransferId: string | undefined;
+        let linkedTransferNumber: string | undefined;
 
-      if (invoiceStatusMode === 'confirmed' && shortageItems.length > 0 && rep && canNegative) {
-        const mainWh = warehouses.find((w) => w.isDefault) || warehouses[0];
-        if (mainWh) {
-          const transferRes = await createRepItemTransfer({
-            date: invoiceDate,
-            representativeId: rep.id,
-            representativeName: rep.name,
-            sourceWarehouseId: mainWh.id,
-            sourceWarehouseName: mainWh.name,
-            targetWarehouseId: selectedWarehouseId,
-            targetWarehouseName: wh?.name || `سيارة المندوب (${rep.name})`,
-            items: shortageItems,
-            notes: t('طلب تحويل عهدة آلي مرتبط بالفاتورة', 'Auto-generated custody transfer request linked to invoice'),
-          });
-          if (transferRes.success && transferRes.request) {
-            linkedTransferId = transferRes.request.id;
-            linkedTransferNumber = transferRes.request.requestNumber;
+        if (invoiceStatusMode === 'confirmed' && shortageItems.length > 0 && rep && canNegative) {
+          const mainWh = warehouses.find((w) => w.isDefault) || warehouses[0];
+          if (mainWh) {
+            const transferRes = await createRepItemTransfer({
+              date: invoiceDate,
+              representativeId: rep.id,
+              representativeName: rep.name,
+              sourceWarehouseId: mainWh.id,
+              sourceWarehouseName: mainWh.name,
+              targetWarehouseId: selectedWarehouseId,
+              targetWarehouseName: wh?.name || `سيارة المندوب (${rep.name})`,
+              items: shortageItems,
+              notes: t(
+                'طلب تحويل عهدة آلي مرتبط بالفاتورة',
+                'Auto-generated custody transfer request linked to invoice'
+              ),
+            });
+            if (transferRes.success && transferRes.request) {
+              linkedTransferId = transferRes.request.id;
+              linkedTransferNumber = transferRes.request.requestNumber;
+            }
           }
         }
-      }
 
-      const totalPaidOnInvoice = Math.min(grandTotal, appliedAdvance + effectivePaidAtInvoice);
+        const totalPaidOnInvoice = Math.min(grandTotal, appliedAdvance + effectivePaidAtInvoice);
 
-      const payload = {
-        date: invoiceDate,
-        customerId: selectedCustomerId || undefined,
-        customerName: selectedCustomer?.name || sourceOrder?.customerName || 'عميل نقدي / عام',
-        representativeId: selectedRepId || rep?.id,
-        representativeName: rep?.name,
-        warehouseId: selectedWarehouseId,
-        warehouseName: wh?.name || 'المستودع الرئيسي',
-        items,
-        subtotal,
-        discountTotal: Number(discountTotal || 0),
-        taxTotal: 0,
-        grandTotal,
-        paidAmount: totalPaidOnInvoice,
-        appliedAdvanceAmount: appliedAdvance,
-        paidAtInvoice: effectivePaidAtInvoice,
-        remainingAmount: Math.max(0, grandTotal - totalPaidOnInvoice),
-        paymentType,
-        paymentMethod: 'cash' as const,
-        cashboxId: selectedCashboxId,
-        status: invoiceStatusMode,
-        notes,
-        linkedRepTransferId: linkedTransferId,
-        linkedRepTransferNumber: linkedTransferNumber,
-      };
+        const payload = {
+          date: invoiceDate,
+          customerId: selectedCustomerId || undefined,
+          customerName: selectedCustomer?.name || sourceOrder?.customerName || 'عميل نقدي / عام',
+          representativeId: selectedRepId || rep?.id,
+          representativeName: rep?.name,
+          warehouseId: selectedWarehouseId,
+          warehouseName: wh?.name || 'المستودع الرئيسي',
+          items,
+          subtotal: grossSubtotal,
+          discountTotal: totalDiscount,
+          taxTotal: 0,
+          grandTotal,
+          paidAmount: totalPaidOnInvoice,
+          appliedAdvanceAmount: appliedAdvance,
+          paidAtInvoice: effectivePaidAtInvoice,
+          remainingAmount: Math.max(0, roundCurrency(grandTotal - totalPaidOnInvoice)),
+          paymentType,
+          paymentMethod: 'cash' as const,
+          cashboxId: selectedCashboxId,
+          status: invoiceStatusMode,
+          notes: notes.trim(),
+          linkedRepTransferId: linkedTransferId,
+          linkedRepTransferNumber: linkedTransferNumber,
+        };
 
-      const res = sourceOrder
-        ? await convertOrderToInvoice(sourceOrder.id, payload)
-        : await createSalesInvoice(payload);
+        const res = sourceOrder
+          ? await convertOrderToInvoice(sourceOrder.id, payload)
+          : await createSalesInvoice(payload);
 
-      if (res.success) {
-        if (onInvoiceCreated) {
-          onInvoiceCreated(res.invoice, shouldPrint);
+        if (res.success) {
+          if (onInvoiceCreated) {
+            onInvoiceCreated(res.invoice, shouldPrint);
+          }
+          onClose();
+        } else {
+          setError(
+            res.error ? t(res.error) : t('حدث خطأ أثناء حفظ الفاتورة', 'An error occurred while saving the invoice')
+          );
         }
-        onClose();
-      } else {
-        setError(res.error ? t(res.error) : t('حدث خطأ أثناء حفظ الفاتورة', 'An error occurred while saving the invoice'));
+      } finally {
+        setIsSubmitting(false);
       }
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, [
-    isSubmitting, items, warehouses, selectedWarehouseId, representatives, selectedRepId, currentUser,
-    settings.allowNegativeStock, invoiceStatusMode, shortageItems, createRepItemTransfer, invoiceDate,
-    selectedCustomerId, selectedCustomer, sourceOrder, subtotal, discountTotal, grandTotal, appliedAdvance,
-    effectivePaidAtInvoice, paymentType, selectedCashboxId, notes, convertOrderToInvoice, createSalesInvoice,
-    onInvoiceCreated, onClose, t
-  ]);
+    },
+    [
+      isSubmitting,
+      items,
+      warehouses,
+      selectedWarehouseId,
+      representatives,
+      selectedRepId,
+      currentUser,
+      settings.allowNegativeStock,
+      invoiceStatusMode,
+      shortageItems,
+      createRepItemTransfer,
+      invoiceDate,
+      selectedCustomerId,
+      selectedCustomer,
+      sourceOrder,
+      grossSubtotal,
+      totalDiscount,
+      grandTotal,
+      appliedAdvance,
+      effectivePaidAtInvoice,
+      paymentType,
+      selectedCashboxId,
+      notes,
+      convertOrderToInvoice,
+      createSalesInvoice,
+      onInvoiceCreated,
+      onClose,
+      language,
+      t,
+    ]
+  );
 
   const submitRef = useRef(handleSubmitInvoice);
   submitRef.current = handleSubmitInvoice;
 
   useEffect(() => {
     if (!isOpen) return;
-    const u1 = registerHandler('action:save_invoice', () => {
-      submitRef.current(false);
-    });
-    const u2 = registerHandler('action:focus_product_search', () => {
-      productSearchRef.current?.focus();
-    });
+    const u1 = registerHandler('action:save_invoice', () => submitRef.current(false));
+    const u2 = registerHandler('action:focus_product_search', () => productSearchRef.current?.focus());
     return () => {
       u1();
       u2();
     };
   }, [isOpen, registerHandler]);
+
+  const currencyLabel = t(settings.currency);
+  const inlinePreviewTotal =
+    inputQuantity !== '' && inputUnitPrice !== ''
+      ? computeLineTotal(Number(inputQuantity), Number(inputUnitPrice), 0)
+      : 0;
 
   return (
     <Modal
@@ -542,7 +678,10 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
       onClose={onClose}
       title={
         sourceOrder
-          ? t(`تحويل طلب العميل (${sourceOrder.requestNumber}) إلى فاتورة بيع`, `Convert Customer Order (${sourceOrder.requestNumber}) to Sales Invoice`)
+          ? t(
+              `تحويل طلب العميل (${sourceOrder.requestNumber}) إلى فاتورة بيع`,
+              `Convert Customer Order (${sourceOrder.requestNumber}) to Sales Invoice`
+            )
           : t('إنشاء فاتورة مبيعات جديدة', 'Create New Sales Invoice')
       }
       subtitle={
@@ -556,18 +695,18 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
               'Issue a sales invoice and automatically update warehouses, customer balances, and cashbox'
             )
       }
-      maxWidth="6xl"
+      maxWidth="4xl"
     >
-      <div className="space-y-2">
+      <div className="space-y-2.5 text-xs">
         {error && (
-          <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-red-50 border border-red-200 text-xs font-bold text-red-700">
-            <AlertCircle className="w-4 h-4 shrink-0" />
+          <div className="p-2 bg-red-50 border border-red-200 text-red-700 rounded-md font-bold flex items-center gap-1.5">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
             <span>{error}</span>
           </div>
         )}
 
-        {/* Top Controls: Customer, Warehouse, Rep, Date */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 bg-slate-50 p-2 rounded-lg border border-slate-200 text-xs">
+        {/* Header Row */}
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
           <div>
             <SearchableFilterSelect
               id="sale-modal-customer"
@@ -587,30 +726,35 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
               }))}
               allOptionLabel={t('-- عميل نقدي عام --', '-- Walk-in / Cash Customer --')}
               allOptionValue=""
-              searchPlaceholder={t('ابحث باسم العميل أو المحل أو الهاتف...', 'Search by customer, shop, or phone...')}
+              searchPlaceholder={t(
+                'ابحث باسم العميل أو المحل أو الهاتف...',
+                'Search by customer, shop, or phone...'
+              )}
               allowClear={!sourceOrder}
-              minPanelWidth={270}
-              buttonClassName="rounded-md"
+              minPanelWidth={260}
+              buttonClassName="rounded-md h-8"
             />
           </div>
-
           <div>
-            <label className="block font-bold text-slate-700 mb-0.5">{t('المستودع المصروف منه:', 'Issue From Warehouse:')}</label>
+            <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+              {t('المستودع المصروف منه:', 'Issue Warehouse:')}
+            </label>
             <select
               value={selectedWarehouseId}
               onChange={(e) => setSelectedWarehouseId(e.target.value)}
-              className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 text-xs font-semibold focus:border-blue-600 outline-hidden"
+              className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-xs font-bold text-slate-800"
             >
               {warehouses.map((w) => (
-                <option key={w.id} value={w.id}>{t(w.name)}</option>
+                <option key={w.id} value={w.id}>
+                  {t(w.name)}
+                </option>
               ))}
             </select>
           </div>
-
           <div>
             <SearchableFilterSelect
               id="sale-modal-rep"
-              label={t('المندوب المسؤول', 'Responsible Rep')}
+              label={t('المندوب', 'Rep')}
               value={selectedRepId}
               onChange={setSelectedRepId}
               options={representatives.map((r) => ({
@@ -619,245 +763,211 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                 subtitle: r.phone || undefined,
                 searchText: `${r.name} ${r.phone || ''}`,
               }))}
-              allOptionLabel={t('-- بيع مباشر من المركز --', '-- Direct Center Sale --')}
+              allOptionLabel={t('-- بيع مباشر --', '-- Direct Sale --')}
               allOptionValue=""
               searchPlaceholder={t('ابحث باسم المندوب...', 'Search by rep name...')}
               allowClear
-              buttonClassName="rounded-md"
+              buttonClassName="rounded-md h-8"
             />
           </div>
-
           <div>
-            <label className="block font-bold text-slate-700 mb-0.5">{t('تاريخ الفاتورة:', 'Invoice Date:')}</label>
+            <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+              {t('تاريخ الفاتورة:', 'Invoice Date:')}
+            </label>
             <input
               type="date"
               value={invoiceDate}
               onChange={(e) => setInvoiceDate(e.target.value)}
-              className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 text-xs font-mono font-semibold focus:border-blue-600 outline-hidden"
+              className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 font-mono text-xs font-bold"
             />
           </div>
         </div>
 
-        {/* Product Picker & Barcode & Customer Price History Box */}
-        <div className="bg-[#EEF3FA] border border-[#DCE6F5] rounded-lg p-2 space-y-1.5">
-          <div className="flex flex-col sm:flex-row items-center gap-1.5">
-            <form onSubmit={handleBarcodeSubmit} className="w-full sm:w-56">
-              <div className="relative">
+        {/* Classic Inline Item Add Bar */}
+        <div className="bg-blue-50/60 p-2.5 rounded-lg border border-blue-200 space-y-2">
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
+            <form onSubmit={handleBarcodeSubmit} className="sm:col-span-4">
+              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                {t('قراءة باركود سريع:', 'Quick Barcode Scan:')}
+              </label>
+              <div className="relative flex items-center">
+                <Barcode className="w-3.5 h-3.5 text-slate-400 absolute start-2 pointer-events-none" />
                 <input
                   type="text"
-                  placeholder={t('امسح الباركود أو الكود...', 'Scan barcode or code...')}
                   value={barcodeInput}
                   onChange={(e) => setBarcodeInput(e.target.value)}
-                  className="w-full h-8 bg-white border border-[#B8CAE8] rounded-md py-1 ps-7 pe-2 text-xs font-mono focus:border-[#003589] outline-hidden"
+                  placeholder={t('امسح الباركود واضغط Enter...', 'Scan barcode & press Enter...')}
+                  className="w-full h-8 ps-7 pe-2 bg-white border border-slate-300 rounded-md text-xs font-mono"
                 />
-                <Barcode className="w-3.5 h-3.5 text-[#003589] absolute start-2 top-2" />
               </div>
             </form>
-
-            <div className="flex-1 w-full">
+            <div className="sm:col-span-8">
+              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                {t('اختيار الصنف:', 'Select Item:')}
+              </label>
               <ProductSearchSelect
+                inputRef={productSearchRef}
                 products={products}
-                selectedProductId={selectedProductId}
-                warehouseId={selectedWarehouseId}
                 warehouses={warehouses}
+                warehouseId={selectedWarehouseId}
+                selectedProductId={selectedProductId}
                 priceMode="selling"
                 currency={settings.currency}
-                inputRef={productSearchRef}
-                placeholder={t('ابحث باسم السلعة أو الكود أو الباركود...', 'Search by item name, code, or barcode...')}
+                placeholder={t('ابحث باسم الصنف أو الكود أو الباركود...', 'Search item by name, code, or barcode...')}
                 onSelect={(prod) => handleProductSelect(prod.id)}
-                onAfterSelect={() => {
-                  qtyInputRef.current?.focus();
-                  qtyInputRef.current?.select();
-                }}
               />
             </div>
           </div>
 
-          {selectedProduct && selectedCustomer && (
-            <div className="bg-white dark:bg-[#132544] rounded-md p-2 border border-blue-200 dark:border-[#2A436E] text-xs flex flex-wrap items-center justify-between gap-1.5">
-              <div className="flex items-center gap-1.5">
-                <History className="w-3.5 h-3.5 text-blue-700 dark:text-[#85B8FF] shrink-0" />
-                <span className="font-bold text-slate-800 dark:text-[#F3F7FC]">
-                  {t(
-                    `آخر 3 أسعار بيع فعلية لهذا العميل (${selectedCustomer.name}) للصنف (${selectedProduct.name}) — من الأقدم للأحدث:`,
-                    `Last 3 actual selling prices for (${selectedCustomer.name}) on (${selectedProduct.name}) — oldest to newest:`
-                  )}
-                </span>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-1.5">
-                {lastThreePrices.length > 0 ? (
-                  lastThreePrices.map((entry, idx) => {
-                    const priceVal = typeof entry === 'number' ? entry : Number(entry.price || 0);
-                    const priceDate = typeof entry === 'number' ? '' : (entry.date || '');
-                    const entryUnit = typeof entry === 'number' ? '' : (entry.unit || '');
-                    const entryQty = typeof entry === 'number' ? undefined : entry.quantity;
-                    const entryFactor = typeof entry === 'number' ? 1 : Number(entry.unitFactor || 1);
-                    const orderTag = idx === 0 ? t('الأقدم', 'Oldest') : idx === lastThreePrices.length - 1 ? t('الأحدث', 'Newest') : t('الوسيط', 'Middle');
-                    const activeUnitFactor =
-                      selectedUnitName === selectedProduct.baseUnit
-                        ? 1
-                        : selectedProduct.units.find((u) => u.name === selectedUnitName)?.conversionFactor || 1;
-                    const normalizedPerSelectedUnit =
-                      entryUnit && entryUnit !== selectedUnitName && entryFactor > 0
-                        ? Math.round((priceVal / entryFactor) * activeUnitFactor * 100) / 100
-                        : null;
-                    return (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => setInputUnitPrice(normalizedPerSelectedUnit ?? priceVal)}
-                        title={t('انقر لتطبيق هذا السعر يدوياً (مع ضبط الوحدة الحالية عند الحاجة)', 'Click to apply this price (adjusting for current unit if needed)')}
-                        className="px-2 py-1 rounded-md bg-blue-50 dark:bg-[#16366B] hover:bg-blue-100 dark:hover:bg-[#1B4282] text-blue-900 dark:text-[#EEF4FC] border border-blue-300 dark:border-[#3B82F6]/40 text-start transition-colors cursor-pointer"
-                      >
-                        <span className="font-mono font-bold text-xs block">
-                          {priceVal} {t(settings.currency)}
-                          {entryUnit ? ` / ${t(entryUnit)}` : ''}
-                        </span>
-                        <span className="text-[10px] text-slate-600 dark:text-[#A9BCD9] block">
-                          {orderTag}
-                          {priceDate ? ` · ${priceDate}` : ''}
-                          {typeof entryQty === 'number' && entryQty > 0 ? ` · ${t('كمية:', 'Qty:')} ${entryQty}` : ''}
-                          {normalizedPerSelectedUnit !== null ? ` · ${t('يعادل', 'eq.')} ${normalizedPerSelectedUnit} / ${t(selectedUnitName)}` : ''}
-                        </span>
-                      </button>
-                    );
-                  })
+          <div className="grid grid-cols-2 sm:grid-cols-12 gap-2 items-end">
+            <div className="sm:col-span-3">
+              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                {t('الوحدة:', 'Unit:')}
+              </label>
+              <select
+                disabled={!selectedProduct}
+                value={selectedUnitName}
+                onChange={(e) => handleUnitChange(e.target.value)}
+                className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-xs font-bold disabled:bg-slate-100"
+              >
+                {productUnitOptions.length === 0 ? (
+                  <option value="">{t('-- الوحدة --', '-- Unit --')}</option>
                 ) : (
-                  <span className="text-slate-500 dark:text-[#97AECE] italic text-[11px]">
-                    {t('لا توجد أسعار بيع سابقة لهذا الصنف مع هذا العميل', 'No previous selling prices recorded for this item & customer')}
-                  </span>
+                  productUnitOptions.map((u) => (
+                    <option key={u.name} value={u.name}>
+                      {t(u.name)}
+                    </option>
+                  ))
                 )}
+              </select>
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                {t('الكمية:', 'Qty:')}
+              </label>
+              <QuantityInput
+                inputRef={qtyInputRef}
+                allowDecimals
+                min={0.001}
+                disabled={!selectedProduct}
+                value={inputQuantity}
+                onChange={(val) => setInputQuantity(val)}
+                placeholder={t('الكمية', 'Qty')}
+                ariaLabel={t('الكمية', 'Quantity')}
+                inputClassName="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-center font-mono font-bold text-xs disabled:bg-slate-100"
+              />
+            </div>
+            <div className="sm:col-span-3">
+              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                {t('سعر الوحدة', 'Unit Price')} ({currencyLabel}):
+              </label>
+              <input
+                type="number"
+                min={0}
+                step="0.5"
+                disabled={!selectedProduct}
+                value={inputUnitPrice}
+                onChange={(e) => setInputUnitPrice(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                placeholder="0.00"
+                className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-center font-mono font-bold text-xs disabled:bg-slate-100"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                {t('القيمة:', 'Line Total:')}
+              </label>
+              <div className="w-full h-8 bg-slate-100 border border-slate-200 rounded-md px-2 flex items-center justify-center font-mono font-black text-blue-950">
+                {formatLocaleNumber(inlinePreviewTotal)}
               </div>
             </div>
-          )}
+            <div className="col-span-2 sm:col-span-2">
+              <button
+                type="button"
+                disabled={!selectedProduct}
+                onClick={handleAddItem}
+                className="w-full h-8 flex items-center justify-center gap-1 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold text-xs disabled:opacity-50 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>{t('إضافة', 'Add')}</span>
+              </button>
+            </div>
+          </div>
 
-          {selectedProduct && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 pt-1.5 border-t border-blue-100 dark:border-[#21375C] text-xs">
-              <div>
-                <label className="block font-bold text-slate-700 dark:text-[#A9BCD9] mb-0.5">{t('وحدة البيع:', 'Sale Unit:')}</label>
-                <select
-                  value={selectedUnitName}
-                  onChange={(e) => handleUnitChange(e.target.value)}
-                  className="w-full h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] text-slate-800 dark:text-[#EEF4FC] rounded-md px-2 py-1 text-xs font-bold outline-hidden"
-                >
-                  {selectedProduct.units.map((u) => (
-                    <option key={u.id} value={u.name}>
-                      {t(u.name)} ({t('تحتوي', 'contains')} {u.conversionFactor} {t(selectedProduct.baseUnit)})
-                    </option>
-                  ))}
-                  <option value={selectedProduct.baseUnit}>
-                    {t(selectedProduct.baseUnit)} ({t('فردي أساسي', 'Base unit')})
-                  </option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-0.5">{t('الكمية:', 'Quantity:')}</label>
-                <QuantityInput
-                  inputRef={qtyInputRef}
-                  allowDecimals
-                  min={0.001}
-                  value={inputQuantity}
-                  onChange={setInputQuantity}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleAddItem();
-                    }
-                  }}
-                  ariaLabel={t('الكمية', 'Quantity')}
-                  inputClassName="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 text-xs font-bold text-center font-mono outline-hidden focus:border-blue-700"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-0.5">{t('سعر الوحدة:', 'Unit Price:')}</label>
-                <input
-                  type="number"
-                  step="0.5"
-                  placeholder="0.00"
-                  value={inputUnitPrice}
-                  onChange={(e) => setInputUnitPrice(e.target.value === '' ? '' : Number(e.target.value))}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleAddItem();
-                    }
-                  }}
-                  className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 text-xs font-black text-center text-blue-900 font-mono outline-hidden focus:border-blue-700"
-                />
-              </div>
-
-              <div className="flex items-end">
+          {customerProductHistoryEntries.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px]">
+              <span className="font-bold text-slate-600">
+                {t('أسعار سابقة لهذا العميل:', 'Previous prices for this customer:')}
+              </span>
+              {customerProductHistoryEntries.map((entry, idx) => (
                 <button
+                  key={idx}
                   type="button"
-                  onClick={handleAddItem}
-                  className="w-full h-8 flex items-center justify-center gap-1.5 px-2.5 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-bold transition-all active:scale-95 cursor-pointer"
+                  onClick={() => setInputUnitPrice(entry.unitPrice)}
+                  className="px-2 py-0.5 rounded bg-white border border-blue-300 hover:bg-blue-100 text-blue-900 font-mono font-bold cursor-pointer"
                 >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>{t('إضافة للصنف بالفاتورة', 'Add Item to Invoice')}</span>
+                  {formatLocaleNumber(entry.unitPrice)} {currencyLabel}
                 </button>
-              </div>
+              ))}
             </div>
           )}
         </div>
 
-        {/* Invoice Items Table */}
-        <div className="border border-slate-200 rounded-lg overflow-hidden awlad-table-scroll">
+        {/* Classic Added Items Table */}
+        <div className="border border-slate-200 rounded-lg overflow-hidden awlad-table-scroll max-h-60 overflow-y-auto">
           <table className="w-full text-start text-xs">
-            <thead>
-              <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
-                <th className="px-2 py-1.5 w-8 text-center">#</th>
-                <th className="px-2 py-1.5">{t('اسم الصنف', 'Item Name')}</th>
-                <th className="px-2 py-1.5 text-center">{t('الوحدة', 'Unit')}</th>
-                <th className="px-2 py-1.5 text-center w-24">{t('الكمية', 'Qty')}</th>
-                <th className="px-2 py-1.5 text-center w-24">{t('سعر الوحدة', 'Unit Price')}</th>
-                <th className="px-2 py-1.5 text-center">{t('الإجمالي', 'Total')}</th>
-                <th className="px-2 py-1.5 text-center w-10">{t('حذف', 'Delete')}</th>
+            <thead className="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold">
+              <tr>
+                <th className="p-2 w-10 text-center">#</th>
+                <th className="p-2">{t('الصنف', 'Product')}</th>
+                <th className="p-2 text-center">{t('الوحدة', 'Unit')}</th>
+                <th className="p-2 text-center w-24">{t('الكمية', 'Qty')}</th>
+                <th className="p-2 text-center w-28">{t('السعر', 'Price')}</th>
+                <th className="p-2 text-center">{t('الإجمالي', 'Total')}</th>
+                <th className="p-2 text-center w-12">{t('حذف', 'Del')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {items.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-3 text-center text-slate-400">
-                    {t('لم يتم إضافة أصناف إلى الفاتورة بعد. استخدم البحث أو قارئ الباركود أعلاه لإضافة سلع.', 'No items added to the invoice yet. Use search or barcode scanner above.')}
+                  <td colSpan={7} className="p-5 text-center text-slate-400 font-semibold">
+                    {t('لم يتم إضافة أي أصناف بعد — ابحث عن الصنف أو امسح الباركود للإضافة', 'No items added yet — search an item or scan barcode to add')}
                   </td>
                 </tr>
               ) : (
-                items.map((it, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-2 py-1 text-center font-bold text-slate-400">{idx + 1}</td>
-                    <td className="px-2 py-1 font-bold text-slate-800">{it.productName}</td>
-                    <td className="px-2 py-1 text-center text-slate-600">{t(it.unit)}</td>
-                    <td className="px-2 py-1 text-center">
+                items.map((item, idx) => (
+                  <tr key={`${item.productId}-${item.unit}-${idx}`} className="hover:bg-slate-50/80">
+                    <td className="p-2 text-center font-mono text-slate-500">{formatLocaleNumber(idx + 1)}</td>
+                    <td className="p-2 font-bold text-slate-800">{item.productName}</td>
+                    <td className="p-2 text-center text-slate-600 font-semibold">{t(item.unit)}</td>
+                    <td className="p-2 text-center">
                       <QuantityInput
                         allowDecimals
                         min={0.001}
-                        value={it.quantity}
-                        onChange={(q) => handleUpdateRowQty(idx, q)}
-                        ariaLabel={`${t('كمية', 'Quantity')} ${it.productName}`}
-                        inputClassName="w-20 border border-slate-300 rounded-md px-1.5 py-0.5 text-center font-bold font-mono outline-hidden focus:border-blue-700"
+                        value={item.quantity}
+                        onChange={(newQty) => handleUpdateRowQty(idx, newQty)}
+                        ariaLabel={`${t('كمية', 'Qty')} ${item.productName}`}
+                        inputClassName="w-20 h-7 px-1.5 rounded border border-slate-300 text-center font-mono font-bold bg-white"
                       />
                     </td>
-                    <td className="px-2 py-1 text-center">
+                    <td className="p-2 text-center">
                       <input
                         type="number"
-                        min="0"
+                        min={0}
                         step="0.5"
-                        value={it.unitPrice}
-                        onChange={(e) => handleUpdateRowPrice(idx, Number(e.target.value))}
-                        className="w-22 border border-slate-300 rounded-md px-1.5 py-0.5 text-center font-bold font-mono text-blue-900"
+                        value={item.unitPrice}
+                        onChange={(e) => handleUpdateRowPrice(idx, Math.max(0, Number(e.target.value) || 0))}
+                        className="w-24 h-7 px-1.5 rounded border border-slate-300 text-center font-mono font-bold bg-white"
                       />
                     </td>
-                    <td className="px-2 py-1 text-center font-black font-mono text-blue-950 text-xs tabular-nums">
-                      {it.total.toFixed(2)} {t(settings.currency)}
+                    <td className="p-2 text-center font-black text-blue-950 font-mono tabular-nums">
+                      {formatLocaleNumber(item.total)} {currencyLabel}
                     </td>
-                    <td className="px-2 py-1 text-center">
+                    <td className="p-2 text-center">
                       <button
                         type="button"
                         onClick={() => handleRemoveItem(idx)}
-                        className="text-red-500 hover:text-red-700 p-1 rounded-md hover:bg-red-50 transition-colors cursor-pointer"
+                        className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded cursor-pointer"
+                        title={t('حذف الصنف', 'Delete Item')}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -869,233 +979,269 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
           </table>
         </div>
 
+        {/* Shortage Warning */}
         {shortageItems.length > 0 && invoiceStatusMode === 'confirmed' && (
           <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg text-xs space-y-1">
             <div className="flex items-center gap-1.5 font-black text-amber-900">
               <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-              <span>{t(`تنبيه المخزون: عجز في (${shortageItems.length}) أصناف`, `Inventory Alert: Shortage in (${shortageItems.length}) items`)}</span>
+              <span>
+                {t(
+                  `تنبيه المخزون: عجز في (${shortageItems.length}) أصناف`,
+                  `Inventory Alert: Shortage in (${shortageItems.length}) items`
+                )}
+              </span>
             </div>
             <div className="flex flex-wrap gap-1 pt-0.5">
               {shortageItems.map((sh, i) => (
-                <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-amber-300 rounded text-[10px] font-bold text-amber-900">
+                <span
+                  key={i}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-amber-300 rounded text-[10px] font-bold text-amber-900"
+                >
                   <span>{sh.productName}:</span>
-                  <span className="text-red-600 font-mono">{t('عجز', 'Shortage')} {sh.shortageQty} {t(sh.unit)}</span>
-                  <span className="text-slate-400 font-mono">({t('المتاح:', 'Avail:')} {sh.availableInVanQty})</span>
+                  <span className="text-red-600 font-mono">
+                    {t('عجز', 'Shortage')} {sh.shortageQty} {t(sh.unit)}
+                  </span>
+                  <span className="text-slate-400 font-mono">
+                    ({t('المتاح:', 'Avail:')} {sh.availableInVanQty})
+                  </span>
                 </span>
               ))}
             </div>
           </div>
         )}
 
-        {/* Invoice Summary, Status Mode, and Payment Config */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 bg-slate-50 p-2 rounded-lg border border-slate-200 text-xs">
-          <div className="space-y-1.5">
-            <div>
-              <label className="block font-bold text-slate-700 mb-0.5">{t('وضع حفظ الفاتورة:', 'Invoice Save Mode:')}</label>
-              <div className="grid grid-cols-2 gap-1.5 font-bold">
-                <button
-                  type="button"
-                  onClick={() => setInvoiceStatusMode('confirmed')}
-                  className={`py-1 px-2 rounded-md border text-center transition-all cursor-pointer ${
-                    invoiceStatusMode === 'confirmed'
-                      ? 'bg-[#011E58] text-white border-[#011E58]'
-                      : 'bg-white text-slate-700 border-slate-300'
-                  }`}
-                >
-                  {t('اعتماد وإصدار (خصم المخزون)', 'Confirm & Issue (Deduct Stock)')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setInvoiceStatusMode('draft')}
-                  className={`py-1 px-2 rounded-md border text-center transition-all cursor-pointer ${
-                    invoiceStatusMode === 'draft'
-                      ? 'bg-amber-600 text-white border-amber-600'
-                      : 'bg-white text-slate-700 border-slate-300'
-                  }`}
-                >
-                  {t('حفظ كمسودة (بدون خصم مخزون)', 'Save as Draft (No Stock Deduction)')}
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label className="block font-bold text-slate-700 mb-0.5">{t('نوع السداد:', 'Payment Type:')}</label>
-              <div className="grid grid-cols-3 gap-1.5 font-bold">
-                <button
-                  type="button"
-                  onClick={() => setPaymentType('cash')}
-                  className={`py-1 px-2 rounded-md border text-center transition-all cursor-pointer ${
-                    paymentType === 'cash' ? 'bg-[#011E58] text-white border-[#011E58]' : 'bg-white text-slate-700 border-slate-300'
-                  }`}
-                >
-                  {t('نقدي كامل', 'Full Cash')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPaymentType('credit')}
-                  className={`py-1 px-2 rounded-md border text-center transition-all cursor-pointer ${
-                    paymentType === 'credit' ? 'bg-[#011E58] text-white border-[#011E58]' : 'bg-white text-slate-700 border-slate-300'
-                  }`}
-                >
-                  {t('آجل بالكامل', 'Full Credit')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPaymentType('partial')}
-                  className={`py-1 px-2 rounded-md border text-center transition-all cursor-pointer ${
-                    paymentType === 'partial' ? 'bg-[#011E58] text-white border-[#011E58]' : 'bg-white text-slate-700 border-slate-300'
-                  }`}
-                >
-                  {t('دفعة نقدية + آجل', 'Cash + Credit')}
-                </button>
-              </div>
-            </div>
-
-            {paymentType !== 'credit' && (
+        {/* Payment & Totals Summary Section */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+          <div className="space-y-2 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+            <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block font-bold text-slate-700 mb-0.5">{t('الخزينة المودع بها المبلغ:', 'Deposit Cashbox:')}</label>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                  {t('نظام الدفع:', 'Payment Mode:')}
+                </label>
+                <div className="grid grid-cols-3 gap-1 font-bold text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentType('cash')}
+                    className={`h-8 rounded border cursor-pointer ${
+                      paymentType === 'cash'
+                        ? 'bg-[#003589] text-white border-[#003589]'
+                        : 'bg-white text-slate-700 border-slate-300'
+                    }`}
+                  >
+                    {t('نقدي', 'Cash')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentType('partial')}
+                    className={`h-8 rounded border cursor-pointer ${
+                      paymentType === 'partial'
+                        ? 'bg-[#003589] text-white border-[#003589]'
+                        : 'bg-white text-slate-700 border-slate-300'
+                    }`}
+                  >
+                    {t('جزئي', 'Partial')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentType('credit')}
+                    className={`h-8 rounded border cursor-pointer ${
+                      paymentType === 'credit'
+                        ? 'bg-[#003589] text-white border-[#003589]'
+                        : 'bg-white text-slate-700 border-slate-300'
+                    }`}
+                  >
+                    {t('آجل', 'Credit')}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                  {t('وضع الحفظ:', 'Save Mode:')}
+                </label>
+                <div className="grid grid-cols-2 gap-1 font-bold text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => setInvoiceStatusMode('confirmed')}
+                    className={`h-8 px-1.5 rounded border cursor-pointer ${
+                      invoiceStatusMode === 'confirmed'
+                        ? 'bg-[#011E58] text-white border-[#011E58]'
+                        : 'bg-white text-slate-700 border-slate-300'
+                    }`}
+                  >
+                    {t('اعتماد وإصدار', 'Confirm & Issue')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInvoiceStatusMode('draft')}
+                    className={`h-8 px-1.5 rounded border cursor-pointer ${
+                      invoiceStatusMode === 'draft'
+                        ? 'bg-amber-600 text-white border-amber-600'
+                        : 'bg-white text-slate-700 border-slate-300'
+                    }`}
+                  >
+                    {t('مسودة', 'Draft')}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                  {t('الخزينة:', 'Cashbox:')}
+                </label>
                 <select
                   value={selectedCashboxId}
                   onChange={(e) => setSelectedCashboxId(e.target.value)}
-                  className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 text-xs font-semibold focus:border-blue-600 outline-hidden"
+                  className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-xs font-bold"
                 >
-                  {cashboxes.map((cb) => (
-                    <option key={cb.id} value={cb.id}>
-                      {cb.name} ({t('رصيدها الحالي:', 'Current balance:')} {formatLocaleNumber(cb.currentBalance ?? 0)} {t(settings.currency)})
+                  {cashboxes.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {t(c.name)}
                     </option>
                   ))}
                 </select>
               </div>
-            )}
-
-            <div>
-              <label className="block font-bold text-slate-700 mb-0.5">{t('ملاحظات الفاتورة:', 'Invoice Notes:')}</label>
-              <textarea
-                rows={2}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder={t('أدخل أي ملاحظات خاصة بالتسليم أو الدفع...', 'Enter any delivery or payment notes...')}
-                className="w-full bg-white border border-slate-300 rounded-md px-2 py-1 text-xs outline-hidden focus:border-blue-600"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1.5 bg-white p-2 rounded-lg border border-slate-200">
-            <div className="flex justify-between text-slate-600 font-bold">
-              <span>{t('المجموع الفرعي:', 'Subtotal:')}</span>
-              <span className="font-mono text-xs tabular-nums">{subtotal.toFixed(2)} {t(settings.currency)}</span>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <span className="text-slate-600 font-bold">{t('خصم إضافي:', 'Additional Discount:')}</span>
-              <div className="w-28">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                  {t('الخصم العام', 'Discount')} ({currencyLabel}):
+                </label>
                 <input
                   type="number"
-                  min="0"
-                  placeholder="0.00"
+                  min={0}
+                  step="0.5"
+                  placeholder="0"
                   value={discountTotal}
-                  onChange={(e) => setDiscountTotal(e.target.value === '' ? '' : Number(e.target.value))}
-                  className="w-full h-7 bg-slate-50 border border-slate-300 rounded-md px-2 py-0.5 text-center font-mono font-bold text-red-600 text-xs"
+                  onChange={(e) => setDiscountTotal(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                  className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-center font-mono font-bold"
                 />
               </div>
             </div>
 
-            <div className="flex justify-between text-sm font-black text-blue-950 pt-1 border-t border-slate-200">
-              <span>{t('صافي الفاتورة الإجمالي:', 'Net Invoice Total:')}</span>
-              <span className="font-mono tabular-nums">{grandTotal.toFixed(2)} {t(settings.currency)}</span>
+            {paymentType === 'partial' && (
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                  {t('المبلغ المدفوع الآن', 'Amount Paid Now')} ({currencyLabel}):
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={maxCashAtInvoice}
+                  step="0.5"
+                  value={paidAmount}
+                  onChange={(e) => setPaidAmount(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                  className="w-full h-8 bg-white border border-blue-400 rounded-md px-2 text-center font-mono font-black text-blue-950"
+                />
+              </div>
+            )}
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                {t('ملاحظات:', 'Notes:')}
+              </label>
+              <input
+                type="text"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder={t('ملاحظات إضافية على الفاتورة...', 'Optional invoice notes...')}
+                className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-xs"
+              />
+            </div>
+          </div>
+
+          <div className="bg-blue-50/50 p-2.5 rounded-lg border border-blue-200 flex flex-col justify-between space-y-1.5">
+            <div className="space-y-1 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-600 font-semibold">{t('الإجمالي قبل الخصم:', 'Subtotal:')}</span>
+                <span className="font-mono font-bold text-slate-800">{formatLocaleNumber(grossSubtotal)} {currencyLabel}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-600 font-semibold">{t('الخصم:', 'Discount:')}</span>
+                <span className="font-mono font-bold text-rose-700">{formatLocaleNumber(totalDiscount)} {currencyLabel}</span>
+              </div>
+              {appliedAdvance > 0 && (
+                <div className="flex justify-between text-emerald-800 font-bold">
+                  <span>{t('الدفعة المقدمة المخصومة:', 'Applied Advance:')}</span>
+                  <span className="font-mono">{formatLocaleNumber(appliedAdvance)} {currencyLabel}</span>
+                </div>
+              )}
+              <div className="flex justify-between pt-1.5 border-t border-blue-200 text-sm font-black text-[#011E58]">
+                <span>{t('صافي الفاتورة:', 'Net Total:')}</span>
+                <span className="font-mono">{formatLocaleNumber(grandTotal)} {currencyLabel}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-600 font-semibold">{t('المدفوع:', 'Paid:')}</span>
+                <span className="font-mono font-bold text-emerald-700">{formatLocaleNumber(effectivePaidAtInvoice)} {currencyLabel}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-600 font-semibold">{t('المتبقي (آجل):', 'Remaining:')}</span>
+                <span className="font-mono font-black text-red-700">{formatLocaleNumber(remainingAmount)} {currencyLabel}</span>
+              </div>
+              {previousBalance !== null && currentBalanceAfter !== null && (
+                <div className="flex justify-between pt-1 border-t border-blue-200 text-[11px] text-slate-600">
+                  <span>{t('رصيد العميل (سابق / بعد):', 'Customer Balance (Prev / After):')}</span>
+                  <span className="font-mono font-bold">
+                    {formatLocaleNumber(previousBalance)} → {formatLocaleNumber(currentBalanceAfter)} {currencyLabel}
+                  </span>
+                </div>
+              )}
             </div>
 
             {appliedAdvance > 0 && (
-              <div className="p-1.5 rounded-md bg-emerald-50 border border-emerald-200 space-y-0.5 text-xs">
-                <div className="flex justify-between font-black text-emerald-900">
-                  <span>{t('الدفعة المقدمة المدفوعة مسبقاً على الطلب:', 'Advance Payment Already Paid on Order:')}</span>
-                  <span className="font-mono">- {appliedAdvance.toFixed(2)} {t(settings.currency)}</span>
-                </div>
-                <p className="text-[11px] text-emerald-800">
-                  {t(
-                    'لا تضاف للخزينة مرة أخرى عند التحويل — تودَع بالخزينة فقط أي قيمة محصلة نقداً الآن.',
-                    'Will not be deposited to cashbox again upon conversion — only cash collected now is deposited.'
-                  )}
-                </p>
+              <div className="p-1.5 rounded bg-emerald-50 border border-emerald-200 text-[10px] font-bold text-emerald-900">
+                {t(
+                  'تم خصم الدفعة المقدمة تلقائياً — يُودع بالخزينة فقط المبلغ المحصل الآن.',
+                  'Advance payment applied automatically — only cash collected now goes to cashbox.'
+                )}
               </div>
             )}
-
-            {paymentType === 'partial' && (
-              <div className="flex items-center justify-between pt-0.5">
-                <span className="font-bold text-emerald-700">
-                  {appliedAdvance > 0 ? t('المحصل نقداً عند الفوترة:', 'Cash Collected at Invoicing:') : t('المدفوع نقداً:', 'Paid in Cash:')}
-                </span>
-                <div className="w-28">
-                  <input
-                    type="number"
-                    min="0"
-                    max={maxCashAtInvoice}
-                    placeholder="0.00"
-                    value={paidAmount}
-                    onChange={(e) => setPaidAmount(e.target.value === '' ? '' : Math.min(maxCashAtInvoice, Math.max(0, Number(e.target.value))))}
-                    className="w-full h-7 bg-emerald-50 border border-emerald-300 rounded-md px-2 py-0.5 text-center font-mono font-bold text-emerald-800 text-xs"
-                  />
-                </div>
-              </div>
-            )}
-
-            {paymentType === 'cash' && appliedAdvance > 0 && (
-              <div className="flex justify-between text-xs font-bold text-emerald-700 pt-0.5">
-                <span>{t('المحصل نقداً بالخزينة عند الفوترة:', 'Cash Collected to Cashbox at Invoicing:')}</span>
-                <span className="font-mono tabular-nums">{effectivePaidAtInvoice.toFixed(2)} {t(settings.currency)}</span>
-              </div>
-            )}
-
-            <div className="flex justify-between text-xs font-bold text-red-600 pt-0.5">
-              <span>{t('المتبقي في ذمة العميل (آجل):', 'Remaining Customer Balance (Credit):')}</span>
-              <span className="font-mono tabular-nums">{remainingAmount.toFixed(2)} {t(settings.currency)}</span>
-            </div>
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200">
+        {/* Footer Action Buttons */}
+        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
           <button
             type="button"
             onClick={onClose}
-            className="px-3 py-1 rounded-md border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-100 transition-colors cursor-pointer"
+            className="h-8 px-3 rounded-md border border-slate-300 text-slate-600 font-bold hover:bg-slate-50 cursor-pointer"
           >
             {t('إلغاء', 'Cancel')}
           </button>
-
-          <div className="flex flex-wrap items-center gap-1.5">
-            <button
-              type="button"
-              disabled={isSubmitting || items.length === 0}
-              onClick={() => handleSubmitInvoice(false)}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-white text-xs font-black transition-all active:scale-95 disabled:opacity-50 cursor-pointer ${
-                invoiceStatusMode === 'draft'
-                  ? 'bg-amber-600 hover:bg-amber-700'
-                  : 'bg-[#011E58] hover:bg-[#002160]'
-              }`}
-            >
-              <Save className="w-3.5 h-3.5" />
-              <span>
-                {isSubmitting
-                  ? t('جاري التنفيذ...', 'Processing...')
-                  : invoiceStatusMode === 'draft'
-                  ? t('حفظ الفاتورة كمسودة', 'Save Invoice as Draft')
-                  : t('حفظ الفاتورة فقط', 'Save Invoice Only')}
-              </span>
-            </button>
-
-            <button
-              type="button"
-              disabled={isSubmitting || items.length === 0}
-              onClick={() => handleSubmitInvoice(true)}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-black transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span>{invoiceStatusMode === 'draft' ? t('حفظ كمسودة وطباعة', 'Save Draft & Print') : t('حفظ وطباعة الفاتورة', 'Save & Print Invoice')}</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            disabled={isSubmitting || items.length === 0}
+            onClick={() => handleSubmitInvoice(false)}
+            className={`h-8 flex items-center gap-1.5 px-3.5 rounded-md text-white font-black transition-all disabled:opacity-50 cursor-pointer ${
+              invoiceStatusMode === 'draft'
+                ? 'bg-amber-600 hover:bg-amber-700'
+                : 'bg-[#011E58] hover:bg-[#002160]'
+            }`}
+          >
+            <Save className="w-3.5 h-3.5" />
+            <span>
+              {isSubmitting
+                ? t('جاري الحفظ...', 'Saving...')
+                : invoiceStatusMode === 'draft'
+                ? t('حفظ كمسودة', 'Save Draft')
+                : t('حفظ الفاتورة', 'Save Invoice')}
+            </span>
+          </button>
+          <button
+            type="button"
+            disabled={isSubmitting || items.length === 0}
+            onClick={() => handleSubmitInvoice(true)}
+            className="h-8 flex items-center gap-1.5 px-3.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-black transition-all disabled:opacity-50 cursor-pointer"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span>
+              {invoiceStatusMode === 'draft'
+                ? t('حفظ مسودة وطباعة', 'Save Draft & Print')
+                : t('حفظ وطباعة', 'Save & Print')}
+            </span>
+          </button>
         </div>
       </div>
     </Modal>
   );
 };
+

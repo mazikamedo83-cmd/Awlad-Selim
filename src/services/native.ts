@@ -358,7 +358,7 @@ export async function reverseGeocodeCoords(
 
     const address =
       parts.length > 0
-        ? Array.from(new Set(parts)).join('، ')
+        ? Array.from(new Set(parts)).join(getActiveLanguage() === 'en' ? ', ' : '، ')
         : String(json?.display_name || '').trim();
 
     if (!address) {

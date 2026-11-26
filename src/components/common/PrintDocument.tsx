@@ -3,6 +3,7 @@ import { Printer, X, FileDown } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import { useShortcuts } from '../../context/ShortcutsContext';
 import { usePreferences } from '../../context/PreferencesContext';
+import { translateSystemEntityName } from '../../i18n/translator';
 import { exportHtmlToPdf } from './PdfExporter';
 import { isNativeCapacitor } from '../../services/native';
 
@@ -101,10 +102,10 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
       docNumber: data.docNumber,
       dateRangeText: data.date,
       meta: [
-        ...(data.partyName ? [{ label: t('العميل / الطرف', 'Customer / Party'), value: t(data.partyName) }] : []),
+        ...(data.partyName ? [{ label: t('العميل / الطرف', 'Customer / Party'), value: translateSystemEntityName(data.partyName) }] : []),
         ...(data.partyPhone ? [{ label: t('الهاتف', 'Phone'), value: data.partyPhone }] : []),
         ...(data.partyAddress ? [{ label: t('العنوان', 'Address'), value: data.partyAddress }] : []),
-        ...(data.warehouseName ? [{ label: t('المستودع', 'Warehouse'), value: t(data.warehouseName) }] : []),
+        ...(data.warehouseName ? [{ label: t('المستودع', 'Warehouse'), value: translateSystemEntityName(data.warehouseName) }] : []),
         ...(branchLabelStr ? [{ label: t('الفرع', 'Branch'), value: branchLabelStr }] : []),
         ...(data.representativeName ? [{ label: t('المندوب', 'Representative'), value: data.representativeName }] : []),
         ...(resolvedRepPhone ? [{ label: t('هاتف المندوب', 'Rep Phone'), value: resolvedRepPhone }] : []),
@@ -281,7 +282,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
                 {/* Document & Party Meta */}
                 <div className="grid grid-cols-2 gap-4 my-4 p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs">
                   <div className="space-y-1.5">
-                    <div className="flex"><span className="text-slate-500 w-28">{t('العميل / الطرف:', 'Customer / Party:')}</span><strong className="text-slate-800 text-sm">{data.partyName ? t(data.partyName) : t('نقدي / عام', 'Cash / Walk-in')}</strong></div>
+                    <div className="flex"><span className="text-slate-500 w-28">{t('العميل / الطرف:', 'Customer / Party:')}</span><strong className="text-slate-800 text-sm">{data.partyName ? translateSystemEntityName(data.partyName) : t('نقدي / عام', 'Cash / Walk-in')}</strong></div>
                     {data.partyPhone && <div className="flex"><span className="text-slate-500 w-28">{t('رقم الهاتف:', 'Phone:')}</span><span>{data.partyPhone}</span></div>}
                     {data.partyAddress && <div className="flex"><span className="text-slate-500 w-28">{t('العنوان:', 'Address:')}</span><span>{data.partyAddress}</span></div>}
                     {data.representativeName && <div className="flex"><span className="text-slate-500 w-28">{t('المندوب المسؤول:', 'Representative:')}</span><strong className="text-blue-800">{data.representativeName}</strong></div>}
@@ -289,7 +290,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
                   </div>
                   <div className="space-y-1.5">
                     <div className="flex"><span className="text-slate-500 w-28">{t('تاريخ التحرير:', 'Issue Date:')}</span><strong>{data.date}</strong></div>
-                    {data.warehouseName && <div className="flex"><span className="text-slate-500 w-28">{t('المستودع المصروف:', 'Warehouse:')}</span><span>{t(data.warehouseName)}</span></div>}
+                    {data.warehouseName && <div className="flex"><span className="text-slate-500 w-28">{t('المستودع المصروف:', 'Warehouse:')}</span><span>{translateSystemEntityName(data.warehouseName)}</span></div>}
                     {branchLabelStr && <div className="flex"><span className="text-slate-500 w-28">{t('الفرع:', 'Branch:')}</span><span className="font-semibold">{branchLabelStr}</span></div>}
                     {data.paymentType && <div className="flex"><span className="text-slate-500 w-28">{t('نوع الدفع:', 'Payment Type:')}</span><span className="px-2 py-0.5 rounded bg-slate-200 font-bold">{t(data.paymentType)}</span></div>}
                   </div>
@@ -415,7 +416,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
                   {data.partyName && (
                     <div className="flex justify-between font-semibold">
                       <span>{t('العميل:', 'Customer:')}</span>
-                      <span>{t(data.partyName)}</span>
+                      <span>{translateSystemEntityName(data.partyName)}</span>
                     </div>
                   )}
                   {data.representativeName && (
@@ -495,7 +496,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentProps> = ({ isOpen, onClo
                 </div>
 
                 {data.partyName && (
-                  <p className="font-bold my-1 text-[9px]">{t('العميل:', 'Customer:')} {t(data.partyName)}</p>
+                  <p className="font-bold my-1 text-[9px]">{t('العميل:', 'Customer:')} {translateSystemEntityName(data.partyName)}</p>
                 )}
                 {(data.representativeName || resolvedRepPhone) && (
                   <p className="my-0.5 text-[9px] text-slate-700">

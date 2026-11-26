@@ -147,7 +147,7 @@ function getDispatchStatusClasses(status: SyncDispatchBatchStatus | UnifiedLogSt
 export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack, initialTab }) => {
   const data = useData();
   const { currentUser, representativeProfile, hasPermission } = useAuth();
-  const { t, dir } = usePreferences();
+  const { t, dir, isRtl } = usePreferences();
 
   const isRepUser = currentUser?.role === 'representative';
   const isOnline =
@@ -468,7 +468,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack, in
 
     for (const tr of data.repTransfers || []) {
       let unifiedStatus: UnifiedLogStatus = 'في انتظار الاستلام';
-      if (tr.status === 'confirmed') unifiedStatus = 'مكتمل';
+      if (tr.status === 'received') unifiedStatus = 'مكتمل';
       else if (tr.status === 'rejected') unifiedStatus = 'مرفوض';
       else if (tr.syncStatus === 'failed') unifiedStatus = 'فشل المزامنة';
       else if (tr.syncStatus === 'pending' || tr.syncStatus === 'local') unifiedStatus = 'في انتظار الإرسال';
@@ -1096,7 +1096,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack, in
           const val = Number(r.payload?.total ?? r.payload?.amount ?? r.payload?.paidAmount ?? 0);
           return (
             <span className="font-mono font-bold text-slate-900 dark:text-[#EEF4FC] tabular-nums">
-              {val > 0 ? `${formatLocaleNumber(val)} ${data.settings.currency}` : '—'}
+              {val > 0 ? `${formatLocaleNumber(val)} ${t(data.settings.currency)}` : '—'}
             </span>
           );
         },
@@ -1225,7 +1225,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack, in
         exportValue: (b) => Number(b.totalCashAmount || 0),
         render: (b) => (
           <span className="font-mono font-black text-blue-950 dark:text-[#85B8FF] tabular-nums">
-            {formatLocaleNumber(Number(b.totalCashAmount || 0))} {data.settings.currency}
+            {formatLocaleNumber(Number(b.totalCashAmount || 0))} {t(data.settings.currency)}
           </span>
         ),
       },
@@ -2458,11 +2458,11 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack, in
                       <span className="font-mono font-black text-blue-950 dark:text-[#85B8FF]">{ct.transferNumber}</span>
                       <span className="mx-1.5 text-slate-400">·</span>
                       <span className="font-bold text-slate-800 dark:text-[#EEF4FC]">
-                        {ct.senderName} ← {ct.receiverName}
+                        {ct.senderName} {isRtl ? '←' : '→'} {ct.receiverName}
                       </span>
                       <span className="mx-1.5 text-slate-400">·</span>
                       <span className="font-mono font-bold text-emerald-800 dark:text-emerald-400">
-                        {formatLocaleNumber(ct.amount)} {data.settings.currency}
+                        {formatLocaleNumber(ct.amount)} {t(data.settings.currency)}
                       </span>
                     </div>
                     <span className={`px-2 py-0.5 rounded border text-[11px] font-bold ${getDispatchStatusClasses('في انتظار الاستلام')}`}>
@@ -2476,7 +2476,7 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack, in
                       <span className="font-mono font-black text-blue-950 dark:text-[#85B8FF]">{it.requestNumber}</span>
                       <span className="mx-1.5 text-slate-400">·</span>
                       <span className="font-bold text-slate-800 dark:text-[#EEF4FC]">
-                        {it.senderRepresentativeName || it.sourceWarehouseName} ← {it.representativeName || it.targetWarehouseName}
+                        {it.senderRepresentativeName || it.sourceWarehouseName} {isRtl ? '←' : '→'} {it.representativeName || it.targetWarehouseName}
                       </span>
                       <span className="mx-1.5 text-slate-400">·</span>
                       <span className="font-mono text-slate-600 dark:text-[#97AECE]">

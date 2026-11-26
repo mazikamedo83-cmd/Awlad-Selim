@@ -346,7 +346,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         ],
       },
     ],
-    [pendingOrdersCount, incomingDispatchCount, language]
+    [pendingOrdersCount, pendingSendReceiveCount, language]
   );
 
   // Auto-open the section owning the current page

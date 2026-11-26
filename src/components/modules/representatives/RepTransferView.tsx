@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { 
   ArrowLeftRight, CheckCircle2, XCircle, Clock, AlertCircle, Plus, 
   Printer, History, User, Boxes, Truck, Edit, Eye, Check,
-  Download, PackageCheck, RotateCcw, AlertTriangle, Wallet, RefreshCw
+  Download, PackageCheck, RotateCcw, AlertTriangle, Wallet, RefreshCw, Barcode, Trash2
 } from 'lucide-react';
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -12,7 +12,10 @@ import { RepTransfer, RepItemTransferRequest, Representative, RepCustodyStatemen
 import { Modal } from '../../common/Modal';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { ProductSearchSelect } from '../../common/ProductSearchSelect';
+import { QuantityInput } from '../../common/QuantityInput';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
+
+const roundQty3 = (val: number) => Math.round((Number(val || 0) + Number.EPSILON) * 1000) / 1000;
 import { exportToExcel } from '../../common/ExcelExporter';
 import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 import { CashTransferIcon, StockTransfersIcon, RepsFleetIcon, AccountsLedgerIcon } from '../../common/AppIcons';
@@ -118,21 +121,27 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
   const [activeItemReqDetail, setActiveItemReqDetail] = useState<RepItemTransferRequest | null>(null);
   const [itemReqSenderRepId, setItemReqSenderRepId] = useState<string>(representatives[0]?.id || '');
   const [itemReqRepId, setItemReqRepId] = useState<string>(representatives[0]?.id || '');
+  const [itemReqDate, setItemReqDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [itemReqInvoiceId, setItemReqInvoiceId] = useState<string>('');
   const [itemReqSourceWhId, setItemReqSourceWhId] = useState<string>(warehouses[0]?.id || '');
   const [itemReqTargetWhId, setItemReqTargetWhId] = useState<string>(warehouses[1]?.id || warehouses[0]?.id || '');
   const [itemReqTransferMode, setItemReqTransferMode] = useState<'transfer' | 'custody_dispatch' | 'rep_to_rep'>('transfer');
   const [itemReqAutoDispatch, setItemReqAutoDispatch] = useState<boolean>(true);
   const [itemReqNotes, setItemReqNotes] = useState<string>('');
+  const [itemReqBarcodeInput, setItemReqBarcodeInput] = useState<string>('');
   const [selectedItemsForReq, setSelectedItemsForReq] = useState<Array<{
     productId: string;
     productName: string;
+    barcode?: string;
     unit: string;
+    unitFactor: number;
     requestedQty: number;
     availableInVanQty: number;
     shortageQty: number;
+    notes?: string;
   }>>([]);
   const [tempProdId, setTempProdId] = useState<string>('');
+  const [tempUnitName, setTempUnitName] = useState<string>('');
   const [tempQty, setTempQty] = useState<number | ''>('');
   const [isSubmittingItemReq, setIsSubmittingItemReq] = useState(false);
   const [itemReqError, setItemReqError] = useState<string | null>(null);
@@ -426,6 +435,89 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
     setIsPrintModalOpen(true);
   };
 
+  const activeTempReqProduct = useMemo(
+    () => products.find((p) => p.id === tempProdId) || null,
+    [products, tempProdId]
+  );
+
+  const tempReqUnitOptions = useMemo(() => {
+    if (!activeTempReqProduct) return [];
+    return [
+      { name: activeTempReqProduct.baseUnit, conversionFactor: 1 },
+      ...(activeTempReqProduct.units || []).map((u) => ({
+        name: u.name,
+        conversionFactor: u.conversionFactor || 1,
+      })),
+    ];
+  }, [activeTempReqProduct]);
+
+  const handleSelectTempReqProduct = (prodId: string) => {
+    setTempProdId(prodId);
+    const prod = products.find((p) => p.id === prodId);
+    if (!prod) return;
+    setTempUnitName(prod.baseUnit);
+    setTempQty(1);
+    setItemReqError(null);
+    window.setTimeout(() => {
+      repProdQtyRef.current?.focus();
+      repProdQtyRef.current?.select();
+    }, 30);
+  };
+
+  const handleItemReqBarcodeSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const term = itemReqBarcodeInput.trim().toLowerCase();
+    if (!term) return;
+    const matched = products.find(
+      (p) =>
+        p.status === 'active' &&
+        (String(p.barcode || '').toLowerCase() === term ||
+          String(p.code || '').toLowerCase() === term ||
+          p.units?.some((u) => String(u.barcode || '').toLowerCase() === term))
+    );
+    if (!matched) {
+      setItemReqError(t(`لم يتم العثور على صنف بالكود أو الباركود: ${itemReqBarcodeInput}`, `No item found matching code/barcode: ${itemReqBarcodeInput}`));
+      return;
+    }
+    const unitMatch = matched.units?.find((u) => String(u.barcode || '').toLowerCase() === term);
+    const chosenUnit = unitMatch?.name || matched.baseUnit;
+    const chosenFactor = unitMatch?.conversionFactor || 1;
+    const targetWhStock = matched.stockPerWarehouse[itemReqTargetWhId] || 0;
+    const reqBase = 1 * chosenFactor;
+
+    setSelectedItemsForReq((prev) => {
+      const existingIdx = prev.findIndex((it) => it.productId === matched.id && it.unit === chosenUnit);
+      if (existingIdx >= 0) {
+        return prev.map((it, idx) => {
+          if (idx !== existingIdx) return it;
+          const nextQty = roundQty3(it.requestedQty + 1);
+          const nextBase = nextQty * it.unitFactor;
+          return {
+            ...it,
+            requestedQty: nextQty,
+            availableInVanQty: targetWhStock,
+            shortageQty: Math.max(0, roundQty3(nextBase - targetWhStock)),
+          };
+        });
+      }
+      return [
+        ...prev,
+        {
+          productId: matched.id,
+          productName: matched.name,
+          barcode: matched.barcode,
+          unit: chosenUnit,
+          unitFactor: chosenFactor,
+          requestedQty: 1,
+          availableInVanQty: targetWhStock,
+          shortageQty: Math.max(0, roundQty3(reqBase - targetWhStock)),
+        },
+      ];
+    });
+    setItemReqBarcodeInput('');
+    setItemReqError(null);
+  };
+
   // Add item to request
   const handleAddItemToReq = () => {
     const qtyVal = Number(tempQty || 0);
@@ -433,20 +525,25 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
     const prod = products.find(p => p.id === tempProdId);
     if (!prod) return;
 
+    const chosenOpt = tempReqUnitOptions.find((u) => u.name === tempUnitName) || tempReqUnitOptions[0];
+    const effectiveUnit = chosenOpt?.name || prod.baseUnit;
+    const unitFactor = chosenOpt?.conversionFactor || 1;
     const vanStock = prod.stockPerWarehouse[itemReqTargetWhId] || 0;
-    const shortage = Math.max(0, qtyVal - vanStock);
+    const reqBase = qtyVal * unitFactor;
+    const shortage = Math.max(0, roundQty3(reqBase - vanStock));
 
     setSelectedItemsForReq((prev) => {
-      const existingIdx = prev.findIndex((it) => it.productId === prod.id && it.unit === prod.baseUnit);
+      const existingIdx = prev.findIndex((it) => it.productId === prod.id && it.unit === effectiveUnit);
       if (existingIdx >= 0) {
         return prev.map((it, idx) => {
           if (idx !== existingIdx) return it;
-          const nextQty = Number((it.requestedQty + qtyVal).toFixed(4));
+          const nextQty = roundQty3(it.requestedQty + qtyVal);
+          const nextBase = nextQty * it.unitFactor;
           return {
             ...it,
             requestedQty: nextQty,
             availableInVanQty: vanStock,
-            shortageQty: Math.max(0, nextQty - vanStock),
+            shortageQty: Math.max(0, roundQty3(nextBase - vanStock)),
           };
         });
       }
@@ -455,7 +552,9 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
         {
           productId: prod.id,
           productName: prod.name,
-          unit: prod.baseUnit,
+          barcode: prod.barcode,
+          unit: effectiveUnit,
+          unitFactor,
           requestedQty: qtyVal,
           availableInVanQty: vanStock,
           shortageQty: shortage,
@@ -463,16 +562,35 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
       ];
     });
     setTempProdId('');
+    setTempUnitName('');
     setTempQty('');
     window.setTimeout(() => repProdSearchRef.current?.focus(), 25);
+  };
+
+  const handleUpdateReqRowQty = (idx: number, nextQty: number) => {
+    const safeQty = Math.max(0.001, roundQty3(nextQty));
+    setSelectedItemsForReq((prev) =>
+      prev.map((it, i) => {
+        if (i !== idx) return it;
+        const prod = products.find((p) => p.id === it.productId);
+        const vanStock = prod ? prod.stockPerWarehouse[itemReqTargetWhId] || 0 : it.availableInVanQty;
+        const reqBase = safeQty * (it.unitFactor || 1);
+        return {
+          ...it,
+          requestedQty: safeQty,
+          availableInVanQty: vanStock,
+          shortageQty: Math.max(0, roundQty3(reqBase - vanStock)),
+        };
+      })
+    );
   };
 
   const handleRemoveItemFromReq = (idx: number) => {
     setSelectedItemsForReq(prev => prev.filter((_, i) => i !== idx));
   };
 
-  const handleSubmitItemTransferRequest = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmitItemTransferRequest = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     setItemReqError(null);
     if (selectedItemsForReq.length === 0) {
       setItemReqError(t('يرجى إضافة صنف واحد على الأقل للتحويل', 'Please add at least one item to transfer'));
@@ -512,10 +630,15 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
 
     const linkedInv = invoices.find(i => i.id === itemReqInvoiceId);
     const autoDispatchFlag = itemReqTransferMode === 'rep_to_rep' ? true : itemReqTransferMode === 'custody_dispatch' ? itemReqAutoDispatch : false;
+    const itemNotesSummary = selectedItemsForReq
+      .filter((it) => it.notes && it.notes.trim())
+      .map((it) => `${it.productName}: ${it.notes!.trim()}`)
+      .join(' | ');
+    const combinedNotes = [itemReqNotes.trim(), itemNotesSummary].filter(Boolean).join(' — ');
 
     setIsSubmittingItemReq(true);
     const res = await createRepItemTransfer({
-      date: new Date().toISOString().split('T')[0],
+      date: itemReqDate || new Date().toISOString().split('T')[0],
       representativeId: targetRep.id,
       representativeName: targetRep.name,
       senderRepresentativeId: senderRep?.id,
@@ -529,10 +652,15 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
       transferMode: itemReqTransferMode,
       autoDispatch: autoDispatchFlag,
       items: selectedItemsForReq.map(it => ({
-        ...it,
+        productId: it.productId,
+        productName: it.productName,
+        unit: it.unit,
+        requestedQty: it.requestedQty,
         approvedQty: it.requestedQty,
+        availableInVanQty: it.availableInVanQty,
+        shortageQty: it.shortageQty,
       })),
-      notes: itemReqNotes,
+      notes: combinedNotes,
     });
     setIsSubmittingItemReq(false);
 
@@ -1197,7 +1325,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
               exportValue: (tr) => tr.amount,
               render: (tr) => (
                 <span className="font-black text-slate-900 font-mono tabular-nums">
-                  {formatLocaleNumber(tr.amount)} {settings.currency}
+                  {formatLocaleNumber(tr.amount)} {t(settings.currency)}
                 </span>
               ),
             },
@@ -1497,7 +1625,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
                 <span className="text-emerald-700 font-black font-mono tabular-nums">
                   {rep.balanceHidden || rep.currentBalance === undefined
                     ? t('محجوب', 'Hidden')
-                    : `${formatLocaleNumber(rep.currentBalance)} ${settings.currency}`}
+                    : `${formatLocaleNumber(rep.currentBalance)} ${t(settings.currency)}`}
                 </span>
               ),
             },
@@ -1700,25 +1828,25 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
                     <Wallet className="w-3.5 h-3.5 text-[#003589]" /> {t('رصيد العهدة النقدية الحالية', 'Current Cash Custody Balance')}
                   </span>
                   <p className="text-base font-black text-[#011E58] font-mono tabular-nums mt-0.5">
-                    {formatLocaleNumber(custodyStatement.financialSummary.currentCashCustodyBalance)} {settings.currency}
+                    {formatLocaleNumber(custodyStatement.financialSummary.currentCashCustodyBalance)} {t(settings.currency)}
                   </p>
                 </div>
                 <div className="bg-white px-3 py-2">
                   <span className="text-[11px] text-slate-500 font-bold">{t('إجمالي مبيعات المندوب', 'Total Rep Sales')}</span>
                   <p className="text-base font-black text-slate-900 font-mono tabular-nums mt-0.5">
-                    {formatLocaleNumber(custodyStatement.financialSummary.totalSalesAmount)} {settings.currency}
+                    {formatLocaleNumber(custodyStatement.financialSummary.totalSalesAmount)} {t(settings.currency)}
                   </p>
                 </div>
                 <div className="bg-white px-3 py-2">
                   <span className="text-[11px] text-emerald-700 font-bold">{t('المحصّل من الفواتير', 'Collected from Invoices')}</span>
                   <p className="text-base font-black text-emerald-700 font-mono tabular-nums mt-0.5">
-                    {formatLocaleNumber(custodyStatement.financialSummary.totalSalesPaidAmount)} {settings.currency}
+                    {formatLocaleNumber(custodyStatement.financialSummary.totalSalesPaidAmount)} {t(settings.currency)}
                   </p>
                 </div>
                 <div className="bg-white px-3 py-2">
                   <span className="text-[11px] text-amber-700 font-bold">{t('المتبقي بالآجل عند العملاء', 'Credit Due from Customers')}</span>
                   <p className="text-base font-black text-amber-800 font-mono tabular-nums mt-0.5">
-                    {formatLocaleNumber(custodyStatement.financialSummary.totalSalesRemainingAmount)} {settings.currency}
+                    {formatLocaleNumber(custodyStatement.financialSummary.totalSalesRemainingAmount)} {t(settings.currency)}
                   </p>
                 </div>
               </div>
@@ -1858,7 +1986,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
                     exportValue: (it) => it.custodyValueAtCost,
                     render: (it) => (
                       <span className="font-mono font-bold text-slate-900 tabular-nums">
-                        {formatLocaleNumber(it.custodyValueAtCost)} {settings.currency}
+                        {formatLocaleNumber(it.custodyValueAtCost)} {t(settings.currency)}
                       </span>
                     ),
                   },
@@ -2008,7 +2136,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
               >
                 {allRepOptions.map(r => (
                   <option key={r.id} value={r.id}>
-                    {r.name} ({t('رصيد عهدته:', 'Custody balance:')} {r.balanceHidden || r.currentBalance === undefined ? t('محجوب', 'Hidden') : `${formatLocaleNumber(r.currentBalance)} ${settings.currency}`})
+                    {r.name} ({t('رصيد عهدته:', 'Custody balance:')} {r.balanceHidden || r.currentBalance === undefined ? t('محجوب', 'Hidden') : `${formatLocaleNumber(r.currentBalance)} ${t(settings.currency)}`})
                   </option>
                 ))}
               </select>
@@ -2017,7 +2145,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
 
             <div className="grid grid-cols-2 gap-2.5">
               <div className={direction === 'rep_to_rep' ? 'col-span-2' : ''}>
-                <label className="block font-bold mb-1">{t('المبلغ المحول', 'Transferred Amount')} ({settings.currency}):</label>
+                <label className="block font-bold mb-1">{t('المبلغ المحول', 'Transferred Amount')} ({t(settings.currency)}):</label>
                 <input
                   type="number"
                   required
@@ -2039,7 +2167,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
                 >
                   {cashboxes.map(c => (
                     <option key={c.id} value={c.id}>
-                      {c.balanceHidden ? `${c.name} (${t('رصيد محجوب', 'Hidden balance')})` : `${c.name} (${formatLocaleNumber(c.currentBalance ?? 0)} ${settings.currency})`}
+                      {c.balanceHidden ? `${c.name} (${t('رصيد محجوب', 'Hidden balance')})` : `${c.name} (${formatLocaleNumber(c.currentBalance ?? 0)} ${t(settings.currency)})`}
                     </option>
                   ))}
                 </select>
@@ -2078,266 +2206,333 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
         </Modal>
       )}
 
-      {/* New Item Transfer Request Modal (Linked to Invoice / Custody / Rep-to-Rep) */}
+      {/* New Item Transfer Request Modal (Classic Stacked Form & Table) */}
       {isNewItemReqModalOpen && (
         <Modal
           isOpen={isNewItemReqModalOpen}
           onClose={() => setIsNewItemReqModalOpen(false)}
-          title={t('طلب تحويل أصناف وعهدة مخزنية', 'Item Transfer & Inventory Custody Request')}
+          title={t('تحويل بضائع من الإدارة إلى المندوب / طلب تحويل مخزني', 'Goods Transfer from Management to Rep / Stock Transfer')}
+          maxWidth="4xl"
         >
-          <form onSubmit={handleSubmitItemTransferRequest} className="space-y-3 text-xs">
+          <form onSubmit={handleSubmitItemTransferRequest} className="space-y-2.5 text-xs">
             {itemReqError && (
-              <div className="px-3 py-2 bg-red-50 text-red-700 rounded-lg flex items-center gap-2 border border-red-200">
+              <div className="p-2 bg-red-50 border border-red-200 text-red-700 rounded-md font-bold flex items-center gap-1.5">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{itemReqError}</span>
               </div>
             )}
 
-            <div>
-              <label className="block font-bold mb-1">{t('نوع الإذن / المسار:', 'Request Type / Flow:')}</label>
+            {/* Transfer Mode & Header Grid */}
+            <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 space-y-2">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setItemReqTransferMode('transfer')}
-                  className={`h-8 px-2 rounded-md border font-bold cursor-pointer ${
-                    itemReqTransferMode === 'transfer' ? 'bg-[#011E58] text-white border-[#011E58]' : 'bg-slate-50 text-slate-700 border-slate-300'
-                  }`}
-                >
-                  {t('تحويل عادي / سحب', 'Standard / Pull')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setItemReqTransferMode('custody_dispatch')}
-                  className={`h-8 px-2 rounded-md border font-bold cursor-pointer ${
-                    itemReqTransferMode === 'custody_dispatch' ? 'bg-[#003589] text-white border-[#003589]' : 'bg-slate-50 text-slate-700 border-slate-300'
-                  }`}
-                >
-                  {t('صرف عهدة للمندوب', 'Custody Dispatch')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setItemReqTransferMode('rep_to_rep');
-                    const sId = (isRepUser && myRepProfile?.id) || itemReqSenderRepId || allRepOptions[0]?.id || '';
-                    setItemReqSenderRepId(sId);
-                    if (itemReqRepId === sId || !itemReqRepId) {
-                      const peer = allRepOptions.find(r => r.id !== sId);
-                      if (peer) setItemReqRepId(peer.id);
-                    }
-                  }}
-                  className={`h-8 px-2 rounded-md border font-bold cursor-pointer ${
-                    itemReqTransferMode === 'rep_to_rep' ? 'bg-[#003589] text-white border-[#003589]' : 'bg-slate-50 text-slate-700 border-slate-300'
-                  }`}
-                >
-                  {t('تحويل بين مناديب', 'Rep to Rep')}
-                </button>
-              </div>
-              <p className="text-[10px] text-slate-500 mt-1">
-                {itemReqTransferMode === 'rep_to_rep'
-                  ? t(
-                      'تُخصم الكمية من سيارة المندوب المرسل عند الصرف ولا تدخل عهدة المندوب المستلم إلا بعد تأكيد استلامه الفعلي.',
-                      'Stock is deducted from the sending rep van upon dispatch and credited to the receiving rep only after receipt confirmation.'
-                    )
-                  : t(
-                      'في وضع صرف العهدة المباشر يُخصم المخزن الرئيسي فوراً ولا تُضاف البضاعة لرصيد سيارة المندوب إلا بعد تأكيد الاستلام.',
-                      'In Direct Custody Dispatch mode, main warehouse stock is deducted immediately and van stock is credited only after receipt confirmation.'
-                    )}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2.5">
-              {itemReqTransferMode === 'rep_to_rep' && (
                 <div>
-                  <label className="block font-bold mb-1">{t('المندوب المرسل:', 'Sending Rep:')}</label>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('نوع الإذن / المسار:', 'Request Type / Flow:')}</label>
+                  <div className="grid grid-cols-3 gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setItemReqTransferMode('transfer')}
+                      className={`h-8 px-1 rounded border text-[11px] font-bold cursor-pointer ${
+                        itemReqTransferMode === 'transfer' ? 'bg-[#011E58] text-white border-[#011E58]' : 'bg-white text-slate-700 border-slate-300'
+                      }`}
+                    >
+                      {t('تحويل عادي', 'Standard')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setItemReqTransferMode('custody_dispatch')}
+                      className={`h-8 px-1 rounded border text-[11px] font-bold cursor-pointer ${
+                        itemReqTransferMode === 'custody_dispatch' ? 'bg-[#003589] text-white border-[#003589]' : 'bg-white text-slate-700 border-slate-300'
+                      }`}
+                    >
+                      {t('صرف عهدة', 'Custody')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setItemReqTransferMode('rep_to_rep');
+                        const sId = (isRepUser && myRepProfile?.id) || itemReqSenderRepId || allRepOptions[0]?.id || '';
+                        setItemReqSenderRepId(sId);
+                        if (itemReqRepId === sId || !itemReqRepId) {
+                          const peer = allRepOptions.find(r => r.id !== sId);
+                          if (peer) setItemReqRepId(peer.id);
+                        }
+                      }}
+                      className={`h-8 px-1 rounded border text-[11px] font-bold cursor-pointer ${
+                        itemReqTransferMode === 'rep_to_rep' ? 'bg-[#003589] text-white border-[#003589]' : 'bg-white text-slate-700 border-slate-300'
+                      }`}
+                    >
+                      {t('بين مناديب', 'Rep to Rep')}
+                    </button>
+                  </div>
+                </div>
+
+                {itemReqTransferMode === 'rep_to_rep' && (
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('المندوب المرسل:', 'Sending Rep:')}</label>
+                    <select
+                      disabled={isRepUser && Boolean(myRepProfile)}
+                      value={isRepUser && myRepProfile ? myRepProfile.id : itemReqSenderRepId}
+                      onChange={(e) => setItemReqSenderRepId(e.target.value)}
+                      className="w-full h-8 px-2 rounded-md border border-slate-300 bg-white font-bold text-xs disabled:bg-slate-100"
+                    >
+                      {allRepOptions.map(r => (
+                        <option key={r.id} value={r.id}>{r.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('المندوب المستلم:', 'Receiving Rep:')}</label>
                   <select
-                    disabled={isRepUser && Boolean(myRepProfile)}
-                    value={isRepUser && myRepProfile ? myRepProfile.id : itemReqSenderRepId}
-                    onChange={(e) => setItemReqSenderRepId(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white disabled:bg-slate-100"
+                    value={itemReqRepId}
+                    onChange={(e) => setItemReqRepId(e.target.value)}
+                    className="w-full h-8 px-2 rounded-md border border-slate-300 bg-white font-bold text-xs"
                   >
-                    {allRepOptions.map(r => (
+                    {(itemReqTransferMode === 'rep_to_rep'
+                      ? allRepOptions.filter(r => r.id !== (isRepUser && myRepProfile ? myRepProfile.id : itemReqSenderRepId))
+                      : allRepOptions
+                    ).map(r => (
                       <option key={r.id} value={r.id}>{r.name}</option>
                     ))}
                   </select>
                 </div>
-              )}
 
-              <div>
-                <label className="block font-bold mb-1">{t('المندوب المستلم:', 'Receiving Rep:')}</label>
-                <select
-                  value={itemReqRepId}
-                  onChange={(e) => setItemReqRepId(e.target.value)}
-                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
-                >
-                  {(itemReqTransferMode === 'rep_to_rep'
-                    ? allRepOptions.filter(r => r.id !== (isRepUser && myRepProfile ? myRepProfile.id : itemReqSenderRepId))
-                    : allRepOptions
-                  ).map(r => (
-                    <option key={r.id} value={r.id}>{r.name}</option>
-                  ))}
-                </select>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('تاريخ التحويل:', 'Transfer Date:')}</label>
+                  <input
+                    type="date"
+                    value={itemReqDate}
+                    onChange={(e) => setItemReqDate(e.target.value)}
+                    className="w-full h-8 px-2 rounded-md border border-slate-300 bg-white font-mono font-bold text-xs"
+                  />
+                </div>
               </div>
+
+              {itemReqTransferMode === 'custody_dispatch' && (
+                <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={itemReqAutoDispatch}
+                    onChange={(e) => setItemReqAutoDispatch(e.target.checked)}
+                    className="w-3.5 h-3.5 accent-[#003589]"
+                  />
+                  <span>{t('صرف فوري من المخزن بانتظار تأكيد استلام المندوب', 'Dispatch immediately awaiting rep receipt')}</span>
+                </label>
+              )}
 
               {itemReqTransferMode !== 'rep_to_rep' && (
-              <div>
-                <label className="block font-bold mb-1">{t('الفاتورة المرتبطة (إن وجدت):', 'Linked Invoice (if any):')}</label>
-                <select
-                  value={itemReqInvoiceId}
-                  onChange={(e) => setItemReqInvoiceId(e.target.value)}
-                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
-                >
-                  <option value="">{t('-- بدون ربط بفاتورة (تحويل عهدة مباشر) --', '-- No Linked Invoice (Direct Custody Transfer) --')}</option>
-                  {invoices.filter(i => i.type === 'sales').map(inv => (
-                    <option key={inv.id} value={inv.id}>
-                      {inv.invoiceNumber} - {inv.customerName} ({formatLocaleNumber(inv.grandTotal)} {settings.currency})
-                    </option>
-                  ))}
-                </select>
-              </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-0.5">{t('المستودع المصدر:', 'Source WH:')}</label>
+                    <select
+                      value={itemReqSourceWhId}
+                      onChange={(e) => setItemReqSourceWhId(e.target.value)}
+                      className="w-full h-8 px-2 rounded-md border border-slate-300 bg-white text-xs font-bold"
+                    >
+                      {warehouses.map(w => (
+                        <option key={w.id} value={w.id}>{t(w.name)}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-0.5">{t('مستودع الوجهة:', 'Target WH:')}</label>
+                    <select
+                      value={itemReqTargetWhId}
+                      onChange={(e) => setItemReqTargetWhId(e.target.value)}
+                      className="w-full h-8 px-2 rounded-md border border-slate-300 bg-white text-xs font-bold"
+                    >
+                      {warehouses.map(w => (
+                        <option key={w.id} value={w.id}>{t(w.name)}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-0.5">{t('الفاتورة المرتبطة (اختياري):', 'Linked Invoice (optional):')}</label>
+                    <select
+                      value={itemReqInvoiceId}
+                      onChange={(e) => setItemReqInvoiceId(e.target.value)}
+                      className="w-full h-8 px-2 rounded-md border border-slate-300 bg-white text-xs font-bold"
+                    >
+                      <option value="">{t('-- بدون ربط بفاتورة --', '-- No Linked Invoice --')}</option>
+                      {invoices.filter(i => i.type === 'sales').map(inv => (
+                        <option key={inv.id} value={inv.id}>
+                          {inv.invoiceNumber} - {inv.customerName} ({formatLocaleNumber(inv.grandTotal)})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
               )}
             </div>
 
-            {itemReqTransferMode === 'custody_dispatch' && (
-              <label className="flex items-center gap-2 font-bold text-slate-700 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={itemReqAutoDispatch}
-                  onChange={(e) => setItemReqAutoDispatch(e.target.checked)}
-                  className="w-4 h-4 accent-[#003589]"
-                />
-                <span>{t('صرف فوري من المخزن بانتظار تأكيد استلام المندوب', 'Dispatch immediately awaiting rep receipt')}</span>
-              </label>
-            )}
-
-            {itemReqTransferMode !== 'rep_to_rep' && (
-            <div className="grid grid-cols-2 gap-2.5">
-              <div>
-                <label className="block font-bold mb-1">{t('المستودع المصدر (المقر الرئيسي):', 'Source Warehouse (Main Branch):')}</label>
-                <select
-                  value={itemReqSourceWhId}
-                  onChange={(e) => setItemReqSourceWhId(e.target.value)}
-                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
-                >
-                  {warehouses.map(w => (
-                    <option key={w.id} value={w.id}>{w.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-bold mb-1">{t('مستودع الوجهة (سيارة المندوب):', 'Target Warehouse (Rep Van):')}</label>
-                <select
-                  value={itemReqTargetWhId}
-                  onChange={(e) => setItemReqTargetWhId(e.target.value)}
-                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white"
-                >
-                  {warehouses.map(w => (
-                    <option key={w.id} value={w.id}>{w.name}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            )}
-
-            {/* Item Selector Box */}
-            <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
-              <span className="font-bold text-slate-800 block">{t('إضافة أصناف للطلب (بحث فوري):', 'Add Items to Request (Quick Search):')}</span>
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                <div className="flex-1">
+            {/* Classic Add Item Bar */}
+            <div className="bg-blue-50/60 p-2.5 rounded-lg border border-blue-200 space-y-2">
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
+                <div className="sm:col-span-4">
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('باركود سريع:', 'Quick Barcode:')}</label>
+                  <div className="relative flex items-center">
+                    <Barcode className="w-3.5 h-3.5 text-slate-400 absolute start-2 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={itemReqBarcodeInput}
+                      onChange={(e) => setItemReqBarcodeInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleItemReqBarcodeSubmit(e);
+                        }
+                      }}
+                      placeholder={t('امسح الباركود واضغط Enter...', 'Scan barcode & press Enter...')}
+                      className="w-full h-8 ps-7 pe-2 bg-white border border-slate-300 rounded-md text-xs font-mono"
+                    />
+                  </div>
+                </div>
+                <div className="sm:col-span-4">
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('اختيار الصنف:', 'Select Item:')}</label>
                   <ProductSearchSelect
-                    products={products}
-                    selectedProductId={tempProdId}
-                    onSelect={(prod) => setTempProdId(prod.id)}
-                    onAfterSelect={() => repProdQtyRef.current?.focus()}
-                    warehouseId={itemReqSourceWhId}
-                    warehouses={warehouses}
-                    currency={settings.currency}
                     inputRef={repProdSearchRef}
-                    placeholder={t('ابحث باسم الصنف أو الكود أو الباركود...', 'Search by item name, code, or barcode...')}
+                    products={products}
+                    warehouses={warehouses}
+                    warehouseId={itemReqSourceWhId}
+                    selectedProductId={tempProdId}
+                    priceMode="purchase"
+                    currency={settings.currency}
+                    placeholder={t('ابحث باسم الصنف أو الكود...', 'Search item by name or code...')}
+                    onSelect={(prod) => handleSelectTempReqProduct(prod.id)}
                   />
                 </div>
-                <input
-                  ref={repProdQtyRef}
-                  type="number"
-                  min={1}
-                  value={tempQty}
-                  onChange={(e) => setTempQty(e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleAddItemToReq();
-                    }
-                  }}
-                  className="w-24 px-2.5 py-1.5 rounded-lg border border-slate-300 text-center font-bold bg-white"
-                  placeholder={t('الكمية', 'Qty')}
-                />
-                <button
-                  type="button"
-                  onClick={handleAddItemToReq}
-                  className="h-8 px-3 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-bold cursor-pointer"
-                >
-                  {t('إضافة +', 'Add +')}
-                </button>
+                <div className="sm:col-span-2">
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الوحدة:', 'Unit:')}</label>
+                  <select
+                    disabled={!activeTempReqProduct}
+                    value={tempUnitName}
+                    onChange={(e) => setTempUnitName(e.target.value)}
+                    className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-xs font-bold disabled:bg-slate-100"
+                  >
+                    {tempReqUnitOptions.length === 0 ? (
+                      <option value="">{t('-- الوحدة --', '-- Unit --')}</option>
+                    ) : (
+                      tempReqUnitOptions.map((u) => (
+                        <option key={u.name} value={u.name}>{t(u.name)}</option>
+                      ))
+                    )}
+                  </select>
+                </div>
+                <div className="sm:col-span-1">
+                  <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('الكمية:', 'Qty:')}</label>
+                  <QuantityInput
+                    inputRef={repProdQtyRef}
+                    allowDecimals
+                    min={0.001}
+                    disabled={!activeTempReqProduct}
+                    value={tempQty}
+                    onChange={(val) => setTempQty(val)}
+                    placeholder={t('الكمية', 'Qty')}
+                    ariaLabel={t('كمية التحويل', 'Transfer Qty')}
+                    inputClassName="w-full h-8 px-1.5 rounded-md border border-slate-300 bg-white text-center font-mono font-bold disabled:bg-slate-100"
+                  />
+                </div>
+                <div className="sm:col-span-1">
+                  <button
+                    type="button"
+                    disabled={!activeTempReqProduct}
+                    onClick={handleAddItemToReq}
+                    className="w-full h-8 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-bold cursor-pointer disabled:opacity-50"
+                  >
+                    {t('+', '+')}
+                  </button>
+                </div>
               </div>
+            </div>
 
-              {selectedItemsForReq.length > 0 && (
-                <div className="mt-2">
-                  <UnifiedDataTable
-                    compact
-                    searchable={false}
-                    paginated={false}
-                    data={selectedItemsForReq.map((it, idx) => ({ ...it, _idx: idx }))}
-                    rowKey={(it) => `${it.productId}-${it._idx}`}
-                    columns={[
-                      { key: 'productName', header: t('الصنف', 'Item'), render: (it) => <span className="font-bold">{it.productName}</span> },
-                      { key: 'requestedQty', header: t('الكمية المطلوبة', 'Requested Qty'), align: 'center', render: (it) => <span className="font-bold text-[#011E58] tabular-nums">{formatLocaleNumber(it.requestedQty)} {t(it.unit)}</span> },
-                      { key: 'availableInVanQty', header: t('المتاح بالسيارة', 'Available in Van'), align: 'center', render: (it) => <span className="text-slate-600 tabular-nums">{formatLocaleNumber(it.availableInVanQty)}</span> },
-                      { key: 'shortageQty', header: t('العجز', 'Shortage'), align: 'center', render: (it) => <span className="font-bold text-red-600 tabular-nums">{formatLocaleNumber(it.shortageQty)}</span> },
-                      {
-                        key: 'remove',
-                        header: t('حذف', 'Remove'),
-                        align: 'center',
-                        render: (it) => (
+            {/* Classic Transfer Items Table */}
+            <div className="border border-slate-200 rounded-lg overflow-hidden awlad-table-scroll max-h-56 overflow-y-auto">
+              <table className="w-full text-start text-xs">
+                <thead className="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold">
+                  <tr>
+                    <th className="p-2 w-10 text-center">#</th>
+                    <th className="p-2">{t('الصنف', 'Item')}</th>
+                    <th className="p-2 text-center">{t('الوحدة', 'Unit')}</th>
+                    <th className="p-2 text-center">{t('المتاح بالوجهة', 'Available')}</th>
+                    <th className="p-2 text-center w-28">{t('الكمية المطلوبة', 'Requested Qty')}</th>
+                    <th className="p-2 text-center">{t('العجز', 'Shortage')}</th>
+                    <th className="p-2 text-center w-12">{t('حذف', 'Del')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {selectedItemsForReq.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="p-5 text-center text-slate-400 font-semibold">
+                        {t('لم يتم إضافة أصناف للتحويل بعد', 'No items added to transfer yet')}
+                      </td>
+                    </tr>
+                  ) : (
+                    selectedItemsForReq.map((item, idx) => (
+                      <tr key={`${item.productId}-${item.unit}-${idx}`} className="hover:bg-slate-50/80">
+                        <td className="p-2 text-center font-mono text-slate-500">{formatLocaleNumber(idx + 1)}</td>
+                        <td className="p-2 font-bold text-slate-800">{item.productName}</td>
+                        <td className="p-2 text-center text-slate-600 font-semibold">{t(item.unit)}</td>
+                        <td className="p-2 text-center font-mono text-slate-600">{formatLocaleNumber(item.availableInVanQty)}</td>
+                        <td className="p-2 text-center">
+                          <QuantityInput
+                            allowDecimals
+                            min={0.001}
+                            value={item.requestedQty}
+                            onChange={(q) => handleUpdateReqRowQty(idx, q)}
+                            ariaLabel={`${t('كمية', 'Qty')} ${item.productName}`}
+                            inputClassName="w-24 h-7 px-1.5 rounded border border-slate-300 text-center font-mono font-bold bg-white"
+                          />
+                        </td>
+                        <td className="p-2 text-center font-mono font-black text-red-600">{formatLocaleNumber(item.shortageQty)}</td>
+                        <td className="p-2 text-center">
                           <button
                             type="button"
-                            onClick={() => handleRemoveItemFromReq(it._idx)}
-                            className="text-red-500 hover:text-red-700 font-bold cursor-pointer"
+                            onClick={() => handleRemoveItemFromReq(idx)}
+                            className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded cursor-pointer"
+                            title={t('حذف', 'Delete')}
                           >
-                            ✕
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
-                        ),
-                      },
-                    ]}
-                  />
-                </div>
-              )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
 
             <div>
-              <label className="block font-bold mb-1">{t('ملاحظات الطلب:', 'Request Notes:')}</label>
-              <textarea
-                rows={2}
+              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('ملاحظات التحويل:', 'Transfer Notes:')}</label>
+              <input
+                type="text"
                 value={itemReqNotes}
                 onChange={(e) => setItemReqNotes(e.target.value)}
-                placeholder={t('أسباب طلب العهدة أو مواعيد التسليم...', 'Reasons for custody request or delivery schedule...')}
-                className="w-full px-2.5 py-1.5 rounded-md border border-slate-300"
+                placeholder={t('ملاحظات إضافية على إذن التحويل المخزني...', 'Optional notes for stock transfer...')}
+                className="w-full h-8 px-2 rounded-md border border-slate-300 bg-white text-xs"
               />
             </div>
 
-            <div className="flex justify-end gap-2 pt-2.5 border-t">
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
               <button
                 type="button"
                 onClick={() => setIsNewItemReqModalOpen(false)}
-                className="h-8 px-3 rounded-md border border-slate-300 text-slate-600 font-bold cursor-pointer"
+                className="h-8 px-3 rounded-md border border-slate-300 bg-white text-slate-700 font-bold text-xs cursor-pointer"
               >
                 {t('إلغاء', 'Cancel')}
               </button>
               <button
                 type="submit"
                 disabled={isSubmittingItemReq || selectedItemsForReq.length === 0}
-                className="h-8 px-3.5 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-black cursor-pointer disabled:opacity-50"
+                className="h-8 px-4 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white font-black text-xs cursor-pointer disabled:opacity-50"
               >
-                {isSubmittingItemReq ? t('جاري الإرسال...', 'Submitting...') : t('إرسال طلب التحويل للإدارة', 'Submit Transfer Request')}
+                {isSubmittingItemReq
+                  ? t('جاري الإرسال...', 'Submitting...')
+                  : itemReqTransferMode === 'rep_to_rep'
+                  ? t('شحن التحويل بين المناديب', 'Dispatch Rep-to-Rep Transfer')
+                  : itemReqTransferMode === 'custody_dispatch' && itemReqAutoDispatch
+                  ? t('اعتماد وصرف العهدة للمندوب', 'Approve & Dispatch Custody to Rep')
+                  : t('إرسال طلب التحويل المخزني', 'Submit Stock Transfer Request')}
               </button>
             </div>
           </form>
@@ -2630,7 +2825,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
             {!editingRep && (
               <>
                 <div>
-                  <label className="block font-bold mb-1">{t('رصيد العهدة الافتتاحي', 'Opening Custody Balance')} ({settings.currency}):</label>
+                  <label className="block font-bold mb-1">{t('رصيد العهدة الافتتاحي', 'Opening Custody Balance')} ({t(settings.currency)}):</label>
                   <input
                     type="number"
                     placeholder="0.00"
@@ -2728,7 +2923,7 @@ export const RepTransferView: React.FC<RepTransferViewProps> = ({
               <div>
                 <span className="block text-slate-500">{t('المبلغ المحول:', 'Transferred Amount:')}</span>
                 <span className="text-sm font-black text-blue-950 font-mono">
-                  {formatLocaleNumber(activeTransferForAudit.amount)} {settings.currency}
+                  {formatLocaleNumber(activeTransferForAudit.amount)} {t(settings.currency)}
                 </span>
               </div>
               <div>{getStatusBadge(activeTransferForAudit.status)}</div>
