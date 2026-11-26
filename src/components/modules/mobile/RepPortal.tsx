@@ -35,7 +35,7 @@ import { getCurrentLocationSafe, isNativeCapacitor, parseLatLngCoords, reverseGe
 import { QuantityInput } from '../../common/QuantityInput';
 import { computeLineTotal } from '../../../utils/quantity';
 import { compressImageFileToDataUrl } from '../../../utils/image';
-import { RefreshSyncScreen } from './RefreshSyncScreen';
+import { MobileSendReceiveScreen } from './MobileSendReceiveScreen';
 import { UnifiedDataTable } from '../../common/UnifiedDataTable';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import { ProductSearchSelect } from '../../common/ProductSearchSelect';
@@ -3497,7 +3497,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     // Row 4
     {
       key: 'refresh',
-      label: 'تحديث ومزامنة',
+      label: 'إرسال واستلام',
       iconNode: <RefreshCloudIcon className="w-11 h-11" />,
       allowed: true,
       tone: 'bg-white text-slate-900 border-blue-200 hover:border-blue-400',
@@ -3617,7 +3617,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   return (
     <div className="space-y-2">
       {/* Slim Sub-page Return Bar (Primary tabs are navigated via fixed bottom bar) */}
-      {!['home', 'cash', 'more', 'customers', 'new-invoice'].includes(activeTab) && (
+      {!['home', 'cash', 'more', 'customers', 'new-invoice', 'refresh'].includes(activeTab) && (
         <div className="bg-white rounded-lg border border-slate-200 px-2.5 py-1.5 flex items-center justify-between gap-2 text-xs">
           <button
             type="button"
@@ -3663,7 +3663,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               : activeTab === 'rep-reports'
               ? 'تقارير المندوب'
               : activeTab === 'refresh'
-              ? 'المزامنة السحابية'
+              ? 'إرسال واستلام'
               : activeTab === 'cheques-installments'
               ? 'الشيكات والأقساط'
               : ''}
@@ -3777,7 +3777,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       onClick={() => onTabChange('refresh')}
                       className="px-2 py-1 rounded-md bg-amber-50 border border-amber-200 text-amber-950 flex items-center justify-between gap-2 text-[11px] font-bold cursor-pointer hover:bg-amber-100"
                     >
-                      <span>عمليات محلية بانتظار الإرسال عبر REFRESH ({data.pendingSyncCount})</span>
+                      <span>عمليات محلية بانتظار الإرسال ({data.pendingSyncCount})</span>
                       <ChevronLeft className="w-3.5 h-3.5 shrink-0" />
                     </button>
                   )}
@@ -3785,20 +3785,23 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               </div>
             )}
 
-            {/* Permanent Compact Send & Receive (REFRESH) Entry */}
+            {/* Permanent Compact Send & Receive Entry */}
             <div className="pt-1.5 border-t border-slate-100 dark:border-[#21375C] flex flex-wrap items-center justify-between gap-1.5">
               <button
                 type="button"
                 data-testid="rep-home-refresh-btn"
                 onClick={() => onTabChange('refresh')}
-                className="flex-1 min-w-[200px] h-8 px-2.5 rounded-md bg-[#011E58] hover:bg-[#003589] text-white text-[11px] font-black flex items-center justify-between gap-2 cursor-pointer"
+                className="flex-1 min-w-[200px] min-h-[38px] px-2.5 py-1.5 rounded-md bg-[#011E58] hover:bg-[#003589] text-white text-[11px] font-black flex items-center justify-between gap-2 cursor-pointer"
               >
                 <span className="flex items-center gap-1.5">
-                  <RefreshCw className="w-3.5 h-3.5 shrink-0" />
-                  <span>مركز الإرسال والاستلام (REFRESH)</span>
+                  <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${data.isMandatorySending ? 'animate-spin' : ''}`} />
+                  <span>إرسال واستلام</span>
                 </span>
                 <span className="font-mono text-[10px] bg-white/15 px-1.5 py-0.5 rounded tabular-nums">
-                  إرسال: {data.pendingSyncCount} · استلام: {pendingCustodyDispatches.length + pendingCashReceipts.length}
+                  معلق: {data.pendingSyncCount} · استلام: {pendingCustodyDispatches.length + pendingCashReceipts.length}
+                  {data.mandatorySendEnabled
+                    ? ` · ${String(Math.floor(data.mandatorySendRemainingSeconds / 60)).padStart(2, '0')}:${String(data.mandatorySendRemainingSeconds % 60).padStart(2, '0')}`
+                    : ''}
                 </span>
               </button>
             </div>
@@ -4113,7 +4116,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
               { key: 'purchase-returns-list' as RepTabKey, label: isRepRoleAccount ? 'طلبات ومرتجعات الشراء' : 'مرتجع الشراء', Icon: PurchaseReturnIcon, allowed: canCreatePurchase },
               { key: 'orders' as RepTabKey, label: 'الطلبات والتسليمات', Icon: OrdersClipboardIcon, allowed: canSales },
               { key: 'new-quote' as RepTabKey, label: 'عروض الأسعار', Icon: PriceQuoteIcon, allowed: canSales },
-              { key: 'refresh' as RepTabKey, label: 'REFRESH · الإرسال والاستلام', Icon: RefreshCloudIcon, allowed: true },
+              { key: 'refresh' as RepTabKey, label: 'إرسال واستلام', Icon: RefreshCloudIcon, allowed: true },
             ].map((item) => {
               const ItemIcon = item.Icon;
               return (
@@ -4353,8 +4356,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         </div>
       )}
 
-      {/* ==================== REFRESH SCREEN ==================== */}
-      {activeTab === 'refresh' && <RefreshSyncScreen onBack={() => onTabChange('home')} />}
+      {/* ==================== MOBILE SEND & RECEIVE SCREEN ==================== */}
+      {activeTab === 'refresh' && <MobileSendReceiveScreen onBack={() => onTabChange('home')} />}
 
       {/* ==================== ALLOWED CUSTOMERS LIST (Compact Actions, Collapsible KPI Strip & Table) ==================== */}
       {activeTab === 'customers' && (

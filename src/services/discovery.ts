@@ -5,6 +5,7 @@ import {
   getFallbackEndpoints,
   getStoredConnectionProfiles,
   isLocalOrIpHost,
+  isLoopbackServerHost,
   normalizeServerUrl,
   resolveModeEndpointUrl,
   saveFallbackEndpoints,
@@ -159,6 +160,7 @@ export function parsePairingInput(rawInput: string): ParsedPairingInput | null {
 async function probeDiscoveryEndpoint(url: string, timeoutMs = 2000): Promise<DiscoveredServerCandidate | null> {
   const cleanUrl = normalizeServerUrl(url);
   if (!cleanUrl) return null;
+  if (isNativeCapacitor() && isLoopbackServerHost(cleanUrl)) return null;
   const profiles = getStoredConnectionProfiles();
   if (!isSafeEndpointForCurrentPolicy(cleanUrl, profiles)) return null;
 
@@ -206,17 +208,22 @@ export async function discoverServerCandidates(): Promise<DiscoveredServerCandid
     if (normalized) candidates.add(normalized);
   }
 
-  if (typeof window !== 'undefined' && window.location?.origin && /^https?:\/\//i.test(window.location.origin)) {
+  const nativeCap = isNativeCapacitor();
+  if (!nativeCap && typeof window !== 'undefined' && window.location?.origin && /^https?:\/\//i.test(window.location.origin)) {
     candidates.add(normalizeServerUrl(window.location.origin));
   }
 
   // Standard local ports/hosts for Capacitor & Desktop
   candidates.add('http://192.168.1.100:3000');
   candidates.add('http://10.0.2.2:3000');
-  candidates.add('http://127.0.0.1:3000');
-  candidates.add('http://localhost:3000');
+  if (!nativeCap) {
+    candidates.add('http://127.0.0.1:3000');
+    candidates.add('http://localhost:3000');
+  }
 
-  const uniqueUrls = Array.from(candidates).filter(Boolean);
+  const uniqueUrls = Array.from(candidates).filter(
+    (u) => Boolean(u) && (!nativeCap || !isLoopbackServerHost(u))
+  );
   const settled = await Promise.all(uniqueUrls.map((u) => probeDiscoveryEndpoint(u, 2000)));
   const foundMap = new Map<string, DiscoveredServerCandidate>();
 

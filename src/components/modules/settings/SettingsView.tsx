@@ -205,10 +205,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
     requireOrderApproval: true,
   });
 
-  const [onlineSyncConfig, setOnlineSyncConfig] = useState(extra.onlineSyncConfig || {
+  const [onlineSyncConfig, setOnlineSyncConfig] = useState({
     autoSyncEnabled: true,
     syncIntervalSeconds: 30,
+    mandatorySendEnabled: true,
+    mandatorySendIntervalMinutes: 15,
     cloudEndpointUrl: serverSettings?.apiBaseUrl || '',
+    ...(extra.onlineSyncConfig || {}),
   });
 
   const [servicesConfig, setServicesConfig] = useState(extra.servicesConfig || {
@@ -226,7 +229,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
       if (settings.extraSettings.printers) setPrinters(settings.extraSettings.printers);
       if (settings.extraSettings.invoiceTemplate) setInvoiceTemplate(settings.extraSettings.invoiceTemplate);
       if (settings.extraSettings.mobileConfig) setMobileConfig(settings.extraSettings.mobileConfig);
-      if (settings.extraSettings.onlineSyncConfig) setOnlineSyncConfig(settings.extraSettings.onlineSyncConfig);
+      if (settings.extraSettings.onlineSyncConfig) {
+        setOnlineSyncConfig((prev) => ({
+          ...prev,
+          mandatorySendEnabled: true,
+          mandatorySendIntervalMinutes: 15,
+          ...settings.extraSettings!.onlineSyncConfig,
+        }));
+      }
       if (settings.extraSettings.servicesConfig) setServicesConfig(settings.extraSettings.servicesConfig);
     }
   }, [settings]);
@@ -2822,11 +2832,40 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
               <label className="block text-[11px] font-bold mb-0.5">فاصل المزامنة (بالثواني):</label>
               <input type="number" min="10" value={onlineSyncConfig.syncIntervalSeconds} onChange={(e) => setOnlineSyncConfig({ ...onlineSyncConfig, syncIntervalSeconds: Number(e.target.value) })} className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono font-bold" />
             </div>
+            <label className="flex items-center gap-2 p-2 bg-blue-50/70 rounded-md border border-blue-200 cursor-pointer self-end h-8">
+              <input
+                type="checkbox"
+                data-testid="mandatory-send-enabled-checkbox"
+                checked={onlineSyncConfig.mandatorySendEnabled !== false}
+                onChange={(e) => setOnlineSyncConfig({ ...onlineSyncConfig, mandatorySendEnabled: e.target.checked })}
+              />
+              <span className="font-bold text-blue-950">تفعيل الإرسال الإجباري التلقائي للموبايل</span>
+            </label>
+            <div>
+              <label className="block text-[11px] font-bold mb-0.5">مدة الإرسال الإجباري التلقائي (بالدقائق):</label>
+              <input
+                type="number"
+                min="1"
+                max="1440"
+                data-testid="mandatory-send-interval-input"
+                value={onlineSyncConfig.mandatorySendIntervalMinutes ?? 15}
+                onChange={(e) =>
+                  setOnlineSyncConfig({
+                    ...onlineSyncConfig,
+                    mandatorySendIntervalMinutes: Math.max(1, Math.min(1440, Math.round(Number(e.target.value) || 1))),
+                  })
+                }
+                className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono font-bold"
+              />
+            </div>
             <div className="sm:col-span-2">
               <label className="block text-[11px] font-bold mb-0.5">رابط السيرفر البعيد / السحابي (اختياري):</label>
               <input type="text" placeholder="http://192.168.1.100:3000" value={onlineSyncConfig.cloudEndpointUrl || ''} onChange={(e) => setOnlineSyncConfig({ ...onlineSyncConfig, cloudEndpointUrl: e.target.value })} className="w-full h-8 border border-slate-300 rounded-md px-2.5 font-mono" />
             </div>
           </div>
+          <p className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded-md px-2.5 py-1.5">
+            ملاحظة: يتم مزامنة مدة الإرسال الإجباري تلقائيًا مع تطبيقات Android وiOS لتشغيل العداد التنازلي وإرسال العمليات المعلقة دون تكرار أو فقدان عند انقطاع الشبكة.
+          </p>
           <div className="flex justify-end gap-1.5">
             <button
               type="button"
@@ -2837,7 +2876,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'genera
             </button>
             <button
               type="button"
-              onClick={() => persistExtraSettings({ onlineSyncConfig }, 'تم حفظ إعدادات المزامنة بنجاح.')}
+              onClick={() =>
+                persistExtraSettings(
+                  {
+                    onlineSyncConfig: {
+                      ...onlineSyncConfig,
+                      mandatorySendEnabled: onlineSyncConfig.mandatorySendEnabled !== false,
+                      mandatorySendIntervalMinutes: Math.max(
+                        1,
+                        Math.min(1440, Math.round(Number(onlineSyncConfig.mandatorySendIntervalMinutes) || 15))
+                      ),
+                    },
+                  },
+                  'تم حفظ إعدادات المزامنة والإرسال الإجباري بنجاح.'
+                )
+              }
               className="px-4 py-1.5 bg-[#003589] hover:bg-[#0049B0] text-white rounded-md font-black cursor-pointer flex items-center gap-1.5"
             >
               <Save className="w-3.5 h-3.5" />

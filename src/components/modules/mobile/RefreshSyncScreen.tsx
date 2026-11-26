@@ -19,6 +19,7 @@ import {
 import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
 import { fetchDispatchBatchDetails } from '../../../services/api';
+import { formatCountdownMmSs } from '../../../services/syncEngine';
 import { UnifiedColumn, UnifiedDataTable } from '../../common/UnifiedDataTable';
 import { AuditLogItem, SyncDispatchBatch, SyncDispatchBatchDocSummaryItem, SyncDispatchBatchStatus, SyncQueueItem } from '../../../types';
 
@@ -1135,17 +1136,17 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 flex-wrap">
+        <div className="flex items-center gap-1.5 flex-wrap w-full sm:w-auto">
           <button
             type="button"
             data-testid="refresh-send-btn"
-            disabled={isSending}
+            disabled={isSending || data.isMandatorySending}
             onClick={handleTopSendToServer}
-            className="h-8 px-3 rounded-md bg-[#003589] hover:bg-[#011E58] dark:bg-[#1659C8] dark:hover:bg-[#1D63D8] text-white text-xs font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap shadow-xs"
+            className="flex-1 sm:flex-initial min-h-[42px] sm:min-h-0 sm:h-8 px-3 rounded-md bg-[#003589] hover:bg-[#011E58] dark:bg-[#1659C8] dark:hover:bg-[#1D63D8] text-white text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap shadow-xs"
           >
-            <ArrowUpFromLine className="w-3.5 h-3.5" />
+            <ArrowUpFromLine className="w-4 h-4 sm:w-3.5 sm:h-3.5 shrink-0" />
             <span>
-              {isSending
+              {isSending || data.isMandatorySending
                 ? 'جاري الإرسال...'
                 : kpiStats.readyToSend > 0
                 ? `إرسال (${kpiStats.readyToSend})`
@@ -1157,9 +1158,9 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
             data-testid="refresh-receive-btn"
             disabled={isReceiving}
             onClick={handleReceiveSyncNow}
-            className="h-8 px-3 rounded-md bg-[#011E58] hover:bg-[#001A49] dark:bg-[#132952] dark:hover:bg-[#1B3A70] dark:border dark:border-[#2E4F86] text-white text-xs font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap shadow-xs"
+            className="flex-1 sm:flex-initial min-h-[42px] sm:min-h-0 sm:h-8 px-3 rounded-md bg-[#011E58] hover:bg-[#001A49] dark:bg-[#132952] dark:hover:bg-[#1B3A70] dark:border dark:border-[#2E4F86] text-white text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap shadow-xs"
           >
-            <ArrowDownToLine className="w-3.5 h-3.5" />
+            <ArrowDownToLine className="w-4 h-4 sm:w-3.5 sm:h-3.5 shrink-0" />
             <span>
               {isReceiving
                 ? 'جاري الاستلام...'
@@ -1172,13 +1173,158 @@ export const RefreshSyncScreen: React.FC<RefreshSyncScreenProps> = ({ onBack }) 
             <button
               type="button"
               onClick={onBack}
-              className="h-8 px-2.5 rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-[#132544] dark:hover:bg-[#1A3158] text-slate-800 dark:text-[#EEF4FC] text-xs font-bold cursor-pointer whitespace-nowrap"
+              className="min-h-[42px] sm:min-h-0 sm:h-8 px-2.5 rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-[#132544] dark:hover:bg-[#1A3158] text-slate-800 dark:text-[#EEF4FC] text-xs font-bold cursor-pointer whitespace-nowrap"
             >
               رجوع
             </button>
           )}
         </div>
       </div>
+
+      {/* Dedicated Mobile & Tablet Send / Receive Operational Panel (Last Send, Pending Ops, Last Receive, Mandatory Countdown & Progress) */}
+      <div
+        data-testid="mobile-send-receive-panel"
+        className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-slate-200 dark:bg-[#21375C] border border-slate-200 dark:border-[#21375C] rounded-lg overflow-hidden"
+      >
+        <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-2 flex flex-col justify-between gap-1" data-testid="sync-last-send">
+          <div className="flex items-center justify-between gap-1 text-[11px] font-bold text-slate-500 dark:text-[#8DA2C5]">
+            <span>آخر إرسال</span>
+            <ArrowUpFromLine className="w-3.5 h-3.5 text-[#003589] dark:text-[#85B8FF] shrink-0" />
+          </div>
+          <div className="text-xs font-black text-slate-900 dark:text-[#EEF4FC] font-mono tabular-nums leading-snug">
+            {data.lastSendSummary?.at ? formatDateTimeAr(data.lastSendSummary.at) : 'لم يتم الإرسال بعد'}
+          </div>
+          <div className="text-[10px] font-bold">
+            {data.lastSendSummary?.ok === false && data.lastSendSummary?.error ? (
+              <span className="text-red-700 dark:text-red-400">
+                آخر محاولة تعذرت · العمليات محفوظة محلياً
+              </span>
+            ) : data.lastSendSummary?.at ? (
+              <span className="text-emerald-800 dark:text-emerald-400">
+                تم إرسال ({data.lastSendSummary.count || 0}) عملية بنجاح
+              </span>
+            ) : (
+              <span className="text-slate-500 dark:text-[#8DA2C5]">في انتظار أول عملية إرسال</span>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-2 flex flex-col justify-between gap-1" data-testid="sync-pending-ops-count">
+          <div className="flex items-center justify-between gap-1 text-[11px] font-bold text-slate-500 dark:text-[#8DA2C5]">
+            <span>عدد العمليات المعلقة</span>
+            <Clock className={`w-3.5 h-3.5 shrink-0 ${unsentQueueOps.length > 0 ? 'text-amber-600' : 'text-emerald-700'}`} />
+          </div>
+          <div
+            className={`text-base font-black font-mono tabular-nums leading-tight ${
+              unsentQueueOps.length > 0
+                ? 'text-amber-800 dark:text-amber-300'
+                : 'text-emerald-800 dark:text-emerald-400'
+            }`}
+          >
+            {unsentQueueOps.length}
+          </div>
+          <div className="text-[10px] font-bold text-slate-600 dark:text-[#97AECE]">
+            {unsentQueueOps.length > 0
+              ? 'فواتير / تحصيلات / عمليات بانتظار الإرسال'
+              : 'كافة العمليات متزامنة'}
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-2 flex flex-col justify-between gap-1" data-testid="sync-last-receive">
+          <div className="flex items-center justify-between gap-1 text-[11px] font-bold text-slate-500 dark:text-[#8DA2C5]">
+            <span>آخر استلام</span>
+            <ArrowDownToLine className="w-3.5 h-3.5 text-[#011E58] dark:text-[#85B8FF] shrink-0" />
+          </div>
+          <div className="text-xs font-black text-slate-900 dark:text-[#EEF4FC] font-mono tabular-nums leading-snug">
+            {data.lastReceiveSummary?.at ? formatDateTimeAr(data.lastReceiveSummary.at) : 'لم يتم الاستلام بعد'}
+          </div>
+          <div className="text-[10px] font-bold">
+            {data.lastReceiveSummary?.ok === false && data.lastReceiveSummary?.error ? (
+              <span className="text-red-700 dark:text-red-400">تعذر التحديث الأخير — أعد المحاولة</span>
+            ) : data.lastReceiveSummary?.at ? (
+              <span className="text-[#003589] dark:text-[#85B8FF]">
+                تم تحديث ({data.lastReceiveSummary.count || 0}) سجل
+              </span>
+            ) : (
+              <span className="text-slate-500 dark:text-[#8DA2C5]">اضغط استلام لجلب التحديثات</span>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-white dark:bg-[#0E1C36] px-2.5 py-2 flex flex-col justify-between gap-1" data-testid="sync-mandatory-countdown">
+          <div className="flex items-center justify-between gap-1 text-[11px] font-bold text-slate-500 dark:text-[#8DA2C5]">
+            <span>الإرسال الإجباري بعد</span>
+            <span className="text-[10px] font-mono text-slate-500 dark:text-[#8DA2C5]">
+              كل {data.mandatorySendIntervalMinutes} د
+            </span>
+          </div>
+          <div className="text-base font-black text-[#011E58] dark:text-[#85B8FF] font-mono tabular-nums leading-tight" dir="ltr">
+            {data.isMandatorySending
+              ? 'جاري...'
+              : data.mandatorySendEnabled
+              ? formatCountdownMmSs(data.mandatorySendRemainingSeconds)
+              : 'متوقف'}
+          </div>
+          <div className="text-[10px] font-bold">
+            {data.isMandatorySendPendingRetry ? (
+              <span className="text-amber-700 dark:text-amber-300">
+                في انتظار عودة الاتصال للإرسال
+              </span>
+            ) : !data.mandatorySendEnabled ? (
+              <span className="text-slate-500 dark:text-[#8DA2C5]">معطل من إعدادات الإدارة</span>
+            ) : data.isMandatorySending ? (
+              <span className="text-[#003589] dark:text-[#85B8FF]">جاري تنفيذ الإرسال التلقائي...</span>
+            ) : (
+              <span className="text-slate-600 dark:text-[#97AECE]">يعمل تلقائياً بدون تداخل</span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Live Progress Bar Indicator for Send or Receive */}
+      {(isSending || data.isMandatorySending || data.sendProgressPercent > 0 || isReceiving || data.receiveProgressPercent > 0) && (
+        <div
+          data-testid="sync-progress-bar"
+          className="bg-white dark:bg-[#0E1C36] rounded-lg border border-[#DCE6F5] dark:border-[#2C4775] px-3 py-2 space-y-1.5"
+        >
+          {(isSending || data.isMandatorySending || data.sendProgressPercent > 0) && (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between gap-2 text-[11px] font-bold">
+                <span className="text-[#003589] dark:text-[#85B8FF]">
+                  {data.sendProgressStage || 'جاري إرسال العمليات...'}
+                </span>
+                <span className="font-mono font-black text-[#011E58] dark:text-[#EEF4FC] tabular-nums">
+                  {Math.max(5, data.sendProgressPercent || (isSending ? 35 : 0))}%
+                </span>
+              </div>
+              <div className="w-full h-2 rounded-full bg-slate-100 dark:bg-[#132544] overflow-hidden">
+                <div
+                  className="h-full bg-[#003589] dark:bg-[#1659C8] transition-all duration-200"
+                  style={{ width: `${Math.max(5, Math.min(100, data.sendProgressPercent || (isSending ? 35 : 0)))}%` }}
+                />
+              </div>
+            </div>
+          )}
+          {(isReceiving || data.receiveProgressPercent > 0) && (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between gap-2 text-[11px] font-bold">
+                <span className="text-[#011E58] dark:text-[#85B8FF]">
+                  {data.receiveProgressStage || 'جاري استلام التحديثات...'}
+                </span>
+                <span className="font-mono font-black text-[#011E58] dark:text-[#EEF4FC] tabular-nums">
+                  {Math.max(5, data.receiveProgressPercent || (isReceiving ? 35 : 0))}%
+                </span>
+              </div>
+              <div className="w-full h-2 rounded-full bg-slate-100 dark:bg-[#132544] overflow-hidden">
+                <div
+                  className="h-full bg-[#011E58] dark:bg-[#2F6FE4] transition-all duration-200"
+                  style={{ width: `${Math.max(5, Math.min(100, data.receiveProgressPercent || (isReceiving ? 35 : 0)))}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {actionMsg && (
         <div

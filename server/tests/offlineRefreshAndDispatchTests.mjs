@@ -146,7 +146,7 @@ await test('Scenarios 1–5 & 7-Client: Offline Auth, LocalDB persistence, Immed
   for (const line of output.trim().split('\n')) {
     if (line.trim()) console.log(`    ${line}`);
   }
-  assert.match(output, /Client offline sub-suite finished: 6 passed/);
+  assert.match(output, /Client offline sub-suite finished: 7 passed/);
 });
 
 // -----------------------------------------------------------------------------

@@ -239,6 +239,16 @@ function isPrivateOrLoopbackIpv4(host: string): boolean {
   return false;
 }
 
+export function isLoopbackServerHost(hostOrUrl: string): boolean {
+  const cleanHost = String(hostOrUrl || '')
+    .replace(/^https?:\/\//i, '')
+    .split('/')[0]
+    .split(':')[0]
+    .trim()
+    .toLowerCase();
+  return cleanHost === 'localhost' || cleanHost === '127.0.0.1' || cleanHost === '::1';
+}
+
 export function isLocalOrIpHost(hostOrUrl: string): boolean {
   const cleanHost = hostOrUrl
     .replace(/^https?:\/\//i, '')
@@ -453,6 +463,13 @@ export function validateConnectionUrl(
       };
     }
   }
+  if (isNativeCapacitor() && isLoopbackServerHost(parsed.hostname)) {
+    return {
+      valid: false,
+      normalizedUrl,
+      error: 'عنوان localhost أو 127.0.0.1 يشير إلى الهاتف نفسه. أدخل عنوان IP اللابتوب على شبكة Wi-Fi (مثل 192.168.1.100:3000) أو 10.0.2.2 لمحاكي أندرويد.',
+    };
+  }
   if (mode !== 'local_network') {
     if (enforceHttpsForRemote && parsed.protocol !== 'https:') {
       return {
@@ -641,20 +658,27 @@ export function saveStoredTokens(tokens: StoredTokens | null): void {
 }
 
 export function getConfiguredApiBaseUrl(): string {
+  const nativeCap = isNativeCapacitor();
   try {
     const custom = localStorage.getItem(SERVER_URL_KEY)?.trim() || '';
     if (custom) {
-      return normalizeServerUrl(custom);
+      const normalized = normalizeServerUrl(custom);
+      if (!nativeCap || !isLoopbackServerHost(normalized)) {
+        return normalized;
+      }
     }
   } catch {
     // ignore
   }
   const envBase = (import.meta as any).env?.VITE_API_BASE_URL;
   if (typeof envBase === 'string' && envBase.trim()) {
-    return normalizeServerUrl(envBase);
+    const normalizedEnv = normalizeServerUrl(envBase);
+    if (!nativeCap || !isLoopbackServerHost(normalizedEnv)) {
+      return normalizedEnv;
+    }
   }
   // Inside native Capacitor shell there is no same-origin Express backend on capacitor://localhost
-  if (isNativeCapacitor()) {
+  if (nativeCap) {
     return '';
   }
   // Same-origin by default on web / Electron

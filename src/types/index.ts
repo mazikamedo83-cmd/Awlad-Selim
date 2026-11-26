@@ -852,6 +852,8 @@ export interface ExtraSettingsConfig {
   onlineSyncConfig?: {
     autoSyncEnabled: boolean;
     syncIntervalSeconds: number;
+    mandatorySendEnabled?: boolean;
+    mandatorySendIntervalMinutes?: number;
     cloudEndpointUrl?: string;
   };
   shortcuts?: Array<{ keyCombo: string; actionLabel: string; targetPage: string }>;

@@ -15,11 +15,80 @@ export type SyncCycleMode = 'full' | 'send_only' | 'receive_only';
 
 export interface SyncRefreshSummary {
   at: string;
+  lastAttemptAt?: string;
   count: number;
   failedCount?: number;
   conflictCount?: number;
   ok: boolean;
+  isMandatory?: boolean;
   error?: string;
+}
+
+export interface SyncProgressUpdate {
+  percent: number;
+  stage: string;
+  completed?: number;
+  total?: number;
+}
+
+export const DEFAULT_MANDATORY_SEND_INTERVAL_MINUTES = 15;
+
+export function normalizeMandatorySendIntervalMinutes(value?: number | null): number {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) return DEFAULT_MANDATORY_SEND_INTERVAL_MINUTES;
+  return Math.max(1, Math.min(1440, Math.round(num)));
+}
+
+export function formatCountdownMmSs(remainingSeconds: number): string {
+  const safe = Math.max(0, Math.floor(Number(remainingSeconds) || 0));
+  const hrs = Math.floor(safe / 3600);
+  const mins = Math.floor((safe % 3600) / 60);
+  const secs = safe % 60;
+  if (hrs > 0) {
+    return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  }
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+const ARABIC_WEEKDAYS = [
+  'الأحد',
+  'الإثنين',
+  'الثلاثاء',
+  'الأربعاء',
+  'الخميس',
+  'الجمعة',
+  'السبت',
+];
+
+export interface FormattedMobileSyncTimestamp {
+  dateStr: string;
+  weekdayStr: string;
+  timeStr: string;
+  periodStr: string;
+  fullText: string;
+}
+
+export function formatMobileSyncTimestamp(iso?: string | null): FormattedMobileSyncTimestamp | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  const weekdayStr = ARABIC_WEEKDAYS[d.getDay()] || '';
+  const hours24 = d.getHours();
+  const periodStr = hours24 < 12 ? 'ص' : 'م';
+  const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
+  const mins = String(d.getMinutes()).padStart(2, '0');
+  const dateStr = `${dd}-${mm}-${yyyy}`;
+  const timeStr = `${String(hours12).padStart(2, '0')}:${mins}`;
+  return {
+    dateStr,
+    weekdayStr,
+    timeStr,
+    periodStr,
+    fullText: `${dateStr} ${weekdayStr} ${timeStr} ${periodStr}`,
+  };
 }
 
 export interface SyncCycleOutcome {
@@ -119,15 +188,65 @@ export async function getSyncRefreshStats(userId?: string): Promise<{
   };
 }
 
+async function recordSyncRefreshSummary(
+  base: 'last_send_summary' | 'last_receive_summary',
+  userId: string,
+  next: {
+    at: string;
+    count: number;
+    failedCount?: number;
+    conflictCount?: number;
+    ok: boolean;
+    isMandatory?: boolean;
+    error?: string;
+  }
+): Promise<void> {
+  const key = syncMetaKey(base, userId);
+  const prev = await localDb.getMeta<SyncRefreshSummary>(key);
+  if (next.ok) {
+    await localDb.setMeta<SyncRefreshSummary>(key, {
+      at: next.at,
+      lastAttemptAt: next.at,
+      count: next.count,
+      failedCount: next.failedCount,
+      conflictCount: next.conflictCount,
+      ok: true,
+      isMandatory: next.isMandatory,
+    });
+    return;
+  }
+  const preservedSuccessAt = prev?.at ? prev.at : '';
+  const preservedSuccessCount = prev?.at ? prev.count : 0;
+  await localDb.setMeta<SyncRefreshSummary>(key, {
+    at: preservedSuccessAt,
+    lastAttemptAt: next.at,
+    count: preservedSuccessCount,
+    failedCount: next.failedCount,
+    conflictCount: next.conflictCount,
+    ok: false,
+    isMandatory: next.isMandatory,
+    error: next.error,
+  });
+}
+
 async function executeSyncCycle(params: {
   userId: string;
   forceAll?: boolean;
   mode?: SyncCycleMode;
   includeHeldBatches?: boolean;
+  isMandatory?: boolean;
+  onProgress?: (progress: SyncProgressUpdate) => void;
 }): Promise<SyncCycleOutcome> {
-  const { userId, forceAll = false, mode = 'full', includeHeldBatches = false } = params;
+  const { userId, forceAll = false, mode = 'full', includeHeldBatches = false, isMandatory = false, onProgress } = params;
   const nowMs = Date.now();
   const queue = await localDb.listSyncQueue(userId);
+  const report = (percent: number, stage: string, completed?: number, total?: number) => {
+    try {
+      onProgress?.({ percent: Math.max(0, Math.min(100, Math.round(percent))), stage, completed, total });
+    } catch {
+      // ignore listener errors
+    }
+  };
 
   const dueOperations =
     mode === 'receive_only'
@@ -156,25 +275,50 @@ async function executeSyncCycle(params: {
       const orderedOps = [...dueOperations].sort((a, b) =>
         String(a.createdAt).localeCompare(String(b.createdAt))
       );
+      report(15, `جاري تجهيز ${orderedOps.length} عملية للإرسال...`, 0, orderedOps.length);
 
       try {
-        const pushRes = await apiRequest<{
-          ok: boolean;
-          results: Array<{
+        const chunkSize = 50;
+        const resultMap = new Map<
+          string,
+          {
             operationId: string;
             status: 'synced' | 'failed' | 'needs_review';
             error?: string;
             conflict?: SyncConflictRecord;
             conflictId?: string;
-          }>;
-        }>('/api/sync/push', {
-          method: 'POST',
-          body: { operations: orderedOps },
-        });
+          }
+        >();
 
-        const resultMap = new Map(
-          (Array.isArray(pushRes?.results) ? pushRes.results : []).map((r) => [r.operationId, r])
-        );
+        for (let offset = 0; offset < orderedOps.length; offset += chunkSize) {
+          const chunk = orderedOps.slice(offset, offset + chunkSize);
+          const pctStart = 20 + Math.round((offset / orderedOps.length) * 60);
+          report(
+            pctStart,
+            `جاري إرسال العمليات (${Math.min(offset + chunk.length, orderedOps.length)} / ${orderedOps.length})...`,
+            offset,
+            orderedOps.length
+          );
+          const pushRes = await apiRequest<{
+            ok: boolean;
+            results: Array<{
+              operationId: string;
+              status: 'synced' | 'failed' | 'needs_review';
+              error?: string;
+              conflict?: SyncConflictRecord;
+              conflictId?: string;
+            }>;
+          }>('/api/sync/push', {
+            method: 'POST',
+            body: { operations: chunk },
+          });
+
+          for (const r of Array.isArray(pushRes?.results) ? pushRes.results : []) {
+            resultMap.set(r.operationId, r);
+          }
+        }
+
+        report(85, 'جاري تأكيد الاستلام وتحديث السجل المحلي...', orderedOps.length, orderedOps.length);
 
         const updatedQueue = [...queue];
         const newConflicts: SyncConflictRecord[] = [];
@@ -191,6 +335,7 @@ async function executeSyncCycle(params: {
             updatedQueue[i] = {
               ...item,
               status: 'synced',
+              holdForDispatchBatch: false,
               lastError: undefined,
               nextRetryAt: undefined,
               updatedAt: updateTimestamp,
@@ -233,14 +378,16 @@ async function executeSyncCycle(params: {
         failedCount = updatedQueue.filter((q) => q.status === 'failed').length;
         conflictCount = updatedQueue.filter((q) => q.status === 'needs_review').length;
 
-        await localDb.setMeta<SyncRefreshSummary>(syncMetaKey('last_send_summary', userId), {
+        await recordSyncRefreshSummary('last_send_summary', userId, {
           at: updateTimestamp,
           count: syncedCount,
           failedCount,
           conflictCount,
-          ok: failedCount === 0 && conflictCount === 0,
+          ok: failedCount === 0 && conflictCount === 0 && syncedCount > 0 ? true : failedCount === 0 && conflictCount === 0,
+          isMandatory,
           error: failedCount > 0 ? 'تعذر إرسال بعض العمليات وبقيت محفوظة لإعادة المحاولة.' : undefined,
         });
+        report(100, 'اكتمل الإرسال', orderedOps.length, orderedOps.length);
         if (failedCount > 0 || newConflicts.length > 0) {
           logDiagnostic({
             category: 'sync_issue',
@@ -250,7 +397,7 @@ async function executeSyncCycle(params: {
               failedCount > 0
                 ? `فشل إرسال (${failedCount}) عملية من طابور المزامنة وبقيت محفوظة لإعادة المحاولة`
                 : `تم رصد (${newConflicts.length}) تعارض مزامنة يحتاج مراجعة`,
-            details: { pushedCount, syncedCount, failedCount, conflictCount, mode },
+            details: { pushedCount, syncedCount, failedCount, conflictCount, mode, isMandatory },
           });
         }
       } catch (err: any) {
@@ -260,7 +407,7 @@ async function executeSyncCycle(params: {
           severity: 'error',
           source: 'syncEngine.push',
           message: errMsg,
-          details: { status: err?.status, code: err?.code, pendingCount: dueOperations.length, mode },
+          details: { status: err?.status, code: err?.code, pendingCount: dueOperations.length, mode, isMandatory },
         });
         if (isAuthRevokedError(err)) {
           return {
@@ -276,12 +423,13 @@ async function executeSyncCycle(params: {
             error: err?.message,
           };
         }
-        await localDb.setMeta<SyncRefreshSummary>(syncMetaKey('last_send_summary', userId), {
+        await recordSyncRefreshSummary('last_send_summary', userId, {
           at: new Date().toISOString(),
           count: 0,
           failedCount: dueOperations.length,
           conflictCount,
           ok: false,
+          isMandatory,
           error: errMsg,
         });
         if (isUnreachableError(err)) {
@@ -293,7 +441,7 @@ async function executeSyncCycle(params: {
             syncedCount: 0,
             failedCount,
             conflictCount,
-            error: err?.message || 'الخادم غير متاح حالياً',
+            error: err?.message || 'الاتصال غير متاح حالياً — تم الاحتفاظ بالعمليات محلياً',
           };
         }
         return {
@@ -308,19 +456,22 @@ async function executeSyncCycle(params: {
         };
       }
     } else if (mode === 'send_only') {
-      // Explicit send with 0 pending ops still verifies server reachability cleanly
+      // Explicit send with 0 pending ops still verifies reachability cleanly
+      report(35, 'جاري التحقق من عدم وجود عمليات معلقة...');
       try {
         await apiRequest('/api/sync/push', {
           method: 'POST',
           body: { operations: [] },
         });
-        await localDb.setMeta<SyncRefreshSummary>(syncMetaKey('last_send_summary', userId), {
+        await recordSyncRefreshSummary('last_send_summary', userId, {
           at: new Date().toISOString(),
           count: 0,
           failedCount: 0,
           conflictCount,
           ok: true,
+          isMandatory,
         });
+        report(100, 'اكتمل الإرسال');
       } catch (err: any) {
         if (isAuthRevokedError(err)) {
           return {
@@ -344,7 +495,7 @@ async function executeSyncCycle(params: {
           syncedCount: 0,
           failedCount,
           conflictCount,
-          error: err?.message || 'تعذر الاتصال بالسيرفر',
+          error: err?.message || 'تعذر الاتصال بالنظام المركزي',
         };
       }
     }
@@ -364,8 +515,14 @@ async function executeSyncCycle(params: {
 
   // 2. Pull fresh authoritative state from server
   try {
+    if (mode === 'receive_only') {
+      report(20, 'جاري جلب التحديثات والفواتير والأرصدة...');
+    }
     const pullData = await apiRequest<any>('/api/sync/pull');
     const nowTime = pullData?.serverTime || new Date().toISOString();
+    if (mode === 'receive_only') {
+      report(70, 'جاري تحديث قاعدة البيانات المحلية دون تكرار...');
+    }
     await localDb.setMeta(syncMetaKey('last_sync_at', userId), nowTime);
 
     const serverConflicts: SyncConflictRecord[] = Array.isArray(pullData?.syncConflicts)
@@ -376,13 +533,22 @@ async function executeSyncCycle(params: {
     const unresolvedConflicts = serverConflicts.filter((c) => c.status === 'needs_review').length;
     const receivedCount =
       (Array.isArray(pullData?.products) ? pullData.products.length : 0) +
-      (Array.isArray(pullData?.repItemTransfers) ? pullData.repItemTransfers.filter((r: any) => r.status === 'executed').length : 0);
+      (Array.isArray(pullData?.customers) ? pullData.customers.length : 0) +
+      (Array.isArray(pullData?.invoices) ? pullData.invoices.length : 0) +
+      (Array.isArray(pullData?.repItemTransfers) ? pullData.repItemTransfers.length : 0) +
+      (Array.isArray(pullData?.repTransfers) ? pullData.repTransfers.length : 0) +
+      (Array.isArray(pullData?.repCustodyOperations) ? pullData.repCustodyOperations.length : 0) +
+      (Array.isArray(pullData?.syncDispatchBatches) ? pullData.syncDispatchBatches.length : 0) +
+      (Array.isArray(pullData?.customerItemOrders) ? pullData.customerItemOrders.length : 0);
 
-    await localDb.setMeta<SyncRefreshSummary>(syncMetaKey('last_receive_summary', userId), {
+    await recordSyncRefreshSummary('last_receive_summary', userId, {
       at: nowTime,
       count: receivedCount,
       ok: true,
     });
+    if (mode === 'receive_only') {
+      report(100, `تم استلام وتحديث ${receivedCount} سجل`, receivedCount, receivedCount);
+    }
 
     return {
       ok: true,
@@ -417,7 +583,7 @@ async function executeSyncCycle(params: {
         error: err?.message,
       };
     }
-    await localDb.setMeta<SyncRefreshSummary>(syncMetaKey('last_receive_summary', userId), {
+    await recordSyncRefreshSummary('last_receive_summary', userId, {
       at: new Date().toISOString(),
       count: 0,
       ok: false,
@@ -441,6 +607,8 @@ export function runSyncCycle(params: {
   forceAll?: boolean;
   mode?: SyncCycleMode;
   includeHeldBatches?: boolean;
+  isMandatory?: boolean;
+  onProgress?: (progress: SyncProgressUpdate) => void;
 }): Promise<SyncCycleOutcome> {
   const lockKey = `${params.userId}:${params.mode || 'full'}`;
   const existing = activeLocks.get(lockKey);
@@ -462,6 +630,7 @@ export async function sendDispatchBatchToServer(params: {
   recipient: DispatchRecipientOption;
   notes?: string;
   existingDraftBatch?: SyncDispatchBatch;
+  onProgress?: (progress: SyncProgressUpdate) => void;
 }): Promise<{
   ok: boolean;
   batch: SyncDispatchBatch;
@@ -478,7 +647,9 @@ export async function sendDispatchBatchToServer(params: {
     recipient,
     notes = '',
     existingDraftBatch,
+    onProgress,
   } = params;
+  onProgress?.({ percent: 15, stage: `جاري تجهيز ${selectedOperations.length} عملية للإرسال...` });
   const deviceId = getOrCreatePersistentDeviceId();
   const now = new Date().toISOString();
   const randSuffix =
@@ -599,6 +770,7 @@ export async function sendDispatchBatchToServer(params: {
 
   // Persist sending draft locally FIRST so disconnects or crashes can resume idempotently
   await localDb.putDispatchBatch(userId, sendingDraft);
+  onProgress?.({ percent: 45, stage: 'جاري إرسال العمليات...' });
 
   try {
     const res = await apiRequest<{
@@ -624,6 +796,7 @@ export async function sendDispatchBatchToServer(params: {
       },
       idempotencyKey,
     });
+    onProgress?.({ percent: 85, stage: 'جاري تأكيد الوصول وتحديث السجل المحلي...' });
 
     const serverBatch: SyncDispatchBatch = {
       ...res.batch,
@@ -677,13 +850,14 @@ export async function sendDispatchBatchToServer(params: {
     filtered.unshift(serverBatch);
     await localDb.saveDispatchBatches(userId, filtered);
 
-    await localDb.setMeta<SyncRefreshSummary>(syncMetaKey('last_send_summary', userId), {
+    await recordSyncRefreshSummary('last_send_summary', userId, {
       at: new Date().toISOString(),
       count: orderedOps.length,
       failedCount: 0,
       conflictCount: (res.opResults || []).filter((r) => r.status === 'needs_review').length,
       ok: true,
     });
+    onProgress?.({ percent: 100, stage: 'اكتمل الإرسال بنجاح' });
 
     return { ok: true, batch: serverBatch };
   } catch (err: any) {
@@ -725,7 +899,7 @@ export async function sendDispatchBatchToServer(params: {
     });
     await localDb.saveSyncQueue(userId, markedQueue);
 
-    await localDb.setMeta<SyncRefreshSummary>(syncMetaKey('last_send_summary', userId), {
+    await recordSyncRefreshSummary('last_send_summary', userId, {
       at: new Date().toISOString(),
       count: 0,
       failedCount: orderedOps.length,

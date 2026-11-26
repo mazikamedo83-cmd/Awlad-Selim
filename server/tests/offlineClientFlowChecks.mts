@@ -659,4 +659,39 @@ await test('9 (Platform Detection). Windows Desktop stays windows-desktop even o
   }
 });
 
+const { validateConnectionUrl, getConfiguredApiBaseUrl, isLoopbackServerHost } = await import('../../src/services/api.ts');
+
+await test('10 (Android LAN Guard). Native Android rejects phone localhost/127.0.0.1 and accepts laptop LAN IP', async () => {
+  const origIsNative = Capacitor.isNativePlatform;
+  const origGetPlatform = Capacitor.getPlatform;
+  const ls = (globalThis as any).localStorage;
+  const prevUrl = ls?.getItem?.('awlad_selim_server_base_url') ?? null;
+
+  try {
+    (Capacitor as any).isNativePlatform = () => true;
+    (Capacitor as any).getPlatform = () => 'android';
+
+    assert.equal(isLoopbackServerHost('http://localhost:3000'), true);
+    assert.equal(isLoopbackServerHost('127.0.0.1:3000'), true);
+    assert.equal(isLoopbackServerHost('http://192.168.1.50:3000'), false);
+
+    assert.equal(validateConnectionUrl('local_network', 'http://localhost:3000').valid, false);
+    assert.equal(validateConnectionUrl('local_network', '127.0.0.1:3000').valid, false);
+    const lanOk = validateConnectionUrl('local_network', '192.168.1.50:3000');
+    assert.equal(lanOk.valid, true);
+    assert.equal(lanOk.normalizedUrl, 'http://192.168.1.50:3000');
+
+    ls.setItem('awlad_selim_server_base_url', 'http://localhost:3000');
+    assert.equal(getConfiguredApiBaseUrl(), '', 'Android must ignore stored localhost URL');
+
+    ls.setItem('awlad_selim_server_base_url', 'http://192.168.1.50:3000');
+    assert.equal(getConfiguredApiBaseUrl(), 'http://192.168.1.50:3000');
+  } finally {
+    if (prevUrl === null) ls.removeItem('awlad_selim_server_base_url');
+    else ls.setItem('awlad_selim_server_base_url', prevUrl);
+    (Capacitor as any).isNativePlatform = origIsNative;
+    (Capacitor as any).getPlatform = origGetPlatform;
+  }
+});
+
 console.log(`Client offline sub-suite finished: ${passed} passed.`);

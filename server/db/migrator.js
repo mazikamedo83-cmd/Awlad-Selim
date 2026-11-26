@@ -109,6 +109,13 @@ export async function runDataMigration(sourceData, executedBy = 'مدير الن
     isPostgresReady = pgHealth.status === 'online';
     if (isPostgresReady) {
       dbLabel = `PostgreSQL Database (${pgHealth.databaseName})`;
+    } else if (isStrictPostgresMode()) {
+      return {
+        success: false,
+        code: 'DATABASE_UNAVAILABLE',
+        error:
+          'قاعدة البيانات المركزية PostgreSQL غير متاحة في وضع الإنتاج الصارم (Production Strict Mode). يُمنع إنشاء ملفات JSON أو لقطات ترحيل محلية.',
+      };
     }
   }
 

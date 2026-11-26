@@ -113,6 +113,19 @@ try {
       assert.ok(tableNames.has(requiredTable), `Missing PG table: ${requiredTable}`);
     }
 
+    for (const retiredTable of ['advances_deductions', 'attendance', 'payrolls']) {
+      assert.equal(tableNames.has(retiredTable), false, `Retired HR table must not exist on PG 16: ${retiredTable}`);
+    }
+    assert.ok(tableNames.has('employees'), 'employees table must be preserved');
+    assert.ok(tableNames.has('order_advance_payments'), 'customer order_advance_payments must be preserved');
+
+    const empColsRes = await pool.query(
+      `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'employees'`
+    );
+    const empCols = new Set(empColsRes.rows.map((r) => r.column_name));
+    assert.equal(empCols.has('basic_salary'), false, 'employees.basic_salary must not exist on PG 16');
+    assert.equal(empCols.has('user_id'), true, 'employees.user_id 1:1 link column must be preserved');
+
     const idxRes = await pool.query(`
       SELECT indexname FROM pg_indexes
       WHERE schemaname = 'public'

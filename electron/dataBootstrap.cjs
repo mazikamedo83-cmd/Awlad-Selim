@@ -277,6 +277,21 @@ function applyElectronRuntimeEnvironment({
     // automatically for packaged Windows builds before importing server/index.js.
     env.NODE_ENV = 'production';
     env.AWLAD_REQUIRE_POSTGRES = 'true';
+
+    if (env.ALLOW_MOBILE_LAN_HTTP === undefined) {
+      let hasExplicitLanSettingInEnvFile = false;
+      if (envFilePath && fs.existsSync(envFilePath)) {
+        try {
+          const rawEnv = fs.readFileSync(envFilePath, 'utf8');
+          hasExplicitLanSettingInEnvFile = /^\s*ALLOW_MOBILE_LAN_HTTP\s*=/m.test(rawEnv);
+        } catch {
+          hasExplicitLanSettingInEnvFile = false;
+        }
+      }
+      if (!hasExplicitLanSettingInEnvFile) {
+        env.ALLOW_MOBILE_LAN_HTTP = 'true';
+      }
+    }
   }
   if (targetDataDir) {
     env.AWLAD_DATA_DIR = targetDataDir;

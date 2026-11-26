@@ -224,6 +224,18 @@ assert.equal(simulatedMainEnv.NODE_ENV, 'production');
 assert.equal(simulatedMainEnv.AWLAD_REQUIRE_POSTGRES, 'true');
 assert.equal(simulatedMainEnv.AWLAD_ELECTRON, 'true');
 assert.equal(simulatedMainEnv.AWLAD_IS_PACKAGED, 'true');
+assert.equal(simulatedMainEnv.ALLOW_MOBILE_LAN_HTTP, 'true');
+
+const strictDisableLanEnvPath = path.join(sandbox, 'packaged_disable_lan.env');
+fs.writeFileSync(strictDisableLanEnvPath, 'ALLOW_MOBILE_LAN_HTTP=false\n', 'utf8');
+const simulatedDisabledLanEnv = {};
+applyElectronRuntimeEnvironment({
+  isPackaged: true,
+  targetDataDir: prepPackagedStrict.targetDataDir,
+  envFilePath: strictDisableLanEnvPath,
+  env: simulatedDisabledLanEnv,
+});
+assert.equal(simulatedDisabledLanEnv.ALLOW_MOBILE_LAN_HTTP, undefined, 'Explicit ALLOW_MOBILE_LAN_HTTP in .env must not be overridden');
 
 // 5a: Packaged Electron WITHOUT reachable PostgreSQL (even when NODE_ENV & AWLAD_REQUIRE_POSTGRES are omitted) MUST fail and create ZERO database.json
 const appDataStrictNoPg = path.join(sandbox, 'AppDataStrictNoPg', 'Roaming');

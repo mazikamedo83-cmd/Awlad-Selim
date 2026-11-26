@@ -36,6 +36,7 @@ import type { NavItemKey } from '../../layout/Sidebar';
 import { MobileNotificationsSheet } from './MobileNotificationsSheet';
 import { MobileServerModal } from './MobileServerModal';
 import { MobileAddProductModal } from './MobileAddProductModal';
+import { MobileSendReceiveScreen } from './MobileSendReceiveScreen';
 import { ConfirmDialog } from '../../common/ConfirmDialog';
 import {
   SalesInvoiceIcon,
@@ -264,7 +265,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         items: [
           {
             key: 'refresh-sync',
-            label: 'REFRESH · إرسال واستلام المندوبين',
+            label: 'إرسال واستلام',
             permission: ['canManageReps', 'canManageTransfers', 'canManageSales', 'canManageAccounts', 'canApprove'],
           },
           { key: 'reps', label: 'قائمة المناديب والعهد', permission: 'canManageReps' },
@@ -920,8 +921,9 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
           </div>
         )}
 
-        {/* Searchable Categorized Accordion View ("المزيد") */}
-        {isMoreViewOpen ? (
+        {!isMoreViewOpen && currentPage === 'refresh-sync' ? (
+          <MobileSendReceiveScreen onBack={() => onNavigate('dashboard')} />
+        ) : isMoreViewOpen ? (
           <section aria-label="جميع الأقسام والعمليات" className="space-y-2 no-print">
             <div className="bg-white rounded-lg border border-slate-200 p-1.5">
               <div className="relative">
