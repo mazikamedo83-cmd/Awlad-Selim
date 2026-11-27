@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { newDb } from 'pg-mem';
 
@@ -136,9 +137,10 @@ console.log('\n=== AWLAD SELIM Offline-First, Refresh Dispatch & Table Unificati
 // -----------------------------------------------------------------------------
 console.log('\n--- Part A: Client Offline-First & LocalDB Scenarios (Scenarios 1–5 & 7-Client) ---');
 await test('Scenarios 1–5 & 7-Client: Offline Auth, LocalDB persistence, Immediate Overlay, Electron/Capacitor restore & Dispatch retry', async () => {
-  const tsxBin = path.join(projectRoot, 'node_modules', '.bin', process.platform === 'win32' ? 'tsx.cmd' : 'tsx');
+  const require = createRequire(import.meta.url);
+  const tsxCliPath = require.resolve('tsx/cli');
   const helperPath = path.join(__dirname, 'offlineClientFlowChecks.mts');
-  const output = execFileSync(tsxBin, [helperPath], {
+  const output = execFileSync(process.execPath, [tsxCliPath, helperPath], {
     cwd: projectRoot,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
