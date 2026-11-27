@@ -2,6 +2,24 @@ name: AWLAD SELIM - Windows Final + Android Test Build
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'server/**'
+      - 'server.ts'
+      - 'electron/**'
+      - 'scripts/**'
+      - 'android/**'
+      - 'public/**'
+      - 'index.html'
+      - 'package.json'
+      - 'bun.lock'
+      - 'tsconfig.json'
+      - 'vite.config.ts'
+      - 'capacitor.config.ts'
+      - '.github/workflows/build-windows-and-android.yml'
 
 permissions:
   contents: read
@@ -79,6 +97,11 @@ jobs:
       - name: Run full verification test suites
         shell: pwsh
         run: |
+          $tsxCli = (node -e "import { createRequire } from 'node:module'; console.log(createRequire(import.meta.url).resolve('tsx/cli'));").Trim()
+          if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($tsxCli) -or -not (Test-Path $tsxCli)) {
+            Write-Error "Failed to resolve tsx/cli for Windows TypeScript tests"
+            exit 1
+          }
           node server/tests/runAllTests.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node server/tests/repPurchaseCustomerRbacTests.mjs
@@ -89,15 +112,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node server/tests/auditVerificationTests.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npx tsx server/tests/pairingVerificationTests.mts
+          node $tsxCli server/tests/pairingVerificationTests.mts
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node server/tests/strictPostgresModeTests.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npx tsx server/tests/strictClientBehaviorTests.mts
+          node $tsxCli server/tests/strictClientBehaviorTests.mts
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node server/tests/securityCompletionTests.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npx tsx server/tests/clientSecurityCompletionTests.mts
+          node $tsxCli server/tests/clientSecurityCompletionTests.mts
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node server/tests/fullCompletionSuite.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -117,11 +140,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node server/tests/dashboardBalanceVisibilityTests.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npx tsx server/tests/offlineClientFlowChecks.mts
+          node $tsxCli server/tests/offlineClientFlowChecks.mts
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npx tsx server/tests/diagnosticsTests.mts
+          node $tsxCli server/tests/diagnosticsTests.mts
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npx tsx server/tests/mobileSendReceiveTests.mts
+          node $tsxCli server/tests/mobileSendReceiveTests.mts
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build frontend and Windows Release EXEs (Setup & Portable)
@@ -276,16 +299,18 @@ jobs:
 
       - name: Run automated verification tests
         run: |
+          TSX_CLI=$(node -e "import { createRequire } from 'node:module'; console.log(createRequire(import.meta.url).resolve('tsx/cli'));")
+          test -f "$TSX_CLI"
           node server/tests/runAllTests.mjs
           node server/tests/repPurchaseCustomerRbacTests.mjs
           node server/tests/masterRepairVerificationTests.mjs
           node server/tests/comprehensiveReportsTests.mjs
           node server/tests/auditVerificationTests.mjs
-          npx tsx server/tests/pairingVerificationTests.mts
+          node "$TSX_CLI" server/tests/pairingVerificationTests.mts
           node server/tests/strictPostgresModeTests.mjs
-          npx tsx server/tests/strictClientBehaviorTests.mts
+          node "$TSX_CLI" server/tests/strictClientBehaviorTests.mts
           node server/tests/securityCompletionTests.mjs
-          npx tsx server/tests/clientSecurityCompletionTests.mts
+          node "$TSX_CLI" server/tests/clientSecurityCompletionTests.mts
           node server/tests/fullCompletionSuite.mjs
           node server/tests/finalSecurityAuditTests.mjs
           node server/tests/productionReadinessAuditTests.mjs
@@ -295,9 +320,9 @@ jobs:
           node server/tests/offlineRefreshAndDispatchTests.mjs
           node server/tests/platformUiCorrectionTests.mjs
           node server/tests/dashboardBalanceVisibilityTests.mjs
-          npx tsx server/tests/offlineClientFlowChecks.mts
-          npx tsx server/tests/diagnosticsTests.mts
-          npx tsx server/tests/mobileSendReceiveTests.mts
+          node "$TSX_CLI" server/tests/offlineClientFlowChecks.mts
+          node "$TSX_CLI" server/tests/diagnosticsTests.mts
+          node "$TSX_CLI" server/tests/mobileSendReceiveTests.mts
 
       - name: Build web bundle & verify asset hygiene
         run: |
@@ -347,7 +372,7 @@ jobs:
 
           echo "=== Verifying Application ID, Version & SDK Compatibility ==="
           BADGING=$("$AAPT2" dump badging "$APK_PATH")
-          echo "$BADGING" | head -n 15
+          printf '%s\n' "$BADGING" | sed -n '1,15p'
           if ! echo "$BADGING" | grep -q "package: name='com.awladselim.erp'"; then
             echo "ERROR: Unexpected Application ID! Expected com.awladselim.erp"
             exit 1
@@ -356,8 +381,17 @@ jobs:
             echo "ERROR: Expected versionName='${VERSION}' in Test APK"
             exit 1
           fi
-          if ! echo "$BADGING" | grep -q "sdkVersion:'24'"; then
+
+          MANIFEST_XML_TREE=$("$AAPT2" dump xmltree "$APK_PATH" --file AndroidManifest.xml || true)
+          MERGED_MANIFEST=$(find android/app/build/intermediates/merged_manifests android/app/build/intermediates/merged_manifest -name AndroidManifest.xml 2>/dev/null | head -n 1 || true)
+          if ! echo "$BADGING" | grep -Eq "(sdkVersion|minSdkVersion):[[:space:]]*'24'" \
+            && ! echo "$MANIFEST_XML_TREE" | grep -Eq "minSdkVersion\([^)]+\)=24\b|minSdkVersion\([^)]+\)=0x0*18\b" \
+            && ! ([ -n "$MERGED_MANIFEST" ] && grep -q 'android:minSdkVersion="24"' "$MERGED_MANIFEST"); then
             echo "ERROR: Expected minSdkVersion 24 in Test APK"
+            echo "--- aapt2 dump badging (first 30 lines) ---"
+            printf '%s\n' "$BADGING" | sed -n '1,30p'
+            echo "--- uses-sdk from AndroidManifest xmltree ---"
+            echo "$MANIFEST_XML_TREE" | grep -A 5 -i "uses-sdk" || true
             exit 1
           fi
 
@@ -366,7 +400,6 @@ jobs:
             exit 1
           fi
 
-          MERGED_MANIFEST=$(find android/app/build/intermediates/merged_manifests android/app/build/intermediates/merged_manifest -name AndroidManifest.xml 2>/dev/null | head -n 1 || true)
           if [ -n "$MERGED_MANIFEST" ] && grep -q 'android:autoVerify="true"' "$MERGED_MANIFEST"; then
             echo "ERROR: App Links autoVerify should be disabled when AWLAD_APP_LINK_HOST is unset"
             exit 1
