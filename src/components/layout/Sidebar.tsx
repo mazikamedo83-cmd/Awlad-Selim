@@ -63,7 +63,6 @@ export type NavItemKey =
   | 'installments'
   | 'reps'
   | 'rep-transfers'
-  | 'rep-item-transfers'
   | 'refresh-sync'
   | 'employees'
   | 'reports'

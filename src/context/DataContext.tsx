@@ -3024,7 +3024,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!supplierId) return {};
       try {
         const res = await fetchSupplierPriceHistoryApi(supplierId, productId);
-        return res.priceHistory || {};
+        return res.priceHistory || (res as any).history || {};
       } catch {
         // Fallback strictly from local confirmed purchase invoices, newest first
         const map: Record<string, SupplierPriceHistoryEntry[]> = {};

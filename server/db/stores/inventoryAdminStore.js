@@ -1497,7 +1497,7 @@ export async function createRepTransfer(payload, actor, idempotencyKey = '') {
       auditTrail: [auditEntry],
     };
     db.repTransfers.unshift(item);
-    saveJsonIdempotency(scopedIdem, endpoint, item);
+    saveJsonIdempotency(scopedIdem, item);
     return item;
   });
   if (!created.deduplicated) {
@@ -1707,7 +1707,7 @@ export async function confirmRepTransfer(transferId, { note = '' } = {}, actor, 
     tr.confirmedBy = actor.fullName;
     tr.auditTrail = [...(tr.auditTrail || []), { timestamp: now, action: 'تأكيد الاستلام الفعلي واعتماد القيود', user: actor.fullName, note }];
     const resPayload = { ok: true, transferId, status: 'received', direction: tr.direction, amount: Number(tr.amount || 0) };
-    saveJsonIdempotency(scopedIdem, endpoint, resPayload);
+    saveJsonIdempotency(scopedIdem, resPayload);
     return { deduplicated: false, ...resPayload };
   });
   if (!out.deduplicated) {
@@ -1780,7 +1780,7 @@ export async function rejectRepTransfer(transferId, { reason = '' } = {}, actor,
     tr.rejectionReason = cleanReason;
     tr.auditTrail = [...(tr.auditTrail || []), { timestamp: now, action: 'رفض طلب التحويل', user: actor.fullName, note: cleanReason }];
     const resPayload = { ok: true, transferId, status: 'rejected' };
-    saveJsonIdempotency(scopedIdem, endpoint, resPayload);
+    saveJsonIdempotency(scopedIdem, resPayload);
     return { deduplicated: false, ...resPayload };
   });
   if (!out.deduplicated) {
@@ -2089,7 +2089,7 @@ export async function createRepItemTransfer(payload, actor, idempotencyKey = '')
     if (await isPgMode()) {
       await withTransaction((c) => savePgIdempotency(c, scopedIdem, actor, endpoint, outObj));
     } else {
-      await withJsonTransaction(() => saveJsonIdempotency(scopedIdem, endpoint, outObj));
+      await withJsonTransaction(() => saveJsonIdempotency(scopedIdem, outObj));
     }
   }
   return outObj;
@@ -2563,7 +2563,7 @@ export async function updateRepItemTransferStatus(requestId, { status, approvedI
       if (approvedItems) req.items = approvedItems;
     }
     const resPayload = { ok: true, requestId, status };
-    saveJsonIdempotency(scopedIdem, endpoint, resPayload);
+    saveJsonIdempotency(scopedIdem, resPayload);
     return { deduplicated: false, ...resPayload };
   });
   if (!out.deduplicated) {
@@ -3013,7 +3013,7 @@ export async function getMobileNotifications(authContext) {
                 : `تحويل بضاعة معتمد بانتظار التنفيذ (${rit.requestNumber})`,
             body: `${rit.representativeName || 'مندوب'} — ${(rit.items || []).length} صنف`,
             relatedId: rit.id,
-            targetTab: 'rep-item-transfers',
+            targetTab: 'stock-transfers-orders',
             createdAt: rit.reviewedAt || rit.createdAt,
           });
         }
@@ -5578,8 +5578,8 @@ export async function addRepresentative(payload, actor) {
           const nextOpening = Math.abs(Number(cur.opening_balance || 0)) < 0.001 && Math.abs(Number(cur.current_balance || 0)) < 0.001 ? opening : Number(cur.opening_balance || 0);
           const nextCurrent = Math.abs(Number(cur.opening_balance || 0)) < 0.001 && Math.abs(Number(cur.current_balance || 0)) < 0.001 ? opening : Number(cur.current_balance || 0);
           await client.query(
-            `UPDATE representatives SET name = COALESCE(NULLIF($1, ''), name), phone = COALESCE(NULLIF($2, ''), phone), normalized_phone = COALESCE(NULLIF($3, ''), normalized_phone), vehicle_number = COALESCE(NULLIF($4, ''), vehicle_number), opening_balance = $5, current_balance = $6, commission_rate = $7, notes = COALESCE(NULLIF($8, ''), notes), status = COALESCE($9, status) WHERE id = $10`,
-            [payload.name || '', payload.phone || '', normalizePhoneDigits(payload.phone || ''), payload.vehicleNumber || '', nextOpening, nextCurrent, Number(payload.commissionRate ?? cur.commission_rate ?? 0), payload.notes || '', payload.status || cur.status || 'active', cur.id]
+            `UPDATE representatives SET name = COALESCE($1, name), phone = COALESCE($2, phone), normalized_phone = COALESCE($3, normalized_phone), vehicle_number = COALESCE($4, vehicle_number), opening_balance = $5, current_balance = $6, commission_rate = $7, notes = COALESCE($8, notes), status = COALESCE($9, status) WHERE id = $10`,
+            [payload.name || null, payload.phone || null, normalizePhoneDigits(payload.phone || '') || null, payload.vehicleNumber || null, nextOpening, nextCurrent, Number(payload.commissionRate ?? cur.commission_rate ?? 0), payload.notes || null, payload.status || cur.status || 'active', cur.id]
           );
           const idnId = await attachRecordToIdentityPgTx(client, {
             entityType: 'representative',
@@ -7628,7 +7628,8 @@ export async function getRepCustodyStatement(repIdParam, filters = {}, actor) {
   for (const rit of boot.repItemTransfers || []) {
     if (rit.representativeId !== rep.id) continue;
     custodyTransferDocIds.add(rit.id);
-    if (rit.status === 'executed' && rit.transferMode === 'custody_dispatch') {
+    const isTwoStageCustody = rit.transferMode === 'custody_dispatch' || rit.transferMode === 'rep_to_rep';
+    if (rit.status === 'executed' && isTwoStageCustody) {
       for (const it of rit.items || []) {
         const prod = productMap.get(it.productId);
         const rawQty = Number(it.executedQty ?? it.approvedQty ?? it.requestedQty ?? 0);
@@ -7637,7 +7638,7 @@ export async function getRepCustodyStatement(repIdParam, filters = {}, actor) {
         acc.pendingReceiveQty = round3(acc.pendingReceiveQty + qty);
       }
     }
-    const isReceived = rit.status === 'received' || (rit.status === 'executed' && rit.transferMode !== 'custody_dispatch');
+    const isReceived = rit.status === 'received' || (rit.status === 'executed' && !isTwoStageCustody);
     if (!isReceived) continue;
 
     for (const it of rit.items || []) {

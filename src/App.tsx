@@ -93,7 +93,6 @@ const PAGE_PERMISSIONS: Partial<Record<NavItemKey, keyof UserPermissions | Array
   'installments': 'canManageAccounts',
   'reps': 'canManageReps',
   'rep-transfers': 'canManageTransfers',
-  'rep-item-transfers': 'canManageTransfers',
   'refresh-sync': ['canManageReps', 'canManageTransfers', 'canManageSales', 'canManageAccounts', 'canApprove'],
   'employees': 'canManageEmployees',
   'reports': 'canViewReports',
@@ -528,7 +527,6 @@ const MainAppContent: React.FC = () => {
 
       case 'stock-transfers':
       case 'stock-transfers-orders':
-      case 'rep-item-transfers':
         return <InventoryView initialTab="stock-transfers" onNavigate={(page) => setCurrentPage(page)} />;
 
       case 'stock-adjustments':

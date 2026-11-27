@@ -116,7 +116,8 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
 
   const [isMoreViewOpen, setIsMoreViewOpen] = useState(false);
   const [moreSearchQuery, setMoreSearchQuery] = useState('');
-  const [collapsedSectionIds, setCollapsedSectionIds] = useState<Record<string, boolean>>({});
+  const [openSectionId, setOpenSectionId] = useState<string | null>(null);
+  const prevMobilePageRef = React.useRef<NavItemKey | null>(null);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isServerModalOpen, setIsServerModalOpen] = useState(false);
   const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
@@ -124,7 +125,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const toggleSectionCollapse = (sectionId: string) => {
-    setCollapsedSectionIds((prev) => ({ ...prev, [sectionId]: !prev[sectionId] }));
+    setOpenSectionId((prev) => (prev === sectionId ? null : sectionId));
   };
 
   const checkPerm = (perm?: keyof UserPermissions | Array<keyof UserPermissions>) => {
@@ -343,6 +344,17 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     [sections, currentUser]
   );
 
+  useEffect(() => {
+    if (prevMobilePageRef.current === currentPage) return;
+    prevMobilePageRef.current = currentPage;
+    if (currentPage === 'dashboard') {
+      setOpenSectionId(null);
+      return;
+    }
+    const owner = filteredSections.find((sec) => sec.items.some((it) => it.key === currentPage));
+    setOpenSectionId(owner ? owner.id : null);
+  }, [currentPage, filteredSections]);
+
   const getRoleArabicLabel = (role?: string) => {
     switch (role) {
       case 'admin':
@@ -370,7 +382,6 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     const allowedTargets: NavItemKey[] = [
       'customer-orders',
       'customers',
-      'rep-item-transfers',
       'rep-transfers',
       'stock-counts',
       'stock-transfers-orders',
@@ -1015,7 +1026,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
             <div className="space-y-1.5">
               {searchableSections.map((sec) => {
                 const SecIcon = sec.icon;
-                const isCollapsed = !moreSearchQuery.trim() && Boolean(collapsedSectionIds[sec.id]);
+                const isCollapsed = !moreSearchQuery.trim() && openSectionId !== sec.id;
                 return (
                   <div key={sec.id} className="bg-white rounded-lg border border-slate-200 overflow-hidden">
                     <button

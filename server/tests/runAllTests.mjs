@@ -2866,7 +2866,7 @@ async function runSuiteA_JsonLedgerHttp() {
       assert.equal(pull0.json.syncState.lastSendAt, null);
       assert.equal(pull0.json.syncState.lastReceiveAt, null);
       assert.ok(pull0.json.representatives.some((r) => r.id === rep49Id));
-      assert.ok(pull0.json.representatives.some((r) => r.id === repPeerId));
+      assert.ok(pull0.json.repTransferTargets.some((r) => r.id === repPeerId));
 
       // 3. Manual POST /api/sync/send -> valid op updates lastSendAt & deduplicates repeat; failing batch preserves lastSendAt
       const custPayOpId = `sync-op-pay-${Date.now()}`;

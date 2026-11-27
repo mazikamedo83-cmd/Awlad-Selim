@@ -2886,7 +2886,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                 options={warehouses.map((w) => ({ value: w.id, label: t(w.name), subtitle: w.code }))}
                 includeAllOption={false}
                 minSearchChars={2}
-                emptyLabel={t('اختر المستودع المصدر...', 'Select source warehouse...')}
+                placeholder={t('اختر المستودع المصدر...', 'Select source warehouse...')}
                 buttonClassName="rounded-md h-8"
               />
             </div>
@@ -2899,7 +2899,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                 options={warehouses.map((w) => ({ value: w.id, label: t(w.name), subtitle: w.code }))}
                 includeAllOption={false}
                 minSearchChars={2}
-                emptyLabel={t('اختر المستودع الوجهة...', 'Select target warehouse...')}
+                placeholder={t('اختر المستودع الوجهة...', 'Select target warehouse...')}
                 buttonClassName="rounded-md h-8"
               />
             </div>
@@ -3013,7 +3013,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               options={warehouses.map((w) => ({ value: w.id, label: t(w.name), subtitle: w.code }))}
               includeAllOption={false}
               minSearchChars={2}
-              emptyLabel={t('اختر المستودع...', 'Select warehouse...')}
+              placeholder={t('اختر المستودع...', 'Select warehouse...')}
               buttonClassName="rounded-md h-8"
             />
           </div>
@@ -3119,7 +3119,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               options={warehouses.map((w) => ({ value: w.id, label: t(w.name), subtitle: w.code }))}
               includeAllOption={false}
               minSearchChars={2}
-              emptyLabel={t('اختر المستودع...', 'Select warehouse...')}
+              placeholder={t('اختر المستودع...', 'Select warehouse...')}
               buttonClassName="rounded-md h-8"
             />
           </div>

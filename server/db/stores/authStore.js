@@ -744,9 +744,9 @@ export async function loginUser({
         ]);
         if (devRes.rows[0]) {
           await client.query(
-            `UPDATE paired_devices SET linked_user_id = $1, linked_user_name = $2, last_seen_at = $3, ip_address = COALESCE(NULLIF($4, ''), ip_address)
+            `UPDATE paired_devices SET linked_user_id = $1, linked_user_name = $2, last_seen_at = $3, ip_address = COALESCE($4, ip_address)
              WHERE device_id = $5`,
-            [userObj.id, userObj.fullName, now, ipAddress || '', cleanDeviceId]
+            [userObj.id, userObj.fullName, now, ipAddress || null, cleanDeviceId]
           );
         } else {
           const inferredType =
@@ -1299,8 +1299,8 @@ export async function registerMobileAccount(payload = {}, meta = {}) {
             }
             const nextRepPhone = phone || targetRep.phone || '';
             await client.query(
-              `UPDATE representatives SET user_id = $1, phone = COALESCE(NULLIF($2, ''), phone), normalized_phone = $3, vehicle_number = COALESCE(NULLIF($4, ''), vehicle_number), warehouse_id = $5 WHERE id = $6`,
-              [userId, phone, normalizeRegPhone(nextRepPhone) || normPhone, vehicleNumber, targetWhId, targetRep.id]
+              `UPDATE representatives SET user_id = $1, phone = COALESCE($2, phone), normalized_phone = $3, vehicle_number = COALESCE($4, vehicle_number), warehouse_id = $5 WHERE id = $6`,
+              [userId, phone || null, normalizeRegPhone(nextRepPhone) || normPhone, vehicleNumber || null, targetWhId, targetRep.id]
             );
             const refreshedRep = await client.query(`SELECT * FROM representatives WHERE id = $1 LIMIT 1`, [targetRep.id]);
             const rr = refreshedRep.rows[0];
@@ -1892,8 +1892,8 @@ export async function refreshUserSession({ refreshToken, deviceId = '', deviceIn
       }
 
       await client.query(
-        `UPDATE user_sessions SET refresh_token_hash = $1, expires_at = $2, device_info = COALESCE(NULLIF($3, ''), device_info), ip_address = COALESCE(NULLIF($4, ''), ip_address), device_id = COALESCE(NULLIF($5, ''), device_id) WHERE id = $6`,
-        [newRefreshHash, newExpires, deviceInfo, ipAddress, effectiveDeviceId, ses.id]
+        `UPDATE user_sessions SET refresh_token_hash = $1, expires_at = $2, device_info = COALESCE($3, device_info), ip_address = COALESCE($4, ip_address), device_id = COALESCE($5, device_id) WHERE id = $6`,
+        [newRefreshHash, newExpires, deviceInfo || null, ipAddress || null, effectiveDeviceId || null, ses.id]
       );
 
       const user = mapPgUserRow(userRow);

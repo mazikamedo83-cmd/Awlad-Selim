@@ -95,6 +95,8 @@
       "dist/**/*",
       "!dist/assets/aistudio",
       "!dist/assets/aistudio/**/*",
+      "!dist/product-images",
+      "!dist/product-images/**/*",
       "electron/**/*",
       "server/**/*",
       "!server/tests",

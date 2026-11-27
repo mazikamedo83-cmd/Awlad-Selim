@@ -489,7 +489,7 @@ try {
       'formatDurationAr',
       'آخر إرسال ناجح',
       'آخر استلام ناجح',
-      'سجل آخر العمليات',
+      'سجل الإرسال والاستلام الموحد',
     ]) {
       assert.ok(srSrc.includes(marker), `SendReceiveView.tsx missing '${marker}'`);
     }
@@ -519,7 +519,7 @@ try {
     assert.ok(dataCtxSrc.includes('commitSyncedOpsToLocalSnapshot'));
 
     const appSrc = fs.readFileSync(path.join(projectRoot, 'src/App.tsx'), 'utf8');
-    assert.ok(appSrc.includes("case 'refresh-sync':\n        return <SendReceiveView />;"));
+    assert.ok(appSrc.includes("case 'refresh-sync':\n        return <SendReceiveView"));
 
     const settingsSrc = fs.readFileSync(path.join(projectRoot, 'src/components/modules/settings/SettingsView.tsx'), 'utf8');
     assert.ok(settingsSrc.includes('وضع التحكم اليدوي الكامل مفعّل'));

@@ -333,7 +333,7 @@ router.get(
     }
     const productId = typeof req.query.productId === 'string' ? req.query.productId : '';
     const history = await getSupplierProductPriceHistory(req.params.id, productId);
-    res.json({ ok: true, history });
+    res.json({ ok: true, history, priceHistory: history });
   })
 );
 

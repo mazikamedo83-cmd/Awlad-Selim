@@ -36,6 +36,7 @@ import {
   RepresentativeAccountStatement,
   SalesReturnRequest,
   Supplier,
+  SupplierPriceHistoryEntry,
   SupplierStatementResponse,
 } from '../../../types';
 import { apiRequest, fetchRepSummaryReport } from '../../../services/api';
@@ -363,8 +364,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [invWarehouseId, setInvWarehouseId] = useState<string>('');
   const [invDate, setInvDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [invBarcodeInput, setInvBarcodeInput] = useState<string>('');
-  const [invGroupFilter, setInvGroupFilter] = useState<string>('all');
-  const [invCatFilter, setInvCatFilter] = useState<string>('all');
+  const [invGroupFilter, setInvGroupFilter] = useState<string>('');
+  const [invCatFilter, setInvCatFilter] = useState<string>('');
   const [invProductId, setInvProductId] = useState<string>('');
   const [invOnlyVanStock, setInvOnlyVanStock] = useState<boolean>(false);
   const [invUnitName, setInvUnitName] = useState<string>('');
@@ -422,8 +423,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [purWarehouseId, setPurWarehouseId] = useState<string>('');
   const [purDate, setPurDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [purBarcodeInput, setPurBarcodeInput] = useState<string>('');
-  const [purGroupFilter, setPurGroupFilter] = useState<string>('all');
-  const [purCatFilter, setPurCatFilter] = useState<string>('all');
+  const [purGroupFilter, setPurGroupFilter] = useState<string>('');
+  const [purCatFilter, setPurCatFilter] = useState<string>('');
   const [purProductId, setPurProductId] = useState<string>('');
   const [purUnitName, setPurUnitName] = useState<string>('');
   const [purQty, setPurQty] = useState<number | ''>('');
@@ -458,11 +459,14 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [newPurProdGroupId, setNewPurProdGroupId] = useState('');
   const [newPurProdCategoryId, setNewPurProdCategoryId] = useState('');
   const [newPurProdCategory, setNewPurProdCategory] = useState('');
+  const [newPurProdClass1, setNewPurProdClass1] = useState('');
+  const [newPurProdClass2, setNewPurProdClass2] = useState('');
   const [newPurProdUnitId, setNewPurProdUnitId] = useState('');
   const [newPurProdBaseUnit, setNewPurProdBaseUnit] = useState('');
   const [newPurProdQty, setNewPurProdQty] = useState<number | ''>('');
   const [newPurProdBuyPrice, setNewPurProdBuyPrice] = useState<number | ''>('');
   const [newPurProdSellPrice, setNewPurProdSellPrice] = useState<number | ''>('');
+  const [supplierPriceHistoryMap, setSupplierPriceHistoryMap] = useState<Record<string, SupplierPriceHistoryEntry[]>>({});
   const [purDuplicateCheckState, setPurDuplicateCheckState] = useState<{
     checking: boolean;
     exactMatch: Product | null;
@@ -484,8 +488,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [sRetCustomerId, setSRetCustomerId] = useState('');
   const [sRetInvoiceId, setSRetInvoiceId] = useState('');
   const [sRetWarehouseId, setSRetWarehouseId] = useState('');
-  const [sRetGroupFilter, setSRetGroupFilter] = useState<string>('all');
-  const [sRetCatFilter, setSRetCatFilter] = useState<string>('all');
+  const [sRetGroupFilter, setSRetGroupFilter] = useState<string>('');
+  const [sRetCatFilter, setSRetCatFilter] = useState<string>('');
   const [sRetProductId, setSRetProductId] = useState('');
   const [sRetQty, setSRetQty] = useState<number | ''>('');
   const [sRetPrice, setSRetPrice] = useState<number | ''>('');
@@ -510,8 +514,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [pRetSupplierId, setPRetSupplierId] = useState('');
   const [pRetInvoiceId, setPRetInvoiceId] = useState('');
   const [pRetWarehouseId, setPRetWarehouseId] = useState('');
-  const [pRetGroupFilter, setPRetGroupFilter] = useState<string>('all');
-  const [pRetCatFilter, setPRetCatFilter] = useState<string>('all');
+  const [pRetGroupFilter, setPRetGroupFilter] = useState<string>('');
+  const [pRetCatFilter, setPRetCatFilter] = useState<string>('');
   const [pRetProductId, setPRetProductId] = useState('');
   const [pRetQty, setPRetQty] = useState<number | ''>('');
   const [pRetPrice, setPRetPrice] = useState<number | ''>('');
@@ -622,8 +626,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
   // ==================== 6. PRICE QUOTES STATE ====================
   const [quoteCustomerId, setQuoteCustomerId] = useState('');
-  const [quoteGroupFilter, setQuoteGroupFilter] = useState<string>('all');
-  const [quoteCatFilter, setQuoteCatFilter] = useState<string>('all');
+  const [quoteGroupFilter, setQuoteGroupFilter] = useState<string>('');
+  const [quoteCatFilter, setQuoteCatFilter] = useState<string>('');
   const [quoteProductId, setQuoteProductId] = useState('');
   const [quoteUnitName, setQuoteUnitName] = useState('');
   const [quoteQty, setQuoteQty] = useState<number | ''>('');
@@ -666,8 +670,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
   const [isLoadingCustodyStmt, setIsLoadingCustodyStmt] = useState(false);
   const [reqDate, setReqDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [reqBarcodeInput, setReqBarcodeInput] = useState<string>('');
-  const [reqGroupFilter, setReqGroupFilter] = useState<string>('all');
-  const [reqCatFilter, setReqCatFilter] = useState<string>('all');
+  const [reqGroupFilter, setReqGroupFilter] = useState<string>('');
+  const [reqCatFilter, setReqCatFilter] = useState<string>('');
   const [reqProdId, setReqProdId] = useState('');
   const [reqUnitName, setReqUnitName] = useState('');
   const [reqQty, setReqQty] = useState<number | ''>('');
@@ -700,8 +704,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
   // ==================== 9. REPRESENTATIVE PURCHASE ORDER & DELIVERY ====================
   const [ordCustomerId, setOrdCustomerId] = useState<string>('');
-  const [ordGroupFilter, setOrdGroupFilter] = useState<string>('all');
-  const [ordCatFilter, setOrdCatFilter] = useState<string>('all');
+  const [ordGroupFilter, setOrdGroupFilter] = useState<string>('');
+  const [ordCatFilter, setOrdCatFilter] = useState<string>('');
   const [ordProductId, setOrdProductId] = useState<string>('');
   const [ordUnitName, setOrdUnitName] = useState<string>('');
   const [ordQty, setOrdQty] = useState<number | ''>('');
@@ -834,6 +838,20 @@ export const RepPortal: React.FC<RepPortalProps> = ({
       active = false;
     };
   }, [invCustomerId, data.getCustomerPriceHistory]);
+
+  useEffect(() => {
+    let active = true;
+    if (!purSupplierId) {
+      setSupplierPriceHistoryMap({});
+      return;
+    }
+    data.getSupplierPriceHistory(purSupplierId).then((res) => {
+      if (active) setSupplierPriceHistoryMap(res || {});
+    });
+    return () => {
+      active = false;
+    };
+  }, [purSupplierId, data.getSupplierPriceHistory]);
 
   useEffect(() => {
     onUnsavedInvoiceChange?.(activeTab === 'new-invoice' && invItems.length > 0);
@@ -2076,6 +2094,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
             groupName: chosenGroup?.name,
             categoryId: chosenCat?.id,
             category: cleanCategory,
+            class1: newPurProdClass1.trim() || undefined,
+            class2: newPurProdClass2.trim() || undefined,
             unitId: matchedCatalogUnit?.id || (newPurProdUnitId || undefined),
             baseUnit: matchedCatalogUnit?.name || cleanUnit,
             purchasePrice: buyPrice,
@@ -2098,6 +2118,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
     setNewPurProdGroupId('');
     setNewPurProdCategoryId('');
     setNewPurProdCategory('');
+    setNewPurProdClass1('');
+    setNewPurProdClass2('');
     setNewPurProdUnitId('');
     setNewPurProdBaseUnit('');
     setNewPurProdQty('');
@@ -5470,8 +5492,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   badge: `${t('رصيد:', 'Bal:')} ${formatLocaleNumber(c.currentBalance)}`,
                   searchText: `${c.name} ${c.shopName || ''} ${c.phone || ''} ${c.code || ''}`,
                 }))}
-                allOptionLabel={t('-- اختر العميل --', '-- Select Customer --')}
-                allOptionValue=""
+                includeAllOption={false}
+                minSearchChars={2}
+                placeholder={t('-- اختر العميل (اكتب حرفين) --', '-- Select Customer (2+ chars) --')}
                 searchPlaceholder={t('ابحث باسم العميل أو المحل أو الهاتف...', 'Search by customer, shop or phone...')}
                 allowClear
                 buttonClassName="h-8 rounded-md"
@@ -5536,6 +5559,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 selectedCategoryId={invCatFilter}
                 groupTriggerRef={invGroupTriggerRef}
                 categoryTriggerRef={invCatTriggerRef}
+                allowAll={false}
+                minSearchChars={2}
                 autoAdvanceOnSelect
                 onCategoryAfterSelect={() => window.setTimeout(() => invProductSearchRef.current?.focus(), 20)}
                 onFilterChange={(nextGroupId, nextCategoryId) => {
@@ -5571,7 +5596,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   warehouses={data.warehouses}
                   priceMode="selling"
                   currency={data.settings.currency}
-                  placeholder={t('ابحث باسم الصنف أو الكود أو الباركود...', 'Search by item name, code or barcode...')}
+                  minSearchChars={2}
+                  placeholder={t('اكتب حرفين على الأقل للبحث...', 'Type at least 2 chars to search...')}
                 />
               </div>
             </div>
@@ -5653,21 +5679,46 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   </div>
                 </div>
 
-                {invCustomerId && (priceHistoryMap[selectedProduct.id] || []).length > 0 && (
-                  <div className="flex flex-wrap items-center gap-1 text-[10px]">
-                    <span className="font-bold text-slate-600">{t('أسعار العميل السابقة:', 'Previous Customer Prices:')}</span>
-                    {(priceHistoryMap[selectedProduct.id] || []).slice(0, 3).map((ph, pIdx) => (
-                      <button
-                        key={`${ph.invoiceNumber || pIdx}-${ph.price}`}
-                        type="button"
-                        onClick={() => setInvPrice(roundCurrency(ph.price))}
-                        className="px-2 py-0.5 rounded bg-white border border-blue-300 hover:bg-blue-100 text-[#011E58] font-mono font-bold cursor-pointer"
-                      >
-                        {formatLocaleNumber(ph.price)} ({t(ph.unit || selectedProduct.baseUnit)})
-                      </button>
-                    ))}
-                  </div>
-                )}
+                {invCustomerId && (() => {
+                  const curFactor =
+                    invUnitName === selectedProduct.baseUnit
+                      ? 1
+                      : Number(selectedProduct.units?.find((x) => x.name === invUnitName)?.conversionFactor || 1) || 1;
+                  const entries = [...(priceHistoryMap[selectedProduct.id] || [])]
+                    .reverse()
+                    .slice(0, 3)
+                    .map((ph) => {
+                      const histFactor = Number(ph.unitFactor || 1) || 1;
+                      const adjPrice = Math.round(((Number(ph.price || 0) / histFactor) * curFactor) * 100) / 100;
+                      return {
+                        unitPrice: adjPrice,
+                        date: ph.date || '',
+                        invoiceNumber: ph.invoiceNumber || '',
+                      };
+                    })
+                    .filter((e) => e.unitPrice > 0);
+                  return (
+                    <div className="flex flex-wrap items-center gap-1 text-[10px]">
+                      <span className="font-bold text-slate-600">{t('آخر ثلاثة أسعار لهذا العميل:', 'Last 3 prices for this customer:')}</span>
+                      {entries.length > 0 ? (
+                        entries.map((ph, pIdx) => (
+                          <button
+                            key={`${ph.invoiceNumber || pIdx}-${ph.unitPrice}`}
+                            type="button"
+                            onClick={() => setInvPrice(roundCurrency(ph.unitPrice))}
+                            className="px-2 py-0.5 rounded bg-white border border-blue-300 hover:bg-blue-100 text-[#011E58] font-mono font-bold cursor-pointer inline-flex items-center gap-1"
+                          >
+                            <span>{formatLocaleNumber(ph.unitPrice)} {t(data.settings.currency)}</span>
+                            {ph.date && <span className="text-[9px] text-slate-500">({ph.date})</span>}
+                            {ph.invoiceNumber && <span className="text-[9px] text-blue-700">{ph.invoiceNumber}</span>}
+                          </button>
+                        ))
+                      ) : (
+                        <span className="text-slate-500 font-semibold">{t('لا توجد أسعار سابقة', 'No previous prices')}</span>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>
@@ -5957,8 +6008,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                   badge: `${t('رصيد:', 'Bal:')} ${formatLocaleNumber(s.currentBalance || 0)}`,
                   searchText: `${s.name} ${s.phone || ''} ${s.companyName || ''}`,
                 }))}
-                allOptionLabel={t('-- اختر المورد --', '-- Select Supplier --')}
-                allOptionValue=""
+                includeAllOption={false}
+                minSearchChars={2}
+                placeholder={t('-- اختر المورد (اكتب حرفين) --', '-- Select Supplier (2+ chars) --')}
                 searchPlaceholder={t('ابحث باسم المورد أو الهاتف...', 'Search by supplier name or phone...')}
                 allowClear
                 buttonClassName="h-8 rounded-md"
@@ -6154,6 +6206,26 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     />
                   </div>
                   <div>
+                    <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('التصنيف 1:', 'Class 1:')}</label>
+                    <input
+                      type="text"
+                      value={newPurProdClass1}
+                      onChange={(e) => setNewPurProdClass1(e.target.value)}
+                      placeholder={t('اختياري...', 'Optional...')}
+                      className="w-full h-7 border border-slate-300 rounded-md px-2 bg-white text-[11px]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-700 mb-0.5">{t('التصنيف 2:', 'Class 2:')}</label>
+                    <input
+                      type="text"
+                      value={newPurProdClass2}
+                      onChange={(e) => setNewPurProdClass2(e.target.value)}
+                      placeholder={t('اختياري...', 'Optional...')}
+                      className="w-full h-7 border border-slate-300 rounded-md px-2 bg-white text-[11px]"
+                    />
+                  </div>
+                  <div>
                     <SearchableTaxonomySelect
                       label={t('الوحدة', 'Unit')}
                       required
@@ -6293,6 +6365,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     selectedCategoryId={purCatFilter}
                     groupTriggerRef={purGroupTriggerRef}
                     categoryTriggerRef={purCatTriggerRef}
+                    allowAll={false}
+                    minSearchChars={2}
                     autoAdvanceOnSelect
                     onCategoryAfterSelect={() => window.setTimeout(() => purProductSearchRef.current?.focus(), 20)}
                     onFilterChange={(nextGroupId, nextCategoryId) => {
@@ -6328,7 +6402,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       warehouses={data.warehouses}
                       priceMode="purchase"
                       currency={data.settings.currency}
-                      placeholder={t('ابحث باسم الصنف أو الكود أو الباركود...', 'Search by item name, code or barcode...')}
+                      minSearchChars={2}
+                      placeholder={t('اكتب حرفين على الأقل للبحث...', 'Type at least 2 chars to search...')}
                     />
                   </div>
                 </div>
@@ -6408,6 +6483,44 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                     </div>
                   </div>
                 )}
+
+                {selectedPurProduct && purSupplierId && (() => {
+                  const curOpt = purUnitOptions.find((u) => u.name === (purUnitName || selectedPurProduct.baseUnit));
+                  const curFactor = Number(curOpt?.factor || 1) || 1;
+                  const entries = (supplierPriceHistoryMap[selectedPurProduct.id] || [])
+                    .slice(0, 3)
+                    .map((entry) => {
+                      const histFactor = Number(entry.unitFactor || 1) || 1;
+                      const adjPrice = Math.round(((Number(entry.price || 0) / histFactor) * curFactor) * 100) / 100;
+                      return {
+                        unitPrice: adjPrice,
+                        date: entry.date || '',
+                        invoiceNumber: entry.invoiceNumber || '',
+                      };
+                    })
+                    .filter((e) => e.unitPrice > 0);
+                  return (
+                    <div className="flex flex-wrap items-center gap-1 text-[10px] pt-0.5">
+                      <span className="font-bold text-slate-600">{t('آخر ثلاثة أسعار شراء من هذا المورد:', 'Last 3 purchase prices from this supplier:')}</span>
+                      {entries.length > 0 ? (
+                        entries.map((entry, idx) => (
+                          <button
+                            key={`${entry.invoiceNumber || idx}-${entry.unitPrice}`}
+                            type="button"
+                            onClick={() => setPurPrice(roundCurrency(entry.unitPrice))}
+                            className="px-2 py-0.5 rounded bg-white border border-blue-300 hover:bg-blue-100 text-[#011E58] font-mono font-bold cursor-pointer inline-flex items-center gap-1"
+                          >
+                            <span>{formatLocaleNumber(entry.unitPrice)} {t(data.settings.currency)}</span>
+                            {entry.date && <span className="text-[9px] text-slate-500">({entry.date})</span>}
+                            {entry.invoiceNumber && <span className="text-[9px] text-blue-700">{entry.invoiceNumber}</span>}
+                          </button>
+                        ))
+                      ) : (
+                        <span className="text-slate-500 font-semibold">{t('لا توجد أسعار سابقة', 'No previous prices')}</span>
+                      )}
+                    </div>
+                  );
+                })()}
               </>
             )}
           </div>
@@ -8231,8 +8344,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 subtitle: c.phone || c.address,
                 searchText: `${c.name} ${c.shopName || ''} ${c.phone || ''} ${c.code || ''}`,
               }))}
-              allOptionLabel={t('-- اختر العميل (أو عميل عام) --', '-- Select Customer (or Walk-in) --')}
-              allOptionValue=""
+              includeAllOption={false}
+              minSearchChars={2}
+              placeholder={t('-- اختر العميل (أو عميل عام) --', '-- Select Customer (or Walk-in) --')}
               searchPlaceholder={t('ابحث باسم العميل أو المحل أو الهاتف...', 'Search by customer, shop or phone...')}
               allowClear
               buttonClassName="h-8 rounded-md"
@@ -8247,6 +8361,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 selectedCategoryId={quoteCatFilter}
                 groupTriggerRef={quoteGroupTriggerRef}
                 categoryTriggerRef={quoteCatTriggerRef}
+                allowAll={false}
+                minSearchChars={2}
                 autoAdvanceOnSelect
                 onCategoryAfterSelect={() => window.setTimeout(() => quoteProductSearchRef.current?.focus(), 20)}
                 onFilterChange={(nextGroupId, nextCategoryId) => {
@@ -8278,7 +8394,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 warehouses={data.warehouses}
                 priceMode="selling"
                 currency={data.settings.currency}
-                placeholder={t('ابحث باسم الصنف لعرض السعر أو الكود...', 'Search item for price quote...')}
+                minSearchChars={2}
+                placeholder={t('اكتب حرفين على الأقل للبحث...', 'Type at least 2 chars to search...')}
               />
               {quoteProductId && (
                 <div className="grid grid-cols-3 gap-1.5 items-end">
@@ -9398,6 +9515,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                       selectedCategoryId={reqCatFilter}
                       groupTriggerRef={reqGroupTriggerRef}
                       categoryTriggerRef={reqCatTriggerRef}
+                      allowAll={false}
+                      minSearchChars={2}
                       autoAdvanceOnSelect
                       onCategoryAfterSelect={() => window.setTimeout(() => reqProductSearchRef.current?.focus(), 20)}
                       onFilterChange={(nextGroupId, nextCategoryId) => {
@@ -9430,7 +9549,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                         warehouses={data.warehouses}
                         priceMode="purchase"
                         currency={data.settings.currency}
-                        placeholder={t('ابحث باسم الصنف أو الكود أو الباركود...', 'Search by item name, code or barcode...')}
+                        minSearchChars={2}
+                        placeholder={t('اكتب حرفين على الأقل للبحث...', 'Type at least 2 chars to search...')}
                       />
                     </div>
                   </div>
@@ -9878,8 +9998,9 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 subtitle: c.phone || c.address,
                 searchText: `${c.name} ${c.shopName || ''} ${c.phone || ''} ${c.code || ''}`,
               }))}
-              allOptionLabel={t('-- اختر العميل --', '-- Select Customer --')}
-              allOptionValue=""
+              includeAllOption={false}
+              minSearchChars={2}
+              placeholder={t('-- اختر العميل (اكتب حرفين) --', '-- Select Customer (2+ chars) --')}
               searchPlaceholder={t('ابحث باسم العميل أو المحل أو الهاتف...', 'Search by customer, shop or phone...')}
               allowClear
               buttonClassName="h-8 rounded-md"
@@ -9894,6 +10015,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 selectedCategoryId={ordCatFilter}
                 groupTriggerRef={ordGroupTriggerRef}
                 categoryTriggerRef={ordCatTriggerRef}
+                allowAll={false}
+                minSearchChars={2}
                 autoAdvanceOnSelect
                 onCategoryAfterSelect={() => window.setTimeout(() => ordProductSearchRef.current?.focus(), 20)}
                 onFilterChange={(nextGroupId, nextCategoryId) => {
@@ -9925,7 +10048,8 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 warehouses={data.warehouses}
                 priceMode="selling"
                 currency={data.settings.currency}
-                placeholder={t('ابحث باسم الصنف للطلب أو الكود...', 'Search item for order...')}
+                minSearchChars={2}
+                placeholder={t('اكتب حرفين على الأقل للبحث...', 'Type at least 2 chars to search...')}
               />
 
               {selectedOrderProduct && (
@@ -10240,7 +10364,22 @@ export const RepPortal: React.FC<RepPortalProps> = ({
 
       {/* ==================== ALL REPRESENTATIVES DIRECTORY & STATEMENTS ==================== */}
       {activeTab === 'reps-accounts' && (() => {
-        const allReps = data.representatives || [];
+        const repMap = new Map<string, Representative>();
+        for (const r of data.representatives || []) {
+          repMap.set(r.id, r);
+        }
+        for (const tg of data.repTransferTargets || []) {
+          if (!repMap.has(tg.id)) {
+            repMap.set(tg.id, {
+              id: tg.id,
+              name: tg.name,
+              phone: '',
+              warehouseId: tg.warehouseId,
+              status: tg.status === 'inactive' ? 'inactive' : 'active',
+            });
+          }
+        }
+        const allReps = Array.from(repMap.values());
         const q = repDirectorySearch.trim().toLowerCase();
         const filteredReps = allReps.filter((r) => {
           const bal = Number(r.currentBalance || 0);

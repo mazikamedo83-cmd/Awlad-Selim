@@ -11,9 +11,14 @@ function excludeAiStudioAssetsPlugin(): Plugin {
   return {
     name: 'awlad-exclude-aistudio-assets',
     closeBundle() {
-      const aistudioOut = path.resolve(__dirname, 'dist', 'assets', 'aistudio');
-      if (fs.existsSync(aistudioOut)) {
-        fs.rmSync(aistudioOut, { recursive: true, force: true });
+      for (const relPath of [
+        ['dist', 'assets', 'aistudio'],
+        ['dist', 'product-images'],
+      ]) {
+        const target = path.resolve(__dirname, ...relPath);
+        if (fs.existsSync(target)) {
+          fs.rmSync(target, { recursive: true, force: true });
+        }
       }
     },
   };

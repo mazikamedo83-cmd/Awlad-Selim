@@ -389,7 +389,7 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
               <span className="text-[10px] text-slate-500 block">{t('صافي الكمية:', 'Net Qty:')} {fmtQty(selectedPnl.netSalesQty)} ({t('خصم:', 'Discount:')} {fmt(selectedPnl.totalDiscounts)})</span>
             </div>
             <div className="px-2.5 py-2 bg-white">
-              <span className="text-[11px] text-slate-500 block">{t('تكلفة البضاعة المباعة', 'COGS')}</span>
+              <span className="text-[11px] text-slate-500 block">{t('تكلفة البضاعة المباعة', 'Cost of Goods Sold')}</span>
               <strong className="text-sm font-black text-amber-800 tabular-nums">{fmt(selectedPnl.cogs)} {t(currency)}</strong>
               <span className="text-[10px] text-slate-500 block">{t('مرتجع بيع:', 'Sales Return:')} {fmt(selectedPnl.salesReturnsValue)}</span>
             </div>
@@ -555,7 +555,7 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-px bg-slate-200 border border-slate-200 rounded-lg overflow-hidden text-xs">
             <div className="px-2.5 py-2 bg-white"><span className="text-[11px] text-slate-500 block">{t('إجمالي المشتريات', 'Total Purchases')}</span><strong className="text-sm font-black tabular-nums">{fmt(portfolioTotals.totalPurchaseValue)}</strong></div>
             <div className="px-2.5 py-2 bg-white"><span className="text-[11px] text-slate-500 block">{t('صافي المبيعات', 'Net Sales')}</span><strong className="text-sm font-black text-blue-800 tabular-nums">{fmt(portfolioTotals.netSalesValue)}</strong></div>
-            <div className="px-2.5 py-2 bg-white"><span className="text-[11px] text-slate-500 block">{t('تكلفة البضاعة المباعة', 'COGS')}</span><strong className="text-sm font-black text-amber-800 tabular-nums">{fmt(portfolioTotals.cogs)}</strong></div>
+            <div className="px-2.5 py-2 bg-white"><span className="text-[11px] text-slate-500 block">{t('تكلفة البضاعة المباعة', 'Cost of Goods Sold')}</span><strong className="text-sm font-black text-amber-800 tabular-nums">{fmt(portfolioTotals.cogs)}</strong></div>
             <div className="px-2.5 py-2 bg-white"><span className="text-[11px] text-slate-500 block">{t('صافي الربح', 'Net Profit')}</span><strong className={`text-sm font-black tabular-nums ${portfolioTotals.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{fmt(portfolioTotals.netProfit)}</strong></div>
             <div className="px-2.5 py-2 bg-white"><span className="text-[11px] text-slate-500 block">{t('إجمالي الخسائر', 'Total Losses')}</span><strong className="text-sm font-black text-rose-700 tabular-nums">{fmt(portfolioTotals.totalLoss)}</strong></div>
             <div className="px-2.5 py-2 bg-white"><span className="text-[11px] text-slate-500 block">{t('قيمة المخزون الحالي', 'Current Stock Value')}</span><strong className="text-sm font-black text-slate-900 tabular-nums">{fmt(portfolioTotals.stockValuation)}</strong></div>
@@ -621,7 +621,7 @@ export const ItemLifecycleAndPnlPanel: React.FC<ItemLifecycleAndPnlPanelProps> =
               },
               {
                 key: 'cogs',
-                header: t('تكلفة البضاعة المباعة', 'COGS'),
+                header: t('تكلفة البضاعة المباعة', 'Cost of Goods Sold'),
                 align: 'center',
                 sortable: true,
                 sortValue: (it) => it.cogs,

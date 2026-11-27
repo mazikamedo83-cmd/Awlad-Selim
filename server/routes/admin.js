@@ -454,7 +454,7 @@ router.get('/suppliers/:id/price-history', requireAnyPermission('canManageAccoun
   }
   const productId = req.query?.productId ? String(req.query.productId) : '';
   const history = await getSupplierProductPriceHistory(req.params.id, productId);
-  res.json({ ok: true, history });
+  res.json({ ok: true, history, priceHistory: history });
 }));
 
 // Cashboxes & Expenses

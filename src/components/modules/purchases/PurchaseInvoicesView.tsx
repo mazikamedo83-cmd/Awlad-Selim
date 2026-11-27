@@ -274,18 +274,19 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
   }, [initialOpenNew, resetPurchaseModalForm]);
 
   useEffect(() => {
+    const activeSupId = isNewModalOpen ? selectedSupplierId : editModalInvoice ? editSupplierId : '';
     let cancelled = false;
-    if (!isNewModalOpen || !selectedSupplierId) {
+    if (!activeSupId) {
       setSupplierPriceHistoryMap({});
       return;
     }
-    getSupplierPriceHistory(selectedSupplierId).then((hist) => {
+    getSupplierPriceHistory(activeSupId).then((hist) => {
       if (!cancelled) setSupplierPriceHistoryMap(hist || {});
     });
     return () => {
       cancelled = true;
     };
-  }, [isNewModalOpen, selectedSupplierId, getSupplierPriceHistory]);
+  }, [isNewModalOpen, selectedSupplierId, editModalInvoice, editSupplierId, getSupplierPriceHistory]);
 
   // Debounced duplicate check while typing an inline new product
   useEffect(() => {
@@ -2685,6 +2686,35 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     </button>
                   </div>
                 </div>
+                {editSupplierId && editAddProdId && (() => {
+                  const rawHist = (supplierPriceHistoryMap[editAddProdId] || []).slice(0, 3).filter((e) => Number(e.price || 0) > 0);
+                  return (
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px]">
+                      <span className="font-bold text-slate-700">
+                        {t('آخر ثلاثة أسعار شراء من هذا المورد:', 'Last 3 purchase prices from this supplier:')}
+                      </span>
+                      {rawHist.length > 0 ? (
+                        rawHist.map((entry, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => setEditAddPrice(Number(entry.price || 0))}
+                            className="px-2 py-0.5 rounded bg-white border border-blue-300 hover:bg-blue-100 text-blue-900 font-bold cursor-pointer inline-flex items-center gap-1.5"
+                          >
+                            <span className="font-mono font-black">{formatLocaleNumber(Number(entry.price || 0))} {t(settings.currency)}</span>
+                            {entry.unit && <span className="text-[10px] text-slate-600">({t(entry.unit)})</span>}
+                            {entry.date && <span className="text-[10px] text-slate-500 font-mono">({entry.date})</span>}
+                            {entry.invoiceNumber && <span className="text-[10px] text-blue-700 font-mono">{entry.invoiceNumber}</span>}
+                          </button>
+                        ))
+                      ) : (
+                        <span className="text-slate-500 font-semibold">
+                          {t('لا توجد أسعار سابقة', 'No previous prices')}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Editable items table */}

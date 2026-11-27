@@ -137,15 +137,15 @@ async function runUnifiedSuiteForBackend(label, setupBackendFn) {
       mainWhId = boot.json.data.warehouses[0].id;
       cashboxId = boot.json.data.cashboxes[0].id;
 
-      // Fund cashbox via deposit/opening check (set cashbox balance with income or openingBalance via API/database)
-      const depRes = await req(baseUrl, 'POST', '/api/admin/cashboxes/transaction', {
+      // Fund cashbox via cash_deposit operation
+      const depRes = await req(baseUrl, 'POST', '/api/admin/cash-operations', {
         token: adminToken,
         body: {
-          type: 'income',
+          type: 'cash_deposit',
           cashboxId,
           amount: 50000,
           category: 'تغذية رأس مال اختباري',
-          description: 'رصيد اختباري للخزينة الرئيسية',
+          notes: 'رصيد اختباري للخزينة الرئيسية',
         },
       });
       assert.ok([200, 201].includes(depRes.status), `Expected cashbox seed success, got ${depRes.status}`);
@@ -511,7 +511,7 @@ async function runUnifiedSuiteForBackend(label, setupBackendFn) {
         body: { rejectionReason: 'المبلغ غير مطابق' },
       });
       assert.equal(rejRes.status, 200);
-      assert.equal(rejRes.json.transfer.status, 'rejected');
+      assert.equal(rejRes.json.status, 'rejected');
 
       const boot3 = await req(baseUrl, 'GET', '/api/admin/bootstrap', { token: adminToken });
       assert.equal(boot3.json.data.representatives.find((r) => r.id === repAProfile.id).currentBalance, 3800);
@@ -524,6 +524,7 @@ async function runUnifiedSuiteForBackend(label, setupBackendFn) {
         token: adminToken,
         body: {
           transferMode: 'custody_dispatch',
+          autoDispatch: true,
           representativeId: repAProfile.id,
           representativeName: repAProfile.name,
           sourceWarehouseId: mainWhId,
@@ -561,6 +562,7 @@ async function runUnifiedSuiteForBackend(label, setupBackendFn) {
         headers: { 'Idempotency-Key': idemItemKey },
         body: {
           transferMode: 'rep_to_rep',
+          autoDispatch: true,
           senderRepresentativeId: repAProfile.id,
           senderRepresentativeName: repAProfile.name,
           representativeId: repBProfile.id,
@@ -612,11 +614,12 @@ async function runUnifiedSuiteForBackend(label, setupBackendFn) {
         token: adminToken,
       });
       assert.equal(stmtA.status, 200);
-      const rowA = stmtA.json.statement.items.find((it) => it.productId === product1.id);
+      const rowA = stmtA.json.statement.itemsSummary.find((it) => it.productId === product1.id);
       assert.ok(rowA);
+      assert.equal(rowA.remainingCustodyQty, 6);
       assert.equal(
-        rowA.currentBalance,
-        rowA.receivedQty - rowA.soldQty - rowA.returnedQty + rowA.adjustmentsQty,
+        rowA.remainingCustodyQty,
+        rowA.receivedQty - rowA.deliveredToCustomersQty - rowA.returnedToWarehouseQty - rowA.approvedReductionsQty,
         'Custody statement formula mismatch for Rep A'
       );
 
@@ -624,12 +627,13 @@ async function runUnifiedSuiteForBackend(label, setupBackendFn) {
         token: adminToken,
       });
       assert.equal(stmtB.status, 200);
-      const rowB = stmtB.json.statement.items.find((it) => it.productId === product1.id);
+      const rowB = stmtB.json.statement.itemsSummary.find((it) => it.productId === product1.id);
       assert.ok(rowB);
       assert.equal(rowB.receivedQty, 4);
+      assert.equal(rowB.remainingCustodyQty, 4);
       assert.equal(
-        rowB.currentBalance,
-        rowB.receivedQty - rowB.soldQty - rowB.returnedQty + rowB.adjustmentsQty,
+        rowB.remainingCustodyQty,
+        rowB.receivedQty - rowB.deliveredToCustomersQty - rowB.returnedToWarehouseQty - rowB.approvedReductionsQty,
         'Custody statement formula mismatch for Rep B'
       );
     });
@@ -711,6 +715,7 @@ async function runUnifiedSuiteForBackend(label, setupBackendFn) {
           localId: 'LOCAL-RI-1',
           payload: {
             transferMode: 'custody_dispatch',
+            autoDispatch: true,
             representativeId: repBProfile.id,
             representativeName: repBProfile.name,
             sourceWarehouseId: mainWhId,

@@ -136,14 +136,14 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
   // Create Quote modal state
   const [isNewQuoteOpen, setIsNewQuoteOpen] = useState(false);
   const [quoteCustomerId, setQuoteCustomerId] = useState('');
-  const [quoteWarehouseId, setQuoteWarehouseId] = useState(warehouses[0]?.id || 'wh-main');
+  const [quoteWarehouseId, setQuoteWarehouseId] = useState('');
   const [quoteRepId, setQuoteRepId] = useState('');
   const [quoteDate, setQuoteDate] = useState(new Date().toISOString().split('T')[0]);
   const [quoteDiscountTotal, setQuoteDiscountTotal] = useState<number | ''>('');
   const [quoteNotes, setQuoteNotes] = useState('');
   const [quoteItems, setQuoteItems] = useState<InvoiceItem[]>([]);
-  const [quoteGroupFilter, setQuoteGroupFilter] = useState('all');
-  const [quoteCategoryFilter, setQuoteCategoryFilter] = useState('all');
+  const [quoteGroupFilter, setQuoteGroupFilter] = useState('');
+  const [quoteCategoryFilter, setQuoteCategoryFilter] = useState('');
   const [quoteSelectedProductId, setQuoteSelectedProductId] = useState('');
   const [quoteQty, setQuoteQty] = useState<number | ''>('');
   const [quoteError, setQuoteError] = useState<string | null>(null);
@@ -167,8 +167,8 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
 
   // Convert Quote to Invoice modal state
   const [convertQuoteTarget, setConvertQuoteTarget] = useState<Invoice | null>(null);
-  const [convertWarehouseId, setConvertWarehouseId] = useState(warehouses[0]?.id || 'wh-main');
-  const [convertCashboxId, setConvertCashboxId] = useState(cashboxes[0]?.id || 'cb-main');
+  const [convertWarehouseId, setConvertWarehouseId] = useState('');
+  const [convertCashboxId, setConvertCashboxId] = useState('');
   const [convertPaymentType, setConvertPaymentType] = useState<'cash' | 'partial' | 'credit'>('cash');
   const [convertPaidAtInvoice, setConvertPaidAtInvoice] = useState<number | ''>('');
   const [convertDiscountTotal, setConvertDiscountTotal] = useState<number | ''>('');
@@ -467,7 +467,11 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
       return;
     }
     const cust = customers.find((c) => c.id === quoteCustomerId);
-    const wh = warehouses.find((w) => w.id === quoteWarehouseId) || warehouses[0];
+    const wh = warehouses.find((w) => w.id === quoteWarehouseId);
+    if (!wh) {
+      setQuoteError(t('يرجى اختيار المستودع المقترح أولاً', 'Please select the suggested warehouse first'));
+      return;
+    }
     const rep = representatives.find((r) => r.id === quoteRepId);
     const subtotal = quoteItems.reduce((s, it) => s + computeLineTotal(it.quantity, it.unitPrice, it.discount || 0), 0);
     const grandTotal = Math.max(0, subtotal - Number(quoteDiscountTotal || 0));
@@ -479,8 +483,8 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
       customerName: cust?.name || 'عميل نقدي / عرض سعر عام',
       representativeId: rep?.id,
       representativeName: rep?.name,
-      warehouseId: wh?.id || 'wh-main',
-      warehouseName: wh?.name || 'المخزن الرئيسي',
+      warehouseId: wh.id,
+      warehouseName: wh.name,
       items: quoteItems,
       subtotal,
       discountTotal: Number(quoteDiscountTotal || 0),
@@ -490,7 +494,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
       remainingAmount: grandTotal,
       paymentType: 'credit',
       paymentMethod: 'cash',
-      cashboxId: cashboxes[0]?.id || 'cb-main',
+      cashboxId: '',
       status: 'draft',
       notes: quoteNotes.trim() || undefined,
     });
@@ -503,6 +507,8 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
     setQuoteItems([]);
     setQuoteNotes('');
     setQuoteDiscountTotal('');
+    setQuoteGroupFilter('');
+    setQuoteCategoryFilter('');
     setActionMessage({
       type: 'success',
       text: isLtr
@@ -534,12 +540,21 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
   const handleSubmitConvertQuote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!convertQuoteTarget) return;
+    if (!convertWarehouseId) {
+      setActionMessage({ type: 'error', text: t('يرجى اختيار مستودع الصرف أولاً.', 'Please select the dispatch warehouse first.') });
+      return;
+    }
+    const paidNum = Number(convertPaidAtInvoice || 0);
+    if ((convertPaymentType === 'cash' || paidNum > 0) && !convertCashboxId) {
+      setActionMessage({ type: 'error', text: t('يرجى اختيار الخزينة للتحصيل النقدي أو الجزئي.', 'Please select a cashbox for cash or partial payment.') });
+      return;
+    }
     setIsConvertingQuote(true);
     const res = await convertQuoteToInvoice(convertQuoteTarget.id, {
       warehouseId: convertWarehouseId,
       cashboxId: convertCashboxId,
       paymentType: convertPaymentType,
-      paidAtInvoice: Number(convertPaidAtInvoice || 0),
+      paidAtInvoice: paidNum,
       discountTotal: Number(convertDiscountTotal || 0),
       notes: convertNotes.trim() || undefined,
     });
@@ -613,12 +628,15 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
             type="button"
             onClick={() => {
               setQuoteCustomerId('');
-              setQuoteWarehouseId(warehouses[0]?.id || 'wh-main');
+              setQuoteWarehouseId('');
               setQuoteRepId('');
               setQuoteDate(new Date().toISOString().split('T')[0]);
               setQuoteDiscountTotal(0);
               setQuoteNotes('');
               setQuoteItems([]);
+              setQuoteGroupFilter('');
+              setQuoteCategoryFilter('');
+              setQuoteSelectedProductId('');
               setQuoteError(null);
               setIsNewQuoteOpen(true);
             }}
@@ -989,7 +1007,20 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
           headerActions={
             <button
               type="button"
-              onClick={() => setIsNewQuoteOpen(true)}
+              onClick={() => {
+                setQuoteCustomerId('');
+                setQuoteWarehouseId('');
+                setQuoteRepId('');
+                setQuoteDate(new Date().toISOString().split('T')[0]);
+                setQuoteDiscountTotal(0);
+                setQuoteNotes('');
+                setQuoteItems([]);
+                setQuoteGroupFilter('');
+                setQuoteCategoryFilter('');
+                setQuoteSelectedProductId('');
+                setQuoteError(null);
+                setIsNewQuoteOpen(true);
+              }}
               className="px-2.5 py-1 rounded-md bg-[#003589] hover:bg-[#0049B0] text-white text-xs font-bold cursor-pointer"
             >
               {t('+ إنشاء عرض سعر', '+ New Price Quote')}
@@ -1131,8 +1162,8 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                         type="button"
                         onClick={() => {
                           setConvertQuoteTarget(quote);
-                          setConvertWarehouseId(quote.warehouseId || warehouses[0]?.id || 'wh-main');
-                          setConvertCashboxId(cashboxes[0]?.id || 'cb-main');
+                          setConvertWarehouseId(quote.warehouseId || '');
+                          setConvertCashboxId('');
                           setConvertPaymentType('cash');
                           setConvertPaidAtInvoice(quote.grandTotal);
                           setConvertDiscountTotal(quote.discountTotal || 0);
@@ -1836,8 +1867,9 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                       subtitle: c.phone || undefined,
                       searchText: `${c.name} ${c.shopName || ''} ${c.phone || ''}`,
                     }))}
-                    allOptionLabel={t('-- عميل عام / نقدي --', '-- General / Cash Customer --')}
-                    allOptionValue=""
+                    includeAllOption={false}
+                    minSearchChars={2}
+                    placeholder={t('-- عميل عام / أو ابحث بحرفين --', '-- Walk-in / Search 2+ chars --')}
                     searchPlaceholder={t('ابحث باسم العميل أو الهاتف...', 'Search customer or phone...')}
                     allowClear
                     buttonClassName="rounded-md h-8"
@@ -1850,6 +1882,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                     onChange={(e) => setQuoteWarehouseId(e.target.value)}
                     className="w-full h-8 px-2 py-1 rounded-md border border-slate-300 bg-white font-bold"
                   >
+                    <option value="">{t('-- اختيار المستودع --', '-- Select Warehouse --')}</option>
                     {warehouses.map((w) => (
                       <option key={w.id} value={w.id}>{t(w.name)}</option>
                     ))}
@@ -1875,6 +1908,8 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                   selectedCategoryId={quoteCategoryFilter}
                   groupTriggerRef={quoteGroupTriggerRef}
                   categoryTriggerRef={quoteCategoryTriggerRef}
+                  allowAll={false}
+                  minSearchChars={2}
                   autoAdvanceOnSelect
                   onCategoryAfterSelect={() => {
                     window.setTimeout(() => quoteProductSearchRef.current?.focus(), 20);
@@ -1903,6 +1938,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                       warehouses={warehouses}
                       warehouseId={quoteWarehouseId}
                       selectedProductId={quoteSelectedProductId}
+                      minSearchChars={2}
                       onSelect={(p) => {
                         setQuoteSelectedProductId(p.id);
                         handleAddQuoteItem(p.id);
@@ -2072,6 +2108,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                     onChange={(e) => setConvertWarehouseId(e.target.value)}
                     className="w-full h-8 px-2 py-1 rounded-md border border-slate-300 bg-white font-bold"
                   >
+                    <option value="">{t('-- اختيار المستودع --', '-- Select Warehouse --')}</option>
                     {warehouses.map((w) => (
                       <option key={w.id} value={w.id}>{t(w.name)}</option>
                     ))}
@@ -2084,6 +2121,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                     onChange={(e) => setConvertCashboxId(e.target.value)}
                     className="w-full h-8 px-2 py-1 rounded-md border border-slate-300 bg-white font-bold"
                   >
+                    <option value="">{t('-- اختيار الخزينة --', '-- Select Cashbox --')}</option>
                     {cashboxes.map((cb) => (
                       <option key={cb.id} value={cb.id}>{t(cb.name)}</option>
                     ))}

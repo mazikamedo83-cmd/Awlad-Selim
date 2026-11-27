@@ -167,7 +167,6 @@ export const Header: React.FC<HeaderProps> = ({
     const allowedTargets: NavItemKey[] = [
       'customer-orders',
       'customers',
-      'rep-item-transfers',
       'rep-transfers',
       'stock-counts',
       'stock-transfers-orders',

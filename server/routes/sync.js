@@ -542,14 +542,16 @@ async function applySingleOperation(op, authContext, { ignoreVersionCheck = fals
     }
     const supplierId = payload.supplierId || op.entityId;
     if (!supplierId) throw new AppError(400, 'معرّف المورد مطلوب', 'SUPPLIER_ID_REQUIRED');
-    return updateSupplier(supplierId, payload, user);
+    const supPatch = payload.updates && typeof payload.updates === 'object' ? payload.updates : payload;
+    return updateSupplier(supplierId, supPatch, user);
   }
 
   if (opType === 'update_product') {
     assertStaffPermission(user, 'canManageInventory');
     const productId = payload.productId || op.entityId;
     if (!productId) throw new AppError(400, 'معرّف الصنف مطلوب', 'PRODUCT_ID_REQUIRED');
-    return updateProduct(productId, payload, user);
+    const prodPatch = payload.updates && typeof payload.updates === 'object' ? payload.updates : payload;
+    return updateProduct(productId, prodPatch, user);
   }
 
   if (opType === 'record_damaged_stock') {

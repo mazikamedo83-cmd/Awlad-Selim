@@ -42,6 +42,7 @@ export interface UserPermissions {
   canCreateStockTransfer?: boolean;
   canApproveStockTransfer?: boolean;
   canExecuteStockTransfer?: boolean;
+  canApproveRepCustody?: boolean;
   canViewDeletedInvoices?: boolean;
 }
 
@@ -78,7 +79,6 @@ export type ShortcutActionId =
   | 'nav:reps'
   | 'nav:refresh-sync'
   | 'nav:rep-transfers'
-  | 'nav:rep-item-transfers'
   | 'nav:employees'
   | 'nav:reports'
   | 'nav:users'
@@ -707,6 +707,7 @@ export interface InstallmentSchedule {
 
 export interface Representative {
   id: string;
+  code?: string;
   name: string;
   phone: string;
   vehicleNumber?: string;
@@ -1689,6 +1690,8 @@ export interface CustomerPriceHistoryEntry {
   unitFactor?: number;
 }
 
+export type SupplierPriceHistoryEntry = CustomerPriceHistoryEntry;
+
 export interface MobileConfig {
   enableCustomerApp: boolean;
   enableRepApp: boolean;
@@ -2329,6 +2332,8 @@ export interface ComprehensiveReportResponse {
       name: string;
       category: string;
       baseUnit: string;
+      class1?: string;
+      class2?: string;
       size?: string;
       color?: string;
     }>;
