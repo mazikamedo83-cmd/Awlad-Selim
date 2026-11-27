@@ -18,7 +18,7 @@ function test(name, fn) {
 console.log('\n=== Dashboard Balance Visibility & Windows Unified UI Verification ===');
 
 const rootDir = process.cwd();
-const readSrc = (relPath) => fs.readFileSync(path.join(rootDir, relPath), 'utf8');
+const readSrc = (relPath) => fs.readFileSync(path.join(rootDir, relPath), 'utf8').replace(/\r\n/g, '\n');
 
 test('PreferencesContext exports MASKED_BALANCE_TEXT, all 12 balance keys, sessionStorage persistence, and reset APIs', () => {
   const src = readSrc('src/context/PreferencesContext.tsx');

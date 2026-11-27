@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const rootDir = process.cwd();
-const readFile = (relPath) => fs.readFileSync(path.join(rootDir, relPath), 'utf8');
+const readFile = (relPath) => fs.readFileSync(path.join(rootDir, relPath), 'utf8').replace(/\r\n/g, '\n');
 
 let passed = 0;
 function test(name, fn) {

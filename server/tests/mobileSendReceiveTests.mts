@@ -518,7 +518,7 @@ try {
     assert.ok(dataCtxSrc.includes('executeManualReceiveConfirm'));
     assert.ok(dataCtxSrc.includes('commitSyncedOpsToLocalSnapshot'));
 
-    const appSrc = fs.readFileSync(path.join(projectRoot, 'src/App.tsx'), 'utf8');
+    const appSrc = fs.readFileSync(path.join(projectRoot, 'src/App.tsx'), 'utf8').replace(/\r\n/g, '\n');
     assert.ok(appSrc.includes("case 'refresh-sync':\n        return <SendReceiveView"));
 
     const settingsSrc = fs.readFileSync(path.join(projectRoot, 'src/components/modules/settings/SettingsView.tsx'), 'utf8');
