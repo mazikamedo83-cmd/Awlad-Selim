@@ -1,27 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  LayoutDashboard,
-  ShoppingCart,
-  Truck,
-  Boxes,
   Wallet,
-  CreditCard,
-  Users2,
-  Users,
-  FileBarChart,
-  Shield,
-  Settings,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ArrowDownCircle,
   ArrowUpCircle,
-  TrendingDown,
   TrendingUp,
-  ArrowLeftRight,
   X,
-  PanelRightClose,
-  PanelRightOpen,
 } from 'lucide-react';
 import {
   DashboardHomeIcon,
@@ -141,30 +127,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const isLtr = dir === 'ltr';
   const pendingOrdersCount = customerItemOrders.filter((o) => o.status === 'pending').length;
 
-  const ALL_OPEN_SECTIONS: Record<string, boolean> = useMemo(
-    () => ({
-      sales: true,
-      purchases: true,
-      inventory: true,
-      finance: true,
-      'cheques-inst': true,
-      representatives: true,
-      employees: true,
-      reports: true,
-      management: true,
-      settings: true,
-    }),
-    []
-  );
-
-  // Expand all sections by default and whenever the sidebar is reopened
-  const [openSectionIds, setOpenSectionIds] = useState<Record<string, boolean>>(ALL_OPEN_SECTIONS);
-
-  useEffect(() => {
-    if (isOpen) {
-      setOpenSectionIds(ALL_OPEN_SECTIONS);
-    }
-  }, [isOpen, ALL_OPEN_SECTIONS]);
+  // Closed by default: only one section open at a time (accordion)
+  const [openSectionId, setOpenSectionId] = useState<string | null>(null);
+  const prevPageRef = React.useRef<NavItemKey | null>(null);
 
   const navSections: NavSection[] = useMemo(
     () => [
@@ -222,7 +187,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           { key: 'warehouses', label: t('أرصدة المستودعات', 'Warehouse Balances'), permission: 'canManageWarehouses' },
           {
             key: 'stock-transfers-orders',
-            label: t('أوامر تحويل الأصناف', 'Stock Transfer Orders'),
+            label: t('أوامر التحويل', 'Transfer Orders'),
             permission: ['canCreateStockTransfer', 'canApproveStockTransfer', 'canExecuteStockTransfer', 'canManageInventory'],
           },
           {
@@ -230,7 +195,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             label: t('جرد المخزن المعتمد', 'Approved Stock Counts'),
             permission: ['canCreateStockCount', 'canApproveStockCount', 'canManageInventory'],
           },
-          { key: 'stock-transfers', label: t('تحويل سريع بين المستودعات', 'Quick Warehouse Transfer') },
           { key: 'stock-adjustments', label: t('تسوية سريعة للمخزون', 'Quick Stock Adjustment') },
           { key: 'damaged-stock', label: t('بضاعة تالفة ومنتهية', 'Damaged & Expired Stock') },
           { key: 'stock-movements', label: t('سجل حركة الأصناف', 'Stock Movement Log') },
@@ -286,11 +250,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         items: [
           {
             key: 'refresh-sync',
-            label: t('الإرسال والاستلام والتحويل', 'Send, Receive & Transfers'),
+            label: t('سجل الإرسال والاستلام', 'Send & Receive Log'),
             permission: ['canManageReps', 'canManageTransfers', 'canManageSales', 'canManageAccounts', 'canApprove'],
             badge: pendingSendReceiveCount > 0 ? `${pendingSendReceiveCount}` : undefined,
           },
           { key: 'reps', label: t('قائمة المناديب والعهد', 'Representatives & Custody'), permission: 'canManageReps' },
+          { key: 'rep-transfers', label: t('التحويلات النقدية للمناديب', 'Rep Cash Transfers'), permission: 'canManageTransfers' },
         ],
       },
       {
@@ -360,13 +325,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
     [pendingOrdersCount, pendingSendReceiveCount, language]
   );
 
-  // Auto-open the section owning the current page
+  // Auto-open ONLY the section owning the current page when navigating (keep all others closed)
   useEffect(() => {
-    if (currentPage === 'dashboard') return;
-    const ownerSection = navSections.find((sec) => sec.items.some((it) => it.key === currentPage));
-    if (ownerSection) {
-      setOpenSectionIds((prev) => ({ ...prev, [ownerSection.id]: true }));
+    if (prevPageRef.current === currentPage) return;
+    prevPageRef.current = currentPage;
+    if (currentPage === 'dashboard') {
+      setOpenSectionId(null);
+      return;
     }
+    const ownerSection = navSections.find((sec) => sec.items.some((it) => it.key === currentPage));
+    setOpenSectionId(ownerSection ? ownerSection.id : null);
   }, [currentPage, navSections]);
 
   // Escape key closes the mobile sliding drawer ONLY when no modal is open (never auto-closes docked desktop sidebar)
@@ -404,7 +372,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     .filter((section) => section.items.length > 0);
 
   const toggleSection = (id: string) => {
-    setOpenSectionIds((prev) => ({ ...prev, [id]: !prev[id] }));
+    setOpenSectionId((prev) => (prev === id ? null : id));
   };
 
   const handleItemClick = (key: NavItemKey) => {
@@ -549,7 +517,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             )}
           </button>
 
-          {/* Quick Cash Operations (Direct Execution, Permission-Gated) */}
+          {/* Quick Cash Operations (Direct Execution, Permission-Gated — non-duplicated actions only) */}
           {checkPerm('canManageCashboxes') && onOpenCashOp && (
             <div className="rounded-lg bg-[var(--awlad-blue-tint-50)]/70 dark:bg-[#132544] border border-[var(--awlad-blue-tint-100)] dark:border-[#21375C] p-1 space-y-1">
               <p className="text-[11px] font-black text-[var(--awlad-navy-900)] dark:text-[#F3F7FC] flex items-center gap-1">
@@ -582,35 +550,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    onOpenCashOp('expense');
-                    if (mobileDrawer) onClose();
-                  }}
-                  className="h-6.5 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#2A436E] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] hover:border-[var(--awlad-royal-700)] dark:hover:border-[#3B82F6] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
-                >
-                  <TrendingDown className="w-3 h-3 text-amber-700 dark:text-amber-400 shrink-0" />
-                  <span>{t('مصروف', 'Expense')}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
                     onOpenCashOp('profit_deposit');
                     if (mobileDrawer) onClose();
                   }}
-                  className="h-6.5 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#2A436E] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] hover:border-[var(--awlad-royal-700)] dark:hover:border-[#3B82F6] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
+                  className="col-span-2 h-6.5 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#2A436E] text-[var(--awlad-navy-900)] dark:text-[#DCE6F5] hover:border-[var(--awlad-royal-700)] dark:hover:border-[#3B82F6] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
                 >
                   <TrendingUp className="w-3 h-3 text-[var(--awlad-royal-700)] dark:text-[#60A5FA] shrink-0" />
                   <span>{t('إيداع ربحي', 'Profit Deposit')}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onOpenCashOp('cashbox_transfer');
-                    if (mobileDrawer) onClose();
-                  }}
-                  className="col-span-2 h-6.5 flex items-center justify-center gap-1 rounded-md bg-white dark:bg-[#0E1C36] border border-[var(--awlad-blue-tint-100)] dark:border-[#2A436E] text-[var(--awlad-royal-700)] dark:text-[#85B8FF] hover:bg-[var(--awlad-blue-tint-50)] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
-                >
-                  <ArrowLeftRight className="w-3 h-3 shrink-0" />
-                  <span>{t('ترحيل فوري بين الخزائن', 'Instant Cashbox Transfer')}</span>
                 </button>
               </div>
             </div>
@@ -619,7 +565,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* Expandable / Collapsible Sections List */}
           {filteredSections.map((section) => {
             const SectionIcon = section.icon;
-            const isExpanded = Boolean(openSectionIds[section.id]);
+            const isExpanded = openSectionId === section.id;
             const hasActiveChild = section.items.some((item) => item.key === currentPage);
 
             return (

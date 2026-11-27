@@ -78,11 +78,11 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
   const unitPriceInputRef = useRef<HTMLInputElement | null>(null);
   const [gridNotice, setGridNotice] = useState<{ text: string; type: 'success' | 'info' | 'warning' | 'error' } | null>(null);
 
-  // Header & Payment states
+  // Header & Payment states (zero unintended defaults)
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
-  const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>(warehouses[0]?.id || 'WH-01');
-  const [selectedRepId, setSelectedRepId] = useState<string>(representatives[0]?.id || '');
-  const [selectedCashboxId, setSelectedCashboxId] = useState<string>(cashboxes[0]?.id || 'CASH-01');
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>('');
+  const [selectedRepId, setSelectedRepId] = useState<string>('');
+  const [selectedCashboxId, setSelectedCashboxId] = useState<string>('');
   const [invoiceDate, setInvoiceDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [paymentType, setPaymentType] = useState<'cash' | 'credit' | 'partial'>('cash');
   const [invoiceStatusMode, setInvoiceStatusMode] = useState<'confirmed' | 'draft'>('confirmed');
@@ -96,8 +96,8 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
   const [items, setItems] = useState<DraftSaleRow[]>([]);
 
   // Classic Item Entry states
-  const [itemGroupFilter, setItemGroupFilter] = useState('all');
-  const [itemCategoryFilter, setItemCategoryFilter] = useState('all');
+  const [itemGroupFilter, setItemGroupFilter] = useState('');
+  const [itemCategoryFilter, setItemCategoryFilter] = useState('');
   const [barcodeInput, setBarcodeInput] = useState('');
   const [selectedProductId, setSelectedProductId] = useState<string>('');
   const [selectedUnitName, setSelectedUnitName] = useState<string>('');
@@ -125,26 +125,20 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     const order = hydratedSourceOrderRef.current;
     setError(null);
     setInvoiceStatusMode('confirmed');
-    setItemGroupFilter('all');
-    setItemCategoryFilter('all');
+    setItemGroupFilter('');
+    setItemCategoryFilter('');
     setBarcodeInput('');
     setSelectedProductId('');
     setSelectedUnitName('');
     setInputQuantity('');
     setInputUnitPrice('');
-    setSelectedWarehouseId((prev) =>
-      warehouses.some((w) => w.id === prev) ? prev : warehouses[0]?.id || 'WH-01'
-    );
-    setSelectedCashboxId((prev) =>
-      cashboxes.some((c) => c.id === prev) ? prev : cashboxes[0]?.id || 'CASH-01'
-    );
+    setSelectedWarehouseId('');
+    setSelectedCashboxId('');
 
     if (order) {
       const orderAdvance = Math.max(0, Number(order.advancePaidAmount || 0));
       setSelectedCustomerId(order.customerId || '');
-      if (order.deliveryRepId || order.representativeId) {
-        setSelectedRepId(order.deliveryRepId || order.representativeId || '');
-      }
+      setSelectedRepId(order.deliveryRepId || order.representativeId || '');
       setPaymentType(orderAdvance > 0 ? 'partial' : 'credit');
       setPaidAmount('');
       setDiscountTotal('');
@@ -177,6 +171,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
       setItems(hydrated);
     } else {
       setSelectedCustomerId('');
+      setSelectedRepId('');
       setPaymentType('cash');
       setPaidAmount('');
       setDiscountTotal('');
@@ -185,17 +180,6 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, sourceOrder?.id]);
-
-  // Fallback defaults when warehouses/cashboxes load after modal opens
-  useEffect(() => {
-    if (!isOpen) return;
-    if (warehouses.length > 0 && !warehouses.some((w) => w.id === selectedWarehouseId)) {
-      setSelectedWarehouseId(warehouses[0].id);
-    }
-    if (cashboxes.length > 0 && !cashboxes.some((c) => c.id === selectedCashboxId)) {
-      setSelectedCashboxId(cashboxes[0].id);
-    }
-  }, [isOpen, warehouses, cashboxes, selectedWarehouseId, selectedCashboxId]);
 
   const selectedCustomer = useMemo(
     () => customers.find((c) => c.id === selectedCustomerId),
@@ -225,23 +209,6 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
     };
   }, [isOpen, selectedCustomerId, getCustomerPriceHistory]);
 
-  const customerProductHistoryEntries = useMemo(() => {
-    if (!selectedCustomerId || !selectedProduct) return [];
-    const raw =
-      fetchedPriceHistory[selectedProduct.id] ||
-      selectedCustomer?.priceHistory?.[selectedProduct.id] ||
-      [];
-    return raw
-      .slice(0, 3)
-      .map((entry) => {
-        if (typeof entry === 'number') {
-          return { unitPrice: entry, date: '' };
-        }
-        return { unitPrice: Number(entry.price || 0), date: entry.date || '' };
-      })
-      .filter((e) => e.unitPrice > 0);
-  }, [selectedCustomerId, selectedCustomer, selectedProduct, fetchedPriceHistory]);
-
   const productUnitOptions = useMemo(() => {
     if (!selectedProduct) return [];
     return [
@@ -259,6 +226,35 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
       })),
     ];
   }, [selectedProduct]);
+
+  const customerProductHistoryEntries = useMemo(() => {
+    if (!selectedCustomerId || !selectedProduct) return [];
+    const raw =
+      fetchedPriceHistory[selectedProduct.id] ||
+      selectedCustomer?.priceHistory?.[selectedProduct.id] ||
+      [];
+    const currentUnitOpt = productUnitOptions.find(
+      (u) => u.name === (selectedUnitName || selectedProduct.baseUnit)
+    );
+    const curFactor = Number(currentUnitOpt?.conversionFactor || 1);
+    return [...raw]
+      .reverse()
+      .slice(0, 3)
+      .map((entry) => {
+        if (typeof entry === 'number') {
+          const adj = Math.round(entry * curFactor * 100) / 100;
+          return { unitPrice: adj, date: '', invoiceNumber: '' };
+        }
+        const histFactor = Number((entry as any).unitFactor || 1) || 1;
+        const adj = Math.round(((Number(entry.price || 0) / histFactor) * curFactor) * 100) / 100;
+        return {
+          unitPrice: adj,
+          date: entry.date || '',
+          invoiceNumber: entry.invoiceNumber || '',
+        };
+      })
+      .filter((e) => e.unitPrice > 0);
+  }, [selectedCustomerId, selectedCustomer, selectedProduct, fetchedPriceHistory, productUnitOptions, selectedUnitName]);
 
   const handleProductSelect = (prodId: string) => {
     setSelectedProductId(prodId);
@@ -539,6 +535,14 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
         setError(t('يرجى إضافة صنف واحد على الأقل للفاتورة', 'Please add at least one item to the invoice'));
         return;
       }
+      if (!selectedWarehouseId) {
+        setError(t('يرجى اختيار المستودع المصروف منه', 'Please select the issue warehouse'));
+        return;
+      }
+      if (paymentType !== 'credit' && effectivePaidAtInvoice > 0 && !selectedCashboxId) {
+        setError(t('يرجى اختيار الخزينة المستلمة للتحصيل', 'Please select the receiving cashbox'));
+        return;
+      }
       const wh = warehouses.find((w) => w.id === selectedWarehouseId);
       const canNegative =
         Boolean(settings.allowNegativeStock) &&
@@ -618,7 +622,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
           remainingAmount: Math.max(0, roundCurrency(grandTotal - totalPaidOnInvoice)),
           paymentType,
           paymentMethod: 'cash' as const,
-          cashboxId: paymentType === 'credit' || effectivePaidAtInvoice <= 0 ? '' : (selectedCashboxId || cashboxes[0]?.id || ''),
+          cashboxId: paymentType === 'credit' || effectivePaidAtInvoice <= 0 ? '' : selectedCashboxId,
           status: invoiceStatusMode,
           notes: notes.trim(),
           linkedRepTransferId: linkedTransferId,
@@ -747,11 +751,12 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                     : `${t('رصيد:', 'Bal:')} ${formatLocaleNumber(c.currentBalance)}`,
                 searchText: `${c.name} ${c.shopName || ''} ${c.phone || ''} ${c.code || ''}`,
               }))}
-              allOptionLabel={t('-- عميل نقدي عام --', '-- Walk-in / Cash Customer --')}
-              allOptionValue=""
+              includeAllOption={false}
+              placeholder={t('-- عميل نقدي / ابحث عن عميل --', '-- Cash Walk-in / Search Customer --')}
+              minSearchChars={2}
               searchPlaceholder={t(
-                'ابحث باسم العميل أو المحل أو الهاتف...',
-                'Search by customer, shop, or phone...'
+                'اكتب حرفين على الأقل باسم العميل أو الهاتف...',
+                'Type at least 2 chars by customer, shop, or phone...'
               )}
               allowClear={!sourceOrder}
               minPanelWidth={260}
@@ -770,6 +775,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
               onChange={(e) => setSelectedWarehouseId(e.target.value)}
               className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-xs font-bold text-slate-800"
             >
+              <option value="">{t('-- اختيار المستودع --', '-- Select Warehouse --')}</option>
               {warehouses.map((w) => (
                 <option key={w.id} value={w.id}>
                   {t(w.name)}
@@ -789,9 +795,10 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                 subtitle: r.phone || undefined,
                 searchText: `${r.name} ${r.phone || ''}`,
               }))}
-              allOptionLabel={t('-- بيع مباشر --', '-- Direct Sale --')}
-              allOptionValue=""
-              searchPlaceholder={t('ابحث باسم المندوب...', 'Search by rep name...')}
+              includeAllOption={false}
+              placeholder={t('-- اختيار المندوب (أو بيع مباشر) --', '-- Select Rep (or Direct Sale) --')}
+              minSearchChars={2}
+              searchPlaceholder={t('اكتب حرفين على الأقل باسم المندوب...', 'Type at least 2 chars by rep name...')}
               allowClear
               buttonClassName="rounded-md h-8"
             />
@@ -818,6 +825,8 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
             selectedCategoryId={itemCategoryFilter}
             groupTriggerRef={groupTriggerRef}
             categoryTriggerRef={categoryTriggerRef}
+            allowAll={false}
+            minSearchChars={2}
             autoAdvanceOnSelect
             onCategoryAfterSelect={() => {
               window.setTimeout(() => productSearchRef.current?.focus(), 20);
@@ -869,7 +878,8 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                 selectedProductId={selectedProductId}
                 priceMode="selling"
                 currency={settings.currency}
-                placeholder={t('ابحث باسم الصنف أو الكود أو الباركود...', 'Search item by name, code, or barcode...')}
+                minSearchChars={2}
+                placeholder={t('اكتب حرفين على الأقل باسم الصنف أو الكود أو الباركود...', 'Type at least 2 chars for item...')}
                 onSelect={(prod) => handleProductSelect(prod.id)}
                 onAfterSelect={() => {
                   window.setTimeout(() => qtyInputRef.current?.focus(), 20);
@@ -969,21 +979,29 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
             </div>
           </div>
 
-          {customerProductHistoryEntries.length > 0 && (
+          {selectedCustomerId && selectedProduct && (
             <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px]">
-              <span className="font-bold text-slate-600">
-                {t('أسعار سابقة لهذا العميل:', 'Previous prices for this customer:')}
+              <span className="font-bold text-slate-700">
+                {t('آخر ثلاثة أسعار لهذا العميل:', 'Last 3 prices for this customer:')}
               </span>
-              {customerProductHistoryEntries.map((entry, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => setInputUnitPrice(entry.unitPrice)}
-                  className="px-2 py-0.5 rounded bg-white border border-blue-300 hover:bg-blue-100 text-blue-900 font-mono font-bold cursor-pointer"
-                >
-                  {formatLocaleNumber(entry.unitPrice)} {currencyLabel}
-                </button>
-              ))}
+              {customerProductHistoryEntries.length > 0 ? (
+                customerProductHistoryEntries.map((entry, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setInputUnitPrice(entry.unitPrice)}
+                    className="px-2 py-0.5 rounded bg-white border border-blue-300 hover:bg-blue-100 text-blue-900 font-bold cursor-pointer inline-flex items-center gap-1.5"
+                  >
+                    <span className="font-mono font-black">{formatLocaleNumber(entry.unitPrice)} {currencyLabel}</span>
+                    {entry.date && <span className="text-[10px] text-slate-500 font-mono">({entry.date})</span>}
+                    {entry.invoiceNumber && <span className="text-[10px] text-blue-700 font-mono">{entry.invoiceNumber}</span>}
+                  </button>
+                ))
+              ) : (
+                <span className="text-slate-500 font-semibold">
+                  {t('لا توجد أسعار سابقة', 'No previous prices')}
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -1196,6 +1214,7 @@ export const NewSaleInvoiceModal: React.FC<NewSaleInvoiceModalProps> = ({
                   onChange={(e) => setSelectedCashboxId(e.target.value)}
                   className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-xs font-bold disabled:bg-slate-100 disabled:text-slate-400"
                 >
+                  <option value="">{t('-- اختيار الخزينة --', '-- Select Cashbox --')}</option>
                   {cashboxes.map((c) => (
                     <option key={c.id} value={c.id}>
                       {t(c.name)}

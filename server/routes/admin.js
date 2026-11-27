@@ -33,7 +33,7 @@ import {
 } from '../db/stores/inventoryAdminStore.js';
 import { getLegacyOwnershipDiagnostics } from '../db/stores/invoicesStore.js';
 import { listAuditLogs } from '../db/stores/authStore.js';
-import { getSystemSettingsSafe } from '../db/stores/catalogStore.js';
+import { getSystemSettingsSafe, getSupplierProductPriceHistory } from '../db/stores/catalogStore.js';
 import {
   listPairingTokens,
   createPairingToken,
@@ -434,6 +434,27 @@ router.get('/suppliers/:id/statement', requireAnyPermission('canManageAccounts',
   }
   const statement = await getSupplierStatementData(req.params.id, u);
   res.json({ ok: true, ...statement, statement });
+}));
+
+router.get('/suppliers/:id/price-history', requireAnyPermission('canManageAccounts', 'canManagePurchases', 'canCreatePurchase', 'canViewReports'), asyncHandler(async (req, res) => {
+  const u = req.auth.user;
+  if (u.role === 'customer') {
+    return res.status(403).json({
+      ok: false,
+      code: 'FORBIDDEN_PERMISSION',
+      error: 'غير مصرح للعملاء بعرض أسعار الموردين',
+    });
+  }
+  if (u.role === 'representative' && !u.permissions?.canCreatePurchase && !u.permissions?.canManagePurchases) {
+    return res.status(403).json({
+      ok: false,
+      code: 'FORBIDDEN_REP_SUPPLIER_PRICES',
+      error: 'عرض سجل أسعار المورد متاح فقط للمندوبين المصرح لهم بإنشاء أو إدارة المشتريات',
+    });
+  }
+  const productId = req.query?.productId ? String(req.query.productId) : '';
+  const history = await getSupplierProductPriceHistory(req.params.id, productId);
+  res.json({ ok: true, history });
 }));
 
 // Cashboxes & Expenses

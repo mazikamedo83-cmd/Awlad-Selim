@@ -74,8 +74,9 @@ test('3. Android/iOS Mobile shells (StaffMobileShell & MobilePortal) have zero v
   assert.ok(mobilePortal.includes('bottomNavItems'), 'MobilePortal must preserve 5-tab mobile bottom nav');
 });
 
-test('4. Sidebar preserves all 10 system module sections, auto-expands on open, and closes cleanly with (X)', () => {
+test('4. Sidebar preserves all 10 system module sections, defaults closed with single-open accordion, removes duplicate cashbox transfer/expense quick buttons, has zero duplicate/broken keys, and closes cleanly with (X)', () => {
   const sidebar = readFile('src/components/layout/Sidebar.tsx');
+  const app = readFile('src/App.tsx');
   const expectedSectionIds = [
     "'sales'",
     "'purchases'",
@@ -92,13 +93,34 @@ test('4. Sidebar preserves all 10 system module sections, auto-expands on open, 
     assert.ok(sidebar.includes(id), `Sidebar missing section ${id}`);
   }
   assert.ok(sidebar.includes('data-testid="sidebar-close-btn"'), 'Sidebar must include explicit close (X) button');
-  assert.ok(sidebar.includes('setOpenSectionIds(ALL_OPEN_SECTIONS)'), 'Sidebar must expand all sections when reopened');
+  assert.ok(sidebar.includes('useState<string | null>(null)'), 'Sidebar must default all sections closed');
+  assert.ok(sidebar.includes('setOpenSectionId((prev) => (prev === id ? null : id))'), 'Sidebar must enforce single-open accordion');
+  assert.ok(
+    sidebar.includes("if (currentPage === 'dashboard') {\n      setOpenSectionId(null);\n      return;\n    }"),
+    'Sidebar must keep all sections closed on dashboard'
+  );
+  assert.ok(
+    sidebar.includes('const ownerSection = navSections.find((sec) => sec.items.some((it) => it.key === currentPage));\n    setOpenSectionId(ownerSection ? ownerSection.id : null);'),
+    'Sidebar must auto-open only the section owning currentPage'
+  );
+  assert.ok(!sidebar.includes("onOpenCashOp('cashbox_transfer')"), 'Sidebar Quick Cash Ops must not duplicate cashbox-transfer');
+  assert.ok(!sidebar.includes("onOpenCashOp('expense')"), 'Sidebar Quick Cash Ops must not duplicate Header expense shortcut');
   assert.ok(sidebar.includes('if (!mobileDrawer && !isOpen) {\n    return null;\n  }'), 'Closing sidebar must unmount aside so main expands seamlessly');
+
+  // Verify every navSections item key is unique and routed in App.tsx
+  const navSectionsMatch = sidebar.match(/const navSections: NavSection\[] = useMemo\(([\s\S]*?)\n  \);/);
+  assert.ok(navSectionsMatch, 'Could not locate navSections definition in Sidebar.tsx');
+  const itemKeys = [...navSectionsMatch[1].matchAll(/key:\s*'([^']+)'/g)].map((m) => m[1]);
+  assert.ok(itemKeys.length >= 40, `Expected full sidebar item list, found ${itemKeys.length}`);
+  const uniqueKeys = new Set(itemKeys);
+  assert.equal(uniqueKeys.size, itemKeys.length, `Duplicate sidebar item keys found: ${itemKeys.filter((k, i) => itemKeys.indexOf(k) !== i).join(', ')}`);
+  for (const key of itemKeys) {
+    assert.ok(app.includes(`case '${key}':`), `Sidebar item '${key}' is missing a route case in App.tsx`);
+  }
 });
 
 test('5. Send and Receive buttons/labels across ALL platforms show only إرسال and استلام without السيرفر', () => {
-  const refresh = readFile('src/components/modules/mobile/RefreshSyncScreen.tsx');
-  const syncCenter = readFile('src/components/common/SyncCenterModal.tsx');
+  const sendReceive = readFile('src/components/modules/sync/SendReceiveView.tsx');
   const offlineInd = readFile('src/components/layout/OfflineIndicator.tsx');
   const staffShell = readFile('src/components/modules/mobile/StaffMobileShell.tsx');
   const repPortal = readFile('src/components/modules/mobile/RepPortal.tsx');
@@ -106,8 +128,7 @@ test('5. Send and Receive buttons/labels across ALL platforms show only إرسا
   const syncEng = readFile('src/services/syncEngine.ts');
 
   for (const [name, content] of [
-    ['RefreshSyncScreen.tsx', refresh],
-    ['SyncCenterModal.tsx', syncCenter],
+    ['SendReceiveView.tsx', sendReceive],
     ['OfflineIndicator.tsx', offlineInd],
     ['StaffMobileShell.tsx', staffShell],
     ['RepPortal.tsx', repPortal],
@@ -119,11 +140,11 @@ test('5. Send and Receive buttons/labels across ALL platforms show only إرسا
     assert.ok(!content.includes('استلام من السيرفر'), `${name} still contains 'استلام من السيرفر'`);
   }
 
-  assert.ok(!syncCenter.includes('بانتظار السيرفر'), 'SyncCenterModal still says بانتظار السيرفر');
-  assert.ok(!syncCenter.includes('نسخة السيرفر'), 'SyncCenterModal still says نسخة السيرفر');
-  assert.ok(refresh.includes("? `إرسال (${kpiStats.readyToSend})`\n                : 'إرسال'"), 'RefreshSyncScreen send button must say إرسال');
-  assert.ok(refresh.includes("? `استلام (${kpiStats.awaitingReceiveTotal})`\n                : 'استلام'"), 'RefreshSyncScreen receive button must say استلام');
-  assert.ok(staffShell.includes("label: 'إرسال واستلام'"), 'StaffMobileShell tile must say إرسال واستلام');
+  assert.ok(!sendReceive.includes('بانتظار السيرفر'), 'SendReceiveView still says بانتظار السيرفر');
+  assert.ok(!sendReceive.includes('نسخة السيرفر'), 'SendReceiveView still says نسخة السيرفر');
+  assert.ok(sendReceive.includes("t('إرسال', 'Send')"), 'SendReceiveView send button must say إرسال');
+  assert.ok(sendReceive.includes("t('استلام', 'Receive')"), 'SendReceiveView receive button must say استلام');
+  assert.ok(staffShell.includes("t('إرسال واستلام', 'Send & Receive')"), 'StaffMobileShell tile must say إرسال واستلام');
 });
 
 console.log(`\n[Platform UI Correction Tests] ${passed} checks passed.\n`);

@@ -652,10 +652,12 @@ async function resolvePurchaseItemsWithInlineProductsPgTx(client, rawItems = [],
     const finalCode = candidate.code || `P-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 90 + 10)}`;
     const purchasePrice = round2(np.purchasePrice ?? (Number(item.unitPrice || 0) / Math.max(0.001, Number(item.unitFactor || 1))));
     const sellingPrice = round2(np.sellingPrice ?? 0);
+    const cleanClass1 = String(np.class1 || '').trim() || null;
+    const cleanClass2 = String(np.class2 || '').trim() || null;
 
     await client.query(
-      `INSERT INTO products (id, code, barcode, name, category, category_id, group_id, group_name, base_unit, unit_id, purchase_price, selling_price, min_stock_level, stock_per_warehouse, notes, status, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, '{}'::jsonb, $14, 'active', $15)`,
+      `INSERT INTO products (id, code, barcode, name, category, category_id, group_id, group_name, base_unit, unit_id, class1, class2, purchase_price, selling_price, min_stock_level, stock_per_warehouse, notes, status, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, '{}'::jsonb, $16, 'active', $17)`,
       [
         newProdId,
         finalCode,
@@ -667,6 +669,8 @@ async function resolvePurchaseItemsWithInlineProductsPgTx(client, rawItems = [],
         resolvedGroupName,
         resolvedUnit.baseUnit,
         resolvedUnit.unitId,
+        cleanClass1,
+        cleanClass2,
         purchasePrice,
         sellingPrice,
         round2(np.minStockLevel || 0),
@@ -684,6 +688,8 @@ async function resolvePurchaseItemsWithInlineProductsPgTx(client, rawItems = [],
       categoryId: resolvedCatId || undefined,
       groupId: resolvedGroupId || undefined,
       groupName: resolvedGroupName,
+      class1: cleanClass1 || undefined,
+      class2: cleanClass2 || undefined,
       baseUnit: resolvedUnit.baseUnit,
       unitId: resolvedUnit.unitId || undefined,
       units: [],
@@ -794,6 +800,8 @@ function resolvePurchaseItemsWithInlineProductsJsonTx(db, rawItems = [], now) {
       categoryId: resolvedCatId,
       groupId: resolvedGroupId,
       groupName: resolvedGroupName,
+      class1: String(np.class1 || '').trim() || undefined,
+      class2: String(np.class2 || '').trim() || undefined,
       baseUnit: resolvedUnit.baseUnit,
       ...(resolvedUnit.unitId ? { unitId: resolvedUnit.unitId } : {}),
       units: [],

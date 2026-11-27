@@ -40,6 +40,7 @@ import {
   SyncDispatchBatch,
   DispatchRecipientOption,
   RepTransferTarget,
+  RepCustodyReturnRequest,
 } from '../types';
 
 const OFFLINE_ORDERS_QUEUE_KEY = 'awlad_selim_offline_orders_queue_v3';
@@ -61,6 +62,7 @@ export interface DatabaseState {
   repTransfers: RepTransfer[];
   repItemTransfers?: RepItemTransferRequest[];
   repCustodyOperations?: RepCustodyOperation[];
+  repCustodyReturnRequests?: RepCustodyReturnRequest[];
   customerItemOrders?: CustomerItemOrderRequest[];
   orderAdvancePayments?: OrderAdvancePayment[];
   syncConflicts?: SyncConflictRecord[];
@@ -110,6 +112,7 @@ export function getEmptyClientDatabaseState(): DatabaseState {
     repTransfers: [],
     repItemTransfers: [],
     repCustodyOperations: [],
+    repCustodyReturnRequests: [],
     customerItemOrders: [],
     orderAdvancePayments: [],
     syncConflicts: [],

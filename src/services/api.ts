@@ -1334,3 +1334,118 @@ export async function fetchRepresentativeStatementApi(
   return apiRequest(`/api/mobile/representatives/${encodeURIComponent(repId)}/statement`);
 }
 
+export async function fetchSupplierPriceHistoryApi(
+  supplierId: string,
+  productId?: string
+): Promise<{
+  ok: boolean;
+  priceHistory: Record<string, import('../types').SupplierPriceHistoryEntry[]>;
+}> {
+  const qs = productId ? `?productId=${encodeURIComponent(productId)}` : '';
+  return apiRequest(`/api/inventory/suppliers/${encodeURIComponent(supplierId)}/price-history${qs}`);
+}
+
+export async function fetchRepCustodyReturnRequestsApi(params?: {
+  repId?: string;
+  status?: string;
+}): Promise<{
+  ok: boolean;
+  requests: import('../types').RepCustodyReturnRequest[];
+}> {
+  const qs = new URLSearchParams();
+  if (params?.repId) qs.set('repId', params.repId);
+  if (params?.status) qs.set('status', params.status);
+  const query = qs.toString();
+  return apiRequest(`/api/inventory/rep-custody/return-requests${query ? `?${query}` : ''}`);
+}
+
+export async function createRepCustodyReturnRequestApi(payload: {
+  representativeId?: string;
+  targetWarehouseId?: string;
+  date?: string;
+  notes?: string;
+  idempotencyKey?: string;
+  items: Array<{
+    productId: string;
+    unit?: string;
+    unitFactor?: number;
+    requestedQty: number;
+    notes?: string;
+  }>;
+}): Promise<{
+  ok: boolean;
+  request: import('../types').RepCustodyReturnRequest;
+}> {
+  return apiRequest('/api/inventory/rep-custody/return-requests', {
+    method: 'POST',
+    body: payload,
+    idempotencyKey: payload.idempotencyKey,
+  });
+}
+
+export async function approveRepCustodyReturnRequestApi(
+  requestId: string,
+  payload: {
+    items?: Array<{
+      productId: string;
+      unit?: string;
+      actualReceivedQty: number;
+      approvedQty: number;
+      rejectionReason?: string;
+    }>;
+    reviewNotes?: string;
+  }
+): Promise<{
+  ok: boolean;
+  request: import('../types').RepCustodyReturnRequest;
+}> {
+  return apiRequest(`/api/inventory/rep-custody/return-requests/${encodeURIComponent(requestId)}/approve`, {
+    method: 'POST',
+    body: payload,
+  });
+}
+
+export async function rejectRepCustodyReturnRequestApi(
+  requestId: string,
+  reason: string
+): Promise<{
+  ok: boolean;
+  request: import('../types').RepCustodyReturnRequest;
+}> {
+  return apiRequest(`/api/inventory/rep-custody/return-requests/${encodeURIComponent(requestId)}/reject`, {
+    method: 'POST',
+    body: { reason },
+  });
+}
+
+export async function fetchSendReceiveActivityLogApi(params?: {
+  dateFrom?: string;
+  dateTo?: string;
+  repId?: string;
+  operationType?: string;
+  status?: string;
+  docNumber?: string;
+}): Promise<import('../types').SendReceiveActivityLogResponse> {
+  const qs = new URLSearchParams();
+  if (params?.dateFrom) qs.set('dateFrom', params.dateFrom);
+  if (params?.dateTo) qs.set('dateTo', params.dateTo);
+  if (params?.repId && params.repId !== 'all') qs.set('repId', params.repId);
+  if (params?.operationType && params.operationType !== 'all') qs.set('operationType', params.operationType);
+  if (params?.status && params.status !== 'all') qs.set('status', params.status);
+  if (params?.docNumber) qs.set('docNumber', params.docNumber);
+  const query = qs.toString();
+  return apiRequest(`/api/sync/send-receive-log${query ? `?${query}` : ''}`);
+}
+
+export async function fetchSyncSourceDocumentApi(
+  docType: string,
+  docId: string
+): Promise<{
+  ok: boolean;
+  document: any;
+  auditTrail?: import('../types').AuditLogItem[];
+}> {
+  const qs = new URLSearchParams({ docType, docId });
+  return apiRequest(`/api/sync/source-document?${qs.toString()}`);
+}
+

@@ -74,6 +74,8 @@ import {
   transferStock,
   createSupplier,
   updateSupplier,
+  getSendReceiveActivityLog,
+  getSyncSourceDocument,
 } from '../db/stores/inventoryAdminStore.js';
 import {
   listDispatchRecipients,
@@ -1449,35 +1451,74 @@ async function computeReceivePreviewData(auth) {
     }
   }
 
-  // Informational updated/approved records created after lastReceiveAt (or pending review)
-  if (lastReceiveAt) {
-    const cutoff = new Date(lastReceiveAt).getTime();
-    if (Number.isFinite(cutoff)) {
-      for (const sr of staffData.salesReturnRequests || []) {
-        const ts = new Date(sr.reviewedAt || sr.createdAt || 0).getTime();
-        if (ts > cutoff && sr.status !== 'pending') {
-          updatedDocuments.push({ kind: 'sales_return_request', id: sr.id, number: sr.requestNumber, status: sr.status, date: sr.date });
-        }
+  // Informational updated/approved records & catalog/customer updates after lastReceiveAt
+  const updatedCatalogItems = [];
+  const updatedCustomerItems = [];
+  let updatedCatalogCount = 0;
+  let updatedCustomersCount = 0;
+  let updatedInvoicesCount = 0;
+
+  const cutoff = lastReceiveAt ? new Date(lastReceiveAt).getTime() : 0;
+  const hasCutoff = Boolean(lastReceiveAt && Number.isFinite(cutoff));
+
+  if (hasCutoff) {
+    for (const sr of staffData.salesReturnRequests || []) {
+      const ts = new Date(sr.reviewedAt || sr.createdAt || 0).getTime();
+      if (ts > cutoff && sr.status !== 'pending') {
+        updatedDocuments.push({ kind: 'sales_return_request', id: sr.id, number: sr.requestNumber, status: sr.status, date: sr.date });
       }
-      for (const pr of staffData.purchaseReturnRequests || []) {
-        const ts = new Date(pr.reviewedAt || pr.createdAt || 0).getTime();
-        if (ts > cutoff && pr.status !== 'pending') {
-          updatedDocuments.push({ kind: 'purchase_return_request', id: pr.id, number: pr.requestNumber, status: pr.status, date: pr.date });
-        }
+    }
+    for (const pr of staffData.purchaseReturnRequests || []) {
+      const ts = new Date(pr.reviewedAt || pr.createdAt || 0).getTime();
+      if (ts > cutoff && pr.status !== 'pending') {
+        updatedDocuments.push({ kind: 'purchase_return_request', id: pr.id, number: pr.requestNumber, status: pr.status, date: pr.date });
       }
-      for (const inv of staffData.invoices || []) {
-        if (inv.type === 'purchase' && inv.createdByUserId === user.id && inv.status !== 'draft') {
-          const ts = new Date(inv.receivedAt || inv.confirmedAt || inv.updatedAt || inv.createdAt || 0).getTime();
-          if (ts > cutoff) {
-            updatedDocuments.push({ kind: 'purchase_approval', id: inv.id, number: inv.invoiceNumber, status: inv.status, date: inv.date });
-          }
+    }
+    for (const inv of staffData.invoices || []) {
+      const ts = new Date(inv.receivedAt || inv.confirmedAt || inv.updatedAt || inv.createdAt || 0).getTime();
+      if (inv.type === 'purchase' && inv.createdByUserId === user.id && inv.status !== 'draft') {
+        if (ts > cutoff) {
+          updatedDocuments.push({ kind: 'purchase_approval', id: inv.id, number: inv.invoiceNumber, status: inv.status, date: inv.date });
         }
+      } else if (ts > cutoff && inv.createdBy !== user.id) {
+        updatedInvoicesCount += 1;
+      }
+    }
+  }
+
+  for (const prod of staffData.products || []) {
+    const ts = new Date(prod.updatedAt || prod.createdAt || 0).getTime();
+    if (!hasCutoff || ts > cutoff) {
+      updatedCatalogCount += 1;
+      if (updatedCatalogItems.length < 15) {
+        updatedCatalogItems.push({
+          id: prod.id,
+          name: prod.name,
+          code: prod.code || '',
+          sellingPrice: Number(prod.sellingPrice || 0),
+        });
+      }
+    }
+  }
+
+  for (const cust of staffData.customers || []) {
+    const ts = new Date(cust.updatedAt || cust.createdAt || 0).getTime();
+    if (!hasCutoff || ts > cutoff) {
+      updatedCustomersCount += 1;
+      if (updatedCustomerItems.length < 15) {
+        updatedCustomerItems.push({
+          id: cust.id,
+          name: cust.name,
+          code: cust.code || '',
+        });
       }
     }
   }
 
   const actionableCount = incomingCustodyDispatches.length + incomingCashTransfers.length + incomingBatches.length;
-  const totalItemsCount = actionableCount + updatedDocuments.length;
+  const informationalUpdatesCount =
+    updatedDocuments.length + updatedCatalogCount + updatedCustomersCount + updatedInvoicesCount;
+  const totalItemsCount = actionableCount + informationalUpdatesCount;
 
   return {
     syncState,
@@ -1490,12 +1531,17 @@ async function computeReceivePreviewData(auth) {
       cashTransfersCount: incomingCashTransfers.length,
       dispatchBatchesCount: incomingBatches.length,
       updatedDocumentsCount: updatedDocuments.length,
+      updatedCatalogCount,
+      updatedCustomersCount,
+      updatedInvoicesCount,
     },
     items: {
       custodyDispatches: incomingCustodyDispatches,
       cashTransfers: incomingCashTransfers,
       dispatchBatches: incomingBatches,
       updatedDocuments,
+      updatedCatalogItems,
+      updatedCustomerItems,
     },
   };
 }
@@ -1607,6 +1653,9 @@ router.post(
       cashTransfersCount: confirmedCashTransfersCount,
       dispatchBatchesCount: confirmedBatchesCount,
       updatedDocumentsCount: previewBefore.items.updatedDocuments.length,
+      updatedCatalogCount: Number(previewBefore.summary.updatedCatalogCount || 0),
+      updatedCustomersCount: Number(previewBefore.summary.updatedCustomersCount || 0),
+      updatedInvoicesCount: Number(previewBefore.summary.updatedInvoicesCount || 0),
     };
 
     let syncState = await getUserSyncState(user.id);
@@ -1661,6 +1710,41 @@ router.post(
         ...freshBootstrap,
       },
     });
+  })
+);
+
+router.get(
+  '/send-receive-log',
+  asyncHandler(async (req, res) => {
+    const q = req.query || {};
+    const log = await getSendReceiveActivityLog(
+      {
+        dateFrom: typeof q.dateFrom === 'string' ? q.dateFrom : undefined,
+        dateTo: typeof q.dateTo === 'string' ? q.dateTo : undefined,
+        representativeId: typeof q.representativeId === 'string' ? q.representativeId : undefined,
+        operationType: typeof q.operationType === 'string' ? q.operationType : undefined,
+        status: typeof q.status === 'string' ? q.status : undefined,
+        search: typeof q.search === 'string' ? q.search : undefined,
+      },
+      req.auth.user
+    );
+    res.json({ ok: true, log });
+  })
+);
+
+router.get(
+  '/source-document',
+  asyncHandler(async (req, res) => {
+    const docType = typeof req.query?.docType === 'string' ? req.query.docType : '';
+    const docId = typeof req.query?.docId === 'string' ? req.query.docId : '';
+    if (!docId) {
+      return res.status(400).json({ ok: false, code: 'MISSING_DOC_ID', error: 'معرف المستند مطلوب' });
+    }
+    const result = await getSyncSourceDocument(docType, docId, req.auth.user);
+    if (!result) {
+      return res.status(404).json({ ok: false, code: 'NOT_FOUND', error: 'تعذر العثور على المستند الأصلي' });
+    }
+    res.json({ ok: true, ...result });
   })
 );
 

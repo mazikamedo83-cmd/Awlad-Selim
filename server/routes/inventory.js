@@ -18,11 +18,17 @@ import {
   recordRepCustodyAdjustment,
   getRepCustodyStatement,
   getItemMovementReport,
+  listRepCustodyReturnRequests,
+  createRepCustodyReturnRequest,
+  approveRepCustodyReturnRequest,
+  rejectRepCustodyReturnRequest,
 } from '../db/stores/inventoryAdminStore.js';
+import { getSupplierProductPriceHistory } from '../db/stores/catalogStore.js';
 import {
   requireAuth,
   requireStaff,
   requirePermission,
+  requireAnyPermission,
   asyncHandler,
 } from '../middleware/auth.js';
 
@@ -244,6 +250,94 @@ router.get(
 );
 
 router.get(
+  '/rep-custody/return-requests',
+  asyncHandler(async (req, res) => {
+    const u = req.auth.user;
+    if (
+      u.role !== 'representative' &&
+      u.role !== 'admin' &&
+      !u.permissions?.canManageReps &&
+      !u.permissions?.canManageTransfers &&
+      !u.permissions?.canManageInventory &&
+      !u.permissions?.canViewReports
+    ) {
+      return res.status(403).json({ ok: false, code: 'FORBIDDEN', error: 'ليس لديك صلاحية عرض طلبات إرجاع البضاعة' });
+    }
+    const requests = await listRepCustodyReturnRequests(u, {
+      representativeId: typeof req.query.representativeId === 'string' ? req.query.representativeId : undefined,
+      status: typeof req.query.status === 'string' ? req.query.status : undefined,
+      dateFrom: typeof req.query.dateFrom === 'string' ? req.query.dateFrom : undefined,
+      dateTo: typeof req.query.dateTo === 'string' ? req.query.dateTo : undefined,
+    });
+    res.json({ ok: true, requests });
+  })
+);
+
+router.post(
+  '/rep-custody/return-requests',
+  asyncHandler(async (req, res) => {
+    const u = req.auth.user;
+    if (
+      u.role !== 'representative' &&
+      u.role !== 'admin' &&
+      !u.permissions?.canManageReps &&
+      !u.permissions?.canManageTransfers &&
+      !u.permissions?.canManageInventory
+    ) {
+      return res.status(403).json({ ok: false, code: 'FORBIDDEN', error: 'ليس لديك صلاحية إنشاء طلب إرجاع بضاعة' });
+    }
+    const idempotencyKey = req.get('Idempotency-Key') || req.body?.idempotencyKey || '';
+    const result = await createRepCustodyReturnRequest(req.body || {}, u, idempotencyKey);
+    res.status(result.deduplicated ? 200 : 201).json({ ok: true, ...result });
+  })
+);
+
+router.post(
+  '/rep-custody/return-requests/:id/approve',
+  asyncHandler(async (req, res) => {
+    const u = req.auth.user;
+    if (u.role === 'representative' || u.role === 'customer') {
+      return res.status(403).json({ ok: false, code: 'FORBIDDEN', error: 'اعتماد طلبات إرجاع العهدة متاح للإدارة فقط' });
+    }
+    if (u.role !== 'admin' && !u.permissions?.canManageReps && !u.permissions?.canManageTransfers && !u.permissions?.canManageInventory) {
+      return res.status(403).json({ ok: false, code: 'FORBIDDEN', error: 'ليس لديك صلاحية اعتماد طلب إرجاع البضاعة' });
+    }
+    const idempotencyKey = req.get('Idempotency-Key') || req.body?.idempotencyKey || '';
+    const result = await approveRepCustodyReturnRequest(req.params.id, req.body || {}, u, idempotencyKey);
+    res.json({ ok: true, ...result });
+  })
+);
+
+router.post(
+  '/rep-custody/return-requests/:id/reject',
+  asyncHandler(async (req, res) => {
+    const u = req.auth.user;
+    if (u.role === 'representative' || u.role === 'customer') {
+      return res.status(403).json({ ok: false, code: 'FORBIDDEN', error: 'رفض طلبات إرجاع العهدة متاح للإدارة فقط' });
+    }
+    if (u.role !== 'admin' && !u.permissions?.canManageReps && !u.permissions?.canManageTransfers && !u.permissions?.canManageInventory) {
+      return res.status(403).json({ ok: false, code: 'FORBIDDEN', error: 'ليس لديك صلاحية رفض طلب إرجاع البضاعة' });
+    }
+    const result = await rejectRepCustodyReturnRequest(req.params.id, req.body || {}, u);
+    res.json({ ok: true, ...result });
+  })
+);
+
+router.get(
+  '/suppliers/:id/price-history',
+  requireAnyPermission('canManageAccounts', 'canManagePurchases', 'canCreatePurchase', 'canViewReports'),
+  asyncHandler(async (req, res) => {
+    const u = req.auth.user;
+    if (u.role === 'representative' && !u.permissions?.canCreatePurchase && !u.permissions?.canManagePurchases) {
+      return res.status(403).json({ ok: false, code: 'FORBIDDEN_REP_SUPPLIER_PRICES', error: 'غير مصرح بعرض أسعار الموردين' });
+    }
+    const productId = typeof req.query.productId === 'string' ? req.query.productId : '';
+    const history = await getSupplierProductPriceHistory(req.params.id, productId);
+    res.json({ ok: true, history });
+  })
+);
+
+router.get(
   '/item-movement-report',
   asyncHandler(async (req, res) => {
     const u = req.auth.user;
@@ -256,6 +350,8 @@ router.get(
         warehouseId: typeof req.query.warehouseId === 'string' ? req.query.warehouseId : undefined,
         movementType: typeof req.query.movementType === 'string' ? req.query.movementType : undefined,
         representativeId: typeof req.query.representativeId === 'string' ? req.query.representativeId : undefined,
+        class1: typeof req.query.class1 === 'string' ? req.query.class1 : undefined,
+        class2: typeof req.query.class2 === 'string' ? req.query.class2 : undefined,
         dateFrom: typeof req.query.dateFrom === 'string' ? req.query.dateFrom : undefined,
         dateTo: typeof req.query.dateTo === 'string' ? req.query.dateTo : undefined,
         search: typeof req.query.search === 'string' ? req.query.search : undefined,

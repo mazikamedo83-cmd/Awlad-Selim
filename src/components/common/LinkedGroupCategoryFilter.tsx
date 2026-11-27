@@ -113,6 +113,8 @@ interface LinkedGroupCategoryFilterProps {
   onGroupAfterSelect?: () => void;
   onCategoryAfterSelect?: () => void;
   allLabel?: string;
+  allowAll?: boolean;
+  minSearchChars?: number;
   compact?: boolean;
   showLabels?: boolean;
   className?: string;
@@ -132,6 +134,8 @@ export const LinkedGroupCategoryFilter: React.FC<LinkedGroupCategoryFilterProps>
   onGroupAfterSelect,
   onCategoryAfterSelect,
   allLabel,
+  allowAll = true,
+  minSearchChars = 0,
   compact = true,
   showLabels = false,
   className = '',
@@ -206,16 +210,42 @@ export const LinkedGroupCategoryFilter: React.FC<LinkedGroupCategoryFilterProps>
     }
   };
 
+  const emptyResetValue = allowAll ? 'all' : '';
+
+  const handleGroupSelectWithMode = (nextGroupId: string) => {
+    let nextCategoryId = selectedCategoryId || emptyResetValue;
+    if (nextCategoryId && nextCategoryId !== 'all') {
+      const stillValid = getScopedCategoriesForGroup(categories, nextGroupId || 'all', false).some(
+        (c) => c.id === nextCategoryId || c.name === nextCategoryId
+      );
+      if (!stillValid) {
+        nextCategoryId = emptyResetValue;
+      }
+    }
+    if (onFilterChange) {
+      onFilterChange(nextGroupId, nextCategoryId);
+      return;
+    }
+    onGroupChange?.(nextGroupId);
+    if (nextCategoryId !== (selectedCategoryId || emptyResetValue)) {
+      onCategoryChange?.(nextCategoryId);
+    }
+  };
+
   return (
     <div className={`grid grid-cols-2 gap-2 ${className}`}>
       <SearchableFilterSelect
         label={showLabels ? t('المجموعة:', 'Group:') : undefined}
         inlinePrefix={!showLabels ? t('المجموعة', 'Group') : undefined}
-        value={selectedGroupId || 'all'}
-        onChange={handleGroupSelect}
+        value={allowAll ? (selectedGroupId || 'all') : (selectedGroupId === 'all' ? '' : selectedGroupId)}
+        onChange={allowAll ? handleGroupSelect : handleGroupSelectWithMode}
         options={groupOptions}
+        includeAllOption={allowAll}
+        allowClear={!allowAll}
+        placeholder={t('اختيار المجموعة...', 'Select group...')}
         allOptionLabel={resolvedAllLabel}
-        allOptionValue="all"
+        allOptionValue={emptyResetValue}
+        minSearchChars={minSearchChars}
         searchPlaceholder={t('ابحث باسم المجموعة...', 'Search group...')}
         triggerRef={groupRef}
         onAfterSelect={() => {
@@ -230,11 +260,15 @@ export const LinkedGroupCategoryFilter: React.FC<LinkedGroupCategoryFilterProps>
       <SearchableFilterSelect
         label={showLabels ? t('التصنيف:', 'Category:') : undefined}
         inlinePrefix={!showLabels ? t('التصنيف', 'Category') : undefined}
-        value={selectedCategoryId || 'all'}
+        value={allowAll ? (selectedCategoryId || 'all') : (selectedCategoryId === 'all' ? '' : selectedCategoryId)}
         onChange={handleCategorySelect}
         options={categoryOptions}
+        includeAllOption={allowAll}
+        allowClear={!allowAll}
+        placeholder={t('اختيار التصنيف...', 'Select category...')}
         allOptionLabel={resolvedAllLabel}
-        allOptionValue="all"
+        allOptionValue={emptyResetValue}
+        minSearchChars={minSearchChars}
         searchPlaceholder={t('ابحث باسم التصنيف...', 'Search category...')}
         triggerRef={categoryRef}
         onAfterSelect={() => {

@@ -470,66 +470,59 @@ try {
     assert.equal(eveningFmt.fullText, '14-11-2026 السبت 11:23 م');
   });
 
-  await test('7. MobileSendReceiveScreen exact visual contract + Android/iOS routing + Windows Desktop untouched', () => {
-    const mobileScreenSrc = fs.readFileSync(
-      path.join(projectRoot, 'src/components/modules/mobile/MobileSendReceiveScreen.tsx'),
+  await test('7. SendReceiveView Full Manual Control contract across Android, iOS & Windows Desktop', () => {
+    const srSrc = fs.readFileSync(
+      path.join(projectRoot, 'src/components/modules/sync/SendReceiveView.tsx'),
       'utf8'
     );
     for (const marker of [
-      'mobile-send-receive-screen',
-      'mobile-send-receive-back-btn',
-      'bg-[#1e3a8a]',
-      'bg-[#FFFFFF]',
-      'bg-[#CCCCCC]',
-      'bg-[#000080]',
-      'bg-[#008000]',
-      'no-dark-surface',
-      'sync-last-send',
-      'sync-pending-ops-count',
-      'mobile-send-btn',
-      'sync-last-receive',
-      'mobile-receive-btn',
-      'sync-mandatory-countdown',
-      'includeHeldBatches: true',
-      'آخر إرسال',
-      'عدد العمليات المعلقة',
-      'آخر استلام',
-      'الإرسال الإجباري بعد',
+      'send-receive-view',
+      'manual-send-btn',
+      'manual-receive-btn',
+      'send-live-timer',
+      'receive-live-timer',
+      'last-send-success',
+      'last-receive-success',
+      'send-receive-history',
+      'send-confirm-modal',
+      'receive-confirm-modal',
+      'formatDurationAr',
+      'آخر إرسال ناجح',
+      'آخر استلام ناجح',
+      'سجل آخر العمليات',
     ]) {
-      assert.ok(mobileScreenSrc.includes(marker), `MobileSendReceiveScreen.tsx missing '${marker}'`);
+      assert.ok(srSrc.includes(marker), `SendReceiveView.tsx missing '${marker}'`);
     }
 
-    // Forbidden UI bloat checks on MobileSendReceiveScreen
     for (const forbidden of [
-      'UnifiedDataTable',
-      '<table',
+      'mandatorySendEnabled',
+      'mandatorySendRemainingSeconds',
+      'الإرسال الإجباري بعد',
       'إرسال إلى السيرفر',
       'استلام من السيرفر',
-      'سجل العمليات',
-      'dispatchBatch',
     ]) {
-      assert.ok(!mobileScreenSrc.includes(forbidden), `MobileSendReceiveScreen.tsx must NOT contain '${forbidden}'`);
+      assert.ok(!srSrc.includes(forbidden), `SendReceiveView.tsx must NOT contain '${forbidden}'`);
     }
 
     const repPortalSrc = fs.readFileSync(path.join(projectRoot, 'src/components/modules/mobile/RepPortal.tsx'), 'utf8');
-    assert.ok(repPortalSrc.includes("<MobileSendReceiveScreen onBack={() => onTabChange('home')} />"));
+    assert.ok(repPortalSrc.includes("<SendReceiveView onBack={() => onTabChange('home')} />"));
+    assert.ok(!repPortalSrc.includes('mandatorySendRemainingSeconds'));
 
     const staffShellSrc = fs.readFileSync(path.join(projectRoot, 'src/components/modules/mobile/StaffMobileShell.tsx'), 'utf8');
-    assert.ok(staffShellSrc.includes("<MobileSendReceiveScreen onBack={() => onNavigate('dashboard')} />"));
-    assert.ok(staffShellSrc.includes("key: 'refresh-sync'") && staffShellSrc.includes("label: 'إرسال واستلام'"));
+    assert.ok(staffShellSrc.includes("<SendReceiveView onBack={() => onNavigate('dashboard')} />"));
+    assert.ok(staffShellSrc.includes("key: 'refresh-sync'") && staffShellSrc.includes("t('إرسال واستلام', 'Send & Receive')"));
 
     const dataCtxSrc = fs.readFileSync(path.join(projectRoot, 'src/context/DataContext.tsx'), 'utf8');
-    assert.ok(dataCtxSrc.includes('includeHeldBatches: Boolean(options?.includeHeldBatches)'));
+    assert.ok(dataCtxSrc.includes('const mandatorySendEnabled = false;'));
+    assert.ok(dataCtxSrc.includes('executeManualReceivePreview'));
+    assert.ok(dataCtxSrc.includes('executeManualReceiveConfirm'));
+    assert.ok(dataCtxSrc.includes('commitSyncedOpsToLocalSnapshot'));
 
     const appSrc = fs.readFileSync(path.join(projectRoot, 'src/App.tsx'), 'utf8');
-    assert.ok(appSrc.includes("case 'refresh-sync':\n        return <RefreshSyncScreen />;"));
-
-    const refreshSrc = fs.readFileSync(path.join(projectRoot, 'src/components/modules/mobile/RefreshSyncScreen.tsx'), 'utf8');
-    assert.ok(refreshSrc.includes('mobile-send-receive-panel'));
+    assert.ok(appSrc.includes("case 'refresh-sync':\n        return <SendReceiveView />;"));
 
     const settingsSrc = fs.readFileSync(path.join(projectRoot, 'src/components/modules/settings/SettingsView.tsx'), 'utf8');
-    assert.ok(settingsSrc.includes('mandatory-send-enabled-checkbox'));
-    assert.ok(settingsSrc.includes('mandatory-send-interval-input'));
+    assert.ok(settingsSrc.includes('وضع التحكم اليدوي الكامل مفعّل'));
 
     const nativeSrc = fs.readFileSync(path.join(projectRoot, 'src/services/native.ts'), 'utf8');
     assert.ok(nativeSrc.includes("platform === 'android' || platform === 'ios'"));

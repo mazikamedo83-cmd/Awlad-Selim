@@ -12,6 +12,7 @@ import { exportToExcel } from '../../common/ExcelExporter';
 import { QuantityInput } from '../../common/QuantityInput';
 import { EditableItemGrid } from '../../common/EditableItemGrid';
 import { UnifiedDataTable } from '../../common/UnifiedDataTable';
+import { SearchableFilterSelect } from '../../common/SearchableFilterSelect';
 import {
   LinkedGroupCategoryFilter,
   filterProductsByGroupCategory,
@@ -88,11 +89,11 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
   const [returnDate, setReturnDate] = useState(new Date().toISOString().split('T')[0]);
   const [reason, setReason] = useState('');
   const [refundType, setRefundType] = useState<'balance' | 'cash'>('balance');
-  const [refundCashboxId, setRefundCashboxId] = useState(cashboxes[0]?.id || '');
+  const [refundCashboxId, setRefundCashboxId] = useState('');
   const [returnQuantities, setReturnQuantities] = useState<Record<string, number | ''>>({});
   const [returnUnitPrices, setReturnUnitPrices] = useState<Record<string, number>>({});
-  const [retGroupFilter, setRetGroupFilter] = useState('all');
-  const [retCatFilter, setRetCatFilter] = useState('all');
+  const [retGroupFilter, setRetGroupFilter] = useState('');
+  const [retCatFilter, setRetCatFilter] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -101,7 +102,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
   const [requestStatusFilter, setRequestStatusFilter] = useState<'pending' | 'all' | 'approved' | 'rejected'>('pending');
   const [approvingReq, setApprovingReq] = useState<PurchaseReturnRequest | null>(null);
   const [approveRefundType, setApproveRefundType] = useState<'balance' | 'cash'>('balance');
-  const [approveCashboxId, setApproveCashboxId] = useState(cashboxes[0]?.id || '');
+  const [approveCashboxId, setApproveCashboxId] = useState('');
   const [approveNotes, setApproveNotes] = useState('');
   const [approveError, setApproveError] = useState<string | null>(null);
   const [isProcessingReq, setIsProcessingReq] = useState(false);
@@ -113,22 +114,13 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
   const [salesReqStatusFilter, setSalesReqStatusFilter] = useState<'pending' | 'all' | 'approved' | 'rejected'>('pending');
   const [approvingSalesReq, setApprovingSalesReq] = useState<SalesReturnRequest | null>(null);
   const [approveSalesRefundType, setApproveSalesRefundType] = useState<'cash' | 'balance'>('cash');
-  const [approveSalesCashboxId, setApproveSalesCashboxId] = useState(cashboxes[0]?.id || '');
+  const [approveSalesCashboxId, setApproveSalesCashboxId] = useState('');
   const [approveSalesNotes, setApproveSalesNotes] = useState('');
   const [approveSalesError, setApproveSalesError] = useState<string | null>(null);
   const [isProcessingSalesReq, setIsProcessingSalesReq] = useState(false);
   const [rejectingSalesReq, setRejectingSalesReq] = useState<SalesReturnRequest | null>(null);
   const [rejectSalesReason, setRejectSalesReason] = useState('');
   const [rejectSalesError, setRejectSalesError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!approveCashboxId && cashboxes[0]?.id) {
-      setApproveCashboxId(cashboxes[0].id);
-    }
-    if (!approveSalesCashboxId && cashboxes[0]?.id) {
-      setApproveSalesCashboxId(cashboxes[0].id);
-    }
-  }, [cashboxes, approveCashboxId, approveSalesCashboxId]);
 
   const pendingPrReqCount = useMemo(
     () => purchaseReturnRequests.filter((r) => r.status === 'pending').length,
@@ -171,7 +163,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
   const handleOpenApproveReq = (req: PurchaseReturnRequest) => {
     setApprovingReq(req);
     setApproveRefundType(canUseTreasuryCashRefund && req.refundType === 'cash' ? 'cash' : 'balance');
-    setApproveCashboxId(req.cashboxId || cashboxes[0]?.id || '');
+    setApproveCashboxId(req.cashboxId || '');
     setApproveNotes(req.notes || '');
     setApproveError(null);
   };
@@ -234,7 +226,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
   const handleOpenApproveSalesReq = (req: SalesReturnRequest) => {
     setApprovingSalesReq(req);
     setApproveSalesRefundType(canUseTreasuryCashRefund && req.refundType === 'cash' ? 'cash' : 'balance');
-    setApproveSalesCashboxId(req.cashboxId || cashboxes[0]?.id || '');
+    setApproveSalesCashboxId(req.cashboxId || '');
     setApproveSalesNotes(req.notes || '');
     setApproveSalesError(null);
   };
@@ -307,8 +299,8 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
   // When invoice is chosen, leave quantities empty until entered by user
   const handleSelectInvoice = (id: string) => {
     setSelectedInvoiceId(id);
-    setRetGroupFilter('all');
-    setRetCatFilter('all');
+    setRetGroupFilter('');
+    setRetCatFilter('');
     const inv = invoices.find(i => i.id === id);
     if (inv) {
       const qMap: Record<string, number | ''> = {};
@@ -462,6 +454,11 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
     }
 
     const effectiveRefundType = canUseTreasuryCashRefund ? refundType : 'balance';
+    if (effectiveRefundType === 'cash' && !refundCashboxId) {
+      setError(t('يرجى اختيار الخزينة المسدد منها عند الرد النقدي', 'Please select the cashbox for cash refund'));
+      setIsSubmitting(false);
+      return;
+    }
     const effectiveCashboxId =
       canUseTreasuryCashRefund && effectiveRefundType === 'cash' ? refundCashboxId : undefined;
 
@@ -530,6 +527,9 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
         <button
           onClick={() => {
             setSelectedInvoiceId('');
+            setRefundCashboxId('');
+            setRetGroupFilter('');
+            setRetCatFilter('');
             setReturnQuantities({});
             setIsNewModalOpen(true);
           }}
@@ -1146,19 +1146,22 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
           </div>
 
           <div>
-            <label className="block font-bold mb-0.5">{t('اختر الفاتورة الأصلية المراد الإرجاع منها:', 'Select Original Invoice to Return From:')}</label>
-            <select
+            <SearchableFilterSelect
+              label={t('اختر الفاتورة الأصلية المراد الإرجاع منها:', 'Select Original Invoice to Return From:')}
               value={selectedInvoiceId}
-              onChange={(e) => handleSelectInvoice(e.target.value)}
-              className="w-full h-8 border border-slate-300 rounded-md py-1 px-2 font-bold bg-white"
-            >
-              <option value="">{t('-- اختر الفاتورة الأصلية --', '-- Select Original Invoice --')}</option>
-              {availableInvoices.map(inv => (
-                <option key={inv.id} value={inv.id}>
-                  {inv.invoiceNumber} - ({inv.customerName || inv.supplierName}) - {t('الإجمالي:', 'Total:')} {formatLocaleNumber(inv.grandTotal)} {t(settings.currency)} {t('بتاريخ', 'on')} {inv.date}
-                </option>
-              ))}
-            </select>
+              onChange={handleSelectInvoice}
+              includeAllOption={false}
+              minSearchChars={2}
+              placeholder={t('-- اختيار الفاتورة الأصلية --', '-- Select Original Invoice --')}
+              searchPlaceholder={t('اكتب حرفين على الأقل برقم الفاتورة أو الاسم...', 'Type at least 2 chars for invoice or party...')}
+              options={availableInvoices.map((inv) => ({
+                value: inv.id,
+                label: `${inv.invoiceNumber} — ${inv.customerName || inv.supplierName}`,
+                subtitle: `${t('بتاريخ', 'on')} ${inv.date}`,
+                badge: `${formatLocaleNumber(inv.grandTotal)} ${t(settings.currency)}`,
+                searchText: `${inv.invoiceNumber} ${inv.customerName || ''} ${inv.supplierName || ''} ${inv.date}`,
+              }))}
+            />
           </div>
 
           {/* Item Quantities Return Form */}
@@ -1172,6 +1175,8 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                 categories={categories}
                 selectedGroupId={retGroupFilter}
                 selectedCategoryId={retCatFilter}
+                allowAll={false}
+                minSearchChars={2}
                 autoAdvanceOnSelect
                 onFilterChange={(nextGroupId, nextCategoryId) => {
                   setRetGroupFilter(nextGroupId);
@@ -1276,6 +1281,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                   onChange={(e) => setRefundCashboxId(e.target.value)}
                   className="w-full h-8 bg-white border border-slate-300 rounded-md py-1 px-2 font-bold"
                 >
+                  <option value="">{t('-- اختيار الخزينة --', '-- Select Cashbox --')}</option>
                   {cashboxes.map(c => (
                     <option key={c.id} value={c.id}>{t(c.name)}</option>
                   ))}
@@ -1364,6 +1370,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                   onChange={(e) => setApproveCashboxId(e.target.value)}
                   className="w-full h-8 border border-slate-300 rounded-md py-1 px-2 font-bold bg-white"
                 >
+                  <option value="">{t('-- اختيار الخزينة --', '-- Select Cashbox --')}</option>
                   {cashboxes.map((c) => (
                     <option key={c.id} value={c.id}>{t(c.name)}</option>
                   ))}
@@ -1497,6 +1504,7 @@ export const ReturnsView: React.FC<ReturnsViewProps> = ({ initialTypeFilter = 'a
                   onChange={(e) => setApproveSalesCashboxId(e.target.value)}
                   className="w-full h-8 border border-slate-300 rounded-md py-1 px-2 font-bold bg-white"
                 >
+                  <option value="">{t('-- اختيار الخزينة --', '-- Select Cashbox --')}</option>
                   {cashboxes.map((c) => (
                     <option key={c.id} value={c.id}>{t(c.name)}</option>
                   ))}

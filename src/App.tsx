@@ -141,7 +141,7 @@ const MainAppContent: React.FC = () => {
     isDatabaseUnavailable,
     databaseUnavailableMessage,
   } = useAuth();
-  const { networkStatus, lastError, triggerSync, isSyncing } = useData();
+  const { networkStatus, lastError, refreshData, isSyncing } = useData();
   const { dir, t } = usePreferences();
   const [currentPage, setCurrentPage] = useState<NavItemKey>('dashboard');
   const [reportProductId, setReportProductId] = useState<string | undefined>(undefined);
@@ -509,6 +509,7 @@ const MainAppContent: React.FC = () => {
         return (
           <InventoryView
             initialTab="products"
+            onNavigate={(page) => setCurrentPage(page)}
             onOpenItemMovementReport={(productId) => {
               setReportProductId(productId);
               setCurrentPage('item-movement-report');
@@ -517,31 +518,30 @@ const MainAppContent: React.FC = () => {
         );
 
       case 'product-categories':
-        return <InventoryView initialTab="categories" />;
+        return <InventoryView initialTab="categories" onNavigate={(page) => setCurrentPage(page)} />;
 
       case 'units-settings':
-        return <InventoryView initialTab="units" />;
+        return <InventoryView initialTab="units" onNavigate={(page) => setCurrentPage(page)} />;
 
       case 'warehouses':
-        return <InventoryView initialTab="warehouses" />;
+        return <InventoryView initialTab="warehouses" onNavigate={(page) => setCurrentPage(page)} />;
 
       case 'stock-transfers':
-        return <InventoryView initialTab="transfers" />;
-
       case 'stock-transfers-orders':
-        return <InventoryView initialTab="stock-transfers" />;
+      case 'rep-item-transfers':
+        return <InventoryView initialTab="stock-transfers" onNavigate={(page) => setCurrentPage(page)} />;
 
       case 'stock-adjustments':
-        return <InventoryView initialTab="adjustments" />;
+        return <InventoryView initialTab="adjustments" onNavigate={(page) => setCurrentPage(page)} />;
 
       case 'stock-counts':
-        return <InventoryView initialTab="stock-counts" />;
+        return <InventoryView initialTab="stock-counts" onNavigate={(page) => setCurrentPage(page)} />;
 
       case 'damaged-stock':
-        return <InventoryView initialTab="damaged" />;
+        return <InventoryView initialTab="damaged" onNavigate={(page) => setCurrentPage(page)} />;
 
       case 'stock-movements':
-        return <InventoryView initialTab="movements" />;
+        return <InventoryView initialTab="movements" onNavigate={(page) => setCurrentPage(page)} />;
 
       case 'item-movement-report':
         return <ReportsView key="item-movement-report" initialTab="item_movement" initialProductId={reportProductId} />;
@@ -575,11 +575,8 @@ const MainAppContent: React.FC = () => {
       case 'rep-transfers':
         return <RepTransferView initialTab="cash-transfers" />;
 
-      case 'rep-item-transfers':
-        return <RepTransferView initialTab="item-transfers" />;
-
       case 'refresh-sync':
-        return <SendReceiveView />;
+        return <SendReceiveView onNavigate={(page) => setCurrentPage(page)} />;
 
       case 'employees':
         return <EmployeesView />;
@@ -663,7 +660,7 @@ const MainAppContent: React.FC = () => {
           disabled={isSyncing}
           onClick={() => {
             refreshAuthContext().catch(() => {});
-            triggerSync(false);
+            refreshData();
           }}
           className="px-2.5 py-1 rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors cursor-pointer"
         >

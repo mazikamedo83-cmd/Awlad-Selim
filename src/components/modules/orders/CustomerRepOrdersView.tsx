@@ -43,7 +43,7 @@ export const CustomerRepOrdersView: React.FC = () => {
     warehouses,
     cashboxes,
     settings,
-    triggerManualSync,
+    refreshData,
     reviewCustomerItemOrder,
     approveCustomerItemOrder,
     rejectCustomerItemOrder,
@@ -182,7 +182,7 @@ export const CustomerRepOrdersView: React.FC = () => {
         </div>
         <button
           type="button"
-          onClick={() => triggerManualSync()}
+          onClick={() => refreshData()}
           className="px-2.5 py-1 rounded-md bg-white border border-slate-300 hover:bg-slate-50 text-xs font-bold text-slate-700 flex items-center gap-1.5 cursor-pointer"
         >
           <RefreshCw className="w-3.5 h-3.5" />

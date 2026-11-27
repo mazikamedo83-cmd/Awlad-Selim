@@ -231,7 +231,8 @@ export interface Product {
   units: ProductUnit[]; // للبيانات التاريخية السابقة فقط
   size?: string;        // المقاس عند الحاجة
   color?: string;       // اللون عند الحاجة
-  class1?: string;      // التصنيف 1 عند الحاجة
+  class1?: string;      // التصنيف 1 المستقل عند الحاجة
+  class2?: string;      // التصنيف 2 المستقل عند الحاجة
   purchasePrice: number;
   sellingPrice: number;
   minStockLevel: number;
@@ -336,6 +337,8 @@ export interface InlinePurchaseNewProduct {
   category?: string;
   unitId?: string;
   baseUnit?: string;
+  class1?: string;
+  class2?: string;
   purchasePrice?: number;
   sellingPrice?: number;
   minStockLevel?: number;
@@ -1082,10 +1085,63 @@ export interface RepItemTransferRequest {
   approvedAt?: string;
   dispatchedBy?: string;
   dispatchedAt?: string;
+  sentBy?: string;
+  sentAt?: string;
+  durationMs?: number;
   executedAt?: string;
   receivedBy?: string;
   receivedAt?: string;
+  confirmedByUserId?: string;
+  confirmationNotes?: string;
   syncStatus?: SyncQueueStatus | 'synced';
+}
+
+export interface RepCustodyReturnRequestItem {
+  id?: string;
+  productId: string;
+  productName: string;
+  barcode?: string;
+  unit: string;
+  unitFactor?: number;
+  requestedQty: number;
+  actualReceivedQty?: number;
+  approvedQty?: number;
+  rejectedQty?: number;
+  remainingCustodyQty?: number;
+  notes?: string;
+}
+
+export type RepCustodyReturnRequestStatus =
+  | 'pending'
+  | 'partially_approved'
+  | 'approved'
+  | 'rejected'
+  | 'cancelled';
+
+export interface RepCustodyReturnRequest {
+  id: string;
+  requestNumber: string;
+  date: string;
+  representativeId: string;
+  representativeName: string;
+  vanWarehouseId: string;
+  vanWarehouseName: string;
+  targetWarehouseId: string;
+  targetWarehouseName: string;
+  requestedByUserId: string;
+  requestedByName: string;
+  notes?: string;
+  status: RepCustodyReturnRequestStatus;
+  sentAt: string;
+  reviewedByUserId?: string;
+  reviewedByName?: string;
+  reviewedAt?: string;
+  approvedAt?: string;
+  rejectionReason?: string;
+  reviewNotes?: string;
+  items: RepCustodyReturnRequestItem[];
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface RepCustodyOperation {
@@ -1626,6 +1682,7 @@ export interface StockTransferRequest {
 export interface CustomerPriceHistoryEntry {
   price: number;
   date: string;
+  invoiceId?: string;
   invoiceNumber?: string;
   unit?: string;
   quantity?: number;
@@ -1950,6 +2007,8 @@ export interface ItemMovementRow {
   docNumber: string;
   productId: string;
   productName: string;
+  class1?: string;
+  class2?: string;
   warehouseId?: string;
   warehouseName?: string;
   targetWarehouseId?: string;
@@ -1978,6 +2037,8 @@ export interface ItemMovementReportResponse {
     warehouseId: string;
     movementType: string;
     representativeId: string;
+    class1?: string;
+    class2?: string;
     dateFrom: string | null;
     dateTo: string | null;
     search: string;
@@ -2068,6 +2129,7 @@ export interface ComprehensiveReportRow {
   productName?: string;
   categoryName?: string;
   class1?: string;
+  class2?: string;
   operationLabel: string;
   quantity: number;
   baseQuantity?: number;
@@ -2209,6 +2271,7 @@ export interface ItemPnlSummary {
   productName: string;
   category: string;
   class1: string;
+  class2?: string;
   baseUnit: string;
   totalPurchaseQty: number;
   totalPurchaseValue: number;
@@ -2387,6 +2450,7 @@ export interface RepDetailedReportItemRow {
   barcode?: string;
   categoryName?: string;
   class1?: string;
+  class2?: string;
   unit: string;
   quantity: number;
   unitFactor: number;
@@ -2559,6 +2623,21 @@ export interface ServerSendSyncResponse {
   serverTime: string;
 }
 
+export interface SendReceiveHistoryEntry {
+  id: string;
+  userId: string;
+  type: 'send' | 'receive';
+  status: 'success' | 'failed' | 'partial';
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  count: number;
+  failedCount?: number;
+  conflictCount?: number;
+  error?: string;
+  detailsSummary?: string;
+}
+
 export interface ReceivePreviewResponse {
   ok: boolean;
   syncState: ServerUserSyncState;
@@ -2571,6 +2650,9 @@ export interface ReceivePreviewResponse {
     cashTransfersCount: number;
     dispatchBatchesCount: number;
     updatedDocumentsCount: number;
+    updatedCatalogCount?: number;
+    updatedCustomersCount?: number;
+    updatedInvoicesCount?: number;
   };
   items: {
     custodyDispatches: Array<{
@@ -2613,6 +2695,17 @@ export interface ReceivePreviewResponse {
       status: string;
       date: string;
     }>;
+    updatedCatalogItems?: Array<{
+      id: string;
+      name: string;
+      code: string;
+      sellingPrice: number;
+    }>;
+    updatedCustomerItems?: Array<{
+      id: string;
+      name: string;
+      code?: string;
+    }>;
   };
   serverTime: string;
 }
@@ -2627,6 +2720,9 @@ export interface ReceiveConfirmResponse {
     cashTransfersCount: number;
     dispatchBatchesCount: number;
     updatedDocumentsCount: number;
+    updatedCatalogCount?: number;
+    updatedCustomersCount?: number;
+    updatedInvoicesCount?: number;
   };
   errors: Array<{ type: string; id: string; error: string }>;
   syncState: ServerUserSyncState;
@@ -2666,4 +2762,71 @@ export interface RepresentativeAccountStatement {
     confirmedBy?: string;
   }>;
 }
+
+export interface SendReceiveLogTransferRow {
+  id: string;
+  docType: 'rep_item_transfer' | 'stock_transfer';
+  documentNumber: string;
+  createdAt: string;
+  date: string;
+  representativeId?: string;
+  representativeName: string;
+  sourceWarehouseName: string;
+  targetWarehouseName: string;
+  items: Array<{
+    productId: string;
+    productName: string;
+    unit: string;
+    quantity: number;
+  }>;
+  status: string;
+  sentAt?: string;
+  receivedAt?: string;
+  receivedBy?: string;
+  confirmationDetails?: string;
+}
+
+export interface SendReceiveLogDispatchRow {
+  id: string;
+  docType: 'rep_item_transfer' | 'rep_custody_return_request' | 'sync_dispatch_batch' | 'rep_transfer' | 'purchase_invoice';
+  docId: string;
+  operationType: string;
+  operationTypeLabel: string;
+  documentNumber: string;
+  senderName: string;
+  receiverName: string;
+  representativeId?: string;
+  representativeName?: string;
+  timestamp: string;
+  durationMs?: number | null;
+  sendResult: string;
+  status: string;
+}
+
+export interface SendReceiveLogConfirmationRow {
+  id: string;
+  docType: 'rep_item_transfer' | 'rep_custody_return_request' | 'sync_dispatch_batch' | 'rep_transfer';
+  docId: string;
+  operationTypeLabel: string;
+  documentNumber: string;
+  representativeId?: string;
+  representativeName?: string;
+  arrivedStatus: string;
+  repConfirmed?: boolean;
+  adminConfirmed?: boolean;
+  approvedQty?: number;
+  rejectedOrDisputedQty?: number;
+  discrepancyNotes?: string;
+  confirmedByName: string;
+  confirmedAt: string;
+}
+
+export interface SendReceiveActivityLogResponse {
+  ok: boolean;
+  transferOrders: SendReceiveLogTransferRow[];
+  custodyReturnRequests: RepCustodyReturnRequest[];
+  dispatchLogs: SendReceiveLogDispatchRow[];
+  confirmationLogs: SendReceiveLogConfirmationRow[];
+}
+
 

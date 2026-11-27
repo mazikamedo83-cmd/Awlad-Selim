@@ -54,7 +54,7 @@ export const Header: React.FC<HeaderProps> = ({
     unreadNotificationCount = 0,
     pendingSendReceiveCount = 0,
     markNotificationsRead,
-    triggerManualSync,
+    refreshData,
   } = useData();
   const { triggerAction } = useShortcuts();
   const { resolvedTheme, setThemePreference, dir, language, setLanguage, t } = usePreferences();
@@ -135,10 +135,11 @@ export const Header: React.FC<HeaderProps> = ({
     },
     {
       key: 'stock-transfer',
-      label: t('تحويل الأصناف', 'Stock Transfer'),
+      label: t('أمر تحويل', 'Transfer Order'),
       icon: Truck,
-      onClick: () => triggerAction('action:new_stock_transfer'),
-      allowed: canPerm(['canCreateStockTransfer', 'canManageInventory']),
+      onClick: () => onNavigate('stock-transfers-orders'),
+      allowed: canPerm(['canCreateStockTransfer', 'canApproveStockTransfer', 'canExecuteStockTransfer', 'canManageInventory']),
+      isActive: currentPage === 'stock-transfers-orders',
     },
     {
       key: 'add-expense',
@@ -433,7 +434,7 @@ export const Header: React.FC<HeaderProps> = ({
         onClose={() => setIsServerModalOpen(false)}
         onSaved={async () => {
           await refreshAuthContext();
-          await triggerManualSync();
+          await refreshData();
         }}
       />
 

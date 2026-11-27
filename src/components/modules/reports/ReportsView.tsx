@@ -109,6 +109,8 @@ type SortColumnKey =
   | 'rawCreatedAt'
   | 'profit'
   | 'barcode'
+  | 'class1'
+  | 'class2'
   | 'displayId'
   | 'invoiceNumber'
   | 'branchName'
@@ -130,6 +132,8 @@ const TABLE_COLUMNS: Array<{ key: SortColumnKey; label: string; labelEn: string;
   { key: 'businessDate', label: 'اليومية', labelEn: 'Business Date', align: 'center' },
   { key: 'profit', label: 'الربح', labelEn: 'Profit', align: 'center' },
   { key: 'barcode', label: 'الباركود', labelEn: 'Barcode', align: 'center' },
+  { key: 'class1', label: 'تصنيف 1', labelEn: 'Class 1', align: 'center' },
+  { key: 'class2', label: 'تصنيف 2', labelEn: 'Class 2', align: 'center' },
   { key: 'displayId', label: 'كود السجل', labelEn: 'Record ID', align: 'center' },
   { key: 'invoiceNumber', label: 'رقم الفاتورة', labelEn: 'Invoice #', align: 'center' },
   { key: 'branchName', label: 'الفرع', labelEn: 'Branch', align: 'center' },
@@ -198,6 +202,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
   const [warehouseId, setWarehouseId] = useState('all');
   const [cashboxId, setCashboxId] = useState('all');
   const [productId, setProductId] = useState(initialProductId || 'all');
+  const [class1, setClass1] = useState('all');
+  const [class2, setClass2] = useState('all');
   const [productSearch, setProductSearch] = useState('');
   const [barcode, setBarcode] = useState('');
   const [partyKey, setPartyKey] = useState('all');
@@ -378,6 +384,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
           warehouseId,
           cashboxId,
           productId,
+          class1: class1 !== 'all' ? class1 : undefined,
+          class2: class2 !== 'all' ? class2 : undefined,
           productSearch: activeText.productSearch.trim() || undefined,
           barcode: activeText.barcode.trim() || undefined,
           partyKey: partyKey !== 'all' ? partyKey : undefined,
@@ -412,6 +420,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
       warehouseId,
       cashboxId,
       productId,
+      class1,
+      class2,
       partyKey,
       movementType,
       employeeId,
@@ -500,6 +510,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
     setWarehouseId('all');
     setCashboxId('all');
     setProductId('all');
+    setClass1('all');
+    setClass2('all');
     setProductSearch('');
     setBarcode('');
     setPartyKey('all');
@@ -591,6 +603,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
             r.employeeName,
             r.userName,
             r.barcode,
+            r.class1,
+            r.class2,
             r.displayId,
             r.invoiceNumber,
             r.branchName,
@@ -700,6 +714,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
           r.businessDate,
           ...(isRepRole ? [] : [r.profit]),
           r.barcode,
+          r.class1 || '-',
+          r.class2 || '-',
           r.displayId,
           r.invoiceNumber,
           t(r.branchName),
@@ -722,6 +738,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
         '',
         '',
         ...(isRepRole ? [] : [sec.totals.profit]),
+        '',
+        '',
         '',
         '',
         '',
@@ -777,6 +795,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
         '',
         '',
         '',
+        '',
+        '',
         ...(isRepRole ? [] : ['']),
         '',
         fmtMoney(sec.totals.discount),
@@ -796,6 +816,8 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
           r.businessDate,
           ...(isRepRole ? [] : [fmtMoney(r.profit)]),
           r.barcode,
+          r.class1 || '-',
+          r.class2 || '-',
           r.displayId,
           r.invoiceNumber,
           t(r.branchName),
@@ -1007,10 +1029,30 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
           .filter(Boolean)
           .join(' • '),
         badge: p.code || undefined,
-        searchText: `${p.id} ${p.code || ''} ${p.barcode || ''} ${p.category || ''} ${p.size || ''} ${p.color || ''}`,
+        searchText: `${p.id} ${p.code || ''} ${p.barcode || ''} ${p.category || ''} ${p.class1 || ''} ${p.class2 || ''} ${p.size || ''} ${p.color || ''}`,
       })),
     [filterOpts?.products, t]
   );
+
+  const class1Options = useMemo<SearchableFilterOption[]>(() => {
+    const vals = new Set<string>();
+    for (const p of filterOpts?.products || []) {
+      const v = String(p.class1 || '').trim();
+      if (v) vals.add(v);
+    }
+    if (class1 && class1 !== 'all') vals.add(class1);
+    return Array.from(vals).sort((a, b) => a.localeCompare(b)).map((val) => ({ value: val, label: val }));
+  }, [filterOpts?.products, class1]);
+
+  const class2Options = useMemo<SearchableFilterOption[]>(() => {
+    const vals = new Set<string>();
+    for (const p of filterOpts?.products || []) {
+      const v = String(p.class2 || '').trim();
+      if (v) vals.add(v);
+    }
+    if (class2 && class2 !== 'all') vals.add(class2);
+    return Array.from(vals).sort((a, b) => a.localeCompare(b)).map((val) => ({ value: val, label: val }));
+  }, [filterOpts?.products, class2]);
 
   const movementTypeOptions = useMemo<SearchableFilterOption[]>(() => {
     const canViewPurchases = !isRepRole || hasPermission('canCreatePurchase') || hasPermission('canManagePurchases');
@@ -1462,6 +1504,38 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                 placeholder={t('الباركود...', 'Barcode...')}
                 className="w-[100px] shrink-0 h-8 bg-white dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-2 text-xs font-mono tabular-nums text-slate-900 dark:text-[#EEF4FC] placeholder:text-slate-400 focus:border-[var(--awlad-royal-700)] focus:outline-none"
               />
+
+              <div className="w-[125px] shrink-0">
+                <SearchableFilterSelect
+                  id="rpt-filter-class1"
+                  inlinePrefix={t('تصنيف 1', 'Class 1')}
+                  value={class1}
+                  onChange={(val) => {
+                    setClass1(val);
+                    setPage(1);
+                  }}
+                  options={class1Options}
+                  allOptionLabel={t('كل تصنيف 1', 'All Class 1')}
+                  allOptionValue="all"
+                  allowClear
+                />
+              </div>
+
+              <div className="w-[125px] shrink-0">
+                <SearchableFilterSelect
+                  id="rpt-filter-class2"
+                  inlinePrefix={t('تصنيف 2', 'Class 2')}
+                  value={class2}
+                  onChange={(val) => {
+                    setClass2(val);
+                    setPage(1);
+                  }}
+                  options={class2Options}
+                  allOptionLabel={t('كل تصنيف 2', 'All Class 2')}
+                  allOptionValue="all"
+                  allowClear
+                />
+              </div>
             </>
           )}
 
@@ -1592,7 +1666,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                           <td className="px-2 py-1 border-e border-slate-300 dark:border-[#21375C] text-center bg-[#DCE6F5] dark:bg-[#1A3461]">{t('اجمالى', 'Total')}</td>
                           <td className="px-2 py-1 border-e border-slate-300 dark:border-[#21375C] text-center bg-[#DCE6F5] dark:bg-[#1A3461]">{t('مدفوع', 'Paid')}</td>
                           <td className="px-2 py-1 border-e border-slate-300 dark:border-[#21375C] text-center bg-[#DCE6F5] dark:bg-[#1A3461]">{t('آجل', 'Credit')}</td>
-                          <td colSpan={isRepRole ? 9 : 12} className="px-2 py-1" />
+                          <td colSpan={isRepRole ? 11 : 14} className="px-2 py-1" />
                         </tr>
                       )}
 
@@ -1694,33 +1768,41 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                               <td className="px-2 py-1.5 border-e border-slate-200 text-center font-mono whitespace-nowrap text-slate-600">
                                 {r.barcode || '-'}
                               </td>
-                              {/* 13. ID */}
+                              {/* 13. تصنيف 1 */}
+                              <td className="px-2 py-1.5 border-e border-slate-200 text-center whitespace-nowrap text-slate-600">
+                                {r.class1 || '-'}
+                              </td>
+                              {/* 14. تصنيف 2 */}
+                              <td className="px-2 py-1.5 border-e border-slate-200 text-center whitespace-nowrap text-slate-600">
+                                {r.class2 || '-'}
+                              </td>
+                              {/* 15. ID */}
                               <td className="px-2 py-1.5 border-e border-slate-200 text-center font-mono whitespace-nowrap text-slate-600">
                                 {r.displayId}
                               </td>
-                              {/* 14. رقم الفاتورة */}
+                              {/* 16. رقم الفاتورة */}
                               <td className="px-2 py-1.5 border-e border-slate-200 text-center font-mono font-bold text-[var(--awlad-royal-700)] whitespace-nowrap">
                                 {r.invoiceNumber || '-'}
                               </td>
-                              {/* 15. الفرع */}
+                              {/* 17. الفرع */}
                               <td className="px-2 py-1.5 border-e border-slate-200 text-center whitespace-nowrap">
                                 {r.branchName ? t(r.branchName) : '-'}
                               </td>
-                              {/* 16. الخزنة */}
+                              {/* 18. الخزنة */}
                               {!isRepRole && (
                                 <td className="px-2 py-1.5 border-e border-slate-200 text-center whitespace-nowrap">
                                   {r.cashboxName ? t(r.cashboxName) : '-'}
                                 </td>
                               )}
-                              {/* 17. ملاحظات */}
+                              {/* 19. ملاحظات */}
                               <td className="px-2 py-1.5 border-e border-slate-200 whitespace-nowrap text-slate-600">
                                 {r.notes ? t(r.notes) : ''}
                               </td>
-                              {/* 18. الخصم */}
+                              {/* 20. الخصم */}
                               <td className="px-2 py-1.5 border-e border-slate-200 text-center font-mono whitespace-nowrap text-amber-800">
                                 {r.discount ? fmtMoney(r.discount) : '0'}
                               </td>
-                              {/* 19. نسبة الربح */}
+                              {/* 21. نسبة الربح */}
                               {!isRepRole && (
                                 <td className="px-2 py-1.5 text-center font-mono whitespace-nowrap font-bold text-slate-700">
                                   {r.profitPercent !== 0 ? `(${r.profitPercent}%)` : '(0%)'}
@@ -1754,7 +1836,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ initialTab, initialPro
                             {fmtMoney(section.totals.profit)}
                           </td>
                         )}
-                        <td colSpan={isRepRole ? 5 : 6} className="px-2 py-1.5 border-e border-slate-300" />
+                        <td colSpan={isRepRole ? 7 : 8} className="px-2 py-1.5 border-e border-slate-300" />
                         <td className="px-2 py-1.5 border-e border-slate-300 text-center font-mono">{fmtMoney(section.totals.discount)}</td>
                         {!isRepRole && (
                           <td className="px-2 py-1.5 text-center font-mono">({section.totals.profitPercent}%)</td>

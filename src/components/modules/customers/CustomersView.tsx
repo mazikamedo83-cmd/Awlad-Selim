@@ -74,7 +74,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
   // Payment modal state
   const [paymentCustomer, setPaymentCustomer] = useState<Customer | null>(null);
   const [paymentAmount, setPaymentAmount] = useState<number | ''>('');
-  const [paymentCashboxId, setPaymentCashboxId] = useState<string>(cashboxes[0]?.id || '');
+  const [paymentCashboxId, setPaymentCashboxId] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bank' | 'cheque'>('cash');
   const [paymentNotes, setPaymentNotes] = useState<string>('');
   const [paymentError, setPaymentError] = useState<string | null>(null);
@@ -115,8 +115,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
   });
 
   useEffect(() => {
-    if (cashboxes.length > 0 && (!paymentCashboxId || !cashboxes.some(c => c.id === paymentCashboxId))) {
-      setPaymentCashboxId(cashboxes[0].id);
+    if (paymentCashboxId && !cashboxes.some(c => c.id === paymentCashboxId)) {
+      setPaymentCashboxId('');
     }
   }, [cashboxes, paymentCashboxId]);
 
@@ -548,12 +548,11 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
   };
 
   shortcutHandlersRef.current.openCollection = () => {
-    const target = selectedCustomer || filteredCustomers[0] || customers[0] || null;
-    if (!target) return;
+    if (!selectedCustomer) return;
     setPaymentError(null);
     setPaymentMethod('cash');
-    setPaymentCustomer(target);
-    setPaymentAmount(target.currentBalance > 0 ? target.currentBalance : '');
+    setPaymentCustomer(selectedCustomer);
+    setPaymentAmount(selectedCustomer.currentBalance > 0 ? selectedCustomer.currentBalance : '');
     setPaymentNotes('');
   };
 
@@ -710,8 +709,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
             : {}),
           notes: formData.notes.trim(),
           status: formData.status,
-          allowedRepIds: formData.allowedRepIds,
-          assignedRepId: formData.allowedRepIds[0] || undefined,
+          allowedRepIds: [],
+          assignedRepId: undefined,
         });
         setCustomerBanner({ type: 'success', text: `${t('تم تحديث بيانات العميل', 'Updated customer')} (${formData.name.trim()}) ${t('بنجاح.', 'successfully.')}` });
       } else {
@@ -735,8 +734,8 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
           notes: formData.notes.trim(),
           openingBalance: Number(formData.openingBalance) || 0,
           status: formData.status,
-          allowedRepIds: formData.allowedRepIds,
-          assignedRepId: formData.allowedRepIds[0] || undefined,
+          allowedRepIds: [],
+          assignedRepId: undefined,
         });
         setSelectedCustomerId(created.id);
 
@@ -2995,62 +2994,11 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
             </div>
           </div>
 
-          {/* Allowed Representatives Assignment */}
-          <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 space-y-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <label className="font-black text-slate-800">
-                {t('المناديب المسموح لهم بالتعامل مع العميل:', 'Representatives Allowed to Handle Customer:')}
-              </label>
-              {formData.allowedRepIds.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setFormData((prev) => ({ ...prev, allowedRepIds: [] }))}
-                  className="text-[11px] font-bold text-slate-500 hover:text-red-600 cursor-pointer"
-                >
-                  {t('إلغاء التحديد', 'Clear Selection')}
-                </button>
-              )}
-            </div>
-            <p className="text-[11px] text-slate-500">
-              {t('يظهر هذا العميل وتاريخ أسعاره وفواتيره في تطبيق الموبايل للمناديب المحددين فقط. عدم تحديد أي مندوب يقتصر التعامل على الإدارة.', 'This customer, price history, and invoices appear in mobile app only for selected reps. Selecting none restricts access to management.')}
-            </p>
-            {representatives.length === 0 ? (
-              <p className="text-[11px] text-amber-700 font-bold">{t('لا يوجد مناديب مبيعات مسجلون حالياً.', 'No sales representatives registered yet.')}</p>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 max-h-36 overflow-y-auto">
-                {representatives.map((rep) => {
-                  const isChecked = formData.allowedRepIds.includes(rep.id);
-                  return (
-                    <label
-                      key={rep.id}
-                      className={`flex items-center gap-2 p-1.5 rounded-lg border cursor-pointer transition-colors ${
-                        isChecked
-                          ? 'bg-blue-50 border-blue-400 text-blue-950 font-bold'
-                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={(e) => {
-                          const checked = e.target.checked;
-                          setFormData((prev) => ({
-                            ...prev,
-                            allowedRepIds: checked
-                              ? Array.from(new Set([...prev.allowedRepIds, rep.id]))
-                              : prev.allowedRepIds.filter((id) => id !== rep.id),
-                          }));
-                        }}
-                        className="w-4 h-4 accent-blue-900"
-                      />
-                      <span className="truncate">{rep.name}</span>
-                      {rep.vehicleNumber && (
-                        <span className="text-[10px] text-slate-400 ms-auto font-mono">{rep.vehicleNumber}</span>
-                      )}
-                    </label>
-                  );
-                })}
-              </div>
+          {/* Open customer access info (all active customers are shared across all representatives) */}
+          <div className="bg-[#EEF3FA] border border-[#DCE6F5] rounded-lg px-2.5 py-2 text-[11px] font-bold text-[#011E58]">
+            {t(
+              'جميع العملاء النشطين متاحون تلقائياً لجميع المناديب دون الحاجة لتحديد مندوب معين، مع احتفاظ كل فاتورة باسم المندوب الذي أصدرها.',
+              'All active customers are automatically available to all representatives without requiring rep assignment, while each invoice keeps its issuing representative.'
             )}
           </div>
 
@@ -3256,10 +3204,12 @@ export const CustomersView: React.FC<CustomersViewProps> = ({ onNavigate }) => {
               <div>
                 <label className="block font-bold text-slate-700 mb-1">{t('الخزينة المودع بها المبلغ:', 'Deposited Cashbox:')}</label>
                 <select
+                  required
                   value={paymentCashboxId}
                   onChange={(e) => setPaymentCashboxId(e.target.value)}
                   className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 py-1 font-bold outline-hidden focus:border-[#003589]"
                 >
+                  <option value="">{t('-- اختر الخزينة --', '-- Select Cashbox --')}</option>
                   {cashboxes.map(cb => (
                     <option key={cb.id} value={cb.id}>
                       {cb.balanceHidden ? `${cb.name} (${t('رصيد محجوب', 'Balance Hidden')})` : `${cb.name} (${t('رصيدها:', 'Bal:')} ${formatLocaleNumber(cb.currentBalance ?? 0)} ${t(settings.currency)})`}

@@ -668,7 +668,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({
         </p>
         <button
           type="button"
-          onClick={() => data.triggerManualSync()}
+          onClick={() => data.refreshData()}
           className="h-8 px-3.5 rounded-md bg-[#003589] hover:bg-[#011E58] dark:bg-[#1659C8] dark:hover:bg-[#1F6BE6] text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
         >
           <RefreshCw className="w-3.5 h-3.5" />

@@ -26,25 +26,30 @@ import {
   publishStorefrontApi,
   toggleCustomerFavoriteApi,
   fetchRepresentativeStatementApi,
+  fetchSupplierPriceHistoryApi,
+  createRepCustodyReturnRequestApi,
+  approveRepCustodyReturnRequestApi,
+  rejectRepCustodyReturnRequestApi,
+  fetchSendReceiveActivityLogApi,
+  fetchSyncSourceDocumentApi,
 } from '../services/api';
 import {
   DEFAULT_STOREFRONT_CONFIG,
   resolveActiveStorefrontOffer,
   ResolvedProductPromo,
 } from '../utils/storefront';
-import { syncConnectionConfigFromServer } from '../services/discovery';
-import { getOrCreatePersistentDeviceId, notifyLocal, subscribeAppForeground, subscribeNetworkStatus } from '../services/native';
+import { getOrCreatePersistentDeviceId, subscribeNetworkStatus } from '../services/native';
 import { localDb } from '../services/localDb';
 import { normalizeServerOrigin, refreshCachedUserAuthorization } from '../services/offlineAuth';
 import {
   EMPTY_USER_SYNC_STATE,
   enqueueSyncOperation,
   executeManualReceiveConfirm,
+  executeManualReceivePreview,
   executeManualSendSync,
-  fetchReceivePreviewApi,
+  getSendReceiveHistory,
   getStoredUserSyncState,
   getSyncRefreshStats,
-  normalizeMandatorySendIntervalMinutes,
   runSyncCycle,
   saveStoredUserSyncState,
   sendDispatchBatchToServer,
@@ -112,7 +117,11 @@ import {
   ServerUserSyncState,
   ReceivePreviewResponse,
   ReceiveConfirmResponse,
+  SendReceiveHistoryEntry,
   RepresentativeAccountStatement,
+  SupplierPriceHistoryEntry,
+  RepCustodyReturnRequest,
+  SendReceiveActivityLogResponse,
 } from '../types';
 import { useAuth } from './AuthContext';
 
@@ -144,11 +153,15 @@ export interface DataContextType extends DatabaseState {
   getSupplierStatement: (supplierId: string) => Promise<SupplierStatementResponse | null>;
   getRepresentativeStatement: (repId: string) => Promise<RepresentativeAccountStatement | null>;
   getCustomerPriceHistory: (customerId: string, productId?: string) => Promise<Record<string, CustomerPriceHistoryEntry[]>>;
+  getSupplierPriceHistory: (supplierId: string, productId?: string) => Promise<Record<string, SupplierPriceHistoryEntry[]>>;
+  getSendReceiveActivityLog: (params?: { dateFrom?: string; dateTo?: string; repId?: string; operationType?: string; status?: string; docNumber?: string }) => Promise<SendReceiveActivityLogResponse | null>;
+  getSyncSourceDocument: (docType: string, docId: string) => Promise<{ ok: boolean; document: any; auditTrail?: AuditLogItem[] } | null>;
   triggerSync: (forceAll?: boolean) => Promise<void>;
   triggerManualSync: () => Promise<void>;
   serverSyncState: ServerUserSyncState;
   lastSendSummary: SyncRefreshSummary | null;
   lastReceiveSummary: SyncRefreshSummary | null;
+  sendReceiveHistory: SendReceiveHistoryEntry[];
   sendProgressPercent: number;
   sendProgressStage: string;
   receiveProgressPercent: number;
@@ -167,6 +180,7 @@ export interface DataContextType extends DatabaseState {
     deduplicatedCount: number;
     failedCount: number;
     conflictCount: number;
+    durationMs: number;
     sentAt: string | null;
     summary: Record<string, number>;
     syncState: ServerUserSyncState | null;
@@ -175,6 +189,7 @@ export interface DataContextType extends DatabaseState {
   previewReceiveUpdates: () => Promise<{
     ok: boolean;
     preview: ReceivePreviewResponse | null;
+    durationMs: number;
     error?: string;
   }>;
   confirmReceiveUpdates: (options?: {
@@ -182,8 +197,10 @@ export interface DataContextType extends DatabaseState {
     confirmCustodyIds?: string[];
     confirmCashTransferIds?: string[];
     confirmBatchIds?: string[];
+    previewDurationMs?: number;
   }) => Promise<{
     ok: boolean;
+    durationMs: number;
     response: ReceiveConfirmResponse | null;
     error?: string;
   }>;
@@ -355,11 +372,15 @@ export interface DataContextType extends DatabaseState {
   createRepItemTransfer: (transferData: Omit<RepItemTransferRequest, 'id' | 'requestNumber' | 'createdAt' | 'status' | 'createdBy'> & { autoDispatch?: boolean }) => Promise<{ success: boolean; queuedOffline?: boolean; request?: RepItemTransferRequest; error?: string }>;
   updateRepItemTransferStatus: (requestId: string, newStatus: RepItemTransferStatus, approvedItems?: RepTransferItem[], notes?: string) => Promise<{ success: boolean; queuedOffline?: boolean; error?: string }>;
   repCustodyOperations: RepCustodyOperation[];
+  repCustodyReturnRequests: RepCustodyReturnRequest[];
   recordRepCustodyDelivery: (payload: { representativeId?: string; customerId?: string; customerName?: string; productId: string; quantity: number; unit?: string; unitFactor?: number; date?: string; notes?: string; idempotencyKey?: string }) => Promise<{ success: boolean; operation?: RepCustodyOperation; queuedOffline?: boolean; error?: string }>;
   recordRepCustodyReturn: (payload: { representativeId?: string; targetWarehouseId?: string; productId: string; quantity: number; unit?: string; unitFactor?: number; date?: string; notes?: string; idempotencyKey?: string }) => Promise<{ success: boolean; operation?: RepCustodyOperation; queuedOffline?: boolean; error?: string }>;
+  createRepCustodyReturnRequest: (payload: { representativeId?: string; targetWarehouseId?: string; date?: string; notes?: string; idempotencyKey?: string; items: Array<{ productId: string; unit?: string; unitFactor?: number; requestedQty: number; notes?: string }> }) => Promise<{ success: boolean; request?: RepCustodyReturnRequest; error?: string }>;
+  approveRepCustodyReturnRequest: (requestId: string, payload: { items?: Array<{ productId: string; unit?: string; actualReceivedQty: number; approvedQty: number; rejectionReason?: string }>; reviewNotes?: string }) => Promise<{ success: boolean; request?: RepCustodyReturnRequest; error?: string }>;
+  rejectRepCustodyReturnRequest: (requestId: string, reason: string) => Promise<{ success: boolean; request?: RepCustodyReturnRequest; error?: string }>;
   recordRepCustodyAdjustment: (payload: { representativeId: string; productId: string; operationType: 'custody_damaged' | 'custody_shortage' | 'custody_adjustment'; quantity: number; unit?: string; unitFactor?: number; date?: string; notes?: string }) => Promise<{ success: boolean; operation?: RepCustodyOperation; error?: string }>;
   getRepCustodyStatement: (repId?: string, filters?: { dateFrom?: string; dateTo?: string }) => Promise<{ success: boolean; statement?: RepCustodyStatementResponse; error?: string }>;
-  getItemMovementReport: (filters?: { productId?: string; warehouseId?: string; movementType?: string; representativeId?: string; dateFrom?: string; dateTo?: string; search?: string }) => Promise<{ success: boolean; report?: ItemMovementReportResponse; error?: string }>;
+  getItemMovementReport: (filters?: { productId?: string; warehouseId?: string; movementType?: string; representativeId?: string; dateFrom?: string; dateTo?: string; search?: string; class1?: string; class2?: string }) => Promise<{ success: boolean; report?: ItemMovementReportResponse; error?: string }>;
 
   // Customer & Representative Orders Lifecycle
   createCustomerItemOrder: (payload: Omit<CustomerItemOrderRequest, 'id' | 'requestNumber' | 'status' | 'createdAt'> & { idempotencyKey?: string }) => Promise<{ success: boolean; order?: CustomerItemOrderRequest; queuedOffline?: boolean; error?: string }>;
@@ -515,8 +536,14 @@ export function isNetworkFailure(err: any): boolean {
  * Applies pending/failed local queue items optimistically onto a cached snapshot
  * so closing/reopening the app offline preserves every locally recorded invoice, order, payment, and balance.
  */
-export function overlayPendingQueueOnState(base: DatabaseState, queue: SyncQueueItem[]): DatabaseState {
-  const pending = (queue || []).filter((q) => q.status !== 'synced');
+export function overlayPendingQueueOnState(
+  base: DatabaseState,
+  queue: SyncQueueItem[],
+  includeAll = false
+): DatabaseState {
+  const pending = includeAll
+    ? (queue || [])
+    : (queue || []).filter((q) => q.status !== 'synced');
   if (pending.length === 0) return base;
 
   const products = (base.products || []).map((p) => ({
@@ -1657,6 +1684,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [serverSyncState, setServerSyncState] = useState<ServerUserSyncState>(() => ({ ...EMPTY_USER_SYNC_STATE }));
   const [lastSendSummary, setLastSendSummary] = useState<SyncRefreshSummary | null>(null);
   const [lastReceiveSummary, setLastReceiveSummary] = useState<SyncRefreshSummary | null>(null);
+  const [sendReceiveHistory, setSendReceiveHistory] = useState<SendReceiveHistoryEntry[]>([]);
   const [sendProgressPercent, setSendProgressPercent] = useState<number>(0);
   const [sendProgressStage, setSendProgressStage] = useState<string>('');
 
@@ -1671,9 +1699,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [data.settings]);
   const [receiveProgressPercent, setReceiveProgressPercent] = useState<number>(0);
   const [receiveProgressStage, setReceiveProgressStage] = useState<string>('');
-  const [mandatorySendRemainingSeconds, setMandatorySendRemainingSeconds] = useState<number>(15 * 60);
-  const [isMandatorySending, setIsMandatorySending] = useState<boolean>(false);
-  const [isMandatorySendPendingRetry, setIsMandatorySendPendingRetry] = useState<boolean>(false);
   const [publishedStorefront, setPublishedStorefront] = useState<StorefrontConfig>(DEFAULT_STOREFRONT_CONFIG);
   const [storefrontDraft, setStorefrontDraft] = useState<StorefrontConfig | null>(null);
   const [storefrontPublishedAdmin, setStorefrontPublishedAdmin] = useState<StorefrontConfig | null>(null);
@@ -1682,50 +1707,35 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const hydratedUserRef = useRef<string | null>(null);
   const isDbUnavailableRef = useRef<boolean>(false);
   const isSyncingRef = useRef<boolean>(false);
-  const isMandatoryRunningRef = useRef<boolean>(false);
   const loadRoleScopedDataRef = useRef<(() => Promise<void>) | null>(null);
-  const triggerMandatorySendNowRef = useRef<(() => Promise<{ ok: boolean; count: number; failedCount: number; error?: string }>) | null>(null);
 
-  const onlineSyncCfg = data.settings?.extraSettings?.onlineSyncConfig;
-  const mandatorySendEnabled = onlineSyncCfg?.mandatorySendEnabled !== false;
-  const mandatorySendIntervalMinutes = normalizeMandatorySendIntervalMinutes(onlineSyncCfg?.mandatorySendIntervalMinutes);
-  const mandatoryConfigRef = useRef({ enabled: mandatorySendEnabled, intervalMinutes: mandatorySendIntervalMinutes });
-  mandatoryConfigRef.current = { enabled: mandatorySendEnabled, intervalMinutes: mandatorySendIntervalMinutes };
-
-  const resetMandatoryCountdown = useCallback(
-    (uid?: string, minsOverride?: number) => {
-      const targetUid = uid || currentUser?.id;
-      const mins = normalizeMandatorySendIntervalMinutes(minsOverride ?? mandatorySendIntervalMinutes);
-      const nextDueAt = Date.now() + mins * 60 * 1000;
-      if (targetUid && typeof localStorage !== 'undefined') {
-        try {
-          localStorage.setItem(`awlad_selim_mandatory_send_due_${targetUid}`, String(nextDueAt));
-        } catch {
-          // ignore storage errors
-        }
-      }
-      setMandatorySendRemainingSeconds(mins * 60);
-      return nextDueAt;
-    },
-    [currentUser?.id, mandatorySendIntervalMinutes]
-  );
+  // Full manual control mode: mandatory countdown & background auto-sync are permanently disabled
+  const mandatorySendEnabled = false;
+  const mandatorySendIntervalMinutes = 0;
+  const mandatorySendRemainingSeconds = 0;
+  const isMandatorySending = false;
+  const isMandatorySendPendingRetry = false;
+  const resetMandatoryCountdown = useCallback(() => 0, []);
 
   const refreshSyncStatsFromLocal = useCallback(async () => {
     if (!currentUser?.id) {
       setLastSendSummary(null);
       setLastReceiveSummary(null);
+      setSendReceiveHistory([]);
       setServerSyncState({ ...EMPTY_USER_SYNC_STATE });
       return;
     }
-    const [stats, storedSyncState] = await Promise.all([
+    const [stats, storedSyncState, history] = await Promise.all([
       getSyncRefreshStats(currentUser.id).catch(() => ({
         lastSendSummary: null,
         lastReceiveSummary: null,
       })),
       getStoredUserSyncState(currentUser.id).catch(() => ({ ...EMPTY_USER_SYNC_STATE })),
+      getSendReceiveHistory(currentUser.id).catch(() => [] as SendReceiveHistoryEntry[]),
     ]);
     setLastSendSummary(stats.lastSendSummary);
     setLastReceiveSummary(stats.lastReceiveSummary);
+    setSendReceiveHistory(history);
     setServerSyncState(storedSyncState);
   }, [currentUser?.id]);
 
@@ -1751,9 +1761,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isDbUnavailableRef.current = false;
         setLastError(null);
         setNetworkStatus((prev) => (prev === 'error' ? 'connected' : prev));
-        if (!isSyncingRef.current && loadRoleScopedDataRef.current) {
-          loadRoleScopedDataRef.current().catch(() => {});
-        }
       }
     });
   }, []);
@@ -1856,6 +1863,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           productGroups: pullData.productGroups || [],
           productUnits: pullData.productUnits || [],
           repCustodyOperations: pullData.repCustodyOperations || [],
+          repCustodyReturnRequests: pullData.repCustodyReturnRequests || [],
           purchaseReceivers: pullData.purchaseReceivers || [],
           purchaseReturnRequests: pullData.purchaseReturnRequests || [],
           salesReturnRequests: pullData.salesReturnRequests || [],
@@ -1969,7 +1977,67 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [handleServerAuthRevoked]
   );
 
-  // Instant Offline-First Hydration from LocalDB whenever user logs in or opens app offline
+  // Read-only initial/CRUD workspace loader (NEVER calls /api/sync/pull or modifies sync timestamps)
+  const loadRoleScopedData = useCallback(async () => {
+    if (!isAuthenticated || !currentUser) {
+      setIsInitialLoaded(true);
+      return;
+    }
+
+    try {
+      if (currentUser.role === 'customer') {
+        const outcome = await runSyncCycle({ userId: currentUser.id, forceAll: false, mode: 'receive_only', silent: true });
+        await refreshQueueAndConflictsFromLocal(currentUser.id);
+        if (outcome.authRevoked) {
+          await handleServerAuthRevoked(outcome.revokeReason);
+          return;
+        }
+        setIsServerReachable(outcome.serverReachable);
+        if (outcome.serverReachable && outcome.ok && outcome.pullData) {
+          await applyServerPullPayload(outcome.pullData, currentUser);
+          setNetworkStatus(outcome.conflictCount > 0 || outcome.failedCount > 0 ? 'pending' : 'connected');
+          setLastError(null);
+        } else {
+          setNetworkStatus(outcome.serverReachable ? 'error' : 'disconnected');
+          if (outcome.error) setLastError(outcome.error);
+        }
+        return;
+      }
+
+      const bootRes = await apiRequest<{ ok: boolean; data: any }>('/api/admin/bootstrap');
+      if (bootRes?.data) {
+        const payload = {
+          scope: currentUser.role === 'representative' ? 'representative' : 'staff',
+          serverTime: new Date().toISOString(),
+          user: currentUser,
+          ...bootRes.data,
+        };
+        await applyServerPullPayload(payload, currentUser);
+        setIsServerReachable(true);
+        const q = await localDb.listSyncQueue(currentUser.id);
+        const hasPending = q.some((item) => item.status !== 'synced');
+        setNetworkStatus(hasPending ? 'pending' : 'connected');
+        setLastError(null);
+      }
+    } catch (err: any) {
+      const code = String(err?.code || '');
+      if (err?.status === 401 || code === 'SESSION_REVOKED' || code === 'INVALID_TOKEN' || code === 'DEVICE_REVOKED') {
+        await handleServerAuthRevoked(err?.message);
+        return;
+      }
+      const networkDown = isNetworkFailure(err);
+      setIsServerReachable(!networkDown);
+      setNetworkStatus(networkDown ? 'disconnected' : 'error');
+      setLastError(err?.message ? tr(err.message) : tr('تعذر تحميل بيانات العمل حالياً', 'Could not load workspace data right now'));
+    } finally {
+      setIsInitialLoaded(true);
+    }
+  }, [isAuthenticated, currentUser, applyServerPullPayload, refreshQueueAndConflictsFromLocal, handleServerAuthRevoked]);
+
+  loadRoleScopedDataRef.current = loadRoleScopedData;
+
+  // Instant Offline-First Hydration from LocalDB whenever user logs in or refreshes.
+  // Strictly NEVER triggers automatic Send/Receive syncs on login, open, or page refresh.
   useEffect(() => {
     let cancelled = false;
     const hydrateFromLocalDb = async () => {
@@ -1987,6 +2055,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setDispatchRecipients([]);
         setMobileNotifications([]);
         setServerSyncState({ ...EMPTY_USER_SYNC_STATE });
+        setLastSendSummary(null);
+        setLastReceiveSummary(null);
+        setSendReceiveHistory([]);
         setLastServerSyncAt(null);
         setIsUsingOfflineCache(false);
         setLastCacheTimestamp(null);
@@ -1996,7 +2067,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (hydratedUserRef.current !== currentUser.id) {
         hydratedUserRef.current = currentUser.id;
-        // Clear previous user's state synchronously before async local cache load so stale records never leak across switches
         setData(getEmptyClientDatabaseState());
         setCustomerStatement(null);
         setPublishedStorefront(DEFAULT_STOREFRONT_CONFIG);
@@ -2013,13 +2083,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsUsingOfflineCache(false);
         setLastCacheTimestamp(null);
 
-        const [snap, queue, conflicts, dispatchBatches, lastSyncMeta, storedSyncState] = await Promise.all([
+        const [snap, queue, conflicts, dispatchBatches, lastSyncMeta, storedSyncState, history] = await Promise.all([
           localDb.getSnapshot(currentUser.id),
           localDb.listSyncQueue(currentUser.id),
           localDb.listConflicts(currentUser.id),
           localDb.listDispatchBatches(currentUser.id),
           localDb.getMeta<string>(`last_sync_at:${currentUser.id}`),
           getStoredUserSyncState(currentUser.id),
+          getSendReceiveHistory(currentUser.id),
         ]);
         if (cancelled) return;
 
@@ -2028,6 +2099,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSyncDispatchBatches(dispatchBatches);
         setLastServerSyncAt(lastSyncMeta || null);
         setServerSyncState(storedSyncState);
+        setSendReceiveHistory(history);
 
         const expectedOrigin = normalizeServerOrigin(getConfiguredApiBaseUrl());
         const expectedInstallationId = getStoredInstallationId();
@@ -2056,9 +2128,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (Array.isArray(snap.data.customerFavorites)) {
             setCustomerFavorites(snap.data.customerFavorites.map(String));
           }
-          setIsUsingOfflineCache(true);
+          const onlineNow = typeof navigator !== 'undefined' ? navigator.onLine !== false : true;
+          const hasPendingOps = queue.some((q) => q.status !== 'synced');
+          const hasUnresolvedConflicts = conflicts.some((c) => c.status === 'needs_review');
+          setIsServerReachable(onlineNow);
+          setNetworkStatus(!onlineNow ? 'disconnected' : (hasPendingOps || hasUnresolvedConflicts) ? 'pending' : 'connected');
+          setIsUsingOfflineCache(!onlineNow);
           setLastCacheTimestamp(snap.cachedAt);
           setIsInitialLoaded(true);
+        } else {
+          // Brand new device/login with no cached snapshot: run one-time read-only baseline bootstrap
+          await loadRoleScopedData();
         }
       }
     };
@@ -2067,99 +2147,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, currentUser?.id]);
+  }, [isAuthenticated, currentUser?.id, loadRoleScopedData]);
 
-  const loadRoleScopedData = useCallback(async () => {
-    if (!isAuthenticated || !currentUser) {
-      setIsInitialLoaded(true);
-      return;
-    }
-
-    isSyncingRef.current = true;
-    setIsSyncing(true);
-    try {
-      const outcome = await runSyncCycle({ userId: currentUser.id, forceAll: false, mode: 'receive_only', silent: true });
-      await refreshQueueAndConflictsFromLocal(currentUser.id);
-
-      if (outcome.authRevoked) {
-        await handleServerAuthRevoked(outcome.revokeReason);
-        return;
-      }
-
-      setIsServerReachable(outcome.serverReachable);
-
-      if (outcome.serverReachable && outcome.ok && outcome.pullData) {
-        await applyServerPullPayload(outcome.pullData, currentUser);
-        // Optional migration logs fetch for admin
-        if (currentUser.role === 'admin' || currentUser.permissions?.canManageSettings) {
-          apiRequest<{ ok: boolean; logs: MigrationLogEntry[] }>('/api/admin/migration/logs')
-            .then((mig) => {
-              if (Array.isArray(mig?.logs)) {
-                setData((prev) => ({ ...prev, migrationLogs: mig.logs }));
-              }
-            })
-            .catch(() => {});
-        }
-        // Refresh AuthContext permissions if role/permissions changed remotely
-        if (JSON.stringify(outcome.pullData.user?.permissions) !== JSON.stringify(currentUser.permissions)) {
-          refreshAuthContext().catch(() => {});
-        }
-        setNetworkStatus(outcome.conflictCount > 0 || outcome.failedCount > 0 ? 'pending' : 'connected');
-        setLastError(null);
-      } else {
-        setNetworkStatus(outcome.serverReachable ? 'error' : 'disconnected');
-        if (outcome.error) setLastError(outcome.error);
-      }
-    } catch (err: any) {
-      const networkDown = isNetworkFailure(err);
-      setIsServerReachable(!networkDown);
-      setNetworkStatus(networkDown ? 'disconnected' : 'error');
-      setLastError(err?.message ? tr(err.message) : tr('تعذر مزامنة البيانات حالياً', 'Could not sync data right now'));
-    } finally {
-      isSyncingRef.current = false;
-      setIsSyncing(false);
-      setIsInitialLoaded(true);
-    }
-  }, [isAuthenticated, currentUser, applyServerPullPayload, refreshQueueAndConflictsFromLocal, handleServerAuthRevoked, refreshAuthContext]);
-
-  loadRoleScopedDataRef.current = loadRoleScopedData;
-
+  // Explicit workspace refresh ONLY when invoked directly (never auto-runs Sync Send or Receive)
   const triggerSync = useCallback(
-    async (forceAll = false) => {
-      if (!isAuthenticated || !currentUser) return;
-      setNetworkStatus('synchronizing');
-      isSyncingRef.current = true;
-      setIsSyncing(true);
-      try {
-        await syncConnectionConfigFromServer({ triggerHeartbeat: true }).catch(() => {});
-        const outcome = await runSyncCycle({ userId: currentUser.id, forceAll, mode: 'receive_only', silent: true });
-        await refreshQueueAndConflictsFromLocal(currentUser.id);
-
-        if (outcome.authRevoked) {
-          await handleServerAuthRevoked(outcome.revokeReason);
-          return;
-        }
-        setIsServerReachable(outcome.serverReachable);
-
-        if (outcome.ok && outcome.pullData) {
-          await applyServerPullPayload(outcome.pullData, currentUser);
-          setNetworkStatus(outcome.conflictCount > 0 || outcome.failedCount > 0 ? 'pending' : 'connected');
-          setLastError(null);
-        } else {
-          setNetworkStatus(outcome.serverReachable ? 'error' : 'disconnected');
-          if (outcome.error) setLastError(outcome.error);
-        }
-      } catch (err: any) {
-        const networkDown = isNetworkFailure(err);
-        setIsServerReachable(!networkDown);
-        setNetworkStatus(networkDown ? 'disconnected' : 'error');
-        setLastError(err?.message ? tr(err.message) : tr('تعذر مزامنة البيانات حالياً', 'Could not sync data right now'));
-      } finally {
-        isSyncingRef.current = false;
-        setIsSyncing(false);
-      }
+    async (_forceAll = false) => {
+      await loadRoleScopedData();
     },
-    [isAuthenticated, currentUser, refreshQueueAndConflictsFromLocal, handleServerAuthRevoked, applyServerPullPayload]
+    [loadRoleScopedData]
   );
 
   const triggerManualSync = useCallback(() => triggerSync(true), [triggerSync]);
@@ -2199,15 +2194,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       );
       if (outcome.error) setLastError(outcome.error);
       else setLastError(null);
-      if (outcome.ok && outcome.failedCount === 0) {
-        resetMandatoryCountdown(currentUser.id);
-        setIsMandatorySendPendingRetry(false);
-        try {
-          localStorage.removeItem(`awlad_selim_mandatory_retry_${currentUser.id}`);
-        } catch {
-          // ignore
-        }
-      }
       return {
         ok: outcome.ok,
         count: outcome.syncedCount,
@@ -2277,6 +2263,37 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [isAuthenticated, currentUser, refreshQueueAndConflictsFromLocal, refreshSyncStatsFromLocal, handleServerAuthRevoked, applyServerPullPayload]);
 
+  const commitSyncedOpsToLocalSnapshot = useCallback(
+    async (userId: string, syncedOpsBefore: SyncQueueItem[]) => {
+      if (!userId || syncedOpsBefore.length === 0) return;
+      const [snap, nextQueue] = await Promise.all([
+        localDb.getSnapshot(userId),
+        localDb.listSyncQueue(userId),
+      ]);
+      if (!snap?.data?.dbState) return;
+      const syncedNow = syncedOpsBefore.filter((oldOp) => {
+        const current = nextQueue.find((q) => q.operationId === oldOp.operationId);
+        return !current || current.status === 'synced';
+      });
+      if (syncedNow.length === 0) return;
+      const updatedBaseline = overlayPendingQueueOnState(
+        snap.data.dbState,
+        syncedNow.map((op) => ({ ...op, status: 'synced' as const })),
+        true
+      );
+      await localDb.saveSnapshot({
+        ...snap,
+        cachedAt: new Date().toISOString(),
+        data: {
+          ...snap.data,
+          dbState: updatedBaseline,
+        },
+      });
+      setData(overlayPendingQueueOnState(updatedBaseline, nextQueue));
+    },
+    []
+  );
+
   const sendSyncOperations = useCallback(
     async (operationIds?: string[]) => {
       if (!isAuthenticated || !currentUser) {
@@ -2286,6 +2303,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           deduplicatedCount: 0,
           failedCount: 0,
           conflictCount: 0,
+          durationMs: 0,
           sentAt: null,
           summary: {},
           syncState: null,
@@ -2299,10 +2317,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           deduplicatedCount: 0,
           failedCount: 0,
           conflictCount: 0,
+          durationMs: 0,
           sentAt: null,
           summary: {},
           syncState: serverSyncState,
-          error: tr('توجد عملية مزامنة قيد التنفيذ حالياً', 'A sync operation is already in progress'),
+          error: tr('توجد عملية قيد التنفيذ حالياً', 'An operation is already in progress'),
         };
       }
       setNetworkStatus('synchronizing');
@@ -2311,6 +2330,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setSendProgressPercent(10);
       setSendProgressStage(tr('جاري تجهيز العمليات للإرسال...', 'Preparing operations to send...'));
       try {
+        const preQueue = await localDb.listSyncQueue(currentUser.id);
         const res = await executeManualSendSync({
           userId: currentUser.id,
           operationIds,
@@ -2319,6 +2339,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setSendProgressStage(p.stage);
           },
         });
+        if (res.sentCount > 0) {
+          await commitSyncedOpsToLocalSnapshot(currentUser.id, preQueue.filter((q) => q.status !== 'synced'));
+        }
         await refreshQueueAndConflictsFromLocal(currentUser.id);
         await refreshSyncStatsFromLocal();
         if (res.authRevoked) {
@@ -2329,6 +2352,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             deduplicatedCount: 0,
             failedCount: res.failedCount,
             conflictCount: res.conflictCount,
+            durationMs: res.durationMs,
             sentAt: null,
             summary: {},
             syncState: null,
@@ -2345,36 +2369,29 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (res.error) setLastError(res.error);
         else setLastError(null);
 
-        if (res.sentCount > 0) {
-          await loadRoleScopedData().catch(() => {});
-        }
-        if (res.ok && res.failedCount === 0) {
-          resetMandatoryCountdown(currentUser.id);
-          setIsMandatorySendPendingRetry(false);
-          try {
-            localStorage.removeItem(`awlad_selim_mandatory_retry_${currentUser.id}`);
-          } catch {
-            // ignore
-          }
-        }
+        // Full manual control: Sending NEVER triggers Receive/Pull automatically.
         return {
           ok: res.ok,
           sentCount: res.sentCount,
           deduplicatedCount: res.deduplicatedCount,
           failedCount: res.failedCount,
           conflictCount: res.conflictCount,
+          durationMs: res.durationMs,
           sentAt: res.sentAt,
           summary: res.summary,
           syncState: res.syncState,
           error: res.error,
         };
       } catch (err: any) {
+        await refreshQueueAndConflictsFromLocal(currentUser.id);
+        await refreshSyncStatsFromLocal();
         return {
           ok: false,
           sentCount: 0,
           deduplicatedCount: 0,
           failedCount: 0,
           conflictCount: 0,
+          durationMs: 0,
           sentAt: null,
           summary: {},
           syncState: serverSyncState,
@@ -2393,36 +2410,46 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isAuthenticated,
       currentUser,
       serverSyncState,
+      commitSyncedOpsToLocalSnapshot,
       refreshQueueAndConflictsFromLocal,
       refreshSyncStatsFromLocal,
       handleServerAuthRevoked,
-      loadRoleScopedData,
-      resetMandatoryCountdown,
     ]
   );
 
   const previewReceiveUpdates = useCallback(async () => {
     if (!isAuthenticated || !currentUser) {
-      return { ok: false, preview: null, error: tr('المستخدم غير مسجل', 'User is not logged in') };
+      return { ok: false, preview: null, durationMs: 0, error: tr('المستخدم غير مسجل', 'User is not logged in') };
     }
     setReceiveProgressPercent(25);
     setReceiveProgressStage(tr('جاري التحقق من التحديثات الواردة...', 'Checking for incoming updates...'));
     try {
-      const preview = await fetchReceivePreviewApi();
-      setIsServerReachable(true);
-      if (preview.syncState) {
-        setServerSyncState({ ...EMPTY_USER_SYNC_STATE, ...preview.syncState });
-        await saveStoredUserSyncState(currentUser.id, preview.syncState).catch(() => {});
+      const res = await executeManualReceivePreview({ userId: currentUser.id });
+      if (res.authRevoked) {
+        await handleServerAuthRevoked(res.revokeReason);
+        return { ok: false, preview: null, durationMs: res.durationMs, error: res.revokeReason };
       }
-      setReceiveProgressPercent(100);
-      setReceiveProgressStage(tr('تم فحص التحديثات', 'Checked updates'));
-      return { ok: true, preview };
+      setIsServerReachable(res.serverReachable);
+      if (res.ok && res.preview) {
+        if (res.preview.syncState) {
+          setServerSyncState({ ...EMPTY_USER_SYNC_STATE, ...res.preview.syncState });
+        }
+        setReceiveProgressPercent(100);
+        setReceiveProgressStage(tr('تم فحص التحديثات', 'Checked updates'));
+        return { ok: true, preview: res.preview, durationMs: res.durationMs };
+      }
+      await refreshSyncStatsFromLocal();
+      setNetworkStatus(res.serverReachable ? 'error' : 'disconnected');
+      if (res.error) setLastError(res.error);
+      return { ok: false, preview: null, durationMs: res.durationMs, error: res.error };
     } catch (err: any) {
+      await refreshSyncStatsFromLocal();
       const networkDown = isNetworkFailure(err);
       if (networkDown) setIsServerReachable(false);
       return {
         ok: false,
         preview: null,
+        durationMs: 0,
         error: err?.message ? tr(err.message) : tr('تعذر جلب معاينة الاستلام', 'Failed to fetch receive preview'),
       };
     } finally {
@@ -2431,7 +2458,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setReceiveProgressStage('');
       }, 450);
     }
-  }, [isAuthenticated, currentUser]);
+  }, [isAuthenticated, currentUser, handleServerAuthRevoked, refreshSyncStatsFromLocal]);
 
   const confirmReceiveUpdates = useCallback(
     async (options?: {
@@ -2439,12 +2466,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       confirmCustodyIds?: string[];
       confirmCashTransferIds?: string[];
       confirmBatchIds?: string[];
+      previewDurationMs?: number;
     }) => {
       if (!isAuthenticated || !currentUser) {
-        return { ok: false, response: null, error: tr('المستخدم غير مسجل', 'User is not logged in') };
+        return { ok: false, durationMs: 0, response: null, error: tr('المستخدم غير مسجل', 'User is not logged in') };
       }
       if (isSyncingRef.current) {
-        return { ok: false, response: null, error: tr('توجد عملية مزامنة قيد التنفيذ حالياً', 'A sync operation is already in progress') };
+        return { ok: false, durationMs: 0, response: null, error: tr('توجد عملية قيد التنفيذ حالياً', 'An operation is already in progress') };
       }
       setNetworkStatus('synchronizing');
       isSyncingRef.current = true;
@@ -2458,6 +2486,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           confirmCustodyIds: options?.confirmCustodyIds,
           confirmCashTransferIds: options?.confirmCashTransferIds,
           confirmBatchIds: options?.confirmBatchIds,
+          previewDurationMs: options?.previewDurationMs,
           onProgress: (p: SyncProgressUpdate) => {
             setReceiveProgressPercent(p.percent);
             setReceiveProgressStage(p.stage);
@@ -2465,7 +2494,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         if (res.authRevoked) {
           await handleServerAuthRevoked(res.revokeReason);
-          return { ok: false, response: null, error: res.revokeReason };
+          return { ok: false, durationMs: res.durationMs, response: null, error: res.revokeReason };
         }
         setIsServerReachable(res.serverReachable);
         if (res.response?.syncState) {
@@ -2473,18 +2502,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         if (res.response?.bootstrap) {
           await applyServerPullPayload(res.response.bootstrap, currentUser);
-        } else if (res.ok) {
-          await loadRoleScopedData().catch(() => {});
         }
         await refreshQueueAndConflictsFromLocal(currentUser.id);
         await refreshSyncStatsFromLocal();
         setNetworkStatus(res.serverReachable ? (res.ok ? 'connected' : 'error') : 'disconnected');
         if (res.error) setLastError(res.error);
         else setLastError(null);
-        return { ok: res.ok, response: res.response, error: res.error };
+        return { ok: res.ok, durationMs: res.durationMs, response: res.response, error: res.error };
       } catch (err: any) {
+        await refreshSyncStatsFromLocal();
         return {
           ok: false,
+          durationMs: 0,
           response: null,
           error: err?.message ? tr(err.message) : tr('تعذر تأكيد الاستلام', 'Failed to confirm receive'),
         };
@@ -2501,16 +2530,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isAuthenticated,
       currentUser,
       applyServerPullPayload,
-      loadRoleScopedData,
       refreshQueueAndConflictsFromLocal,
       refreshSyncStatsFromLocal,
       handleServerAuthRevoked,
     ]
   );
-
-  useEffect(() => {
-    loadRoleScopedData();
-  }, [loadRoleScopedData]);
 
   // Mobile Notifications Polling + Native Local Notifications
   useEffect(() => {
@@ -2536,64 +2560,24 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setMobileNotifications(list);
 
       const seenKey = `awlad_selim_seen_notifs_${currentUser.id}`;
-      let seen: string[] = [];
       try {
-        const raw = localStorage.getItem(seenKey);
-        seen = raw ? JSON.parse(raw) : [];
+        localStorage.setItem(seenKey, JSON.stringify(list.map((n) => n.id)));
       } catch {
-        seen = [];
-      }
-
-      if (seen.length === 0) {
-        try {
-          localStorage.setItem(seenKey, JSON.stringify(list.map((n) => n.id)));
-        } catch {
-          // ignore
-        }
-      } else {
-        const unseen = list.filter((n) => !seen.includes(n.id));
-        if (unseen.length > 0) {
-          const hasOrderUpdates = unseen.some(
-            (n) => n.type === 'customer_order' || n.type === 'order_status' || String(n.type).startsWith('order_')
-          );
-          if (hasOrderUpdates) {
-            loadRoleScopedData().catch(() => {});
-          }
-          for (const item of unseen.slice(0, 3)) {
-            let hash = 0;
-            for (let i = 0; i < item.id.length; i += 1) {
-              hash = (hash * 31 + item.id.charCodeAt(i)) | 0;
-            }
-            notifyLocal({
-              id: Math.abs(hash) + 1,
-              title: item.title,
-              body: item.body,
-              extra: { targetTab: item.targetTab, referenceId: item.referenceId },
-            }).catch(() => {});
-          }
-          try {
-            localStorage.setItem(
-              seenKey,
-              JSON.stringify(Array.from(new Set([...seen, ...list.map((n) => n.id)])))
-            );
-          } catch {
-            // ignore
-          }
-        }
+        // ignore storage errors
       }
     } catch {
-      // keep existing notifications silently if offline
+      // ignore offline notification errors
     }
-  }, [isAuthenticated, currentUser, loadRoleScopedData]);
+  }, [isAuthenticated, currentUser]);
 
   const markNotificationsRead = useCallback(() => {
     if (!currentUser) return;
-    const ids = mobileNotifications.map((n) => n.id);
-    setReadNotificationIds(ids);
+    const allIds = mobileNotifications.map((n) => n.id);
+    setReadNotificationIds(allIds);
     try {
-      localStorage.setItem(`awlad_selim_read_notifs_${currentUser.id}`, JSON.stringify(ids));
+      localStorage.setItem(`awlad_selim_read_notifs_${currentUser.id}`, JSON.stringify(allIds));
     } catch {
-      // ignore
+      // ignore storage errors
     }
   }, [currentUser, mobileNotifications]);
 
@@ -2601,377 +2585,30 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     (n) => !readNotificationIds.includes(n.id)
   ).length;
 
+  // Full Manual Control: only track network reachability indicator changes;
+  // NEVER auto-send, auto-receive, auto-sync on reconnect/foreground, or run periodic/countdown timers.
   useEffect(() => {
     if (!isAuthenticated || !currentUser) return;
-
-    refreshMobileNotifications();
-
-    let lastReconnectCheckAt = 0;
-    const runReconnectConfigSync = () => {
-      const now = Date.now();
-      if (now - lastReconnectCheckAt < 10000) return;
-      lastReconnectCheckAt = now;
-      syncConnectionConfigFromServer({ triggerHeartbeat: true, allowLanDiscoveryOnFailure: true })
-        .then((res) => {
-          if (res.switchedUrl) {
-            loadRoleScopedData();
-            triggerSync(true).catch(() => {});
-          }
-        })
-        .catch(() => {});
-    };
-
-    const flushQueuedConfirmedBatches = async () => {
-      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
-      const localBatches = await localDb.listDispatchBatches(currentUser.id);
-      const queuedConfirmed = localBatches.filter(
-        (b) =>
-          b.isLocalOnly &&
-          b.isConfirmedSendQueued === true &&
-          b.senderUserId === currentUser.id &&
-          b.sendStatus !== 'تم الإرسال'
-      );
-      if (queuedConfirmed.length === 0) return;
-      const localQueue = await localDb.listSyncQueue(currentUser.id);
-      let anySucceeded = false;
-      for (const batch of queuedConfirmed) {
-        const ops =
-          Array.isArray(batch.operationsSnapshot) && batch.operationsSnapshot.length > 0
-            ? batch.operationsSnapshot
-            : localQueue.filter((q) => batch.operationIds.includes(q.operationId));
-        if (ops.length === 0) continue;
-        const repProfile = (data.representatives || []).find((r) => r.userId === currentUser.id);
-        const res = await sendDispatchBatchToServer({
-          userId: currentUser.id,
-          senderName: currentUser.fullName || currentUser.username,
-          representativeId: repProfile?.id,
-          representativeName: repProfile?.name,
-          selectedOperations: ops,
-          recipient: {
-            id: batch.recipientUserId,
-            fullName: batch.recipientName,
-            role: batch.recipientRole || 'admin',
-          },
-          notes: batch.notes,
-          existingDraftBatch: batch,
-        });
-        if (res.authRevoked) {
-          await handleServerAuthRevoked(res.error);
-          return;
-        }
-        if (res.ok) {
-          anySucceeded = true;
-        }
-      }
-      if (anySucceeded) {
-        await refreshQueueAndConflictsFromLocal(currentUser.id);
-        await refreshSyncStatsFromLocal();
-        setSyncDispatchBatches(await localDb.listDispatchBatches(currentUser.id));
-        await loadRoleScopedData();
-      }
-      return anySucceeded;
-    };
-
-    const runMandatorySendNow = async (): Promise<{ ok: boolean; count: number; failedCount: number; error?: string }> => {
-      if (!isAuthenticated || !currentUser || currentUser.role === 'customer') {
-        return { ok: false, count: 0, failedCount: 0 };
-      }
-      if (isSyncingRef.current || isMandatoryRunningRef.current) {
-        return { ok: false, count: 0, failedCount: 0, error: tr('جاري تنفيذ عملية مزامنة حالياً', 'A sync operation is currently running') };
-      }
-      const localQueue = await localDb.listSyncQueue(currentUser.id);
-      const localBatches = await localDb.listDispatchBatches(currentUser.id);
-      const unsentOps = localQueue.filter(
-        (q) => q.status === 'pending' || q.status === 'local' || q.status === 'failed' || q.status === 'syncing'
-      );
-      const queuedBatches = localBatches.filter(
-        (b) => b.isLocalOnly && b.isConfirmedSendQueued && b.senderUserId === currentUser.id && b.sendStatus !== 'تم الإرسال'
-      );
-
-      if (unsentOps.length === 0 && queuedBatches.length === 0) {
-        setIsMandatorySendPendingRetry(false);
-        try {
-          localStorage.removeItem(`awlad_selim_mandatory_retry_${currentUser.id}`);
-        } catch {
-          // ignore
-        }
-        return { ok: true, count: 0, failedCount: 0 };
-      }
-
-      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-        setIsMandatorySendPendingRetry(true);
-        try {
-          localStorage.setItem(`awlad_selim_mandatory_retry_${currentUser.id}`, '1');
-        } catch {
-          // ignore
-        }
-        return {
-          ok: false,
-          count: 0,
-          failedCount: unsentOps.length,
-          error: tr('لا يوجد اتصال — تم الاحتفاظ بالبيانات وسيعاد الإرسال الإجباري فور عودة الشبكة', 'Offline — data saved locally and mandatory dispatch will retry automatically when online'),
-        };
-      }
-
-      isMandatoryRunningRef.current = true;
-      isSyncingRef.current = true;
-      setIsMandatorySending(true);
-      setIsSyncing(true);
-      setNetworkStatus('synchronizing');
-      setSendProgressPercent(12);
-      setSendProgressStage(tr('جاري تنفيذ الإرسال الإجباري التلقائي...', 'Running automatic mandatory dispatch...'));
-
-      try {
-        await flushQueuedConfirmedBatches().catch(() => false);
-        const outcome = await runSyncCycle({
-          userId: currentUser.id,
-          forceAll: true,
-          mode: 'send_only',
-          includeHeldBatches: true,
-          isMandatory: true,
-          onProgress: (p: SyncProgressUpdate) => {
-            setSendProgressPercent(p.percent);
-            setSendProgressStage(p.stage);
-          },
-        });
-        await refreshQueueAndConflictsFromLocal(currentUser.id);
-        await refreshSyncStatsFromLocal();
-        setSyncDispatchBatches(await localDb.listDispatchBatches(currentUser.id));
-
-        if (outcome.authRevoked) {
-          await handleServerAuthRevoked(outcome.revokeReason);
-          return { ok: false, count: 0, failedCount: outcome.failedCount, error: outcome.revokeReason };
-        }
-
-        setIsServerReachable(outcome.serverReachable);
-        if (!outcome.serverReachable || !outcome.ok) {
-          setIsMandatorySendPendingRetry(true);
-          try {
-            localStorage.setItem(`awlad_selim_mandatory_retry_${currentUser.id}`, '1');
-          } catch {
-            // ignore
-          }
-          setNetworkStatus(outcome.serverReachable ? 'error' : 'disconnected');
-          return { ok: false, count: outcome.syncedCount, failedCount: outcome.failedCount, error: outcome.error };
-        }
-
-        setIsMandatorySendPendingRetry(false);
-        try {
-          localStorage.removeItem(`awlad_selim_mandatory_retry_${currentUser.id}`);
-        } catch {
-          // ignore
-        }
-        setNetworkStatus(outcome.conflictCount > 0 || outcome.failedCount > 0 ? 'pending' : 'connected');
-        if (outcome.syncedCount > 0) {
-          await loadRoleScopedData().catch(() => {});
-        }
-        return { ok: true, count: outcome.syncedCount, failedCount: outcome.failedCount };
-      } finally {
-        isMandatoryRunningRef.current = false;
-        isSyncingRef.current = false;
-        setIsMandatorySending(false);
-        setIsSyncing(false);
-        window.setTimeout(() => {
-          setSendProgressPercent(0);
-          setSendProgressStage('');
-        }, 600);
-      }
-    };
-
-    triggerMandatorySendNowRef.current = runMandatorySendNow;
-
-    const retryPendingMandatoryIfNeeded = () => {
-      try {
-        const flagged = localStorage.getItem(`awlad_selim_mandatory_retry_${currentUser.id}`) === '1';
-        if (flagged) {
-          runMandatorySendNow().catch(() => {});
-        }
-      } catch {
-        // ignore
-      }
-    };
-
     const unsubscribeNet = subscribeNetworkStatus((connected) => {
       setIsServerReachable(connected);
-      if (connected) {
-        runReconnectConfigSync();
-        flushQueuedConfirmedBatches()
-          .then(() => {
-            retryPendingMandatoryIfNeeded();
-            return triggerSync(true);
-          })
-          .catch(() => {});
-        refreshMobileNotifications();
-      } else {
+      if (!connected) {
         setNetworkStatus('disconnected');
+      } else {
+        setNetworkStatus((prev) => (prev === 'disconnected' ? 'connected' : prev));
       }
     });
-
-    const unsubscribeFg = subscribeAppForeground(() => {
-      if (navigator.onLine !== false) {
-        runReconnectConfigSync();
-        let dueElapsedInBg = false;
-        try {
-          if (mandatoryConfigRef.current.enabled) {
-            const dueKey = `awlad_selim_mandatory_send_due_${currentUser.id}`;
-            const rawDue = Number(localStorage.getItem(dueKey) || 0);
-            if (Number.isFinite(rawDue) && rawDue > 0 && rawDue <= Date.now()) {
-              dueElapsedInBg = true;
-              const nextMins = mandatoryConfigRef.current.intervalMinutes;
-              localStorage.setItem(dueKey, String(Date.now() + nextMins * 60 * 1000));
-              setMandatorySendRemainingSeconds(nextMins * 60);
-            }
-          }
-        } catch {
-          // ignore
-        }
-        flushQueuedConfirmedBatches()
-          .then(() => {
-            if (dueElapsedInBg) {
-              runMandatorySendNow().catch(() => {});
-            } else {
-              retryPendingMandatoryIfNeeded();
-            }
-            return triggerSync(true);
-          })
-          .catch(() => {});
-      }
-    });
-
-    // Periodic 25s read-only check & notifications check when active & online
-    // Never silently pushes queued operations or mutates manual Send/Receive timestamps
-    const syncTimer = window.setInterval(() => {
-      if (navigator.onLine !== false) {
-        runSyncCycle({ userId: currentUser.id, forceAll: false, mode: 'receive_only', silent: true })
-          .then(async (outcome) => {
-            await refreshQueueAndConflictsFromLocal(currentUser.id);
-            await refreshSyncStatsFromLocal();
-            if (outcome.authRevoked) {
-              await handleServerAuthRevoked(outcome.revokeReason);
-              return;
-            }
-            setIsServerReachable(outcome.serverReachable);
-            if (outcome.ok && outcome.pullData) {
-              await applyServerPullPayload(outcome.pullData, currentUser);
-              setNetworkStatus(outcome.conflictCount > 0 || outcome.failedCount > 0 ? 'pending' : 'connected');
-              setLastError(null);
-            } else if (!outcome.serverReachable) {
-              setNetworkStatus('disconnected');
-              if (outcome.error) setLastError(outcome.error);
-            } else {
-              setNetworkStatus('error');
-              if (outcome.error) setLastError(outcome.error);
-            }
-          })
-          .catch(() => {});
-      }
-    }, 25000);
-
-    const notifTimer = window.setInterval(() => {
-      if (navigator.onLine !== false) {
-        refreshMobileNotifications();
-      }
-    }, 45000);
-
-    const heartbeatTimer = window.setInterval(() => {
-      if (navigator.onLine !== false) {
-        syncConnectionConfigFromServer({ triggerHeartbeat: true })
-          .then((res) => {
-            if (res.switchedUrl) {
-              loadRoleScopedData();
-            }
-          })
-          .catch(() => {});
-      }
-    }, 90000);
-
     return () => {
-      triggerMandatorySendNowRef.current = null;
       unsubscribeNet();
-      unsubscribeFg();
-      window.clearInterval(syncTimer);
-      window.clearInterval(notifTimer);
-      window.clearInterval(heartbeatTimer);
     };
-  }, [
-    isAuthenticated,
-    currentUser,
-    triggerSync,
-    refreshMobileNotifications,
-    refreshQueueAndConflictsFromLocal,
-    refreshSyncStatsFromLocal,
-    handleServerAuthRevoked,
-    applyServerPullPayload,
-    loadRoleScopedData,
-  ]);
-
-  // Continuous 1-second Mandatory Auto-Send Countdown Timer (persisted across tab switches)
-  useEffect(() => {
-    if (!isAuthenticated || !currentUser || currentUser.role === 'customer') {
-      setMandatorySendRemainingSeconds(mandatorySendIntervalMinutes * 60);
-      setIsMandatorySendPendingRetry(false);
-      return;
-    }
-
-    const dueKey = `awlad_selim_mandatory_send_due_${currentUser.id}`;
-    const retryKey = `awlad_selim_mandatory_retry_${currentUser.id}`;
-    const intervalMs = mandatorySendIntervalMinutes * 60 * 1000;
-
-    try {
-      setIsMandatorySendPendingRetry(localStorage.getItem(retryKey) === '1');
-      const rawDue = Number(localStorage.getItem(dueKey) || 0);
-      if (!Number.isFinite(rawDue) || rawDue <= 0) {
-        localStorage.setItem(dueKey, String(Date.now() + intervalMs));
-      } else if (rawDue - Date.now() > intervalMs) {
-        localStorage.setItem(dueKey, String(Date.now() + intervalMs));
-      }
-    } catch {
-      // ignore storage errors
-    }
-
-    const tick = () => {
-      if (!mandatorySendEnabled) {
-        setMandatorySendRemainingSeconds(mandatorySendIntervalMinutes * 60);
-        return;
-      }
-      let dueAt = 0;
-      try {
-        dueAt = Number(localStorage.getItem(dueKey) || 0);
-        if (!Number.isFinite(dueAt) || dueAt <= 0) {
-          dueAt = Date.now() + intervalMs;
-          localStorage.setItem(dueKey, String(dueAt));
-        }
-      } catch {
-        dueAt = Date.now() + intervalMs;
-      }
-      const remaining = Math.max(0, Math.ceil((dueAt - Date.now()) / 1000));
-      setMandatorySendRemainingSeconds(remaining);
-
-      if (remaining <= 0) {
-        if (isSyncingRef.current || isMandatoryRunningRef.current) {
-          return;
-        }
-        const nextDueAt = Date.now() + intervalMs;
-        try {
-          localStorage.setItem(dueKey, String(nextDueAt));
-        } catch {
-          // ignore
-        }
-        setMandatorySendRemainingSeconds(mandatorySendIntervalMinutes * 60);
-        triggerMandatorySendNowRef.current?.().catch(() => {});
-      }
-    };
-
-    tick();
-    const timer = window.setInterval(tick, 1000);
-    return () => window.clearInterval(timer);
-  }, [isAuthenticated, currentUser, mandatorySendEnabled, mandatorySendIntervalMinutes]);
+  }, [isAuthenticated, currentUser?.id]);
 
   const triggerMandatorySendNow = useCallback(async () => {
-    if (!triggerMandatorySendNowRef.current) {
-      return { ok: false, count: 0, failedCount: 0, error: tr('المزامنة غير جاهزة حالياً', 'Sync is not ready right now') };
-    }
-    return triggerMandatorySendNowRef.current();
+    return {
+      ok: false,
+      count: 0,
+      failedCount: 0,
+      error: tr('الإرسال التلقائي ملغى — يتم الإرسال يدوياً فقط من شاشة الإرسال والاستلام', 'Auto-send is disabled — use manual Send in Send & Receive'),
+    };
   }, []);
 
   const refreshCustomerStatement = useCallback(async () => {
@@ -3382,6 +3019,59 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [data.customers]
   );
 
+  const getSupplierPriceHistory = useCallback(
+    async (supplierId: string, productId?: string): Promise<Record<string, SupplierPriceHistoryEntry[]>> => {
+      if (!supplierId) return {};
+      try {
+        const res = await fetchSupplierPriceHistoryApi(supplierId, productId);
+        return res.priceHistory || {};
+      } catch {
+        // Fallback strictly from local confirmed purchase invoices, newest first
+        const map: Record<string, SupplierPriceHistoryEntry[]> = {};
+        const confirmed = (data.invoices || [])
+          .filter((inv) => inv.type === 'purchase' && inv.status === 'confirmed' && inv.supplierId === supplierId)
+          .slice()
+          .sort((a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime());
+        for (const inv of confirmed) {
+          for (const it of inv.items || []) {
+            if (productId && it.productId !== productId) continue;
+            if (!map[it.productId]) map[it.productId] = [];
+            if (map[it.productId].length >= 3) continue;
+            map[it.productId].push({
+              price: Number(it.unitPrice || 0),
+              unit: it.unit || '',
+              unitFactor: Number(it.unitFactor || 1),
+              date: inv.date || String(inv.createdAt || '').slice(0, 10),
+              invoiceId: inv.id,
+              invoiceNumber: inv.invoiceNumber,
+            });
+          }
+        }
+        return map;
+      }
+    },
+    [data.invoices]
+  );
+
+  const getSendReceiveActivityLog = useCallback(
+    async (params?: { dateFrom?: string; dateTo?: string; repId?: string; operationType?: string; status?: string; docNumber?: string }): Promise<SendReceiveActivityLogResponse | null> => {
+      try {
+        return await fetchSendReceiveActivityLogApi(params);
+      } catch {
+        return null;
+      }
+    },
+    []
+  );
+
+  const getSyncSourceDocument = useCallback(async (docType: string, docId: string) => {
+    try {
+      return await fetchSyncSourceDocumentApi(docType, docId);
+    } catch {
+      return null;
+    }
+  }, []);
+
   // Offline Queue Helper
   const REP_BATCH_HOLD_OPS = new Set<SyncQueueItem['operationType']>([
     'create_order',
@@ -3546,14 +3236,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return { success: false, batch: res.batch, error: res.error };
         }
         if (res.ok) {
-          resetMandatoryCountdown(currentUser.id);
-          setIsMandatorySendPendingRetry(false);
-          try {
-            localStorage.removeItem(`awlad_selim_mandatory_retry_${currentUser.id}`);
-          } catch {
-            // ignore
-          }
-          await loadRoleScopedData();
+          await commitSyncedOpsToLocalSnapshot(currentUser.id, params.selectedOperations);
+          await refreshQueueAndConflictsFromLocal(currentUser.id);
+          await refreshSyncStatsFromLocal();
           return { success: true, batch: res.batch };
         }
         setNetworkStatus(res.queuedOfflineConfirmed ? 'disconnected' : 'pending');
@@ -3572,7 +3257,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }, 600);
       }
     },
-    [currentUser, dispatchRecipients, data.representatives, refreshQueueAndConflictsFromLocal, refreshSyncStatsFromLocal, handleServerAuthRevoked, loadRoleScopedData, resetMandatoryCountdown]
+    [currentUser, dispatchRecipients, data.representatives, commitSyncedOpsToLocalSnapshot, refreshQueueAndConflictsFromLocal, refreshSyncStatsFromLocal, handleServerAuthRevoked]
   );
 
   const retryDispatchBatch = useCallback(
@@ -3677,7 +3362,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         method: 'POST',
         body: { action, resolutionNotes },
       });
-      await triggerSync(false);
+      await loadRoleScopedData();
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err?.message || tr('تعذر معالجة تعارض المزامنة', 'Could not resolve sync conflict') };
@@ -5276,6 +4961,50 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const createRepCustodyReturnRequest = async (payload: {
+    representativeId?: string;
+    targetWarehouseId?: string;
+    date?: string;
+    notes?: string;
+    idempotencyKey?: string;
+    items: Array<{ productId: string; unit?: string; unitFactor?: number; requestedQty: number; notes?: string }>;
+  }) => {
+    try {
+      const idempotencyKey = payload.idempotencyKey || generateId('RCRQ');
+      const res = await createRepCustodyReturnRequestApi({ ...payload, idempotencyKey });
+      await loadRoleScopedData();
+      return { success: true, request: res.request };
+    } catch (err: any) {
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر إرسال طلب إرجاع البضاعة', 'Could not submit custody return request') };
+    }
+  };
+
+  const approveRepCustodyReturnRequest = async (
+    requestId: string,
+    payload: {
+      items?: Array<{ productId: string; unit?: string; actualReceivedQty: number; approvedQty: number; rejectionReason?: string }>;
+      reviewNotes?: string;
+    }
+  ) => {
+    try {
+      const res = await approveRepCustodyReturnRequestApi(requestId, payload);
+      await loadRoleScopedData();
+      return { success: true, request: res.request };
+    } catch (err: any) {
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر اعتماد طلب إرجاع البضاعة', 'Could not approve custody return request') };
+    }
+  };
+
+  const rejectRepCustodyReturnRequest = async (requestId: string, reason: string) => {
+    try {
+      const res = await rejectRepCustodyReturnRequestApi(requestId, reason);
+      await loadRoleScopedData();
+      return { success: true, request: res.request };
+    } catch (err: any) {
+      return { success: false, error: err?.message ? tr(err.message) : tr('تعذر رفض طلب إرجاع البضاعة', 'Could not reject custody return request') };
+    }
+  };
+
   const getItemMovementReport = async (filters: {
     productId?: string;
     warehouseId?: string;
@@ -5284,6 +5013,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     dateFrom?: string;
     dateTo?: string;
     search?: string;
+    class1?: string;
+    class2?: string;
   } = {}) => {
     try {
       const qs = new URLSearchParams();
@@ -5294,6 +5025,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (filters.dateFrom) qs.set('dateFrom', filters.dateFrom);
       if (filters.dateTo) qs.set('dateTo', filters.dateTo);
       if (filters.search) qs.set('search', filters.search);
+      if (filters.class1 && filters.class1 !== 'all') qs.set('class1', filters.class1);
+      if (filters.class2 && filters.class2 !== 'all') qs.set('class2', filters.class2);
       const res = await apiRequest<{ ok: boolean; report: ItemMovementReportResponse }>(
         `/api/inventory/item-movement-report${qs.toString() ? `?${qs.toString()}` : ''}`
       );
@@ -6359,11 +6092,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         getSupplierStatement,
         getRepresentativeStatement,
         getCustomerPriceHistory,
+        getSupplierPriceHistory,
+        getSendReceiveActivityLog,
+        getSyncSourceDocument,
         triggerSync,
         triggerManualSync,
         serverSyncState,
         lastSendSummary,
         lastReceiveSummary,
+        sendReceiveHistory,
         sendProgressPercent,
         sendProgressStage,
         receiveProgressPercent,
@@ -6469,8 +6206,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createRepItemTransfer,
         updateRepItemTransferStatus,
         repCustodyOperations: data.repCustodyOperations || [],
+        repCustodyReturnRequests: data.repCustodyReturnRequests || [],
         recordRepCustodyDelivery,
         recordRepCustodyReturn,
+        createRepCustodyReturnRequest,
+        approveRepCustodyReturnRequest,
+        rejectRepCustodyReturnRequest,
         recordRepCustodyAdjustment,
         getRepCustodyStatement,
         getItemMovementReport,

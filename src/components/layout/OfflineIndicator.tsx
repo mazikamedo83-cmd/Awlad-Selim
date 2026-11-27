@@ -20,7 +20,6 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ variant = 'l
     lastSyncTime,
     lastError,
     hasTentativeLocalBalances,
-    triggerSync,
   } = useData();
   const { t } = usePreferences();
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
@@ -135,9 +134,9 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ variant = 'l
 
         <button
           type="button"
-          onClick={() => triggerSync(true)}
-          title={t('تحديث ومزامنة فورية (إرسال واستلام)', 'Refresh & Instant Sync (Send & Receive)')}
-          aria-label={t('تحديث ومزامنة', 'Refresh & Sync')}
+          onClick={() => (onOpenSendReceive ? onOpenSendReceive() : setIsSyncModalOpen(true))}
+          title={t('فتح الإرسال والاستلام اليدوي', 'Open Manual Send & Receive')}
+          aria-label={t('الإرسال والاستلام', 'Send & Receive')}
           className={`min-h-[32px] min-w-[32px] flex items-center justify-center rounded-md transition-colors cursor-pointer ${
             isDark
               ? 'bg-white/10 hover:bg-white/20 text-blue-100 hover:text-white'

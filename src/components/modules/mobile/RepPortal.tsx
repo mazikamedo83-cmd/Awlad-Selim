@@ -4058,7 +4058,7 @@ export const RepPortal: React.FC<RepPortalProps> = ({
         </p>
         <button
           type="button"
-          onClick={() => data.triggerManualSync()}
+          onClick={() => data.refreshData()}
           className="min-h-[44px] px-5 rounded-xl bg-blue-900 text-white text-xs font-bold inline-flex items-center gap-2 cursor-pointer"
         >
           <RefreshCw className="w-4 h-4" />
@@ -4463,14 +4463,11 @@ export const RepPortal: React.FC<RepPortalProps> = ({
                 className="flex-1 min-w-[200px] min-h-[38px] px-2.5 py-1.5 rounded-md bg-[#011E58] hover:bg-[#003589] text-white text-[11px] font-black flex items-center justify-between gap-2 cursor-pointer"
               >
                 <span className="flex items-center gap-1.5">
-                  <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${data.isMandatorySending ? 'animate-spin' : ''}`} />
+                  <RefreshCw className="w-3.5 h-3.5 shrink-0" />
                   <span>{t('إرسال واستلام', 'Send & Receive')}</span>
                 </span>
                 <span className="font-mono text-[10px] bg-white/15 px-1.5 py-0.5 rounded tabular-nums">
                   {t('معلق:', 'Pending:')} {formatLocaleNumber(data.pendingSyncCount)} · {t('استلام:', 'Incoming:')} {formatLocaleNumber(pendingCustodyDispatches.length + pendingCashReceipts.length + data.incomingDispatchCount)}
-                  {data.mandatorySendEnabled
-                    ? ` · ${String(Math.floor(data.mandatorySendRemainingSeconds / 60)).padStart(2, '0')}:${String(data.mandatorySendRemainingSeconds % 60).padStart(2, '0')}`
-                    : ''}
                 </span>
               </button>
             </div>

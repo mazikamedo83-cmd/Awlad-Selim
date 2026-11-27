@@ -1,6 +1,8 @@
 import type {
   DispatchRecipientOption,
   ReceiveConfirmResponse,
+  ReceivePreviewResponse,
+  SendReceiveHistoryEntry,
   ServerSendSyncResponse,
   ServerUserSyncState,
   SyncConflictRecord,
@@ -29,6 +31,8 @@ export interface SyncRefreshSummary {
   count: number;
   failedCount?: number;
   conflictCount?: number;
+  durationMs?: number;
+  lastSuccessDurationMs?: number;
   ok: boolean;
   isMandatory?: boolean;
   error?: string;
@@ -39,6 +43,35 @@ export interface SyncProgressUpdate {
   stage: string;
   completed?: number;
   total?: number;
+}
+
+function nowPerfMs(): number {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now();
+}
+
+export function formatDurationAr(durationMs?: number | null): string {
+  if (durationMs === undefined || durationMs === null || !Number.isFinite(Number(durationMs))) {
+    return tr('—', '—');
+  }
+  const safeMs = Math.max(0, Number(durationMs));
+  const totalSeconds = safeMs / 1000;
+  const isEn = getActiveLanguage() === 'en';
+  if (totalSeconds < 10) {
+    const val = Math.max(0.1, Number(totalSeconds.toFixed(1)));
+    return isEn ? `${val}s` : `${val} ث`;
+  }
+  if (totalSeconds < 60) {
+    const val = Math.round(totalSeconds);
+    return isEn ? `${val}s` : `${val} ث`;
+  }
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = Math.round(totalSeconds % 60);
+  if (secs === 0) {
+    return isEn ? `${mins}m` : `${mins} د`;
+  }
+  return isEn ? `${mins}m ${secs}s` : `${mins} د و ${secs} ث`;
 }
 
 export const DEFAULT_MANDATORY_SEND_INTERVAL_MINUTES = 15;
@@ -215,6 +248,11 @@ export async function saveStoredUserSyncState(userId: string, state: ServerUserS
   });
 }
 
+export async function getSendReceiveHistory(userId?: string): Promise<SendReceiveHistoryEntry[]> {
+  if (!userId) return [];
+  return localDb.listSendReceiveHistory(userId);
+}
+
 export async function getSyncRefreshStats(userId?: string): Promise<{
   lastSendSummary: SyncRefreshSummary | null;
   lastReceiveSummary: SyncRefreshSummary | null;
@@ -229,6 +267,14 @@ export async function getSyncRefreshStats(userId?: string): Promise<{
   };
 }
 
+function buildHistoryId(prefix: 'SND' | 'RCV'): string {
+  const rand =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID().slice(0, 6).toUpperCase()
+      : Math.random().toString(36).slice(2, 8).toUpperCase();
+  return `${prefix}-${Date.now().toString(36).toUpperCase()}-${rand}`;
+}
+
 async function recordSyncRefreshSummary(
   base: 'last_send_summary' | 'last_receive_summary',
   userId: string,
@@ -237,6 +283,7 @@ async function recordSyncRefreshSummary(
     count: number;
     failedCount?: number;
     conflictCount?: number;
+    durationMs?: number;
     ok: boolean;
     isMandatory?: boolean;
     error?: string;
@@ -251,6 +298,8 @@ async function recordSyncRefreshSummary(
       count: next.count,
       failedCount: next.failedCount,
       conflictCount: next.conflictCount,
+      durationMs: next.durationMs,
+      lastSuccessDurationMs: next.durationMs,
       ok: true,
       isMandatory: next.isMandatory,
     });
@@ -258,12 +307,16 @@ async function recordSyncRefreshSummary(
   }
   const preservedSuccessAt = prev?.at ? prev.at : '';
   const preservedSuccessCount = prev?.at ? prev.count : 0;
+  const preservedSuccessDurationMs =
+    prev?.at ? (prev.lastSuccessDurationMs ?? (prev.ok ? prev.durationMs : undefined)) : undefined;
   await localDb.setMeta<SyncRefreshSummary>(key, {
     at: preservedSuccessAt,
     lastAttemptAt: next.at,
     count: preservedSuccessCount,
     failedCount: next.failedCount,
     conflictCount: next.conflictCount,
+    durationMs: next.durationMs,
+    lastSuccessDurationMs: preservedSuccessDurationMs,
     ok: false,
     isMandatory: next.isMandatory,
     error: next.error,
@@ -702,12 +755,16 @@ export async function executeManualSendSync(params: {
   deduplicatedCount: number;
   failedCount: number;
   conflictCount: number;
+  durationMs: number;
   sentAt: string | null;
   summary: Record<string, number>;
   syncState: ServerUserSyncState | null;
   error?: string;
 }> {
   const { userId, operationIds, onProgress } = params;
+  const startedIso = new Date().toISOString();
+  const startedPerf = nowPerfMs();
+
   const queue = await localDb.listSyncQueue(userId);
   const selectedSet = operationIds && operationIds.length > 0 ? new Set(operationIds) : null;
   const targetOps = queue
@@ -719,21 +776,93 @@ export async function executeManualSendSync(params: {
     .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
 
   if (targetOps.length === 0) {
-    const syncState = await fetchUserSyncStateApi()
-      .then((r) => r.state)
-      .catch(() => getStoredUserSyncState(userId));
-    if (syncState) await saveStoredUserSyncState(userId, syncState);
-    return {
-      ok: true,
-      serverReachable: true,
-      sentCount: 0,
-      deduplicatedCount: 0,
-      failedCount: 0,
-      conflictCount: 0,
-      sentAt: syncState?.lastSendAt || null,
-      summary: {},
-      syncState,
-    };
+    try {
+      const res = await sendManualSyncApi([]);
+      const durationMs = Math.max(1, Math.round(nowPerfMs() - startedPerf));
+      const finishedIso = new Date().toISOString();
+      if (res.syncState) {
+        await saveStoredUserSyncState(userId, res.syncState);
+      }
+      await localDb.appendSendReceiveHistory(userId, {
+        id: buildHistoryId('SND'),
+        userId,
+        type: 'send',
+        status: 'success',
+        startedAt: startedIso,
+        finishedAt: finishedIso,
+        durationMs,
+        count: 0,
+        detailsSummary: tr('لا توجد عمليات معلقة للإرسال', 'No pending operations to send'),
+      });
+      return {
+        ok: true,
+        serverReachable: true,
+        sentCount: 0,
+        deduplicatedCount: 0,
+        failedCount: 0,
+        conflictCount: 0,
+        durationMs,
+        sentAt: res.syncState?.lastSendAt || null,
+        summary: {},
+        syncState: res.syncState || null,
+      };
+    } catch (err: any) {
+      const durationMs = Math.max(1, Math.round(nowPerfMs() - startedPerf));
+      const finishedIso = new Date().toISOString();
+      if (isAuthRevokedError(err)) {
+        return {
+          ok: false,
+          serverReachable: true,
+          authRevoked: true,
+          revokeReason: err?.message,
+          sentCount: 0,
+          deduplicatedCount: 0,
+          failedCount: 0,
+          conflictCount: 0,
+          durationMs,
+          sentAt: null,
+          summary: {},
+          syncState: null,
+          error: err?.message,
+        };
+      }
+      const errMsg = err?.message
+        ? tr(err.message)
+        : tr('تعذر الاتصال بالخادم أثناء فحص الإرسال', 'Unable to connect to server during send check');
+      await recordSyncRefreshSummary('last_send_summary', userId, {
+        at: finishedIso,
+        count: 0,
+        failedCount: 0,
+        conflictCount: 0,
+        durationMs,
+        ok: false,
+        error: errMsg,
+      });
+      await localDb.appendSendReceiveHistory(userId, {
+        id: buildHistoryId('SND'),
+        userId,
+        type: 'send',
+        status: 'failed',
+        startedAt: startedIso,
+        finishedAt: finishedIso,
+        durationMs,
+        count: 0,
+        error: errMsg,
+      });
+      return {
+        ok: false,
+        serverReachable: !isUnreachableError(err),
+        sentCount: 0,
+        deduplicatedCount: 0,
+        failedCount: 0,
+        conflictCount: 0,
+        durationMs,
+        sentAt: null,
+        summary: {},
+        syncState: null,
+        error: errMsg,
+      };
+    }
   }
 
   onProgress?.({
@@ -790,7 +919,7 @@ export async function executeManualSendSync(params: {
           status: 'needs_review' as const,
           attempts: (item.attempts || 0) + 1,
           conflictId: r.conflictId || r.conflict?.id || item.conflictId,
-          lastError: r.error || r.conflict?.conflictReason || tr('تعارض يحتاج مراجعة', 'Conflict requires review'),
+          lastError: r.error || resErrorFallback(r) || tr('تعارض يحتاج مراجعة', 'Conflict requires review'),
           nextRetryAt: undefined,
           updatedAt: nowIso,
         };
@@ -805,6 +934,10 @@ export async function executeManualSendSync(params: {
       };
     });
 
+    function resErrorFallback(r: any): string | undefined {
+      return r?.conflict?.conflictReason;
+    }
+
     await localDb.saveSyncQueue(userId, updatedQueue);
     if (newConflicts.length > 0) {
       const existingConflicts = await localDb.listConflicts(userId);
@@ -815,11 +948,16 @@ export async function executeManualSendSync(params: {
       await localDb.saveConflicts(userId, merged);
     }
 
+    const durationMs = Math.max(1, Math.round(nowPerfMs() - startedPerf));
     const syncedResults = allResults.filter((r) => r.status === 'synced');
     const deduplicatedCount = syncedResults.filter((r) => r.deduplicated).length;
     const failedCount = allResults.filter((r) => r.status === 'failed').length;
     const conflictCount = allResults.filter((r) => r.status === 'needs_review').length;
     const allSucceeded = failedCount === 0 && conflictCount === 0;
+    const failReason = !allSucceeded
+      ? allResults.find((r) => r.status === 'failed' || r.status === 'needs_review')?.error ||
+        tr('تعذر إرسال بعض العمليات وبقيت محفوظة لإعادة المحاولة يدوياً.', 'Some operations could not be sent and were kept for manual retry.')
+      : undefined;
 
     if (latestRes?.syncState) {
       await saveStoredUserSyncState(userId, latestRes.syncState);
@@ -830,6 +968,7 @@ export async function executeManualSendSync(params: {
         count: syncedResults.length,
         failedCount: 0,
         conflictCount: 0,
+        durationMs,
         ok: true,
       });
     } else if (failedCount > 0 || conflictCount > 0) {
@@ -838,10 +977,29 @@ export async function executeManualSendSync(params: {
         count: 0,
         failedCount,
         conflictCount,
+        durationMs,
         ok: false,
-        error: tr('تعذر إرسال بعض العمليات وبقيت محفوظة لإعادة المحاولة.', 'Some operations could not be sent and were kept for retry.'),
+        error: failReason,
       });
     }
+
+    await localDb.appendSendReceiveHistory(userId, {
+      id: buildHistoryId('SND'),
+      userId,
+      type: 'send',
+      status: allSucceeded ? 'success' : syncedResults.length > 0 ? 'partial' : 'failed',
+      startedAt: startedIso,
+      finishedAt: nowIso,
+      durationMs,
+      count: syncedResults.length,
+      failedCount,
+      conflictCount,
+      error: failReason,
+      detailsSummary:
+        syncedResults.length > 0
+          ? tr(`تم إرسال ${syncedResults.length} عملية`, `Sent ${syncedResults.length} operation(s)`)
+          : undefined,
+    });
 
     onProgress?.({ percent: 100, stage: tr('اكتمل الإرسال', 'Sending completed'), completed: targetOps.length, total: targetOps.length });
 
@@ -852,14 +1010,15 @@ export async function executeManualSendSync(params: {
       deduplicatedCount,
       failedCount,
       conflictCount,
+      durationMs,
       sentAt: latestRes?.sentAt || latestRes?.syncState?.lastSendAt || null,
       summary: latestRes?.summary || {},
       syncState: latestRes?.syncState || null,
-      error: !allSucceeded
-        ? tr('فشل إرسال بعض العمليات وبقيت محفوظة في الطابور لإعادة المحاولة.', 'Some operations failed to send and remain queued for retry.')
-        : undefined,
+      error: failReason,
     };
   } catch (err: any) {
+    const durationMs = Math.max(1, Math.round(nowPerfMs() - startedPerf));
+    const finishedIso = new Date().toISOString();
     if (isAuthRevokedError(err)) {
       return {
         ok: false,
@@ -870,6 +1029,7 @@ export async function executeManualSendSync(params: {
         deduplicatedCount: 0,
         failedCount: targetOps.length,
         conflictCount: 0,
+        durationMs,
         sentAt: null,
         summary: {},
         syncState: null,
@@ -878,7 +1038,40 @@ export async function executeManualSendSync(params: {
     }
     const errMsg = err?.message
       ? tr(err.message)
-      : tr('تعذر الاتصال بالنظام المركزي — بقيت العمليات محفوظة للإرسال لاحقاً', 'Unable to connect — operations preserved locally for retry');
+      : tr('تعذر الاتصال بالخادم — بقيت العمليات محفوظة محلياً لإعادة المحاولة يدوياً', 'Unable to connect — operations preserved locally for manual retry');
+    const updatedOnFail = queue.map((item) => {
+      if (item.status === 'synced') return item;
+      if (selectedSet && !selectedSet.has(item.operationId)) return item;
+      return {
+        ...item,
+        status: 'failed' as const,
+        attempts: (item.attempts || 0) + 1,
+        lastError: errMsg,
+        updatedAt: finishedIso,
+      };
+    });
+    await localDb.saveSyncQueue(userId, updatedOnFail).catch(() => {});
+    await recordSyncRefreshSummary('last_send_summary', userId, {
+      at: finishedIso,
+      count: 0,
+      failedCount: targetOps.length,
+      conflictCount: 0,
+      durationMs,
+      ok: false,
+      error: errMsg,
+    });
+    await localDb.appendSendReceiveHistory(userId, {
+      id: buildHistoryId('SND'),
+      userId,
+      type: 'send',
+      status: 'failed',
+      startedAt: startedIso,
+      finishedAt: finishedIso,
+      durationMs,
+      count: 0,
+      failedCount: targetOps.length,
+      error: errMsg,
+    });
     return {
       ok: false,
       serverReachable: !isUnreachableError(err),
@@ -886,9 +1079,81 @@ export async function executeManualSendSync(params: {
       deduplicatedCount: 0,
       failedCount: targetOps.length,
       conflictCount: 0,
+      durationMs,
       sentAt: null,
       summary: {},
       syncState: null,
+      error: errMsg,
+    };
+  }
+}
+
+export async function executeManualReceivePreview(params: {
+  userId: string;
+}): Promise<{
+  ok: boolean;
+  serverReachable: boolean;
+  authRevoked?: boolean;
+  revokeReason?: string;
+  preview: ReceivePreviewResponse | null;
+  durationMs: number;
+  error?: string;
+}> {
+  const { userId } = params;
+  const startedIso = new Date().toISOString();
+  const startedPerf = nowPerfMs();
+  try {
+    const preview = await fetchReceivePreviewApi();
+    const durationMs = Math.max(1, Math.round(nowPerfMs() - startedPerf));
+    if (preview.syncState) {
+      await saveStoredUserSyncState(userId, preview.syncState);
+    }
+    return {
+      ok: true,
+      serverReachable: true,
+      preview,
+      durationMs,
+    };
+  } catch (err: any) {
+    const durationMs = Math.max(1, Math.round(nowPerfMs() - startedPerf));
+    const finishedIso = new Date().toISOString();
+    if (isAuthRevokedError(err)) {
+      return {
+        ok: false,
+        serverReachable: true,
+        authRevoked: true,
+        revokeReason: err?.message,
+        preview: null,
+        durationMs,
+        error: err?.message,
+      };
+    }
+    const errMsg = err?.message
+      ? tr(err.message)
+      : tr('تعذر جلب التحديثات الواردة من الخادم', 'Failed to fetch incoming updates from server');
+    await recordSyncRefreshSummary('last_receive_summary', userId, {
+      at: finishedIso,
+      count: 0,
+      durationMs,
+      ok: false,
+      error: errMsg,
+    });
+    await localDb.appendSendReceiveHistory(userId, {
+      id: buildHistoryId('RCV'),
+      userId,
+      type: 'receive',
+      status: 'failed',
+      startedAt: startedIso,
+      finishedAt: finishedIso,
+      durationMs,
+      count: 0,
+      error: errMsg,
+    });
+    return {
+      ok: false,
+      serverReachable: !isUnreachableError(err),
+      preview: null,
+      durationMs,
       error: errMsg,
     };
   }
@@ -900,54 +1165,113 @@ export async function executeManualReceiveConfirm(params: {
   confirmCustodyIds?: string[];
   confirmCashTransferIds?: string[];
   confirmBatchIds?: string[];
+  previewDurationMs?: number;
   onProgress?: (progress: SyncProgressUpdate) => void;
 }): Promise<{
   ok: boolean;
   serverReachable: boolean;
   authRevoked?: boolean;
   revokeReason?: string;
+  durationMs: number;
   response: ReceiveConfirmResponse | null;
   error?: string;
 }> {
-  const { userId, onProgress, ...body } = params;
+  const { userId, onProgress, previewDurationMs = 0, ...body } = params;
+  const startedIso = new Date().toISOString();
+  const startedPerf = nowPerfMs();
   onProgress?.({ percent: 25, stage: tr('جاري تأكيد الاستلام وتحديث البيانات...', 'Confirming receipt and updating data...') });
   try {
     const res = await confirmManualReceiveApi(body);
+    const confirmDurationMs = Math.max(1, Math.round(nowPerfMs() - startedPerf));
+    const totalDurationMs = Math.max(1, Math.round(previewDurationMs + confirmDurationMs));
+    const finishedIso = res.receivedAt || res.syncState?.lastReceiveAt || new Date().toISOString();
     if (res.syncState) {
       await saveStoredUserSyncState(userId, res.syncState);
     }
+    const errorMsg = res.allSucceeded
+      ? undefined
+      : (res.errors || []).map((e) => e.error).join(' · ') || tr('تعذر تأكيد استلام بعض العناصر', 'Could not confirm some items');
+
     if (res.allSucceeded) {
       await recordSyncRefreshSummary('last_receive_summary', userId, {
-        at: res.receivedAt || res.syncState?.lastReceiveAt || new Date().toISOString(),
+        at: finishedIso,
         count: res.receivedCount,
+        durationMs: totalDurationMs,
         ok: true,
       });
+    } else {
+      await recordSyncRefreshSummary('last_receive_summary', userId, {
+        at: new Date().toISOString(),
+        count: 0,
+        durationMs: totalDurationMs,
+        ok: false,
+        error: errorMsg,
+      });
     }
+
+    await localDb.appendSendReceiveHistory(userId, {
+      id: buildHistoryId('RCV'),
+      userId,
+      type: 'receive',
+      status: res.allSucceeded ? 'success' : res.receivedCount > 0 ? 'partial' : 'failed',
+      startedAt: startedIso,
+      finishedAt: finishedIso,
+      durationMs: totalDurationMs,
+      count: res.receivedCount,
+      error: errorMsg,
+      detailsSummary: res.allSucceeded
+        ? tr(`تم استلام ${res.receivedCount} عنصر`, `Received ${res.receivedCount} item(s)`)
+        : undefined,
+    });
+
     onProgress?.({ percent: 100, stage: tr('تم تأكيد الاستلام', 'Receipt confirmed') });
     return {
       ok: res.allSucceeded,
       serverReachable: true,
+      durationMs: totalDurationMs,
       response: res,
-      error: res.allSucceeded
-        ? undefined
-        : (res.errors || []).map((e) => e.error).join(' · ') || tr('تعذر تأكيد استلام بعض العناصر', 'Could not confirm some items'),
+      error: errorMsg,
     };
   } catch (err: any) {
+    const confirmDurationMs = Math.max(1, Math.round(nowPerfMs() - startedPerf));
+    const totalDurationMs = Math.max(1, Math.round(previewDurationMs + confirmDurationMs));
+    const finishedIso = new Date().toISOString();
     if (isAuthRevokedError(err)) {
       return {
         ok: false,
         serverReachable: true,
         authRevoked: true,
         revokeReason: err?.message,
+        durationMs: totalDurationMs,
         response: null,
         error: err?.message,
       };
     }
+    const errMsg = err?.message ? tr(err.message) : tr('تعذر إتمام الاستلام حالياً', 'Could not complete receive right now');
+    await recordSyncRefreshSummary('last_receive_summary', userId, {
+      at: finishedIso,
+      count: 0,
+      durationMs: totalDurationMs,
+      ok: false,
+      error: errMsg,
+    });
+    await localDb.appendSendReceiveHistory(userId, {
+      id: buildHistoryId('RCV'),
+      userId,
+      type: 'receive',
+      status: 'failed',
+      startedAt: startedIso,
+      finishedAt: finishedIso,
+      durationMs: totalDurationMs,
+      count: 0,
+      error: errMsg,
+    });
     return {
       ok: false,
       serverReachable: !isUnreachableError(err),
+      durationMs: totalDurationMs,
       response: null,
-      error: err?.message ? tr(err.message) : tr('تعذر إتمام الاستلام حالياً', 'Could not complete receive right now'),
+      error: errMsg,
     };
   }
 }
@@ -1101,7 +1425,7 @@ export async function sendDispatchBatchToServer(params: {
   };
 
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-    const queuedMsg = tr('طلب الإرسال مؤكد من المرسل — في انتظار المزامنة التلقائية فور عودة الاتصال.', 'Send request confirmed by sender — awaiting automatic sync once connection resumes.');
+    const queuedMsg = tr('طلب الإرسال محفوظ محلياً — يمكنك إعادة الإرسال يدوياً عند توفر الاتصال.', 'Send request saved locally — you can retry manually when connected.');
     const queuedDraft = await persistConfirmedOfflineQueue(queuedMsg);
     return {
       ok: false,
@@ -1209,7 +1533,7 @@ export async function sendDispatchBatchToServer(params: {
     const isNetworkUnreachable = !authRevoked && (!statusCode || statusCode === 502 || statusCode === 503 || statusCode === 504);
 
     if (isNetworkUnreachable) {
-      const queuedMsg = tr('طلب الإرسال مؤكد من المرسل — في انتظار المزامنة التلقائية فور عودة الاتصال.', 'Send request confirmed by sender — awaiting automatic sync once connection resumes.');
+      const queuedMsg = tr('طلب الإرسال محفوظ محلياً — يمكنك إعادة الإرسال يدوياً عند توفر الاتصال.', 'Send request saved locally — you can retry manually when connected.');
       const queuedDraft = await persistConfirmedOfflineQueue(queuedMsg);
       return {
         ok: false,

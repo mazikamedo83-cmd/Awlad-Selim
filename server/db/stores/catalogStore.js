@@ -2881,10 +2881,12 @@ export async function createProduct(payload, actor) {
 
       const resolvedMeta = await resolveProductGroupCategoryPgTx(client, payload, null);
       const resolvedUnit = await resolveProductUnitPgTx(client, payload, null);
+      const cleanClass1 = String(payload.class1 || '').trim() || null;
+      const cleanClass2 = String(payload.class2 || '').trim() || null;
 
       await client.query(
-        `INSERT INTO products (id, code, barcode, name, category, category_id, group_id, group_name, base_unit, unit_id, size, color, purchase_price, selling_price, min_stock_level, stock_per_warehouse, image, notes, status, import_batch_id, imported_from_file, source_file_name, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)`,
+        `INSERT INTO products (id, code, barcode, name, category, category_id, group_id, group_name, base_unit, unit_id, size, color, class1, class2, purchase_price, selling_price, min_stock_level, stock_per_warehouse, image, notes, status, import_batch_id, imported_from_file, source_file_name, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)`,
         [
           id,
           code,
@@ -2898,6 +2900,8 @@ export async function createProduct(payload, actor) {
           resolvedUnit.unitId,
           payload.size || null,
           payload.color || null,
+          cleanClass1,
+          cleanClass2,
           round2(payload.purchasePrice || 0),
           round2(payload.sellingPrice || 0),
           round2(payload.minStockLevel || 0),
@@ -2990,6 +2994,8 @@ export async function createProduct(payload, actor) {
       units,
       size: payload.size || undefined,
       color: payload.color || undefined,
+      class1: String(payload.class1 || '').trim() || undefined,
+      class2: String(payload.class2 || '').trim() || undefined,
       purchasePrice: round2(payload.purchasePrice || 0),
       sellingPrice: round2(payload.sellingPrice || 0),
       minStockLevel: round2(payload.minStockLevel || 0),
@@ -3065,13 +3071,15 @@ export async function updateProduct(productId, updates, actor) {
 
       const resolvedMeta = await resolveProductGroupCategoryPgTx(client, updates || {}, cur);
       const resolvedUnit = await resolveProductUnitPgTx(client, updates || {}, cur);
+      const nextClass1 = updates.class1 !== undefined ? (String(updates.class1 || '').trim() || null) : (cur.class1 || null);
+      const nextClass2 = updates.class2 !== undefined ? (String(updates.class2 || '').trim() || null) : (cur.class2 || null);
 
       await client.query(
         `UPDATE products SET
           code = $1, barcode = $2, name = $3, category = $4, category_id = $5, group_id = $6, group_name = $7, base_unit = $8, unit_id = $9,
-          size = $10, color = $11, purchase_price = $12, selling_price = $13, min_stock_level = $14,
-          image = $15, notes = $16, status = $17, import_batch_id = $18, imported_from_file = $19, source_file_name = $20, version = COALESCE(version, 1) + 1, updated_at = $21
-         WHERE id = $22`,
+          size = $10, color = $11, class1 = $12, class2 = $13, purchase_price = $14, selling_price = $15, min_stock_level = $16,
+          image = $17, notes = $18, status = $19, import_batch_id = $20, imported_from_file = $21, source_file_name = $22, version = COALESCE(version, 1) + 1, updated_at = $23
+         WHERE id = $24`,
         [
           nextCode,
           nextBarcode,
@@ -3084,6 +3092,8 @@ export async function updateProduct(productId, updates, actor) {
           resolvedUnit.unitId,
           updates.size ?? cur.size ?? null,
           updates.color ?? cur.color ?? null,
+          nextClass1,
+          nextClass2,
           round2(updates.purchasePrice ?? cur.purchasePrice),
           round2(updates.sellingPrice ?? cur.sellingPrice),
           round2(updates.minStockLevel ?? cur.minStockLevel),
@@ -3163,6 +3173,8 @@ export async function updateProduct(productId, updates, actor) {
       groupName: resolvedMeta.groupName,
       baseUnit: resolvedUnit.baseUnit,
       unitId: resolvedUnit.unitId || undefined,
+      class1: updates.class1 !== undefined ? (String(updates.class1 || '').trim() || undefined) : cur.class1,
+      class2: updates.class2 !== undefined ? (String(updates.class2 || '').trim() || undefined) : cur.class2,
       stockPerWarehouse: cur.stockPerWarehouse, // Protect stock map from direct override via product edit
       version: Number(cur.version || 1) + 1,
       updatedAt: now,
@@ -3427,6 +3439,7 @@ export async function getCustomerProductPriceHistory(customerId, productId = nul
       const list = historyMap[row.product_id] || [];
       if (list.length >= 3) continue;
       list.unshift({
+        invoiceId: row.id,
         price: Number(row.unit_price || 0),
         quantity: Number(row.quantity || 0),
         date: row.date instanceof Date ? row.date.toISOString().split('T')[0] : String(row.date || '').split('T')[0],
@@ -3452,6 +3465,7 @@ export async function getCustomerProductPriceHistory(customerId, productId = nul
         const list = historyMap[it.productId] || [];
         if (list.length >= 3) continue;
         list.unshift({
+          invoiceId: inv.id,
           price: Number(it.unitPrice || 0),
           quantity: Number(it.quantity || 0),
           date: inv.date || '',
@@ -3514,6 +3528,124 @@ export async function getCustomerProductPriceHistory(customerId, productId = nul
               unitFactor: 1,
             }
       );
+    }
+  }
+
+  return historyMap;
+}
+
+export async function getSupplierProductPriceHistory(supplierId, productId = null) {
+  let supplier = null;
+  if (await isPgMode()) {
+    const res = await getPool().query('SELECT id, name FROM suppliers WHERE id = $1 LIMIT 1', [supplierId]);
+    supplier = res.rows[0] || null;
+  } else {
+    const db = readJsonDatabase();
+    supplier = (db.suppliers || []).find((s) => s.id === supplierId) || null;
+  }
+  if (!supplier) throw new AppError(404, 'المورد غير موجود', 'SUPPLIER_NOT_FOUND');
+
+  const historyMap = {};
+  const cleanProdId = productId ? String(productId).trim() : null;
+
+  if (await isPgMode()) {
+    const pool = getPool();
+    let res;
+    if (cleanProdId) {
+      res = await pool.query(
+        `SELECT i.id, i.invoice_number, i.date, i.created_at, it.product_id, it.unit, it.unit_factor, it.quantity, it.unit_price
+         FROM invoices i
+         JOIN invoice_items it ON it.invoice_id = i.id
+         WHERE i.supplier_id = $1 AND i.type = 'purchase' AND i.status = 'confirmed' AND it.product_id = $2
+         ORDER BY i.date DESC, i.created_at DESC, i.id DESC, it.id DESC
+         LIMIT 3`,
+        [supplierId, cleanProdId]
+      );
+    } else if (pgSupportsWindowFunctions !== false) {
+      try {
+        res = await pool.query(
+          `SELECT id, invoice_number, date, created_at, product_id, unit, unit_factor, quantity, unit_price
+           FROM (
+             SELECT i.id, i.invoice_number, i.date, i.created_at, it.product_id, it.unit, it.unit_factor, it.quantity, it.unit_price,
+                    ROW_NUMBER() OVER (
+                      PARTITION BY it.product_id
+                      ORDER BY i.date DESC, i.created_at DESC, i.id DESC, it.id DESC
+                    ) AS rn
+             FROM invoices i
+             JOIN invoice_items it ON it.invoice_id = i.id
+             WHERE i.supplier_id = $1 AND i.type = 'purchase' AND i.status = 'confirmed'
+           ) ranked
+           WHERE rn <= 3
+           ORDER BY date DESC, created_at DESC, id DESC`,
+          [supplierId]
+        );
+        pgSupportsWindowFunctions = true;
+      } catch (err) {
+        if (/OVER|window/i.test(String(err?.message || ''))) {
+          pgSupportsWindowFunctions = false;
+          res = await pool.query(
+            `SELECT i.id, i.invoice_number, i.date, i.created_at, it.product_id, it.unit, it.unit_factor, it.quantity, it.unit_price
+             FROM invoices i
+             JOIN invoice_items it ON it.invoice_id = i.id
+             WHERE i.supplier_id = $1 AND i.type = 'purchase' AND i.status = 'confirmed'
+             ORDER BY i.date DESC, i.created_at DESC, i.id DESC, it.id DESC`,
+            [supplierId]
+          );
+        } else {
+          throw err;
+        }
+      }
+    } else {
+      res = await pool.query(
+        `SELECT i.id, i.invoice_number, i.date, i.created_at, it.product_id, it.unit, it.unit_factor, it.quantity, it.unit_price
+         FROM invoices i
+         JOIN invoice_items it ON it.invoice_id = i.id
+         WHERE i.supplier_id = $1 AND i.type = 'purchase' AND i.status = 'confirmed'
+         ORDER BY i.date DESC, i.created_at DESC, i.id DESC, it.id DESC`,
+        [supplierId]
+      );
+    }
+
+    for (const row of res.rows) {
+      const list = historyMap[row.product_id] || [];
+      if (list.length >= 3) continue;
+      list.push({
+        invoiceId: row.id,
+        price: Number(row.unit_price || 0),
+        quantity: Number(row.quantity || 0),
+        date: row.date instanceof Date ? row.date.toISOString().split('T')[0] : String(row.date || '').split('T')[0],
+        invoiceNumber: row.invoice_number,
+        unit: row.unit || '',
+        unitFactor: Number(row.unit_factor || 1),
+      });
+      historyMap[row.product_id] = list;
+    }
+  } else {
+    const db = readJsonDatabase();
+    const suppInvoices = (db.invoices || [])
+      .filter((i) => i.supplierId === supplierId && i.type === 'purchase' && i.status === 'confirmed')
+      .sort(
+        (a, b) =>
+          String(b.date || '').localeCompare(String(a.date || '')) ||
+          String(b.createdAt || '').localeCompare(String(a.createdAt || '')) ||
+          String(b.id || '').localeCompare(String(a.id || ''))
+      );
+    for (const inv of suppInvoices) {
+      for (const it of inv.items || []) {
+        if (cleanProdId && it.productId !== cleanProdId) continue;
+        const list = historyMap[it.productId] || [];
+        if (list.length >= 3) continue;
+        list.push({
+          invoiceId: inv.id,
+          price: Number(it.unitPrice || 0),
+          quantity: Number(it.quantity || 0),
+          date: inv.date || '',
+          invoiceNumber: inv.invoiceNumber || '',
+          unit: it.unit || '',
+          unitFactor: Number(it.unitFactor || 1),
+        });
+        historyMap[it.productId] = list;
+      }
     }
   }
 

@@ -49,9 +49,9 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
   const [unitId, setUnitId] = useState('');
   const [baseUnit, setBaseUnit] = useState('');
   const [availableQty, setAvailableQty] = useState<number | ''>('');
-  const [selectedWarehouseId, setSelectedWarehouseId] = useState(
-    warehouses.find((w) => w.isDefault)?.id || warehouses[0]?.id || ''
-  );
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState('');
+  const [class1, setClass1] = useState('');
+  const [class2, setClass2] = useState('');
   const [barcode, setBarcode] = useState('');
   const [purchasePrice, setPurchasePrice] = useState<number | ''>('');
   const [sellingPrice, setSellingPrice] = useState<number | ''>('');
@@ -104,6 +104,9 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
     setUnitId('');
     setBaseUnit('');
     setAvailableQty('');
+    setSelectedWarehouseId('');
+    setClass1('');
+    setClass2('');
     setBarcode('');
     setPurchasePrice('');
     setSellingPrice('');
@@ -131,14 +134,14 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
     }
 
     const qtyVal = Math.max(0, Number(availableQty) || 0);
-    const targetWh =
-      selectedWarehouseId ||
-      warehouses.find((w) => w.isDefault)?.id ||
-      warehouses[0]?.id ||
-      '';
+    if (qtyVal > 0 && warehouses.length > 0 && !selectedWarehouseId) {
+      setError(t('يرجى اختيار المستودع للرصيد الافتتاحي.', 'Please select a warehouse for the opening quantity.'));
+      return;
+    }
+    const targetWh = selectedWarehouseId;
     const stockMap: Record<string, number> = {};
     warehouses.forEach((w) => {
-      stockMap[w.id] = w.id === targetWh ? qtyVal : 0;
+      stockMap[w.id] = targetWh && w.id === targetWh ? qtyVal : 0;
     });
 
     setIsSaving(true);
@@ -153,6 +156,8 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
         groupName: selectedGroup?.name || selectedCat?.groupName || groupName || undefined,
         categoryId: selectedCat?.id || undefined,
         category: selectedCat?.name || category.trim(),
+        class1: class1.trim() || undefined,
+        class2: class2.trim() || undefined,
         unitId: unitId || undefined,
         baseUnit: baseUnit.trim(),
         units: [],
@@ -344,6 +349,29 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
 
           <div className="grid grid-cols-2 gap-2">
             <div>
+              <label className="block font-bold text-slate-700 mb-0.5">{t('التصنيف 1 (اختياري)', 'Classification 1 (Optional)')}</label>
+              <input
+                type="text"
+                value={class1}
+                onChange={(e) => setClass1(e.target.value)}
+                placeholder={t('تصنيف مستقل 1...', 'Independent Class 1...')}
+                className="w-full h-8 border border-slate-300 rounded-md px-2 font-bold bg-white focus:outline-hidden focus:border-[#003589]"
+              />
+            </div>
+            <div>
+              <label className="block font-bold text-slate-700 mb-0.5">{t('التصنيف 2 (اختياري)', 'Classification 2 (Optional)')}</label>
+              <input
+                type="text"
+                value={class2}
+                onChange={(e) => setClass2(e.target.value)}
+                placeholder={t('تصنيف مستقل 2...', 'Independent Class 2...')}
+                className="w-full h-8 border border-slate-300 rounded-md px-2 font-bold bg-white focus:outline-hidden focus:border-[#003589]"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
               <label className="block font-bold text-slate-700 mb-0.5">{t('سعر شراء الوحدة *', 'Unit Purchase Price *')}</label>
               <input
                 type="number"
@@ -389,6 +417,7 @@ export const MobileAddProductModal: React.FC<MobileAddProductModalProps> = ({
                   onChange={(e) => setSelectedWarehouseId(e.target.value)}
                   className="w-full h-8 border border-slate-300 rounded-md px-2 font-bold bg-white"
                 >
+                  <option value="">{t('-- اختر المستودع --', '-- Select Warehouse --')}</option>
                   {warehouses.map((w) => (
                     <option key={w.id} value={w.id}>
                       {w.name}

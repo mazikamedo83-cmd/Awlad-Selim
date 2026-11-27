@@ -304,6 +304,7 @@ export async function initializeSchema(customPool = null) {
       "CREATE SEQUENCE IF NOT EXISTS seq_rep_custody_op_no",
       "CREATE SEQUENCE IF NOT EXISTS seq_purchase_return_req_no",
       "CREATE SEQUENCE IF NOT EXISTS seq_sales_return_req_no",
+      "CREATE SEQUENCE IF NOT EXISTS seq_rep_custody_return_req_no",
       "ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS extra_settings JSONB NOT NULL DEFAULT '{}'::jsonb",
       "ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS branch_number VARCHAR(64)",
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_algo VARCHAR(24) NOT NULL DEFAULT 'bcrypt'",
@@ -1423,6 +1424,87 @@ export async function initializeSchema(customPool = null) {
       }
       if (!hasColumn('products', 'unit_id')) {
         await txClient.query('ALTER TABLE products ADD COLUMN IF NOT EXISTS unit_id VARCHAR(64)');
+      }
+
+      // v19: Independent product classifications (class1, class2), rep custody return requests, & transfer tracking fields
+      if (!hasColumn('products', 'class1')) {
+        await txClient.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS class1 TEXT DEFAULT ''`);
+      }
+      if (!hasColumn('products', 'class2')) {
+        await txClient.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS class2 TEXT DEFAULT ''`);
+      }
+      if (!hasColumn('rep_item_transfers', 'sent_by')) {
+        await txClient.query(`ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS sent_by TEXT`);
+      }
+      if (!hasColumn('rep_item_transfers', 'sent_at')) {
+        await txClient.query(`ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ`);
+      }
+      if (!hasColumn('rep_item_transfers', 'duration_ms')) {
+        await txClient.query(`ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS duration_ms INT`);
+      }
+      if (!hasColumn('rep_item_transfers', 'confirmed_by_user_id')) {
+        await txClient.query(`ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS confirmed_by_user_id VARCHAR(64)`);
+      }
+      if (!hasColumn('rep_item_transfers', 'confirmation_notes')) {
+        await txClient.query(`ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS confirmation_notes TEXT DEFAULT ''`);
+      }
+      if (!existingTableSet.has('rep_custody_return_requests')) {
+        await txClient.query('CREATE SEQUENCE IF NOT EXISTS seq_rep_custody_return_req_no');
+        await txClient.query(`
+          CREATE TABLE IF NOT EXISTS rep_custody_return_requests (
+            id VARCHAR(64) PRIMARY KEY,
+            request_number VARCHAR(64) UNIQUE NOT NULL,
+            date DATE NOT NULL,
+            representative_id VARCHAR(64) NOT NULL REFERENCES representatives(id) ON DELETE RESTRICT,
+            representative_name TEXT NOT NULL,
+            van_warehouse_id VARCHAR(64) NOT NULL REFERENCES warehouses(id) ON DELETE RESTRICT,
+            van_warehouse_name TEXT NOT NULL DEFAULT '',
+            target_warehouse_id VARCHAR(64) NOT NULL REFERENCES warehouses(id) ON DELETE RESTRICT,
+            target_warehouse_name TEXT NOT NULL DEFAULT '',
+            requested_by_user_id VARCHAR(64) NOT NULL,
+            requested_by_name TEXT NOT NULL,
+            notes TEXT DEFAULT '',
+            status VARCHAR(24) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'partially_approved', 'approved', 'rejected', 'cancelled')),
+            sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            reviewed_by_user_id VARCHAR(64),
+            reviewed_by_name TEXT DEFAULT '',
+            reviewed_at TIMESTAMPTZ,
+            approved_at TIMESTAMPTZ,
+            rejection_reason TEXT DEFAULT '',
+            review_notes TEXT DEFAULT '',
+            idempotency_key VARCHAR(128) UNIQUE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          )
+        `);
+      }
+      if (!existingTableSet.has('rep_custody_return_request_items')) {
+        await txClient.query(`
+          CREATE TABLE IF NOT EXISTS rep_custody_return_request_items (
+            id VARCHAR(64) PRIMARY KEY,
+            request_id VARCHAR(64) NOT NULL REFERENCES rep_custody_return_requests(id) ON DELETE CASCADE,
+            product_id VARCHAR(64) NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+            product_name TEXT NOT NULL,
+            barcode VARCHAR(64) DEFAULT '',
+            unit VARCHAR(32) NOT NULL,
+            unit_factor NUMERIC(12, 3) NOT NULL DEFAULT 1.000,
+            requested_qty NUMERIC(12, 3) NOT NULL CHECK (requested_qty > 0),
+            actual_received_qty NUMERIC(12, 3),
+            approved_qty NUMERIC(12, 3),
+            rejected_qty NUMERIC(12, 3),
+            remaining_custody_qty NUMERIC(12, 3),
+            notes TEXT DEFAULT ''
+          )
+        `);
+      }
+      if (!existingIndexNames.has('idx_rcr_req_status')) {
+        await txClient.query('CREATE INDEX IF NOT EXISTS idx_rcr_req_status ON rep_custody_return_requests(status, created_at DESC)');
+      }
+      if (!existingIndexNames.has('idx_rcr_req_rep')) {
+        await txClient.query('CREATE INDEX IF NOT EXISTS idx_rcr_req_rep ON rep_custody_return_requests(representative_id)');
+      }
+      if (!existingIndexNames.has('idx_rcr_req_items_req')) {
+        await txClient.query('CREATE INDEX IF NOT EXISTS idx_rcr_req_items_req ON rep_custody_return_request_items(request_id)');
       }
     }, currentPool);
 

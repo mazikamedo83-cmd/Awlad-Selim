@@ -7,7 +7,7 @@ import { useData } from '../../../context/DataContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useShortcuts } from '../../../context/ShortcutsContext';
 import { apiRequest } from '../../../services/api';
-import { Invoice, InvoiceItem, InlinePurchaseNewProduct, Product } from '../../../types';
+import { Invoice, InvoiceItem, InlinePurchaseNewProduct, Product, SupplierPriceHistoryEntry } from '../../../types';
 import { Modal } from '../../common/Modal';
 import { PrintDocumentModal, PrintData } from '../../common/PrintDocument';
 import { ProductSearchSelect } from '../../common/ProductSearchSelect';
@@ -113,6 +113,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     settings, createPurchaseInvoice, editPurchaseInvoice, cancelInvoice,
     sendPurchaseInvoice, receivePurchaseInvoice, rejectPurchaseInvoice, confirmDraftInvoice,
     addProductGroup, updateProductGroup, addCategory, updateCategory, addProductUnit, updateProductUnit,
+    getSupplierPriceHistory,
   } = useData();
   const { currentUser, hasPermission } = useAuth();
   const { t, locale } = usePreferences();
@@ -173,18 +174,18 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
   const [editNotes, setEditNotes] = useState('');
   const [editReason, setEditReason] = useState('');
   const [editItems, setEditItems] = useState<InvoiceItem[]>([]);
-  const [editGroupFilter, setEditGroupFilter] = useState('all');
-  const [editCatFilter, setEditCatFilter] = useState('all');
+  const [editGroupFilter, setEditGroupFilter] = useState('');
+  const [editCatFilter, setEditCatFilter] = useState('');
   const [editAddProdId, setEditAddProdId] = useState('');
   const [editAddQty, setEditAddQty] = useState<number | ''>('');
   const [editAddPrice, setEditAddPrice] = useState<number | ''>('');
   const [editError, setEditError] = useState<string | null>(null);
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
 
-  // New Purchase Form state (numeric inputs default to '' so user types explicitly)
-  const [selectedSupplierId, setSelectedSupplierId] = useState<string>(suppliers[0]?.id || '');
-  const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>(warehouses[0]?.id || '');
-  const [selectedCashboxId, setSelectedCashboxId] = useState<string>(cashboxes[0]?.id || '');
+  // New Purchase Form state (zero unintended auto-selections)
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>('');
+  const [selectedCashboxId, setSelectedCashboxId] = useState<string>('');
   const [invoiceDate, setInvoiceDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [paymentType, setPaymentType] = useState<'cash' | 'credit' | 'partial'>('partial');
   const [paidAmount, setPaidAmount] = useState<number | ''>('');
@@ -192,13 +193,14 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
   const [notes, setNotes] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [supplierPriceHistoryMap, setSupplierPriceHistoryMap] = useState<Record<string, SupplierPriceHistoryEntry[]>>({});
 
   // Items
   const [items, setItems] = useState<PurchaseDraftItem[]>([]);
 
   // Classic Item Entry states
-  const [purchaseGroupFilter, setPurchaseGroupFilter] = useState('all');
-  const [purchaseCatFilter, setPurchaseCatFilter] = useState('all');
+  const [purchaseGroupFilter, setPurchaseGroupFilter] = useState('');
+  const [purchaseCatFilter, setPurchaseCatFilter] = useState('');
   const [barcodeInput, setBarcodeInput] = useState('');
   const [itemProdId, setItemProdId] = useState('');
   const [itemUnitName, setItemUnitName] = useState('');
@@ -213,6 +215,8 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
   const [newProdGroupId, setNewProdGroupId] = useState('');
   const [newProdCategoryId, setNewProdCategoryId] = useState('');
   const [newProdCategory, setNewProdCategory] = useState('');
+  const [newProdClass1, setNewProdClass1] = useState('');
+  const [newProdClass2, setNewProdClass2] = useState('');
   const [newProdUnitId, setNewProdUnitId] = useState('');
   const [newProdBaseUnit, setNewProdBaseUnit] = useState('');
   const [newProdQty, setNewProdQty] = useState<number | ''>('');
@@ -226,9 +230,12 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
   }>({ checking: false, exactMatch: null, matchedBy: null, similarMatches: [] });
 
   const resetPurchaseModalForm = useCallback(() => {
+    setSelectedSupplierId('');
+    setSelectedWarehouseId('');
+    setSelectedCashboxId('');
     setItems([]);
-    setPurchaseGroupFilter('all');
-    setPurchaseCatFilter('all');
+    setPurchaseGroupFilter('');
+    setPurchaseCatFilter('');
     setBarcodeInput('');
     setItemProdId('');
     setItemUnitName('');
@@ -245,6 +252,8 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     setNewProdGroupId('');
     setNewProdCategoryId('');
     setNewProdCategory('');
+    setNewProdClass1('');
+    setNewProdClass2('');
     setNewProdUnitId('');
     setNewProdBaseUnit('');
     setNewProdQty('');
@@ -264,24 +273,19 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     }
   }, [initialOpenNew, resetPurchaseModalForm]);
 
-  // Sync defaults when lists load asynchronously
   useEffect(() => {
-    if (!suppliers.some((s) => s.id === selectedSupplierId) && suppliers[0]?.id) {
-      setSelectedSupplierId(suppliers[0].id);
+    let cancelled = false;
+    if (!isNewModalOpen || !selectedSupplierId) {
+      setSupplierPriceHistoryMap({});
+      return;
     }
-  }, [suppliers, selectedSupplierId]);
-
-  useEffect(() => {
-    if (!warehouses.some((w) => w.id === selectedWarehouseId) && warehouses[0]?.id) {
-      setSelectedWarehouseId(warehouses[0].id);
-    }
-  }, [warehouses, selectedWarehouseId]);
-
-  useEffect(() => {
-    if (!cashboxes.some((c) => c.id === selectedCashboxId) && cashboxes[0]?.id) {
-      setSelectedCashboxId(cashboxes[0].id);
-    }
-  }, [cashboxes, selectedCashboxId]);
+    getSupplierPriceHistory(selectedSupplierId).then((hist) => {
+      if (!cancelled) setSupplierPriceHistoryMap(hist || {});
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isNewModalOpen, selectedSupplierId, getSupplierPriceHistory]);
 
   // Debounced duplicate check while typing an inline new product
   useEffect(() => {
@@ -455,6 +459,27 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
       })),
     ];
   }, [selectedPurchaseProduct]);
+
+  const supplierProductHistoryEntries = useMemo(() => {
+    if (!selectedSupplierId || !selectedPurchaseProduct) return [];
+    const raw = supplierPriceHistoryMap[selectedPurchaseProduct.id] || [];
+    const curUnit = purchaseUnitOptions.find(
+      (u) => u.name === (itemUnitName || selectedPurchaseProduct.baseUnit)
+    );
+    const curFactor = Number(curUnit?.conversionFactor || 1);
+    return raw
+      .slice(0, 3)
+      .map((entry) => {
+        const histFactor = Number(entry.unitFactor || 1) || 1;
+        const adj = Math.round(((Number(entry.price || 0) / histFactor) * curFactor) * 100) / 100;
+        return {
+          unitPrice: adj,
+          date: entry.date || '',
+          invoiceNumber: entry.invoiceNumber || '',
+        };
+      })
+      .filter((e) => e.unitPrice > 0);
+  }, [selectedSupplierId, selectedPurchaseProduct, supplierPriceHistoryMap, purchaseUnitOptions, itemUnitName]);
 
   const handleProductPick = (prodId: string) => {
     setItemProdId(prodId);
@@ -688,6 +713,8 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
             groupName: chosenGroup?.name,
             categoryId: chosenCat?.id,
             category: cleanCategory,
+            class1: newProdClass1.trim() || undefined,
+            class2: newProdClass2.trim() || undefined,
             unitId: matchedCatalogUnit?.id || (newProdUnitId || undefined),
             baseUnit: matchedCatalogUnit?.name || cleanUnit,
             purchasePrice: buyPrice,
@@ -703,6 +730,8 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     setNewProdGroupId('');
     setNewProdCategoryId('');
     setNewProdCategory('');
+    setNewProdClass1('');
+    setNewProdClass2('');
     setNewProdUnitId('');
     setNewProdBaseUnit('');
     setNewProdQty('');
@@ -793,20 +822,29 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
       setError(t('يرجى إضافة أصناف لفاتورة الشراء', 'Please add items to the purchase invoice'));
       return;
     }
+    if (!selectedWarehouseId) {
+      setError(t('يرجى اختيار المستودع المستلم', 'Please select the receiving warehouse'));
+      return;
+    }
+    const rawPaid = Number(paidAmount || 0);
+    const estPaid = paymentType === 'cash' ? grandTotal : paymentType === 'credit' ? 0 : Math.min(grandTotal, rawPaid);
+    if (paymentType !== 'credit' && estPaid > 0 && !selectedCashboxId) {
+      setError(t('يرجى اختيار الخزينة المصروف منها', 'Please select the disbursing cashbox'));
+      return;
+    }
     setError(null);
     setIsSubmitting(true);
 
     try {
       const supp = suppliers.find(s => s.id === selectedSupplierId);
       const wh = warehouses.find(w => w.id === selectedWarehouseId);
-      const rawPaid = Number(paidAmount || 0);
       if (paymentType === 'partial' && rawPaid < 0) {
         setError(t('المبلغ المدفوع لا يمكن أن يكون سالباً', 'Paid amount cannot be negative'));
         return;
       }
 
-      const effectivePaid = paymentType === 'cash' ? grandTotal : paymentType === 'credit' ? 0 : Math.min(grandTotal, rawPaid);
-      const effectiveCashboxId = paymentType === 'credit' || effectivePaid <= 0 ? '' : (selectedCashboxId || cashboxes[0]?.id || '');
+      const effectivePaid = estPaid;
+      const effectiveCashboxId = paymentType === 'credit' || effectivePaid <= 0 ? '' : selectedCashboxId;
       const chosenReceiver = purchaseReceivers.find((r) => r.id === newRecipientUserId);
       const createAsDraft = sendToAdmin || !canApprovePurchase;
       const itemNotesSummary = items
@@ -905,8 +943,8 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     setEditNotes(inv.notes || '');
     setEditReason('');
     setEditItems(inv.items.map((it) => ({ ...it })));
-    setEditGroupFilter('all');
-    setEditCatFilter('all');
+    setEditGroupFilter('');
+    setEditCatFilter('');
     setEditAddProdId('');
     setEditAddQty('');
     setEditAddPrice('');
@@ -969,6 +1007,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
     setEditAddQty('');
     setEditAddPrice('');
     setEditError(null);
+    window.setTimeout(() => editProductSearchRef.current?.focus(), 30);
   };
 
   const handleSubmitEdit = async (e: React.FormEvent) => {
@@ -1315,9 +1354,10 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   badge: `${t('رصيد:', 'Bal:')} ${formatLocaleNumber(s.currentBalance || 0)}`,
                   searchText: `${s.name} ${s.phone || ''} ${s.companyName || ''}`,
                 }))}
-                allOptionLabel={t('-- مورد نقدي / عام --', '-- Walk-in / General Supplier --')}
-                allOptionValue=""
-                searchPlaceholder={t('ابحث باسم المورد أو الهاتف...', 'Search supplier name or phone...')}
+                includeAllOption={false}
+                placeholder={t('-- مورد نقدي / ابحث عن مورد --', '-- Walk-in / Search Supplier --')}
+                minSearchChars={2}
+                searchPlaceholder={t('اكتب حرفين على الأقل باسم المورد أو الهاتف...', 'Type at least 2 chars...')}
                 allowClear
                 minPanelWidth={260}
                 buttonClassName="rounded-md h-8"
@@ -1332,6 +1372,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                 onChange={(e) => setSelectedWarehouseId(e.target.value)}
                 className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-xs font-bold text-slate-800"
               >
+                <option value="">{t('-- اختيار المستودع --', '-- Select Warehouse --')}</option>
                 {warehouses.map((w) => (
                   <option key={w.id} value={w.id}>
                     {t(w.name)}
@@ -1581,6 +1622,26 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       className="w-full h-8 border border-slate-300 bg-white rounded-md px-2 text-center font-mono font-bold text-xs"
                     />
                   </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('التصنيف 1:', 'Class 1:')}</label>
+                    <input
+                      type="text"
+                      value={newProdClass1}
+                      onChange={(e) => setNewProdClass1(e.target.value)}
+                      placeholder={t('تصنيف 1 مستقل...', 'Independent class 1...')}
+                      className="w-full h-8 border border-slate-300 bg-white rounded-md px-2 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-0.5">{t('التصنيف 2:', 'Class 2:')}</label>
+                    <input
+                      type="text"
+                      value={newProdClass2}
+                      onChange={(e) => setNewProdClass2(e.target.value)}
+                      placeholder={t('تصنيف 2 مستقل...', 'Independent class 2...')}
+                      className="w-full h-8 border border-slate-300 bg-white rounded-md px-2 text-xs"
+                    />
+                  </div>
                 </div>
 
                 {duplicateCheckState.exactMatch && (
@@ -1653,6 +1714,8 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   selectedCategoryId={purchaseCatFilter}
                   groupTriggerRef={purchaseGroupTriggerRef}
                   categoryTriggerRef={purchaseCategoryTriggerRef}
+                  allowAll={false}
+                  minSearchChars={2}
                   autoAdvanceOnSelect
                   onCategoryAfterSelect={() => {
                     window.setTimeout(() => productSearchRef.current?.focus(), 20);
@@ -1688,7 +1751,8 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       warehouses={warehouses}
                       priceMode="purchase"
                       currency={settings.currency}
-                      placeholder={t('ابحث لإضافة صنف...', 'Search to add item...')}
+                      minSearchChars={2}
+                      placeholder={t('اكتب حرفين على الأقل للبحث...', 'Type at least 2 chars to search...')}
                       onSelect={(p) => handleProductPick(p.id)}
                     />
                   </div>
@@ -1761,6 +1825,32 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     </button>
                   </div>
                 </div>
+
+                {selectedSupplierId && selectedPurchaseProduct && (
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px]">
+                    <span className="font-bold text-slate-700">
+                      {t('آخر ثلاثة أسعار شراء من هذا المورد:', 'Last 3 purchase prices from this supplier:')}
+                    </span>
+                    {supplierProductHistoryEntries.length > 0 ? (
+                      supplierProductHistoryEntries.map((entry, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setItemPrice(entry.unitPrice)}
+                          className="px-2 py-0.5 rounded bg-white border border-blue-300 hover:bg-blue-100 text-blue-900 font-bold cursor-pointer inline-flex items-center gap-1.5"
+                        >
+                          <span className="font-mono font-black">{formatLocaleNumber(entry.unitPrice)} {t(settings.currency)}</span>
+                          {entry.date && <span className="text-[10px] text-slate-500 font-mono">({entry.date})</span>}
+                          {entry.invoiceNumber && <span className="text-[10px] text-blue-700 font-mono">{entry.invoiceNumber}</span>}
+                        </button>
+                      ))
+                    ) : (
+                      <span className="text-slate-500 font-semibold">
+                        {t('لا توجد أسعار سابقة', 'No previous prices')}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1897,6 +1987,7 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                     onChange={(e) => setSelectedCashboxId(e.target.value)}
                     className="w-full h-8 bg-white border border-slate-300 rounded-md px-2 text-xs font-bold disabled:bg-slate-100 disabled:text-slate-400"
                   >
+                    <option value="">{t('-- اختيار الخزينة --', '-- Select Cashbox --')}</option>
                     {cashboxes.map((c) => (
                       <option key={c.id} value={c.id}>{t(c.name)}</option>
                     ))}
@@ -2498,6 +2589,8 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                   selectedCategoryId={editCatFilter}
                   groupTriggerRef={editGroupTriggerRef}
                   categoryTriggerRef={editCategoryTriggerRef}
+                  allowAll={false}
+                  minSearchChars={2}
                   autoAdvanceOnSelect
                   onCategoryAfterSelect={() => {
                     window.setTimeout(() => editProductSearchRef.current?.focus(), 20);
@@ -2532,7 +2625,8 @@ export const PurchaseInvoicesView: React.FC<PurchaseInvoicesViewProps> = ({
                       warehouses={warehouses}
                       priceMode="purchase"
                       currency={settings.currency}
-                      placeholder={t('ابحث لإضافة صنف...', 'Search to add item...')}
+                      minSearchChars={2}
+                      placeholder={t('اكتب حرفين على الأقل للبحث...', 'Type at least 2 chars to search...')}
                       onSelect={handleEditPickProduct}
                       onAfterSelect={() => {
                         window.setTimeout(() => {

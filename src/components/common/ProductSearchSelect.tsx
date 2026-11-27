@@ -9,9 +9,11 @@ function normalizeSearchText(raw: string): string {
   return String(raw || '')
     .toLowerCase()
     .trim()
-    .replace(/[أإآ]/g, 'ا')
+    .replace(/[أإآٱ]/g, 'ا')
     .replace(/ة/g, 'ه')
     .replace(/ى/g, 'ي')
+    .replace(/ؤ/g, 'و')
+    .replace(/ئ/g, 'ي')
     .replace(/[\u064B-\u065F\u0670]/g, '') // Arabic diacritics
     .replace(/\s+/g, ' ');
 }
@@ -32,6 +34,8 @@ interface ProductSearchSelectProps {
   inputRef?: React.RefObject<HTMLInputElement | null>;
   disabled?: boolean;
   clearOnSelect?: boolean;
+  minSearchChars?: number;
+  minSearchMessage?: string;
   className?: string;
 }
 
@@ -51,6 +55,8 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
   inputRef: externalInputRef,
   disabled = false,
   clearOnSelect = false,
+  minSearchChars = 2,
+  minSearchMessage,
   className = '',
 }) => {
   const { t, dir } = usePreferences();
@@ -183,7 +189,17 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
     return t(`${entries.length} مخازن`, `${entries.length} warehouses`);
   };
 
+  const effectiveNormQ = useMemo(() => {
+    const normQ = normalizeSearchText(query);
+    const selectedDisplay = selectedProduct ? normalizeSearchText(`${selectedProduct.name} (${selectedProduct.code})`) : '';
+    if (!normQ || (isOpen && selectedProduct && normQ === selectedDisplay)) return '';
+    return normQ;
+  }, [query, selectedProduct, isOpen]);
+
+  const needsMoreChars = minSearchChars > 0 && effectiveNormQ.length < minSearchChars;
+
   const filteredProducts = useMemo(() => {
+    if (needsMoreChars) return [];
     const excluded = new Set(excludeProductIds);
     const activeList = products.filter((p) => {
       if (!allowInactive && p.status !== 'active') return false;
@@ -191,10 +207,8 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
       return true;
     });
 
-    const normQ = normalizeSearchText(query);
-    // If query exactly matches currently selected label on initial open, show full list so user can browse or type to filter
-    const selectedDisplay = selectedProduct ? normalizeSearchText(`${selectedProduct.name} (${selectedProduct.code})`) : '';
-    if (!normQ || (isOpen && selectedProduct && normQ === selectedDisplay)) {
+    const normQ = effectiveNormQ;
+    if (!normQ) {
       return activeList.slice(0, 60);
     }
 
@@ -203,7 +217,7 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
       .map((p) => {
         const unitBarcodes = (p.units || []).map((u) => u.barcode || '').join(' ');
         const haystack = normalizeSearchText(
-          `${p.name} ${p.code} ${p.barcode || ''} ${unitBarcodes} ${p.groupName || ''} ${p.category || ''}`
+          `${p.name} ${p.code} ${p.barcode || ''} ${unitBarcodes} ${p.groupName || ''} ${p.category || ''} ${p.class1 || ''} ${p.class2 || ''}`
         );
         const matchesAll = tokens.every((tk) => haystack.includes(tk));
         if (!matchesAll) return null;
@@ -232,7 +246,7 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
       .map((x) => x.p);
 
     return matched;
-  }, [products, query, excludeProductIds, allowInactive, selectedProduct, isOpen]);
+  }, [products, effectiveNormQ, needsMoreChars, excludeProductIds, allowInactive]);
 
   useEffect(() => {
     setHighlightedIdx(0);
@@ -388,10 +402,15 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
             }}
             className="overflow-y-auto bg-white dark:bg-[#0E1C36] border border-slate-200 dark:border-[#21375C] rounded-lg shadow-xl divide-y divide-slate-100 dark:divide-[#1B2F52]"
           >
-          {filteredProducts.length === 0 ? (
+          {needsMoreChars ? (
+            <div className="p-3 text-center text-xs text-slate-500 dark:text-[#97AECE]">
+              <Search className="w-4 h-4 text-slate-400 dark:text-[#5F789E] mx-auto mb-1" />
+              {minSearchMessage || t(`اكتب ${minSearchChars === 2 ? 'حرفين' : minSearchChars + ' أحرف'} على الأقل للبحث...`, `Type at least ${minSearchChars} characters to search...`)}
+            </div>
+          ) : filteredProducts.length === 0 ? (
             <div className="p-3 text-center text-xs text-slate-500 dark:text-[#97AECE]">
               <Package className="w-5 h-5 text-slate-300 dark:text-[#5F789E] mx-auto mb-1" />
-              {t(`لا توجد أصناف مطابقة للبحث "${query}"`, `No items match "${query}"`)}
+              {t('لا توجد نتائج مطابقة', 'No matching results')}
             </div>
           ) : (
             filteredProducts.map((p, idx) => {
@@ -436,6 +455,18 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
                         </>
                       )}
                       <span>{p.category || t('بدون تصنيف', 'Uncategorized')}</span>
+                      {p.class1 && (
+                        <>
+                          <span>•</span>
+                          <span className="text-indigo-700 dark:text-indigo-300 font-semibold">{p.class1}</span>
+                        </>
+                      )}
+                      {p.class2 && (
+                        <>
+                          <span>•</span>
+                          <span className="text-teal-700 dark:text-teal-300 font-semibold">{p.class2}</span>
+                        </>
+                      )}
                       <span>•</span>
                       <span>{t('الوحدة:', 'Unit:')} {t(p.baseUnit)}</span>
                       <span>•</span>

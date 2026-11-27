@@ -74,6 +74,8 @@ export function sanitizeProductForCustomer(product, allowPriceView = true) {
       : [],
     size: product.size,
     color: product.color,
+    class1: product.class1 || undefined,
+    class2: product.class2 || undefined,
     sellingPrice: allowPriceView ? Number(product.sellingPrice || 0) : 0,
     hidePrices: !allowPriceView,
     inStock: totalStock > 0,

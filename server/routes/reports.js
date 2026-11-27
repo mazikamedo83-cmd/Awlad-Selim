@@ -105,6 +105,8 @@ router.get(
         productId: typeof q.productId === 'string' ? q.productId : undefined,
         productSearch: typeof q.productSearch === 'string' ? q.productSearch : undefined,
         barcode: typeof q.barcode === 'string' ? q.barcode : undefined,
+        class1: typeof q.class1 === 'string' ? q.class1 : undefined,
+        class2: typeof q.class2 === 'string' ? q.class2 : undefined,
         partyKey: typeof q.partyKey === 'string' ? q.partyKey : (typeof q.partyFilter === 'string' ? q.partyFilter : undefined),
         partyFilter: typeof q.partyFilter === 'string' ? q.partyFilter : undefined,
         customerId: typeof q.customerId === 'string' ? q.customerId : undefined,

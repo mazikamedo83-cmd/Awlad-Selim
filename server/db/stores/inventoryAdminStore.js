@@ -54,6 +54,7 @@ import {
   mapPgInvoiceRow,
   mapPgPurchaseReturnRequestRow,
   mapPgSalesReturnRequestRow,
+  mapPgRepCustodyReturnRequestRow,
   isoDateOnly,
   isoTimestamp,
 } from './mode.js';
@@ -199,6 +200,8 @@ export async function getStaffBootstrapData(actor) {
       prReqItemRes,
       srReqRes,
       srReqItemRes,
+      rcrReqRes,
+      rcrReqItemRes,
     ] = await Promise.all([
       isAdminOrUserMgr ? pool.query('SELECT * FROM users ORDER BY created_at DESC') : Promise.resolve({ rows: [] }),
       pool.query('SELECT * FROM warehouses ORDER BY created_at ASC'),
@@ -264,6 +267,12 @@ export async function getStaffBootstrapData(actor) {
           : pool.query('SELECT * FROM sales_return_requests ORDER BY created_at DESC')
         : Promise.resolve({ rows: [] }),
       canViewSalesReturnReqs ? pool.query('SELECT * FROM sales_return_request_items') : Promise.resolve({ rows: [] }),
+      isRep
+        ? repProfile?.id
+          ? pool.query('SELECT * FROM rep_custody_return_requests WHERE representative_id = $1 ORDER BY created_at DESC', [repProfile.id])
+          : Promise.resolve({ rows: [] })
+        : pool.query('SELECT * FROM rep_custody_return_requests ORDER BY created_at DESC LIMIT 500'),
+      pool.query('SELECT * FROM rep_custody_return_request_items'),
     ]);
 
     const retItemsMap = new Map();
@@ -314,6 +323,13 @@ export async function getStaffBootstrapData(actor) {
         executedQty: it.executed_qty ?? undefined,
       });
       ritItemsMap.set(it.transfer_id, list);
+    }
+
+    const rcrItemsMap = new Map();
+    for (const it of rcrReqItemRes?.rows || []) {
+      const list = rcrItemsMap.get(it.request_id) || [];
+      list.push(it);
+      rcrItemsMap.set(it.request_id, list);
     }
 
     const sRow = stRes.rows[0];
@@ -499,7 +515,12 @@ export async function getStaffBootstrapData(actor) {
             createdAt: isoTimestamp(i.created_at),
           }))
         : [],
-      representatives: repRes.rows.map((r) =>
+      representatives: (isRep
+        ? repProfile
+          ? repRes.rows.filter((r) => r.id === repProfile.id)
+          : []
+        : repRes.rows
+      ).map((r) =>
         canViewAllRepresentatives(actor)
           ? {
               id: r.id,
@@ -523,7 +544,6 @@ export async function getStaffBootstrapData(actor) {
               phone: r.phone || '',
               vehicleNumber: r.vehicle_number || '',
               warehouseId: r.warehouse_id || undefined,
-              openingBalance: Number(r.opening_balance || 0),
               currentBalance: Number(r.current_balance || 0),
               status: r.status || 'active',
             }
@@ -590,9 +610,14 @@ export async function getStaffBootstrapData(actor) {
           reviewedAt: rit.reviewed_at ? isoTimestamp(rit.reviewed_at) : undefined,
           dispatchedBy: rit.dispatched_by || undefined,
           dispatchedAt: rit.dispatched_at ? isoTimestamp(rit.dispatched_at) : undefined,
+          sentBy: rit.sent_by || rit.dispatched_by || rit.created_by || undefined,
+          sentAt: rit.sent_at ? isoTimestamp(rit.sent_at) : (rit.dispatched_at ? isoTimestamp(rit.dispatched_at) : undefined),
+          durationMs: rit.duration_ms !== null && rit.duration_ms !== undefined ? Number(rit.duration_ms) : undefined,
           executedAt: rit.executed_at ? isoTimestamp(rit.executed_at) : undefined,
           receivedBy: rit.received_by || undefined,
           receivedAt: rit.received_at ? isoTimestamp(rit.received_at) : undefined,
+          confirmedByUserId: rit.confirmed_by_user_id || undefined,
+          confirmationNotes: rit.confirmation_notes || undefined,
         })),
       repCustodyOperations: (custodyOpsRes?.rows || []).map((op) => ({
         id: op.id,
@@ -618,6 +643,9 @@ export async function getStaffBootstrapData(actor) {
         createdBy: op.created_by,
         createdAt: isoTimestamp(op.created_at),
       })),
+      repCustodyReturnRequests: (rcrReqRes?.rows || []).map((r) =>
+        mapPgRepCustodyReturnRequestRow(r, rcrItemsMap.get(r.id) || [])
+      ),
       customerItemOrders: orders,
       employees: !canViewHrData
         ? []
@@ -821,7 +849,12 @@ export async function getStaffBootstrapData(actor) {
     installments: canViewChequesInstallments ? db.installments : [],
     representatives: canViewAllRepresentatives(actor)
       ? db.representatives
-      : (db.representatives || []).map((r) => ({
+      : (isRep
+          ? repProfile
+            ? (db.representatives || []).filter((r) => r.id === repProfile.id)
+            : []
+          : db.representatives || []
+        ).map((r) => ({
           id: r.id,
           userId: r.userId || undefined,
           identityId: r.identityId || undefined,
@@ -829,7 +862,6 @@ export async function getStaffBootstrapData(actor) {
           phone: r.phone || '',
           vehicleNumber: r.vehicleNumber || '',
           warehouseId: r.warehouseId || undefined,
-          openingBalance: Number(r.openingBalance || 0),
           currentBalance: Number(r.currentBalance || 0),
           status: r.status || 'active',
         })),
@@ -854,6 +886,9 @@ export async function getStaffBootstrapData(actor) {
     repCustodyOperations: isRep
       ? (repProfile ? (db.repCustodyOperations || []).filter((op) => op.representativeId === repProfile.id) : [])
       : (db.repCustodyOperations || []),
+    repCustodyReturnRequests: isRep
+      ? (repProfile ? (db.repCustodyReturnRequests || []).filter((r) => r.representativeId === repProfile.id) : [])
+      : (db.repCustodyReturnRequests || []),
     customerItemOrders: await listOrders({ user: actor, representativeProfile: repProfile }),
     orderAdvancePayments: (isRep
       ? (db.orderAdvancePayments || []).filter((a) => scopedCustomerIdSet.has(a.customerId))
@@ -2017,10 +2052,16 @@ export async function createRepItemTransfer(payload, actor, idempotencyKey = '')
     recordId: id,
   });
 
+  let dispatchDurationMs = undefined;
+  let dispatchedAtIso = undefined;
   if ((transferMode === 'custody_dispatch' || transferMode === 'rep_to_rep') && payload.autoDispatch === true) {
+    const t0 = new Date(now).getTime();
     await updateRepItemTransferStatus(id, { status: 'executed', notes: payload.notes || '' }, actor);
+    dispatchedAtIso = nowIso();
+    dispatchDurationMs = Math.max(0, new Date(dispatchedAtIso).getTime() - t0);
   }
 
+  const isAutoDisp = (transferMode === 'custody_dispatch' || transferMode === 'rep_to_rep') && payload.autoDispatch === true;
   const outObj = {
     ...payload,
     representativeId,
@@ -2035,9 +2076,12 @@ export async function createRepItemTransfer(payload, actor, idempotencyKey = '')
     id,
     requestNumber,
     date: dateStr,
-    status: (transferMode === 'custody_dispatch' || transferMode === 'rep_to_rep') && payload.autoDispatch === true ? 'executed' : 'pending',
-    dispatchedBy: (transferMode === 'custody_dispatch' || transferMode === 'rep_to_rep') && payload.autoDispatch === true ? actor.fullName : undefined,
-    dispatchedAt: (transferMode === 'custody_dispatch' || transferMode === 'rep_to_rep') && payload.autoDispatch === true ? nowIso() : undefined,
+    status: isAutoDisp ? 'executed' : 'pending',
+    dispatchedBy: isAutoDisp ? actor.fullName : undefined,
+    dispatchedAt: isAutoDisp ? dispatchedAtIso : undefined,
+    sentBy: isAutoDisp ? actor.fullName : undefined,
+    sentAt: isAutoDisp ? dispatchedAtIso : undefined,
+    durationMs: isAutoDisp ? dispatchDurationMs : undefined,
     createdBy: actor.fullName,
     createdAt: now,
   };
@@ -2282,11 +2326,23 @@ export async function updateRepItemTransferStatus(requestId, { status, approvedI
             );
           }
         }
+        const confirmNotes = String(notes || '').trim();
         await client.query(
-          `UPDATE rep_item_transfers SET status = 'received', notes = CASE WHEN $1 <> '' THEN $1 ELSE notes END, received_by = $2, received_at = $3 WHERE id = $4`,
-          [String(notes || ''), actor.fullName, now, requestId]
+          `UPDATE rep_item_transfers
+           SET status = 'received',
+               notes = CASE WHEN $1 <> '' THEN $1 ELSE notes END,
+               received_by = $2,
+               received_at = $3,
+               confirmed_by_user_id = $4,
+               confirmation_notes = CASE WHEN $1 <> '' THEN $1 ELSE confirmation_notes END
+           WHERE id = $5`,
+          [confirmNotes, actor.fullName, now, actor.id, requestId]
         );
       } else {
+        const calcDuration =
+          status === 'executed'
+            ? Math.max(0, new Date(now).getTime() - new Date(req.created_at || now).getTime())
+            : null;
         await client.query(
           `UPDATE rep_item_transfers
            SET status = $1,
@@ -2295,9 +2351,12 @@ export async function updateRepItemTransferStatus(requestId, { status, approvedI
                reviewed_at = $4,
                executed_at = CASE WHEN $1 = 'executed' THEN $4 ELSE executed_at END,
                dispatched_by = CASE WHEN $1 = 'executed' AND transfer_mode IN ('custody_dispatch', 'rep_to_rep') THEN $3 ELSE dispatched_by END,
-               dispatched_at = CASE WHEN $1 = 'executed' AND transfer_mode IN ('custody_dispatch', 'rep_to_rep') THEN $4 ELSE dispatched_at END
-           WHERE id = $5`,
-          [status, String(notes || ''), actor.fullName, now, requestId]
+               dispatched_at = CASE WHEN $1 = 'executed' AND transfer_mode IN ('custody_dispatch', 'rep_to_rep') THEN $4 ELSE dispatched_at END,
+               sent_by = CASE WHEN $1 = 'executed' THEN $3 ELSE sent_by END,
+               sent_at = CASE WHEN $1 = 'executed' THEN $4 ELSE sent_at END,
+               duration_ms = CASE WHEN $1 = 'executed' THEN $5 ELSE duration_ms END
+           WHERE id = $6`,
+          [status, String(notes || ''), actor.fullName, now, calcDuration, requestId]
         );
       }
       const resPayload = { ok: true, requestId, status };
@@ -2486,11 +2545,16 @@ export async function updateRepItemTransferStatus(requestId, { status, approvedI
     if (status === 'received') {
       req.receivedBy = actor.fullName;
       req.receivedAt = now;
+      req.confirmedByUserId = actor.id;
+      if (notes) req.confirmationNotes = String(notes);
     } else {
       req.reviewedBy = actor.fullName;
       req.reviewedAt = now;
       if (status === 'executed') {
         req.executedAt = now;
+        req.sentBy = actor.fullName;
+        req.sentAt = now;
+        req.durationMs = Math.max(0, new Date(now).getTime() - new Date(req.createdAt || now).getTime());
         if (isTwoStageDispatch) {
           req.dispatchedBy = actor.fullName;
           req.dispatchedAt = now;
@@ -7804,6 +7868,8 @@ export async function getItemMovementReport(filters = {}, actor) {
   const warehouseIdFilter = filters.warehouseId && filters.warehouseId !== 'all' ? String(filters.warehouseId) : null;
   const movementTypeFilter = filters.movementType && filters.movementType !== 'all' ? String(filters.movementType) : null;
   const repIdFilter = filters.representativeId && filters.representativeId !== 'all' ? String(filters.representativeId) : null;
+  const class1Filter = filters.class1 && filters.class1 !== 'all' ? String(filters.class1).trim() : null;
+  const class2Filter = filters.class2 && filters.class2 !== 'all' ? String(filters.class2).trim() : null;
   const dateFrom = filters.dateFrom ? String(filters.dateFrom) : null;
   const dateTo = filters.dateTo ? String(filters.dateTo) : null;
   const search = filters.search ? String(filters.search).trim().toLowerCase() : '';
@@ -7934,9 +8000,16 @@ export async function getItemMovementReport(filters = {}, actor) {
   };
 
   const matchesRow = (row) => {
+    const prod = productMap.get(row.productId);
+    const rowClass1 = String(row.class1 || prod?.class1 || '').trim();
+    const rowClass2 = String(row.class2 || prod?.class2 || '').trim();
+    row.class1 = rowClass1;
+    row.class2 = rowClass2;
     if (productIdFilter && row.productId !== productIdFilter) return false;
     if (warehouseIdFilter && row.warehouseId !== warehouseIdFilter && row.targetWarehouseId !== warehouseIdFilter) return false;
     if (repIdFilter && row.representativeId !== repIdFilter) return false;
+    if (class1Filter && rowClass1 !== class1Filter) return false;
+    if (class2Filter && rowClass2 !== class2Filter) return false;
     if (dateFrom && row.date && row.date < dateFrom) return false;
     if (dateTo && row.date && row.date > dateTo) return false;
     if (search) {
@@ -7947,6 +8020,8 @@ export async function getItemMovementReport(filters = {}, actor) {
         row.representativeName,
         row.warehouseName,
         row.targetWarehouseName,
+        rowClass1,
+        rowClass2,
         row.notes,
       ]
         .filter(Boolean)
@@ -8317,7 +8392,14 @@ export async function getItemMovementReport(filters = {}, actor) {
   }
 
   // Compute Warehouse & Rep Custody Breakdown for selected product(s)
-  const targetProducts = selectedProduct ? [selectedProduct] : (boot.products || []).filter((p) => p.status === 'active');
+  const targetProducts = selectedProduct
+    ? [selectedProduct]
+    : (boot.products || []).filter((p) => {
+        if (p.status !== 'active') return false;
+        if (class1Filter && String(p.class1 || '').trim() !== class1Filter) return false;
+        if (class2Filter && String(p.class2 || '').trim() !== class2Filter) return false;
+        return true;
+      });
   const vanWarehouseToRep = new Map();
   for (const r of boot.representatives || []) {
     if (r.warehouseId) vanWarehouseToRep.set(r.warehouseId, r);
@@ -8377,6 +8459,8 @@ export async function getItemMovementReport(filters = {}, actor) {
       warehouseId: warehouseIdFilter || 'all',
       movementType: movementTypeFilter || 'all',
       representativeId: repIdFilter || 'all',
+      class1: class1Filter || 'all',
+      class2: class2Filter || 'all',
       dateFrom,
       dateTo,
       search,
@@ -8538,4 +8622,1145 @@ export async function getRepresentativeAccountStatement(repId, actor) {
   };
 }
 
+// ==============================================================================
+// Rep Custody Return Requests (طلبات إرجاع البضاعة من عهدة المندوب واعتمادها جزئياً أو كلياً)
+// ==============================================================================
+
+export async function listRepCustodyReturnRequests(actor) {
+  if (!actor || actor.role === 'customer') {
+    throw new AppError(403, 'غير مصرح للعملاء بعرض طلبات إرجاع العهدة', 'FORBIDDEN');
+  }
+  const isRep = actor.role === 'representative';
+  const repProfile = isRep ? await getRepresentativeByUserId(actor.id) : null;
+
+  if (await isPgMode()) {
+    const pool = getPool();
+    const [reqRes, itemRes] = await Promise.all([
+      isRep
+        ? repProfile?.id
+          ? pool.query('SELECT * FROM rep_custody_return_requests WHERE representative_id = $1 ORDER BY created_at DESC', [repProfile.id])
+          : Promise.resolve({ rows: [] })
+        : pool.query('SELECT * FROM rep_custody_return_requests ORDER BY created_at DESC LIMIT 500'),
+      pool.query('SELECT * FROM rep_custody_return_request_items'),
+    ]);
+    const itemMap = new Map();
+    for (const it of itemRes.rows) {
+      const list = itemMap.get(it.request_id) || [];
+      list.push(it);
+      itemMap.set(it.request_id, list);
+    }
+    return reqRes.rows.map((r) => mapPgRepCustodyReturnRequestRow(r, itemMap.get(r.id) || []));
+  }
+
+  const db = readJsonDatabase();
+  const list = (db.repCustodyReturnRequests || []).filter(
+    (r) => !isRep || (repProfile?.id && r.representativeId === repProfile.id)
+  );
+  return [...list].sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+}
+
+export async function createRepCustodyReturnRequest(payload, actor, idempotencyKey = '') {
+  if (!actor || actor.role === 'customer') {
+    throw new AppError(403, 'غير مصرح بإنشاء طلب إرجاع عهدة', 'FORBIDDEN');
+  }
+  if (
+    actor.role !== 'representative' &&
+    actor.role !== 'admin' &&
+    !actor.permissions?.canManageTransfers &&
+    !actor.permissions?.canManageReps &&
+    !actor.permissions?.canManageInventory
+  ) {
+    throw new AppError(403, 'ليس لديك صلاحية إنشاء طلب إرجاع عهدة', 'FORBIDDEN');
+  }
+
+  const rep = await resolveTargetRepAndVan(payload.representativeId, actor);
+  const rawItems = Array.isArray(payload.items) && payload.items.length
+    ? payload.items
+    : payload.productId
+    ? [{ productId: payload.productId, quantity: payload.quantity, unit: payload.unit, unitFactor: payload.unitFactor, notes: payload.notes }]
+    : [];
+  if (!rawItems.length) {
+    throw new AppError(400, 'يجب إضافة صنف واحد على الأقل لطلب إرجاع البضاعة', 'EMPTY_ITEMS');
+  }
+
+  const targetWarehouseId = String(payload.targetWarehouseId || '').trim();
+  if (!targetWarehouseId) {
+    throw new AppError(400, 'يجب اختيار المخزن المستلم للإرجاع', 'TARGET_WAREHOUSE_REQUIRED');
+  }
+  if (targetWarehouseId === rep.warehouseId) {
+    throw new AppError(400, 'لا يمكن إرجاع العهدة إلى مخزن سيارة المندوب نفسها', 'SAME_WAREHOUSE');
+  }
+
+  const dateStr = payload.date || todayIso();
+  const now = nowIso();
+  const endpoint = 'POST /api/inventory/rep-custody/return-requests';
+  const scopedIdem = buildScopedIdemKey(endpoint, actor, idempotencyKey || payload.idempotencyKey);
+
+  let out;
+  if (await isPgMode()) {
+    out = await withTransaction(async (client) => {
+      if (scopedIdem) {
+        const dup = await findPgIdempotency(client, scopedIdem);
+        if (dup?.request) return { request: dup.request, deduplicated: true };
+      }
+
+      const vanWh = (await client.query('SELECT id, name FROM warehouses WHERE id = $1 LIMIT 1', [rep.warehouseId])).rows[0];
+      const targetWh = (await client.query('SELECT id, name FROM warehouses WHERE id = $1 LIMIT 1', [targetWarehouseId])).rows[0];
+      if (!vanWh || !targetWh) throw new AppError(404, 'مخزن المندوب أو المخزن المستهدف غير موجود', 'WAREHOUSE_NOT_FOUND');
+
+      const seqRes = await client.query(`SELECT nextval('seq_rep_custody_return_req_no') AS n`);
+      const requestNumber = `RCR-${String(seqRes.rows[0]?.n || 1).padStart(5, '0')}`;
+      const reqId = generateServerId('RCR');
+
+      const resolvedItems = [];
+      for (let i = 0; i < rawItems.length; i++) {
+        const it = rawItems[i];
+        const qty = round3(it.requestedQty ?? it.quantity);
+        if (!it.productId || qty <= 0) {
+          throw new AppError(400, 'الصنف والكمية (أكبر من صفر) مطلوبان', 'INVALID_QUANTITY');
+        }
+        const pRow = (await client.query('SELECT * FROM products WHERE id = $1 LIMIT 1', [it.productId])).rows[0];
+        if (!pRow) throw new AppError(404, `الصنف غير موجود (${it.productId})`, 'PRODUCT_NOT_FOUND');
+        const uRes = await client.query('SELECT * FROM product_units WHERE product_id = $1', [pRow.id]);
+        const prod = mapPgProductRow(pRow, uRes.rows);
+        const unitName = String(it.unit || prod.baseUnit || 'قطعة');
+        const unitObj = (prod.units || []).find((u) => u.name === unitName);
+        const factor = unitObj
+          ? Math.max(0.001, Number(unitObj.conversionFactor || 1))
+          : Math.max(0.001, Number(it.unitFactor || 1));
+        const baseQty = round3(qty * factor);
+        const availInVan = round3(Number(prod.stockPerWarehouse?.[vanWh.id] || 0));
+        if (availInVan < baseQty) {
+          throw new AppError(
+            409,
+            `الرصيد المتاح بعهدة المندوب للصنف (${prod.name}) هو ${availInVan} وأقل من المطلوب إرجاعه (${baseQty})`,
+            'INSUFFICIENT_CUSTODY_STOCK'
+          );
+        }
+        resolvedItems.push({
+          id: `${reqId}-RI-${i + 1}`,
+          productId: prod.id,
+          productName: prod.name,
+          barcode: prod.barcode || '',
+          unit: unitName,
+          unitFactor: factor,
+          requestedQty: qty,
+          remainingCustodyQty: round3(availInVan / factor),
+          notes: String(it.notes || '').trim(),
+        });
+      }
+
+      await client.query(
+        `INSERT INTO rep_custody_return_requests (
+          id, request_number, date, representative_id, representative_name,
+          van_warehouse_id, van_warehouse_name, target_warehouse_id, target_warehouse_name,
+          requested_by_user_id, requested_by_name, notes, status, sent_at, created_at, updated_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'pending',$13,$13,$13)`,
+        [
+          reqId,
+          requestNumber,
+          dateStr,
+          rep.id,
+          rep.name,
+          vanWh.id,
+          vanWh.name,
+          targetWh.id,
+          targetWh.name,
+          actor.id,
+          actor.fullName,
+          String(payload.notes || '').trim(),
+          now,
+        ]
+      );
+
+      for (const item of resolvedItems) {
+        await client.query(
+          `INSERT INTO rep_custody_return_request_items (
+            id, request_id, product_id, product_name, barcode, unit, unit_factor, requested_qty, remaining_custody_qty, notes
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+          [
+            item.id,
+            reqId,
+            item.productId,
+            item.productName,
+            item.barcode,
+            item.unit,
+            item.unitFactor,
+            item.requestedQty,
+            item.remainingCustodyQty,
+            item.notes,
+          ]
+        );
+      }
+
+      const hRow = (await client.query('SELECT * FROM rep_custody_return_requests WHERE id = $1', [reqId])).rows[0];
+      const iRows = (await client.query('SELECT * FROM rep_custody_return_request_items WHERE request_id = $1', [reqId])).rows;
+      const request = mapPgRepCustodyReturnRequestRow(hRow, iRows);
+      if (scopedIdem) {
+        await savePgIdempotency(client, scopedIdem, actor, endpoint, { request });
+      }
+      return { request, deduplicated: false };
+    });
+  } else {
+    out = await withJsonTransaction((db) => {
+      if (scopedIdem) {
+        const dup = findJsonIdempotency(scopedIdem);
+        if (dup?.request) return { request: dup.request, deduplicated: true };
+      }
+
+      const vanWh = (db.warehouses || []).find((w) => w.id === rep.warehouseId);
+      const targetWh = (db.warehouses || []).find((w) => w.id === targetWarehouseId);
+      if (!vanWh || !targetWh) throw new AppError(404, 'مخزن المندوب أو المخزن المستهدف غير موجود', 'WAREHOUSE_NOT_FOUND');
+
+      db.repCustodyReturnRequests = db.repCustodyReturnRequests || [];
+      const seqNum = nextJsonSequence(db, 'repCustodyReturnReqNo', db.repCustodyReturnRequests, 'requestNumber', /(\d+)$/);
+      const requestNumber = `RCR-${String(seqNum).padStart(5, '0')}`;
+      const reqId = generateServerId('RCR');
+
+      const resolvedItems = [];
+      for (let i = 0; i < rawItems.length; i++) {
+        const it = rawItems[i];
+        const qty = round3(it.requestedQty ?? it.quantity);
+        if (!it.productId || qty <= 0) {
+          throw new AppError(400, 'الصنف والكمية (أكبر من صفر) مطلوبان', 'INVALID_QUANTITY');
+        }
+        const prod = (db.products || []).find((p) => p.id === it.productId);
+        if (!prod) throw new AppError(404, `الصنف غير موجود (${it.productId})`, 'PRODUCT_NOT_FOUND');
+        const unitName = String(it.unit || prod.baseUnit || 'قطعة');
+        const unitObj = (prod.units || []).find((u) => u.name === unitName);
+        const factor = unitObj
+          ? Math.max(0.001, Number(unitObj.conversionFactor || 1))
+          : Math.max(0.001, Number(it.unitFactor || 1));
+        const baseQty = round3(qty * factor);
+        const availInVan = round3(Number(prod.stockPerWarehouse?.[vanWh.id] || 0));
+        if (availInVan < baseQty) {
+          throw new AppError(
+            409,
+            `الرصيد المتاح بعهدة المندوب للصنف (${prod.name}) هو ${availInVan} وأقل من المطلوب إرجاعه (${baseQty})`,
+            'INSUFFICIENT_CUSTODY_STOCK'
+          );
+        }
+        resolvedItems.push({
+          id: `${reqId}-RI-${i + 1}`,
+          productId: prod.id,
+          productName: prod.name,
+          barcode: prod.barcode || '',
+          unit: unitName,
+          unitFactor: factor,
+          requestedQty: qty,
+          remainingCustodyQty: round3(availInVan / factor),
+          notes: String(it.notes || '').trim(),
+        });
+      }
+
+      const request = {
+        id: reqId,
+        requestNumber,
+        date: dateStr,
+        representativeId: rep.id,
+        representativeName: rep.name,
+        vanWarehouseId: vanWh.id,
+        vanWarehouseName: vanWh.name,
+        targetWarehouseId: targetWh.id,
+        targetWarehouseName: targetWh.name,
+        requestedByUserId: actor.id,
+        requestedByName: actor.fullName,
+        notes: String(payload.notes || '').trim(),
+        status: 'pending',
+        sentAt: now,
+        items: resolvedItems,
+        createdAt: now,
+        updatedAt: now,
+      };
+      db.repCustodyReturnRequests.unshift(request);
+      if (scopedIdem) {
+        saveJsonIdempotency(scopedIdem, { request });
+      }
+      return { request, deduplicated: false };
+    });
+  }
+
+  if (!out.deduplicated) {
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `إرسال طلب إرجاع بضاعة من عهدة المندوب ${rep.name} (${out.request.requestNumber})`,
+      module: 'عهدة المنادوبين',
+      recordId: out.request.id,
+    });
+  }
+  return out;
+}
+
+export async function approveRepCustodyReturnRequest(requestId, payload = {}, actor, idempotencyKey = '') {
+  if (!actor || actor.role === 'customer' || actor.role === 'representative') {
+    throw new AppError(403, 'اعتماد طلبات إرجاع العهدة متاح للإدارة وموظفي المخزن المخولين فقط', 'FORBIDDEN');
+  }
+  const canApprove =
+    actor.role === 'admin' ||
+    Boolean(actor.permissions?.canApprove) ||
+    Boolean(actor.permissions?.canManageInventory) ||
+    Boolean(actor.permissions?.canManageTransfers) ||
+    Boolean(actor.permissions?.canManageReps);
+  if (!canApprove) {
+    throw new AppError(403, 'ليس لديك صلاحية مراجعة واعتماد طلبات إرجاع العهدة', 'FORBIDDEN');
+  }
+
+  const now = nowIso();
+  const dateStr = todayIso();
+  const endpoint = `POST /api/inventory/rep-custody/return-requests/${requestId}/approve`;
+  const scopedIdem = buildScopedIdemKey(endpoint, actor, idempotencyKey || payload?.idempotencyKey);
+  const reviewNotes = String(payload?.reviewNotes || payload?.notes || '').trim();
+  const inputItems = Array.isArray(payload?.items) ? payload.items : [];
+
+  let out;
+  if (await isPgMode()) {
+    out = await withTransaction(async (client) => {
+      if (scopedIdem) {
+        const dup = await findPgIdempotency(client, scopedIdem);
+        if (dup?.request) return { request: dup.request, operations: dup.operations || [], deduplicated: true };
+      }
+
+      const rRes = await client.query('SELECT * FROM rep_custody_return_requests WHERE id = $1 FOR UPDATE', [requestId]);
+      const req = rRes.rows[0];
+      if (!req) throw new AppError(404, 'طلب إرجاع البضاعة غير موجود', 'NOT_FOUND');
+      if (req.status !== 'pending' && req.status !== 'under_review') {
+        throw new AppError(409, 'تم البت في طلب إرجاع البضاعة مسبقاً', 'ALREADY_DECIDED');
+      }
+
+      const itemRows = (await client.query('SELECT * FROM rep_custody_return_request_items WHERE request_id = $1 ORDER BY id ASC', [requestId])).rows;
+      const vanWh = (await client.query('SELECT id, name FROM warehouses WHERE id = $1', [req.van_warehouse_id])).rows[0];
+      const targetWh = (await client.query('SELECT id, name FROM warehouses WHERE id = $1', [req.target_warehouse_id])).rows[0];
+      if (!vanWh || !targetWh) throw new AppError(404, 'المستودع غير موجود', 'WAREHOUSE_NOT_FOUND');
+
+      const actorCtx = await resolveActorIdentityPgTx(client, actor);
+      const operations = [];
+      let totalApproved = 0;
+      let allMatchRequested = true;
+
+      for (const row of itemRows) {
+        const override = inputItems.find((x) => (x.id && x.id === row.id) || x.productId === row.product_id);
+        const requestedQty = Number(row.requested_qty || 0);
+        const actualReceivedQty = override && override.actualReceivedQty !== undefined
+          ? round3(override.actualReceivedQty)
+          : requestedQty;
+        const approvedQty = override && override.approvedQty !== undefined
+          ? round3(override.approvedQty)
+          : actualReceivedQty;
+
+        if (actualReceivedQty < 0 || approvedQty < 0) {
+          throw new AppError(400, 'الكميات المستلمة والمعتمدة يجب أن لا تقل عن صفر', 'INVALID_QUANTITY');
+        }
+        if (approvedQty > actualReceivedQty) {
+          throw new AppError(400, `الكمية المعتمدة للصنف (${row.product_name}) لا يمكن أن تتجاوز الكمية المستلمة فعلياً (${actualReceivedQty})`, 'INVALID_QUANTITY');
+        }
+        if (approvedQty > requestedQty) {
+          throw new AppError(400, `الكمية المعتمدة للصنف (${row.product_name}) لا يمكن أن تتجاوز الكمية المطلوبة (${requestedQty})`, 'INVALID_QUANTITY');
+        }
+
+        const rejectedQty = round3(Math.max(0, requestedQty - approvedQty));
+        if (approvedQty < requestedQty) allMatchRequested = false;
+        totalApproved = round3(totalApproved + approvedQty);
+
+        const pRes = await client.query('SELECT * FROM products WHERE id = $1 FOR UPDATE', [row.product_id]);
+        const prod = pRes.rows[0];
+        if (!prod) throw new AppError(404, `الصنف غير موجود (${row.product_name})`, 'PRODUCT_NOT_FOUND');
+
+        const factor = Math.max(0.001, Number(row.unit_factor || 1));
+        const baseQty = round3(approvedQty * factor);
+        const stockMap = { ...(prod.stock_per_warehouse || {}) };
+        const vanAvail = round3(Number(stockMap[vanWh.id] || 0));
+
+        if (approvedQty > 0) {
+          if (vanAvail < baseQty) {
+            throw new AppError(
+              409,
+              `الرصيد المتاح بعهدة المندوب للصنف (${prod.name}) هو ${vanAvail} وأقل من الكمية المعتمدة للإرجاع (${baseQty})`,
+              'INSUFFICIENT_CUSTODY_STOCK'
+            );
+          }
+          stockMap[vanWh.id] = round3(vanAvail - baseQty);
+          stockMap[targetWh.id] = round3(Number(stockMap[targetWh.id] || 0) + baseQty);
+          await client.query('UPDATE products SET stock_per_warehouse = $1, updated_at = $2 WHERE id = $3', [
+            JSON.stringify(stockMap),
+            now,
+            prod.id,
+          ]);
+
+          const opId = generateServerId('RCO');
+          const seqRes = await client.query(`SELECT nextval('seq_rep_custody_op_no') AS n`);
+          const opNo = `RCO-${String(seqRes.rows[0]?.n || 1).padStart(5, '0')}`;
+          await client.query(
+            `INSERT INTO rep_custody_operations (id, operation_number, date, representative_id, representative_name, operation_type, product_id, product_name, unit, unit_factor, quantity, base_quantity, warehouse_id, warehouse_name, notes, status, created_by_user_id, created_by, actor_identity_id, actor_employee_id, acting_role, created_at)
+             VALUES ($1,$2,$3,$4,$5,'returned_to_warehouse',$6,$7,$8,$9,$10,$11,$12,$13,$14,'approved',$15,$16,$17,$18,$19,$20)`,
+            [
+              opId,
+              opNo,
+              dateStr,
+              req.representative_id,
+              req.representative_name,
+              prod.id,
+              prod.name,
+              row.unit,
+              factor,
+              approvedQty,
+              baseQty,
+              targetWh.id,
+              targetWh.name,
+              `اعتماد طلب إرجاع عهدة (${req.request_number})${reviewNotes ? ` - ${reviewNotes}` : ''}`,
+              actor.id,
+              actor.fullName,
+              actorCtx.actorIdentityId || null,
+              actorCtx.actorEmployeeId || null,
+              actorCtx.actingRole || actor.role || null,
+              now,
+            ]
+          );
+          operations.push({ id: opId, operationNumber: opNo, productId: prod.id, quantity: approvedQty });
+
+          const mvId = generateServerId('SM');
+          await client.query(
+            `INSERT INTO stock_movements (id, movement_number, date, product_id, product_name, warehouse_id, warehouse_name, target_warehouse_id, target_warehouse_name, movement_type, quantity, unit, unit_factor, unit_cost, balance_after, related_doc_type, related_doc_id, related_doc_number, notes, created_by_user_id, created_by, actor_identity_id, actor_employee_id, acting_role, created_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'custody_return',$10,$11,$12,$13,$14,'rep_custody_return_request',$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
+            [
+              mvId,
+              mvId,
+              dateStr,
+              prod.id,
+              prod.name,
+              vanWh.id,
+              vanWh.name,
+              targetWh.id,
+              targetWh.name,
+              baseQty,
+              row.unit,
+              factor,
+              prod.purchase_price,
+              stockMap[vanWh.id],
+              req.id,
+              req.request_number,
+              `اعتماد إرجاع عهدة المندوب ${req.representative_name} (${req.request_number})`,
+              actor.id,
+              actor.fullName,
+              actorCtx.actorIdentityId || null,
+              actorCtx.actorEmployeeId || null,
+              actorCtx.actingRole || actor.role || null,
+              now,
+            ]
+          );
+        }
+
+        const remainingCustodyQty = round3(Math.max(0, Number(stockMap[vanWh.id] || 0)) / factor);
+        await client.query(
+          `UPDATE rep_custody_return_request_items
+           SET actual_received_qty = $1, approved_qty = $2, rejected_qty = $3, remaining_custody_qty = $4,
+               notes = CASE WHEN $5 <> '' THEN $5 ELSE notes END
+           WHERE id = $6`,
+          [actualReceivedQty, approvedQty, rejectedQty, remainingCustodyQty, String(override?.notes || '').trim(), row.id]
+        );
+      }
+
+      const finalStatus = totalApproved <= 0 ? 'rejected' : allMatchRequested ? 'approved' : 'partially_approved';
+      await client.query(
+        `UPDATE rep_custody_return_requests
+         SET status = $1,
+             reviewed_by_user_id = $2,
+             reviewed_by_name = $3,
+             reviewed_at = $4,
+             approved_at = CASE WHEN $1 IN ('approved', 'partially_approved') THEN $4 ELSE approved_at END,
+             review_notes = $5,
+             updated_at = $4
+         WHERE id = $6`,
+        [finalStatus, actor.id, actor.fullName, now, reviewNotes, requestId]
+      );
+
+      const nextHeader = (await client.query('SELECT * FROM rep_custody_return_requests WHERE id = $1', [requestId])).rows[0];
+      const nextItems = (await client.query('SELECT * FROM rep_custody_return_request_items WHERE request_id = $1 ORDER BY id ASC', [requestId])).rows;
+      const request = mapPgRepCustodyReturnRequestRow(nextHeader, nextItems);
+      if (scopedIdem) {
+        await savePgIdempotency(client, scopedIdem, actor, endpoint, { request, operations });
+      }
+      return { request, operations, deduplicated: false };
+    });
+  } else {
+    out = await withJsonTransaction((db) => {
+      if (scopedIdem) {
+        const dup = findJsonIdempotency(scopedIdem);
+        if (dup?.request) return { request: dup.request, operations: dup.operations || [], deduplicated: true };
+      }
+
+      db.repCustodyReturnRequests = db.repCustodyReturnRequests || [];
+      const req = db.repCustodyReturnRequests.find((r) => r.id === requestId);
+      if (!req) throw new AppError(404, 'طلب إرجاع البضاعة غير موجود', 'NOT_FOUND');
+      if (req.status !== 'pending' && req.status !== 'under_review') {
+        throw new AppError(409, 'تم البت في طلب إرجاع البضاعة مسبقاً', 'ALREADY_DECIDED');
+      }
+
+      const vanWh = (db.warehouses || []).find((w) => w.id === req.vanWarehouseId);
+      const targetWh = (db.warehouses || []).find((w) => w.id === req.targetWarehouseId);
+      if (!vanWh || !targetWh) throw new AppError(404, 'المستودع غير موجود', 'WAREHOUSE_NOT_FOUND');
+
+      const actorCtxJson = resolveActorIdentityJsonTx(db, actor);
+      const operations = [];
+      let totalApproved = 0;
+      let allMatchRequested = true;
+
+      for (const row of req.items || []) {
+        const override = inputItems.find((x) => (x.id && x.id === row.id) || x.productId === row.productId);
+        const requestedQty = Number(row.requestedQty || 0);
+        const actualReceivedQty = override && override.actualReceivedQty !== undefined
+          ? round3(override.actualReceivedQty)
+          : requestedQty;
+        const approvedQty = override && override.approvedQty !== undefined
+          ? round3(override.approvedQty)
+          : actualReceivedQty;
+
+        if (actualReceivedQty < 0 || approvedQty < 0) {
+          throw new AppError(400, 'الكميات المستلمة والمعتمدة يجب أن لا تقل عن صفر', 'INVALID_QUANTITY');
+        }
+        if (approvedQty > actualReceivedQty) {
+          throw new AppError(400, `الكمية المعتمدة للصنف (${row.productName}) لا يمكن أن تتجاوز الكمية المستلمة فعلياً (${actualReceivedQty})`, 'INVALID_QUANTITY');
+        }
+        if (approvedQty > requestedQty) {
+          throw new AppError(400, `الكمية المعتمدة للصنف (${row.productName}) لا يمكن أن تتجاوز الكمية المطلوبة (${requestedQty})`, 'INVALID_QUANTITY');
+        }
+
+        const rejectedQty = round3(Math.max(0, requestedQty - approvedQty));
+        if (approvedQty < requestedQty) allMatchRequested = false;
+        totalApproved = round3(totalApproved + approvedQty);
+
+        const prod = (db.products || []).find((p) => p.id === row.productId);
+        if (!prod) throw new AppError(404, `الصنف غير موجود (${row.productName})`, 'PRODUCT_NOT_FOUND');
+
+        const factor = Math.max(0.001, Number(row.unitFactor || 1));
+        const baseQty = round3(approvedQty * factor);
+        prod.stockPerWarehouse = prod.stockPerWarehouse || {};
+        const vanAvail = round3(Number(prod.stockPerWarehouse[vanWh.id] || 0));
+
+        if (approvedQty > 0) {
+          if (vanAvail < baseQty) {
+            throw new AppError(
+              409,
+              `الرصيد المتاح بعهدة المندوب للصنف (${prod.name}) هو ${vanAvail} وأقل من الكمية المعتمدة للإرجاع (${baseQty})`,
+              'INSUFFICIENT_CUSTODY_STOCK'
+            );
+          }
+          prod.stockPerWarehouse[vanWh.id] = round3(vanAvail - baseQty);
+          prod.stockPerWarehouse[targetWh.id] = round3(Number(prod.stockPerWarehouse[targetWh.id] || 0) + baseQty);
+
+          db.repCustodyOperations = db.repCustodyOperations || [];
+          const seqNum = nextJsonSequence(db, 'repCustodyOpNo', db.repCustodyOperations, 'operationNumber', /(\d+)$/);
+          const opNo = `RCO-${String(seqNum).padStart(5, '0')}`;
+          const opObj = {
+            id: generateServerId('RCO'),
+            operationNumber: opNo,
+            date: dateStr,
+            representativeId: req.representativeId,
+            representativeName: req.representativeName,
+            operationType: 'returned_to_warehouse',
+            productId: prod.id,
+            productName: prod.name,
+            unit: row.unit,
+            unitFactor: factor,
+            quantity: approvedQty,
+            baseQuantity: baseQty,
+            warehouseId: targetWh.id,
+            warehouseName: targetWh.name,
+            notes: `اعتماد طلب إرجاع عهدة (${req.requestNumber})${reviewNotes ? ` - ${reviewNotes}` : ''}`,
+            status: 'approved',
+            createdByUserId: actor.id,
+            createdBy: actor.fullName,
+            actorIdentityId: actorCtxJson.actorIdentityId,
+            actorEmployeeId: actorCtxJson.actorEmployeeId,
+            actingRole: actorCtxJson.actingRole,
+            createdAt: now,
+          };
+          db.repCustodyOperations.unshift(opObj);
+          operations.push({ id: opObj.id, operationNumber: opNo, productId: prod.id, quantity: approvedQty });
+
+          const mvId = generateServerId('SM');
+          db.stockMovements.unshift({
+            id: mvId,
+            movementNumber: mvId,
+            date: dateStr,
+            type: 'custody_return',
+            productId: prod.id,
+            productName: prod.name,
+            warehouseId: vanWh.id,
+            warehouseName: vanWh.name,
+            targetWarehouseId: targetWh.id,
+            targetWarehouseName: targetWh.name,
+            quantity: baseQty,
+            unit: row.unit,
+            unitFactor: factor,
+            unitCost: prod.purchasePrice,
+            balanceAfter: prod.stockPerWarehouse[vanWh.id],
+            relatedDocType: 'rep_custody_return_request',
+            referenceId: req.id,
+            referenceNumber: req.requestNumber,
+            notes: `اعتماد إرجاع عهدة المندوب ${req.representativeName} (${req.requestNumber})`,
+            createdByUserId: actor.id,
+            createdBy: actor.fullName,
+            actorIdentityId: actorCtxJson.actorIdentityId,
+            actorEmployeeId: actorCtxJson.actorEmployeeId,
+            actingRole: actorCtxJson.actingRole,
+            createdAt: now,
+          });
+        }
+
+        row.actualReceivedQty = actualReceivedQty;
+        row.approvedQty = approvedQty;
+        row.rejectedQty = rejectedQty;
+        row.remainingCustodyQty = round3(Math.max(0, Number(prod.stockPerWarehouse[vanWh.id] || 0)) / factor);
+        if (override?.notes) row.notes = String(override.notes).trim();
+      }
+
+      const finalStatus = totalApproved <= 0 ? 'rejected' : allMatchRequested ? 'approved' : 'partially_approved';
+      req.status = finalStatus;
+      req.reviewedByUserId = actor.id;
+      req.reviewedByName = actor.fullName;
+      req.reviewedAt = now;
+      if (finalStatus !== 'rejected') req.approvedAt = now;
+      req.reviewNotes = reviewNotes;
+      req.updatedAt = now;
+
+      if (scopedIdem) {
+        saveJsonIdempotency(scopedIdem, { request: req, operations });
+      }
+      return { request: req, operations, deduplicated: false };
+    });
+  }
+
+  if (!out.deduplicated) {
+    await recordAuditLog({
+      userId: actor.id,
+      userName: actor.fullName,
+      action: `مراجعة واعتماد طلب إرجاع عهدة (${out.request.requestNumber}) بالحالة: ${out.request.status}`,
+      module: 'عهدة المنادوبين',
+      recordId: out.request.id,
+    });
+  }
+  return out;
+}
+
+export async function rejectRepCustodyReturnRequest(requestId, payload = {}, actor) {
+  if (!actor || actor.role === 'customer' || actor.role === 'representative') {
+    throw new AppError(403, 'رفض طلبات إرجاع العهدة متاح للإدارة فقط', 'FORBIDDEN');
+  }
+  const canApprove =
+    actor.role === 'admin' ||
+    Boolean(actor.permissions?.canApprove) ||
+    Boolean(actor.permissions?.canManageInventory) ||
+    Boolean(actor.permissions?.canManageTransfers) ||
+    Boolean(actor.permissions?.canManageReps);
+  if (!canApprove) {
+    throw new AppError(403, 'ليس لديك صلاحية رفض طلبات إرجاع العهدة', 'FORBIDDEN');
+  }
+  const reason = String(payload?.reason || payload?.rejectionReason || '').trim();
+  if (!reason) throw new AppError(400, 'يرجى إدخال سبب رفض طلب الإرجاع', 'REASON_REQUIRED');
+  const now = nowIso();
+
+  let request;
+  if (await isPgMode()) {
+    request = await withTransaction(async (client) => {
+      const rRes = await client.query('SELECT * FROM rep_custody_return_requests WHERE id = $1 FOR UPDATE', [requestId]);
+      const req = rRes.rows[0];
+      if (!req) throw new AppError(404, 'طلب إرجاع البضاعة غير موجود', 'NOT_FOUND');
+      if (req.status !== 'pending' && req.status !== 'under_review') {
+        throw new AppError(409, 'تم البت في طلب إرجاع البضاعة مسبقاً', 'ALREADY_DECIDED');
+      }
+      const items = (await client.query('SELECT * FROM rep_custody_return_request_items WHERE request_id = $1', [requestId])).rows;
+      for (const row of items) {
+        const pRow = (await client.query('SELECT stock_per_warehouse FROM products WHERE id = $1 LIMIT 1', [row.product_id])).rows[0];
+        const factor = Math.max(0.001, Number(row.unit_factor || 1));
+        const vanAvail = round3(Number(pRow?.stock_per_warehouse?.[req.van_warehouse_id] || 0));
+        await client.query(
+          `UPDATE rep_custody_return_request_items
+           SET actual_received_qty = 0, approved_qty = 0, rejected_qty = requested_qty, remaining_custody_qty = $1
+           WHERE id = $2`,
+          [round3(vanAvail / factor), row.id]
+        );
+      }
+      await client.query(
+        `UPDATE rep_custody_return_requests
+         SET status = 'rejected', rejection_reason = $1, reviewed_by_user_id = $2, reviewed_by_name = $3, reviewed_at = $4, updated_at = $4
+         WHERE id = $5`,
+        [reason, actor.id, actor.fullName, now, requestId]
+      );
+      const nextH = (await client.query('SELECT * FROM rep_custody_return_requests WHERE id = $1', [requestId])).rows[0];
+      const nextI = (await client.query('SELECT * FROM rep_custody_return_request_items WHERE request_id = $1 ORDER BY id ASC', [requestId])).rows;
+      return mapPgRepCustodyReturnRequestRow(nextH, nextI);
+    });
+  } else {
+    request = await withJsonTransaction((db) => {
+      const req = (db.repCustodyReturnRequests || []).find((r) => r.id === requestId);
+      if (!req) throw new AppError(404, 'طلب إرجاع البضاعة غير موجود', 'NOT_FOUND');
+      if (req.status !== 'pending' && req.status !== 'under_review') {
+        throw new AppError(409, 'تم البت في طلب إرجاع البضاعة مسبقاً', 'ALREADY_DECIDED');
+      }
+      for (const row of req.items || []) {
+        const prod = (db.products || []).find((p) => p.id === row.productId);
+        const factor = Math.max(0.001, Number(row.unitFactor || 1));
+        const vanAvail = round3(Number(prod?.stockPerWarehouse?.[req.vanWarehouseId] || 0));
+        row.actualReceivedQty = 0;
+        row.approvedQty = 0;
+        row.rejectedQty = Number(row.requestedQty || 0);
+        row.remainingCustodyQty = round3(vanAvail / factor);
+      }
+      req.status = 'rejected';
+      req.rejectionReason = reason;
+      req.reviewedByUserId = actor.id;
+      req.reviewedByName = actor.fullName;
+      req.reviewedAt = now;
+      req.updatedAt = now;
+      return req;
+    });
+  }
+
+  await recordAuditLog({
+    userId: actor.id,
+    userName: actor.fullName,
+    action: `رفض طلب إرجاع عهدة (${request.requestNumber})`,
+    module: 'عهدة المنادوبين',
+    recordId: request.id,
+    notes: reason,
+  });
+  return { request };
+}
+
+// ==============================================================================
+// Unified Send & Receive Activity Log (سجل الإرسال والاستلام)
+// ==============================================================================
+
+export async function getSendReceiveActivityLog(filters = {}, actor) {
+  if (!actor || actor.role === 'customer') {
+    throw new AppError(403, 'غير مصرح للعملاء بالوصول لسجل الإرسال والاستلام', 'FORBIDDEN');
+  }
+  const boot = await getStaffBootstrapData(actor);
+  const dateFrom = filters.dateFrom ? String(filters.dateFrom).split('T')[0] : null;
+  const dateTo = filters.dateTo ? String(filters.dateTo).split('T')[0] : null;
+  const repIdFilter = filters.representativeId && filters.representativeId !== 'all' ? String(filters.representativeId) : null;
+  const opTypeFilter = filters.operationType && filters.operationType !== 'all' ? String(filters.operationType) : null;
+  const statusFilter = filters.status && filters.status !== 'all' ? String(filters.status) : null;
+  const search = filters.search ? String(filters.search).trim().toLowerCase() : '';
+
+  const inDateRange = (rawTsOrDate) => {
+    const d = String(rawTsOrDate || '').split('T')[0];
+    if (!d) return true;
+    if (dateFrom && d < dateFrom) return false;
+    if (dateTo && d > dateTo) return false;
+    return true;
+  };
+  const matchesSearch = (parts = []) => {
+    if (!search) return true;
+    return parts.filter(Boolean).join(' ').toLowerCase().includes(search);
+  };
+
+  // 1. أ. أوامر التحويل (single source IDs — no duplicates)
+  const transferOrders = [];
+  const seenTransferIds = new Set();
+  for (const rit of boot.repItemTransfers || []) {
+    if (!rit?.id || seenTransferIds.has(rit.id)) continue;
+    seenTransferIds.add(rit.id);
+    if (!inDateRange(rit.date || rit.createdAt)) continue;
+    if (repIdFilter && rit.representativeId !== repIdFilter && rit.senderRepresentativeId !== repIdFilter) continue;
+    if (opTypeFilter && opTypeFilter !== 'transfer_order') continue;
+    if (statusFilter && rit.status !== statusFilter) continue;
+    const itemNames = (rit.items || []).map((i) => i.productName).join(' ');
+    if (!matchesSearch([rit.requestNumber, rit.representativeName, rit.sourceWarehouseName, rit.targetWarehouseName, itemNames, rit.notes])) continue;
+
+    transferOrders.push({
+      id: rit.id,
+      sourceType: 'rep_item_transfer',
+      documentTitle: 'أمر تحويل',
+      requestNumber: rit.requestNumber,
+      date: rit.date,
+      createdAt: rit.createdAt,
+      representativeId: rit.representativeId,
+      representativeName: rit.representativeName,
+      senderName: rit.sentBy || rit.dispatchedBy || rit.createdBy,
+      sourceWarehouseName: rit.sourceWarehouseName,
+      targetWarehouseName: rit.targetWarehouseName,
+      transferMode: rit.transferMode || 'custody_dispatch',
+      items: rit.items || [],
+      status: rit.status,
+      sentAt: rit.sentAt || rit.dispatchedAt || rit.executedAt || undefined,
+      receivedAt: rit.receivedAt || undefined,
+      receivedBy: rit.receivedBy || undefined,
+      confirmationDetails: rit.confirmationNotes || rit.rejectionReason || (rit.receivedBy ? `تم تأكيد الاستلام بواسطة ${rit.receivedBy}` : ''),
+      durationMs: rit.durationMs ?? undefined,
+    });
+  }
+
+  for (const str of boot.stockTransferRequests || []) {
+    if (!str?.id || seenTransferIds.has(str.id)) continue;
+    seenTransferIds.add(str.id);
+    if (!inDateRange(str.date || str.createdAt)) continue;
+    if (repIdFilter) continue;
+    if (opTypeFilter && opTypeFilter !== 'transfer_order') continue;
+    if (statusFilter && str.status !== statusFilter) continue;
+    const itemNames = (str.items || []).map((i) => i.productName).join(' ');
+    if (!matchesSearch([str.transferNumber, str.sourceWarehouseName, str.targetWarehouseName, itemNames, str.notes])) continue;
+
+    transferOrders.push({
+      id: str.id,
+      sourceType: 'stock_transfer_request',
+      documentTitle: 'أمر تحويل مخزني',
+      requestNumber: str.transferNumber,
+      date: str.date,
+      createdAt: str.createdAt,
+      senderName: str.executedBy || str.createdBy,
+      sourceWarehouseName: str.sourceWarehouseName,
+      targetWarehouseName: str.targetWarehouseName,
+      transferMode: str.transferType || 'warehouse_transfer',
+      items: str.items || [],
+      status: str.status,
+      sentAt: str.submittedAt || str.executedAt || str.createdAt,
+      receivedAt: str.executedAt || undefined,
+      receivedBy: str.executedBy || undefined,
+      confirmationDetails: str.rejectionReason || (str.approvedBy ? `اعتماد: ${str.approvedBy}` : ''),
+    });
+  }
+  transferOrders.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+
+  // 2. ب. طلبات إرجاع البضاعة
+  const custodyReturnRequests = (boot.repCustodyReturnRequests || [])
+    .filter((req) => {
+      if (!inDateRange(req.date || req.createdAt)) return false;
+      if (repIdFilter && req.representativeId !== repIdFilter) return false;
+      if (opTypeFilter && opTypeFilter !== 'custody_return') return false;
+      if (statusFilter && req.status !== statusFilter) return false;
+      const itemNames = (req.items || []).map((i) => i.productName).join(' ');
+      return matchesSearch([req.requestNumber, req.representativeName, req.targetWarehouseName, itemNames, req.notes]);
+    })
+    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+
+  // 3. ج. سجل عمليات الإرسال
+  const dispatchLogs = [];
+  for (const batch of boot.syncDispatchBatches || []) {
+    const ts = batch.sentAt || batch.createdAt;
+    if (!inDateRange(ts)) continue;
+    if (repIdFilter && batch.representativeId !== repIdFilter) continue;
+    if (opTypeFilter && opTypeFilter !== 'dispatch_batch') continue;
+    if (statusFilter) {
+      if (statusFilter === 'failed' && batch.sendStatus !== 'فشل الإرسال' && batch.receiptStatus !== 'تعذر الاستلام') continue;
+      if (statusFilter === 'received' && batch.receiptStatus !== 'تم الاستلام') continue;
+      if (statusFilter === 'sent' && batch.sendStatus !== 'تم الإرسال') continue;
+      if (statusFilter === 'pending' && batch.receiptStatus !== 'في انتظار الاستلام') continue;
+    }
+    if (!matchesSearch([batch.batchNumber, batch.senderName, batch.recipientName, batch.representativeName, batch.notes])) continue;
+    dispatchLogs.push({
+      id: `DSP-${batch.id}`,
+      docType: 'dispatch_batch',
+      docId: batch.id,
+      docNumber: batch.batchNumber,
+      operationType: 'dispatch_batch',
+      operationTypeLabel: 'دفعة إرسال واستلام',
+      senderName: batch.senderName,
+      receiverName: batch.recipientName,
+      representativeId: batch.representativeId,
+      representativeName: batch.representativeName,
+      timestamp: ts,
+      durationMs: batch.sentAt && batch.createdAt ? Math.max(0, new Date(batch.sentAt).getTime() - new Date(batch.createdAt).getTime()) : undefined,
+      resultStatus: batch.sendStatus || 'تم الإرسال',
+      resultSuccess: batch.sendStatus !== 'فشل الإرسال',
+      summary: `${(batch.operationIds || []).length} عملية`,
+    });
+  }
+
+  for (const rit of boot.repItemTransfers || []) {
+    if (rit.status === 'pending') continue;
+    const ts = rit.sentAt || rit.dispatchedAt || rit.executedAt || rit.createdAt;
+    if (!inDateRange(ts)) continue;
+    if (repIdFilter && rit.representativeId !== repIdFilter && rit.senderRepresentativeId !== repIdFilter) continue;
+    if (opTypeFilter && opTypeFilter !== 'transfer_order') continue;
+    if (statusFilter && rit.status !== statusFilter && !(statusFilter === 'sent' && (rit.status === 'executed' || rit.status === 'received'))) continue;
+    if (!matchesSearch([rit.requestNumber, rit.representativeName, rit.sourceWarehouseName, rit.targetWarehouseName])) continue;
+    dispatchLogs.push({
+      id: `TR-SEND-${rit.id}`,
+      docType: 'rep_item_transfer',
+      docId: rit.id,
+      docNumber: rit.requestNumber,
+      operationType: 'transfer_order',
+      operationTypeLabel: 'إرسال أمر تحويل',
+      senderName: rit.sentBy || rit.dispatchedBy || rit.createdBy,
+      receiverName: rit.representativeName,
+      representativeId: rit.representativeId,
+      representativeName: rit.representativeName,
+      timestamp: ts,
+      durationMs: rit.durationMs ?? undefined,
+      resultStatus: rit.status === 'rejected' ? 'مرفوض' : 'تم الإرسال',
+      resultSuccess: rit.status !== 'rejected',
+      summary: `${(rit.items || []).length} صنف — إلى ${rit.targetWarehouseName}`,
+    });
+  }
+
+  for (const rcr of boot.repCustodyReturnRequests || []) {
+    const ts = rcr.sentAt || rcr.createdAt;
+    if (!inDateRange(ts)) continue;
+    if (repIdFilter && rcr.representativeId !== repIdFilter) continue;
+    if (opTypeFilter && opTypeFilter !== 'custody_return') continue;
+    if (statusFilter && rcr.status !== statusFilter && !(statusFilter === 'sent' && rcr.status !== 'rejected')) continue;
+    if (!matchesSearch([rcr.requestNumber, rcr.representativeName, rcr.targetWarehouseName])) continue;
+    dispatchLogs.push({
+      id: `RCR-SEND-${rcr.id}`,
+      docType: 'custody_return_request',
+      docId: rcr.id,
+      docNumber: rcr.requestNumber,
+      operationType: 'custody_return',
+      operationTypeLabel: 'إرسال طلب إرجاع بضاعة',
+      senderName: rcr.requestedByName || rcr.representativeName,
+      receiverName: rcr.targetWarehouseName || 'الإدارة',
+      representativeId: rcr.representativeId,
+      representativeName: rcr.representativeName,
+      timestamp: ts,
+      resultStatus: 'تم الإرسال',
+      resultSuccess: true,
+      summary: `${(rcr.items || []).length} صنف — إلى ${rcr.targetWarehouseName}`,
+    });
+  }
+
+  for (const rt of boot.repTransfers || []) {
+    const ts = rt.sentAt || rt.timestamp;
+    if (!inDateRange(ts)) continue;
+    if (repIdFilter && rt.representativeId !== repIdFilter && rt.senderId !== repIdFilter && rt.receiverId !== repIdFilter) continue;
+    if (opTypeFilter && opTypeFilter !== 'cash_transfer') continue;
+    if (statusFilter && rt.status !== statusFilter) continue;
+    if (!matchesSearch([rt.transferNumber, rt.senderName, rt.receiverName, rt.notes])) continue;
+    dispatchLogs.push({
+      id: `RT-SEND-${rt.id}`,
+      docType: 'rep_transfer',
+      docId: rt.id,
+      docNumber: rt.transferNumber,
+      operationType: 'cash_transfer',
+      operationTypeLabel: 'إرسال تحويل نقدي',
+      senderName: rt.senderName,
+      receiverName: rt.receiverName,
+      representativeId: rt.representativeId,
+      representativeName: rt.direction === 'rep_to_company' ? rt.senderName : rt.receiverName,
+      timestamp: ts,
+      resultStatus: rt.status === 'rejected' ? 'مرفوض' : 'تم الإرسال',
+      resultSuccess: rt.status !== 'rejected',
+      summary: `المبلغ: ${round2(rt.amount || 0)}`,
+    });
+  }
+
+  for (const inv of boot.invoices || []) {
+    if (inv.type !== 'purchase' || !inv.sentAt) continue;
+    if (!inDateRange(inv.sentAt)) continue;
+    if (repIdFilter && inv.representativeId !== repIdFilter) continue;
+    if (opTypeFilter && opTypeFilter !== 'purchase_send') continue;
+    if (statusFilter && inv.status !== statusFilter && inv.dispatchStatus !== statusFilter) continue;
+    if (!matchesSearch([inv.invoiceNumber, inv.supplierName, inv.sentBy, inv.receivedByName])) continue;
+    dispatchLogs.push({
+      id: `PUR-SEND-${inv.id}`,
+      docType: 'purchase_invoice',
+      docId: inv.id,
+      docNumber: inv.invoiceNumber,
+      operationType: 'purchase_send',
+      operationTypeLabel: 'إرسال فاتورة مشتريات',
+      senderName: inv.sentBy || inv.createdBy,
+      receiverName: inv.receivedByName || inv.receivedBy || 'الإدارة',
+      representativeId: inv.representativeId,
+      representativeName: inv.representativeName || inv.createdBy,
+      timestamp: inv.sentAt,
+      resultStatus: inv.dispatchStatus === 'rejected' ? 'مرفوض' : 'تم الإرسال',
+      resultSuccess: inv.dispatchStatus !== 'rejected',
+      summary: `المورد: ${inv.supplierName || '-'}`,
+    });
+  }
+  dispatchLogs.sort((a, b) => String(b.timestamp || '').localeCompare(String(a.timestamp || '')));
+
+  // 4. د. سجل عمليات الاستلام والتأكيد
+  const confirmationLogs = [];
+  for (const rit of boot.repItemTransfers || []) {
+    if (rit.status !== 'received' && rit.status !== 'rejected') continue;
+    const confirmedTs = rit.receivedAt || rit.reviewedAt || rit.updatedAt || rit.createdAt;
+    if (!inDateRange(confirmedTs)) continue;
+    if (repIdFilter && rit.representativeId !== repIdFilter && rit.senderRepresentativeId !== repIdFilter) continue;
+    if (opTypeFilter && opTypeFilter !== 'transfer_order' && opTypeFilter !== 'confirmation') continue;
+    if (statusFilter && rit.status !== statusFilter) continue;
+    if (!matchesSearch([rit.requestNumber, rit.representativeName, rit.receivedBy, rit.confirmationNotes])) continue;
+
+    const approvedTotal = round3((rit.items || []).reduce((s, i) => s + Number(i.executedQty ?? i.approvedQty ?? i.requestedQty ?? 0), 0));
+    confirmationLogs.push({
+      id: `CONF-RTR-${rit.id}`,
+      docType: 'rep_item_transfer',
+      docId: rit.id,
+      docNumber: rit.requestNumber,
+      confirmationType: rit.status === 'received' ? 'تأكيد استلام المندوب' : 'رفض أمر تحويل',
+      arrivedAt: rit.sentAt || rit.dispatchedAt || rit.createdAt,
+      approvedQty: rit.status === 'received' ? approvedTotal : 0,
+      rejectedOrDisputedQty: rit.status === 'rejected' ? approvedTotal : 0,
+      confirmedByName: rit.receivedBy || rit.reviewedBy || rit.representativeName,
+      confirmedAt: confirmedTs,
+      status: rit.status,
+      notes: rit.confirmationNotes || rit.rejectionReason || rit.notes || '',
+      representativeId: rit.representativeId,
+      representativeName: rit.representativeName,
+    });
+  }
+
+  for (const rcr of boot.repCustodyReturnRequests || []) {
+    if (rcr.status === 'pending') continue;
+    const confirmedTs = rcr.approvedAt || rcr.reviewedAt || rcr.updatedAt;
+    if (!inDateRange(confirmedTs)) continue;
+    if (repIdFilter && rcr.representativeId !== repIdFilter) continue;
+    if (opTypeFilter && opTypeFilter !== 'custody_return' && opTypeFilter !== 'confirmation') continue;
+    if (statusFilter && rcr.status !== statusFilter) continue;
+    if (!matchesSearch([rcr.requestNumber, rcr.representativeName, rcr.reviewedByName, rcr.reviewNotes, rcr.rejectionReason])) continue;
+
+    const approvedQty = round3((rcr.items || []).reduce((s, i) => s + Number(i.approvedQty || 0), 0));
+    const rejectedQty = round3((rcr.items || []).reduce((s, i) => s + Number(i.rejectedQty || 0), 0));
+    confirmationLogs.push({
+      id: `CONF-RCR-${rcr.id}`,
+      docType: 'custody_return_request',
+      docId: rcr.id,
+      docNumber: rcr.requestNumber,
+      confirmationType:
+        rcr.status === 'partially_approved'
+          ? 'اعتماد جزئي لإرجاع البضاعة'
+          : rcr.status === 'approved'
+          ? 'تأكيد استلام الإدارة للمرتجع'
+          : 'رفض طلب إرجاع البضاعة',
+      arrivedAt: rcr.sentAt || rcr.createdAt,
+      approvedQty,
+      rejectedOrDisputedQty: rejectedQty,
+      confirmedByName: rcr.reviewedByName || 'الإدارة',
+      confirmedAt: confirmedTs,
+      status: rcr.status,
+      notes: rcr.reviewNotes || rcr.rejectionReason || rcr.notes || '',
+      representativeId: rcr.representativeId,
+      representativeName: rcr.representativeName,
+    });
+  }
+
+  for (const batch of boot.syncDispatchBatches || []) {
+    if (batch.receiptStatus !== 'تم الاستلام' && batch.receiptStatus !== 'تعذر الاستلام') continue;
+    const confirmedTs = batch.receivedAt || batch.updatedAt;
+    if (!inDateRange(confirmedTs)) continue;
+    if (repIdFilter && batch.representativeId !== repIdFilter) continue;
+    if (opTypeFilter && opTypeFilter !== 'dispatch_batch' && opTypeFilter !== 'confirmation') continue;
+    if (statusFilter) {
+      if (statusFilter === 'received' && batch.receiptStatus !== 'تم الاستلام') continue;
+      if (statusFilter === 'failed' && batch.receiptStatus !== 'تعذر الاستلام') continue;
+    }
+    if (!matchesSearch([batch.batchNumber, batch.senderName, batch.receivedByName, batch.receiptNotes])) continue;
+
+    confirmationLogs.push({
+      id: `CONF-DSP-${batch.id}`,
+      docType: 'dispatch_batch',
+      docId: batch.id,
+      docNumber: batch.batchNumber,
+      confirmationType: batch.receiptStatus === 'تم الاستلام' ? 'تأكيد استلام دفعة' : 'تعذر استلام دفعة',
+      arrivedAt: batch.sentAt || batch.createdAt,
+      approvedQty: batch.receiptStatus === 'تم الاستلام' ? (batch.operationIds || []).length : 0,
+      rejectedOrDisputedQty: batch.discrepancyDetails?.items?.length || (batch.receiptStatus === 'تعذر الاستلام' ? (batch.operationIds || []).length : 0),
+      confirmedByName: batch.receivedByName || batch.recipientName,
+      confirmedAt: confirmedTs,
+      status: batch.receiptStatus === 'تم الاستلام' ? 'received' : 'failed',
+      notes: batch.receiptNotes || batch.discrepancyDetails?.note || batch.rejectionReason || '',
+      representativeId: batch.representativeId,
+      representativeName: batch.representativeName,
+    });
+  }
+
+  for (const rt of boot.repTransfers || []) {
+    if (rt.status !== 'received' && rt.status !== 'rejected') continue;
+    const confirmedTs = rt.confirmedAt || rt.rejectedAt || rt.timestamp;
+    if (!inDateRange(confirmedTs)) continue;
+    if (repIdFilter && rt.representativeId !== repIdFilter && rt.senderId !== repIdFilter && rt.receiverId !== repIdFilter) continue;
+    if (opTypeFilter && opTypeFilter !== 'cash_transfer' && opTypeFilter !== 'confirmation') continue;
+    if (statusFilter && rt.status !== statusFilter) continue;
+    if (!matchesSearch([rt.transferNumber, rt.senderName, rt.receiverName, rt.confirmedBy, rt.rejectionReason])) continue;
+
+    confirmationLogs.push({
+      id: `CONF-RT-${rt.id}`,
+      docType: 'rep_transfer',
+      docId: rt.id,
+      docNumber: rt.transferNumber,
+      confirmationType: rt.status === 'received' ? 'تأكيد استلام تحويل نقدي' : 'رفض تحويل نقدي',
+      arrivedAt: rt.sentAt || rt.timestamp,
+      approvedQty: rt.status === 'received' ? 1 : 0,
+      rejectedOrDisputedQty: rt.status === 'rejected' ? 1 : 0,
+      confirmedByName: rt.confirmedBy || rt.receiverName,
+      confirmedAt: confirmedTs,
+      status: rt.status,
+      notes: rt.rejectionReason || rt.notes || '',
+      representativeId: rt.representativeId,
+      representativeName: rt.direction === 'rep_to_company' ? rt.senderName : rt.receiverName,
+    });
+  }
+  confirmationLogs.sort((a, b) => String(b.confirmedAt || '').localeCompare(String(a.confirmedAt || '')));
+
+  return {
+    filters: {
+      dateFrom,
+      dateTo,
+      representativeId: repIdFilter || 'all',
+      operationType: opTypeFilter || 'all',
+      status: statusFilter || 'all',
+      search,
+    },
+    transferOrders,
+    custodyReturnRequests,
+    dispatchLogs,
+    confirmationLogs,
+    counts: {
+      transferOrders: transferOrders.length,
+      custodyReturnRequests: custodyReturnRequests.length,
+      dispatchLogs: dispatchLogs.length,
+      confirmationLogs: confirmationLogs.length,
+    },
+  };
+}
+
+export async function getSyncSourceDocument(docType, docId, actor) {
+  if (!actor || actor.role === 'customer') {
+    throw new AppError(403, 'غير مصرح للعملاء بعرض المستندات الأصلية', 'FORBIDDEN');
+  }
+  const cleanType = String(docType || '').trim();
+  const cleanId = String(docId || '').trim();
+  if (!cleanId) throw new AppError(400, 'معرف المستند مطلوب', 'MISSING_DOC_ID');
+
+  const boot = await getStaffBootstrapData(actor);
+
+  if (cleanType === 'rep_item_transfer') {
+    const doc = (boot.repItemTransfers || []).find((x) => x.id === cleanId);
+    if (!doc) return null;
+    return { docType: cleanType, document: doc };
+  }
+  if (cleanType === 'stock_transfer_request') {
+    const doc = (boot.stockTransferRequests || []).find((x) => x.id === cleanId);
+    if (!doc) return null;
+    return { docType: cleanType, document: doc };
+  }
+  if (cleanType === 'custody_return_request' || cleanType === 'rep_custody_return_request') {
+    const doc = (boot.repCustodyReturnRequests || []).find((x) => x.id === cleanId);
+    if (!doc) return null;
+    return { docType: 'custody_return_request', document: doc };
+  }
+  if (cleanType === 'dispatch_batch' || cleanType === 'sync_dispatch_batch') {
+    const doc = (boot.syncDispatchBatches || []).find((x) => x.id === cleanId);
+    if (!doc) return null;
+    return { docType: cleanType, document: doc };
+  }
+  if (cleanType === 'rep_transfer') {
+    const doc = (boot.repTransfers || []).find((x) => x.id === cleanId);
+    if (!doc) return null;
+    return { docType: cleanType, document: doc };
+  }
+  if (cleanType === 'sales_invoice' || cleanType === 'purchase_invoice' || cleanType === 'invoice') {
+    const doc = (boot.invoices || []).find((x) => x.id === cleanId);
+    if (!doc) return null;
+    return { docType: cleanType, document: doc };
+  }
+  if (cleanType === 'sales_return' || cleanType === 'purchase_return' || cleanType === 'invoice_return') {
+    const doc = (boot.invoiceReturns || []).find((x) => x.id === cleanId);
+    if (!doc) return null;
+    return { docType: cleanType, document: doc };
+  }
+
+  return null;
+}
 

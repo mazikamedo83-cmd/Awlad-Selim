@@ -176,42 +176,31 @@ await test('Scenario 15: Exact 9 Arabic dispatch batch statuses match across ser
   }
 });
 
-await test('Scenario 16: Exact 12 official REFRESH table headers appear in RefreshSyncScreen.tsx in order', async () => {
-  const expected12Headers = [
-    'رقم العملية',
-    'المرسل',
-    'المستلم',
-    'تاريخ الإرسال',
-    'عدد فواتير البيع',
-    'عدد التحصيلات',
-    'عدد المرتجعات',
-    'إجمالي التحصيلات',
-    'حالة الإرسال',
-    'حالة الاستلام',
-    'تاريخ الاستلام',
-    'الإجراءات',
-  ];
-
-  const refreshSrc = fs.readFileSync(
-    path.join(projectRoot, 'src', 'components', 'modules', 'mobile', 'RefreshSyncScreen.tsx'),
+await test('Scenario 16: Full Manual Control SendReceiveView contract (Send, Receive, Real Duration, History Log, No Countdowns)', async () => {
+  const srSrc = fs.readFileSync(
+    path.join(projectRoot, 'src', 'components', 'modules', 'sync', 'SendReceiveView.tsx'),
     'utf8'
   );
-  const idxStart = refreshSrc.indexOf('const dispatchColumns');
-  assert.ok(idxStart > 0, 'dispatchColumns must exist in RefreshSyncScreen.tsx');
-  const slice = refreshSrc.slice(idxStart, idxStart + 6500);
-
-  let lastPos = -1;
-  for (const hdr of expected12Headers) {
-    const marker = `header: '${hdr}'`;
-    const pos = slice.indexOf(marker);
-    assert.ok(pos > lastPos, `Header '${hdr}' missing or out of order in RefreshSyncScreen dispatchColumns`);
-    lastPos = pos;
+  for (const marker of [
+    'manual-send-btn',
+    'manual-receive-btn',
+    'send-confirm-modal',
+    'receive-confirm-modal',
+    'last-send-success',
+    'last-receive-success',
+    'send-receive-history',
+    'formatDurationAr',
+    'sendSyncOperations',
+    'previewReceiveUpdates',
+    'confirmReceiveUpdates',
+  ]) {
+    assert.ok(srSrc.includes(marker), `SendReceiveView.tsx must include '${marker}'`);
   }
+  assert.ok(!srSrc.includes('الإرسال الإجباري'), 'SendReceiveView.tsx must NOT contain mandatory auto-send countdowns');
 });
 
 await test('Scenario 17: Key modules use UnifiedDataTable consistently', async () => {
   const unifiedTargets = [
-    'src/components/modules/mobile/RefreshSyncScreen.tsx',
     'src/components/modules/mobile/RepPortal.tsx',
     'src/components/modules/customers/CustomersView.tsx',
     'src/components/modules/settings/SettingsView.tsx',
@@ -226,7 +215,7 @@ await test('Scenario 17: Key modules use UnifiedDataTable consistently', async (
   }
 });
 
-await test('Scenario 18: Static UI integrity — no RTL/LTR text, always-visible filters, manual refresh dispatch, Hamburger menu & Rep settings', async () => {
+await test('Scenario 18: Static UI integrity — no RTL/LTR text, always-visible filters, manual Send/Receive gating, Hamburger menu & Rep settings', async () => {
   const custMore = fs.readFileSync(path.join(projectRoot, 'src/components/modules/mobile/CustomerMoreScreen.tsx'), 'utf8');
   assert.ok(!custMore.includes('(RTL)') && !custMore.includes('(LTR)'), 'CustomerMoreScreen must not expose (RTL) or (LTR) labels');
 
@@ -236,7 +225,7 @@ await test('Scenario 18: Static UI integrity — no RTL/LTR text, always-visible
   assert.ok(!mobilePortal.includes('<LayoutGrid'), 'MobilePortal drawer button must use 3-line Menu icon instead of LayoutGrid');
 
   const headerSrc = fs.readFileSync(path.join(projectRoot, 'src/components/layout/Header.tsx'), 'utf8');
-  assert.ok(headerSrc.includes('<Menu className="w-4 h-4" />') && headerSrc.includes('onToggleSidebar'), 'Header must render Hamburger Menu sidebar toggle');
+  assert.ok(headerSrc.includes('<Menu className="w-4 h-4') && headerSrc.includes('onToggleSidebar'), 'Header must render Hamburger Menu sidebar toggle');
 
   const unifiedSrc = fs.readFileSync(path.join(projectRoot, 'src/components/common/UnifiedDataTable.tsx'), 'utf8');
   assert.ok(!unifiedSrc.includes('showMobileFilters'), 'UnifiedDataTable must keep filters always visible without mobile collapse toggle');
@@ -249,12 +238,10 @@ await test('Scenario 18: Static UI integrity — no RTL/LTR text, always-visible
   const reportsSrc = fs.readFileSync(path.join(projectRoot, 'src/components/modules/reports/ReportsView.tsx'), 'utf8');
   assert.ok(!reportsSrc.includes('showMoreFilters'), 'ReportsView detailed filters must stay always visible');
 
-  const refreshSrc = fs.readFileSync(path.join(projectRoot, 'src/components/modules/mobile/RefreshSyncScreen.tsx'), 'utf8');
-  assert.ok(refreshSrc.includes('pendingSendConfirm'), 'RefreshSyncScreen must enforce Pre-Send Summary Confirmation modal');
-  assert.ok(refreshSrc.includes('hasDiscrepancyInput'), 'RefreshSyncScreen must support discrepancy objection notes on manual receive');
-  const inspectStart = refreshSrc.indexOf('const handleOpenInspectBatch');
-  const inspectSlice = refreshSrc.slice(inspectStart, inspectStart + 450);
-  assert.ok(!inspectSlice.includes('markDispatchReceiving'), 'Inspecting a dispatch batch must NEVER auto-mutate receipt status');
+  const srSrc = fs.readFileSync(path.join(projectRoot, 'src/components/modules/sync/SendReceiveView.tsx'), 'utf8');
+  assert.ok(srSrc.includes('sendSummaryModalOps'), 'SendReceiveView must enforce Pre-Send Summary Confirmation modal');
+  assert.ok(srSrc.includes('receivePreviewState'), 'SendReceiveView must enforce Pre-Receive Summary Confirmation modal');
+  assert.ok(!srSrc.includes('markDispatchReceiving'), 'SendReceiveView must NEVER auto-mutate receipt status when opening or previewing');
 });
 
 // -----------------------------------------------------------------------------

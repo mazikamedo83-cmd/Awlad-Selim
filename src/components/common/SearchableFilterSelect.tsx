@@ -33,6 +33,8 @@ interface SearchableFilterSelectProps {
   allowClear?: boolean;
   emptyText?: string;
   minPanelWidth?: number;
+  minSearchChars?: number;
+  minSearchMessage?: string;
   triggerRef?: React.RefObject<HTMLButtonElement | null>;
   onAfterSelect?: (value: string) => void;
   onValueSelected?: (value: string) => void;
@@ -71,6 +73,8 @@ export const SearchableFilterSelect: React.FC<SearchableFilterSelectProps> = ({
   allowClear = false,
   emptyText,
   minPanelWidth = 240,
+  minSearchChars = 0,
+  minSearchMessage,
   triggerRef: externalTriggerRef,
   onAfterSelect,
   onValueSelected,
@@ -81,6 +85,7 @@ export const SearchableFilterSelect: React.FC<SearchableFilterSelectProps> = ({
   const resolvedPlaceholder = placeholder ?? t('اختر...', 'Select...');
   const resolvedSearchPlaceholder = searchPlaceholder ?? t('بحث بالاسم أو الكود...', 'Search by name or code...');
   const resolvedEmptyText = emptyText ?? t('لا توجد نتائج مطابقة', 'No matching results');
+  const resolvedMinSearchText = minSearchMessage ?? t(`اكتب ${minSearchChars === 2 ? 'حرفين' : minSearchChars + ' أحرف'} على الأقل للبحث...`, `Type at least ${minSearchChars} characters to search...`);
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [highlightedIdx, setHighlightedIdx] = useState(0);
@@ -120,17 +125,21 @@ export const SearchableFilterSelect: React.FC<SearchableFilterSelectProps> = ({
     return undefined;
   }, [normalizedOptions, value, includeAllOption, allOptionValue]);
 
+  const normalizedQuery = useMemo(() => normalizeArabicSearchText(query), [query]);
+  const needsMoreChars = minSearchChars > 0 && normalizedQuery.length < minSearchChars;
+
   const filteredOptions = useMemo(() => {
-    const q = normalizeArabicSearchText(query);
+    if (needsMoreChars) return [];
+    const q = normalizedQuery;
     if (!q) return normalizedOptions;
     const tokens = q.split(' ').filter(Boolean);
     return normalizedOptions.filter((opt) => {
       const haystack = normalizeArabicSearchText(
         `${opt.label} ${opt.subtitle || ''} ${opt.badge || ''} ${opt.groupLabel || ''} ${opt.searchText || ''}`
       );
-      return tokens.every((t) => haystack.includes(t));
+      return tokens.every((tk) => haystack.includes(tk));
     });
-  }, [normalizedOptions, query]);
+  }, [normalizedOptions, normalizedQuery, needsMoreChars]);
 
   const updatePosition = () => {
     const trigger = triggerRef.current;
@@ -388,7 +397,11 @@ export const SearchableFilterSelect: React.FC<SearchableFilterSelectProps> = ({
             </div>
 
             <div className="overflow-y-auto flex-1 py-1">
-              {filteredOptions.length === 0 ? (
+              {needsMoreChars ? (
+                <div className="px-3 py-4 text-center text-xs text-slate-500 dark:text-[#97AECE]">
+                  {resolvedMinSearchText}
+                </div>
+              ) : filteredOptions.length === 0 ? (
                 <div className="px-3 py-4 text-center text-xs text-slate-500 dark:text-[#97AECE]">
                   {resolvedEmptyText}
                 </div>

@@ -80,8 +80,16 @@ export function formatBusinessDateSlash(dateStr) {
 
 function normalizeClassification1(prod) {
   if (!prod) return 'بدون تصنيف 1';
-  const parts = [prod.size, prod.color].map((v) => String(v || '').trim()).filter(Boolean);
-  return parts.length > 0 ? parts.join(' - ') : 'بدون تصنيف 1';
+  const c1 = String(prod.class1 || '').trim();
+  if (c1) return c1;
+  const legacy = [prod.size, prod.color].map((v) => String(v || '').trim()).filter(Boolean).join(' - ');
+  return legacy || 'بدون تصنيف 1';
+}
+
+function normalizeClassification2(prod) {
+  if (!prod) return 'بدون تصنيف 2';
+  const c2 = String(prod.class2 || '').trim();
+  return c2 || 'بدون تصنيف 2';
 }
 
 function resolveUnitFactor(prod, unitName) {
@@ -1236,6 +1244,8 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
     (normalizedMovement && normalizedMovement !== 'all') ||
     filters.productSearch ||
     filters.barcode ||
+    (filters.class1 && filters.class1 !== 'all') ||
+    (filters.class2 && filters.class2 !== 'all') ||
     (filters.employeeId && filters.employeeId !== 'all') ||
     (filters.userId && filters.userId !== 'all') ||
     filters.userName ||
@@ -1635,6 +1645,8 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
           docId: r.return_id,
           productId: r.product_id,
           productName: r.product_name || prod?.name || '',
+          class1: normalizeClassification1(prod),
+          class2: normalizeClassification2(prod),
           operationLabel: r.product_name || prod?.name || '',
           quantity: qty,
           baseQuantity: baseQty,
@@ -1913,6 +1925,7 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
           groupName: r.group_name || prod?.groupName || '',
           categoryName: r.category_name || prod?.category || 'عام',
           class1: normalizeClassification1(prod),
+          class2: normalizeClassification2(prod),
           operationLabel: r.product_name || prod?.name || '',
           quantity: qty,
           baseQuantity: baseQty,
@@ -2106,7 +2119,7 @@ async function tryGetSqlPaginatedReportPg(filters, actor, reportType, page, page
       branches: isRep ? [] : resolvers.branches,
       warehouses: isRep ? warehouses.filter((w) => repProfile?.warehouseId && w.id === repProfile.warehouseId) : warehouses,
       cashboxes: isRep ? [] : cashboxes,
-      products: products.map((p) => ({ id: p.id, code: p.code, barcode: p.barcode, name: p.name, category: p.category, baseUnit: p.baseUnit, size: p.size, color: p.color })),
+      products: products.map((p) => ({ id: p.id, code: p.code, barcode: p.barcode, name: p.name, category: p.category, class1: p.class1 || '', class2: p.class2 || '', baseUnit: p.baseUnit, size: p.size, color: p.color })),
       customers: customers.map((c) => ({ id: c.id, name: c.name, phone: c.phone })),
       suppliers: isRep && !isRepCanPurchase ? [] : suppliers.map((s) => ({ id: s.id, name: s.name, phone: s.phone })),
       employees: employeesList,
@@ -2191,6 +2204,8 @@ export async function getComprehensiveReport(filters = {}, actor) {
   const productId = filters.productId && filters.productId !== 'all' ? String(filters.productId) : null;
   const productSearch = filters.productSearch ? String(filters.productSearch).trim().toLowerCase() : '';
   const barcode = filters.barcode ? String(filters.barcode).trim().toLowerCase() : '';
+  const class1Filter = filters.class1 && filters.class1 !== 'all' ? String(filters.class1).trim() : '';
+  const class2Filter = filters.class2 && filters.class2 !== 'all' ? String(filters.class2).trim() : '';
   const customerId = parsedParty.customerId;
   const supplierId = isRepActorTop && !isRepCanPurchaseTop && parsedParty.supplierId ? '__FORBIDDEN_SUPPLIER__' : parsedParty.supplierId;
   const representativeId = filters.representativeId && filters.representativeId !== 'all' ? String(filters.representativeId) : null;
@@ -2304,6 +2319,16 @@ export async function getComprehensiveReport(filters = {}, actor) {
       const bc = String(ctx.barcode || '').toLowerCase();
       if (!bc.includes(barcode)) return false;
     }
+    if (class1Filter) {
+      const prodObj = ctx.productId ? productMap.get(ctx.productId) : null;
+      const c1 = String(prodObj?.class1 || '').trim();
+      if (!c1 || c1.toLowerCase() !== class1Filter.toLowerCase()) return false;
+    }
+    if (class2Filter) {
+      const prodObj = ctx.productId ? productMap.get(ctx.productId) : null;
+      const c2 = String(prodObj?.class2 || '').trim();
+      if (!c2 || c2.toLowerCase() !== class2Filter.toLowerCase()) return false;
+    }
 
     if (customerId && ctx.customerId !== customerId) return false;
     if (supplierId && ctx.supplierId !== supplierId) return false;
@@ -2354,6 +2379,7 @@ export async function getComprehensiveReport(filters = {}, actor) {
         ctx.partyName,
         ctx.categoryName,
         ctx.class1,
+        ctx.class2,
       ]
         .filter(Boolean)
         .join(' ')
@@ -2437,6 +2463,7 @@ export async function getComprehensiveReport(filters = {}, actor) {
         groupName: it.groupName || prod?.groupName || '',
         categoryName: it.categoryName || prod?.category || 'عام',
         class1: normalizeClassification1(prod),
+        class2: normalizeClassification2(prod),
         operationLabel: it.productName || prod?.name || '',
         quantity: qty,
         baseQuantity: baseQty,
@@ -2599,6 +2626,8 @@ export async function getComprehensiveReport(filters = {}, actor) {
         docId: ret.id,
         productId: it.productId,
         productName: it.productName || prod?.name || '',
+        class1: normalizeClassification1(prod),
+        class2: normalizeClassification2(prod),
         operationLabel: it.productName || prod?.name || '',
         quantity: qty,
         baseQuantity: baseQty,
@@ -2726,6 +2755,8 @@ export async function getComprehensiveReport(filters = {}, actor) {
       docId: op.id,
       productId: op.productId,
       productName: op.productName || prod?.name || '',
+      class1: normalizeClassification1(prod),
+      class2: normalizeClassification2(prod),
       operationLabel: op.productName || prod?.name || '',
       quantity: qty,
       baseQuantity: baseQty,
@@ -3134,6 +3165,16 @@ export async function getComprehensiveReport(filters = {}, actor) {
         { byUnit: false, multiSection: true }
       );
       break;
+    case 'sales_items_grouped_by_category_class2':
+      sections = buildAggregatedSection(
+        'sales_cat_c2',
+        'أصناف بيع/مَجمع حسب المجموعة وتصنيف 2',
+        salesItemRows,
+        (r) => `${r.categoryName || 'عام'} || ${r.class2 || 'بدون تصنيف 2'}`,
+        (r) => `المجموعة: ${r.categoryName || 'عام'} — تصنيف 2: ${r.class2 || 'بدون تصنيف 2'}`,
+        { byUnit: false, multiSection: true }
+      );
+      break;
 
     case 'sales_return_items':
       sections = [makeSection('sales_return_items', 'أصناف مرتجع بيع', 'sage', false, salesReturnItemRows)];
@@ -3309,7 +3350,8 @@ export async function getComprehensiveReport(filters = {}, actor) {
     reportType === 'sales_items_grouped' ||
     reportType === 'sales_items_grouped_by_customer' ||
     reportType === 'sales_items_grouped_by_category' ||
-    reportType === 'sales_items_grouped_by_category_class1'
+    reportType === 'sales_items_grouped_by_category_class1' ||
+    reportType === 'sales_items_grouped_by_category_class2'
   ) {
     const salesProfit = salesItemRows.reduce((s, r) => s + Number(r.profit || 0), 0);
     const salesCost = salesItemRows.reduce((s, r) => s + Number(r.costValue || 0), 0);
@@ -3434,6 +3476,8 @@ export async function getComprehensiveReport(filters = {}, actor) {
       employeeId: filters.employeeId || 'all',
       userId: filters.userId || 'all',
       representativeId: representativeId || 'all',
+      class1: class1Filter || 'all',
+      class2: class2Filter || 'all',
       invoiceNumber,
       recordId,
       search,
@@ -3450,6 +3494,8 @@ export async function getComprehensiveReport(filters = {}, actor) {
         barcode: p.barcode,
         name: p.name,
         category: p.category,
+        class1: p.class1 || '',
+        class2: p.class2 || '',
         baseUnit: p.baseUnit,
         size: p.size,
         color: p.color,
@@ -3947,6 +3993,7 @@ function buildProductLifecycleHistory(productId, data, resolvers, filterOpts = {
     product: {
       ...prod,
       class1: normalizeClassification1(prod),
+      class2: normalizeClassification2(prod),
       createdAtFormatted: formatActualDateTimeAr(prod.createdAt),
     },
     lastPurchasePrice,
@@ -3985,6 +4032,7 @@ function buildProductsPnlAnalysis(data, filterOpts = {}) {
         productName: prod.name,
         category: prod.category,
         class1: normalizeClassification1(prod),
+        class2: normalizeClassification2(prod),
         baseUnit: prod.baseUnit,
         purchasePrices: [],
         salePrices: [],
@@ -4239,6 +4287,7 @@ function buildProductsPnlAnalysis(data, filterOpts = {}) {
       productName: st.productName,
       category: st.category,
       class1: st.class1,
+      class2: st.class2,
       baseUnit: st.baseUnit,
       totalPurchaseQty: st.totalPurchaseQty,
       totalPurchaseValue: st.totalPurchaseValue,
@@ -4624,6 +4673,7 @@ export async function getRepDetailedReport(filters = {}, actor) {
           groupName: it.groupName || prod?.groupName || '',
           categoryName: it.categoryName || prod?.category || 'عام',
           class1: normalizeClassification1(prod),
+          class2: normalizeClassification2(prod),
           unit: it.unit,
           unitFactor: Number(it.unitFactor || 1),
           quantity: Number(it.quantity || 0),
@@ -4700,6 +4750,7 @@ export async function getRepDetailedReport(filters = {}, actor) {
         barcode: it.barcode,
         categoryName: it.categoryName,
         class1: it.class1,
+        class2: it.class2,
         unit: it.unit,
         quantity: it.quantity,
         unitFactor: it.unitFactor,
@@ -4773,6 +4824,7 @@ export async function getRepDetailedReport(filters = {}, actor) {
           groupName: it.groupName || prod?.groupName || '',
           categoryName: it.categoryName || prod?.category || 'عام',
           class1: normalizeClassification1(prod),
+          class2: normalizeClassification2(prod),
           unit: it.unit,
           unitFactor: Number(it.unitFactor || 1),
           quantity: Number(it.quantity || 0),
@@ -4820,6 +4872,7 @@ export async function getRepDetailedReport(filters = {}, actor) {
         barcode: it.barcode,
         categoryName: it.categoryName,
         class1: it.class1,
+        class2: it.class2,
         unit: it.unit,
         quantity: it.quantity,
         unitFactor: it.unitFactor,

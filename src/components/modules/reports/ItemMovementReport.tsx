@@ -176,6 +176,8 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
   const [warehouseId, setWarehouseId] = useState<string>('all');
   const [representativeId, setRepresentativeId] = useState<string>('all');
   const [movementType, setMovementType] = useState<string>('all');
+  const [class1, setClass1] = useState<string>('all');
+  const [class2, setClass2] = useState<string>('all');
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
   const [search, setSearch] = useState<string>('');
@@ -200,11 +202,21 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
           label: p.name,
           subtitle: `${p.code}${p.barcode ? ` • ${p.barcode}` : ''} • ${t('الرصيد:', 'Balance:')} ${formatLocaleNumber(stockQty)} ${t(p.baseUnit)}`,
           badge: p.code,
-          searchText: `${p.code} ${p.barcode || ''} ${p.category || ''}`,
+          searchText: `${p.code} ${p.barcode || ''} ${p.category || ''} ${p.class1 || ''} ${p.class2 || ''}`,
         };
       }),
     [products, warehouseId, t]
   );
+
+  const class1FilterOptions = useMemo<SearchableFilterOption[]>(() => {
+    const unique = Array.from(new Set(products.map((p) => String(p.class1 || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+    return unique.map((val) => ({ value: val, label: val }));
+  }, [products]);
+
+  const class2FilterOptions = useMemo<SearchableFilterOption[]>(() => {
+    const unique = Array.from(new Set(products.map((p) => String(p.class2 || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+    return unique.map((val) => ({ value: val, label: val }));
+  }, [products]);
 
   const warehouseFilterOptions = useMemo<SearchableFilterOption[]>(
     () =>
@@ -252,6 +264,8 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
       warehouseId: warehouseId || 'all',
       representativeId: representativeId || 'all',
       movementType: movementType || 'all',
+      class1: class1 || 'all',
+      class2: class2 || 'all',
       dateFrom: dateFrom || undefined,
       dateTo: dateTo || undefined,
       search: search.trim() || undefined,
@@ -262,7 +276,7 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
     } else {
       setReport(res.report);
     }
-  }, [productId, warehouseId, representativeId, movementType, dateFrom, dateTo, search, getItemMovementReport, t]);
+  }, [productId, warehouseId, representativeId, movementType, class1, class2, dateFrom, dateTo, search, getItemMovementReport, t]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -276,6 +290,8 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
     setWarehouseId('all');
     setRepresentativeId('all');
     setMovementType('all');
+    setClass1('all');
+    setClass2('all');
     setDateFrom('');
     setDateTo('');
     setSearch('');
@@ -295,6 +311,8 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
       t('التاريخ', 'Date'),
       t('رقم المستند', 'Document #'),
       t('الصنف', 'Item'),
+      t('التصنيف 1', 'Class 1'),
+      t('التصنيف 2', 'Class 2'),
       t('المستودع / المسار', 'Warehouse / Route'),
       t('الطرف / المندوب', 'Party / Rep'),
       t('الوحدة', 'Unit'),
@@ -310,13 +328,15 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
 
     visibleSections.forEach((sec) => {
       const list = report.sections[sec.key] || [];
-      rows.push([`=== ${t(sec.title, sec.titleEn)} (${list.length}) ===`, '', '', '', '', '', '', '', '', '', '', '', '']);
+      rows.push([`=== ${t(sec.title, sec.titleEn)} (${list.length}) ===`, '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
       list.forEach((r) => {
         rows.push([
           formatDocTypeLabel(r.docType),
           r.date,
           r.docNumber,
           r.productName,
+          r.class1 || '-',
+          r.class2 || '-',
           r.targetWarehouseName ? `${r.warehouseName || ''} ${arrow} ${r.targetWarehouseName}` : r.warehouseName || '-',
           r.partyName || r.representativeName || '-',
           t(r.unit),
@@ -653,6 +673,34 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
             />
           </div>
 
+          <div className="w-[125px] shrink-0">
+            <SearchableFilterSelect
+              id="imr-filter-class1"
+              inlinePrefix={t('تصنيف 1', 'Class 1')}
+              value={class1}
+              onChange={setClass1}
+              options={class1FilterOptions}
+              allOptionLabel={t('كل تصنيف 1', 'All Class 1')}
+              allOptionValue="all"
+              allowClear
+              buttonClassName="rounded-md h-8"
+            />
+          </div>
+
+          <div className="w-[125px] shrink-0">
+            <SearchableFilterSelect
+              id="imr-filter-class2"
+              inlinePrefix={t('تصنيف 2', 'Class 2')}
+              value={class2}
+              onChange={setClass2}
+              options={class2FilterOptions}
+              allOptionLabel={t('كل تصنيف 2', 'All Class 2')}
+              allOptionValue="all"
+              allowClear
+              buttonClassName="rounded-md h-8"
+            />
+          </div>
+
           <div className="h-8 flex items-center gap-1 bg-slate-50 dark:bg-[#10203D] border border-slate-300 dark:border-[#2A436E] rounded-md px-1.5 shrink-0">
             <span className="text-[10.5px] font-bold text-slate-500 dark:text-[#8CA3C7] whitespace-nowrap">{t('من', 'From')}</span>
             <input
@@ -716,6 +764,8 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
                   <h4 className="font-black text-xs sm:text-sm">{report.product.name}</h4>
                   <p className="text-slate-300 font-mono text-[10px]">
                     {t('كود:', 'Code:')} {report.product.code} {report.product.barcode ? `| ${t('باركود:', 'Barcode:')} ${report.product.barcode}` : ''} | {t('الوحدة الأساسية:', 'Base Unit:')} {t(report.product.baseUnit)}
+                    {report.product.class1 ? ` | ${t('تصنيف 1:', 'Class 1:')} ${report.product.class1}` : ''}
+                    {report.product.class2 ? ` | ${t('تصنيف 2:', 'Class 2:')} ${report.product.class2}` : ''}
                   </p>
                 </div>
               </div>
@@ -824,14 +874,32 @@ export const ItemMovementReport: React.FC<ItemMovementReportProps> = ({ initialP
                   });
                 }
 
-                secColumns.push({
-                  key: 'productName',
-                  header: t('الصنف', 'Item'),
-                  sortable: true,
-                  sortValue: (r) => r.productName,
-                  exportValue: (r) => r.productName,
-                  render: (r) => <span className="font-bold text-slate-900">{r.productName}</span>,
-                });
+                secColumns.push(
+                  {
+                    key: 'productName',
+                    header: t('الصنف', 'Item'),
+                    sortable: true,
+                    sortValue: (r) => r.productName,
+                    exportValue: (r) => r.productName,
+                    render: (r) => <span className="font-bold text-slate-900">{r.productName}</span>,
+                  },
+                  {
+                    key: 'class1',
+                    header: t('التصنيف 1', 'Class 1'),
+                    sortable: true,
+                    sortValue: (r) => r.class1 || '',
+                    exportValue: (r) => r.class1 || '-',
+                    render: (r) => <span className="text-[11px] text-slate-600">{r.class1 || '-'}</span>,
+                  },
+                  {
+                    key: 'class2',
+                    header: t('التصنيف 2', 'Class 2'),
+                    sortable: true,
+                    sortValue: (r) => r.class2 || '',
+                    exportValue: (r) => r.class2 || '-',
+                    render: (r) => <span className="text-[11px] text-slate-600">{r.class2 || '-'}</span>,
+                  }
+                );
 
                 if (sec.key === 'sales' || sec.key === 'sales_returns') {
                   secColumns.push(

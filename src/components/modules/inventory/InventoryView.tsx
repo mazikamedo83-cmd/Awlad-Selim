@@ -29,9 +29,10 @@ import { StockTransfersView } from './StockTransfersView';
 export interface InventoryViewProps {
   initialTab?: 'products' | 'categories' | 'warehouses' | 'transfers' | 'adjustments' | 'damaged' | 'movements' | 'stock-counts' | 'stock-transfers' | 'units' | string;
   onOpenItemMovementReport?: (productId?: string) => void;
+  onNavigate?: (page: any) => void;
 }
 
-export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'products', onOpenItemMovementReport }) => {
+export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'products', onOpenItemMovementReport, onNavigate }) => {
   const {
     products, warehouses, productGroups, categories: categoryList, productUnits, stockMovements, settings, addProduct, updateProduct,
     deleteProduct, toggleProductStatus, transferStock, adjustStock, recordDamagedStock,
@@ -48,6 +49,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
   const [searchTerm, setSearchTerm] = useState('');
   const [groupFilter, setGroupFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [class1Filter, setClass1Filter] = useState('all');
+  const [class2Filter, setClass2Filter] = useState('all');
   const [warehouseFilter, setWarehouseFilter] = useState('all');
   const [stockHealthFilter, setStockHealthFilter] = useState<'all' | 'low' | 'ok' | 'inactive'>('all');
   const [statusBanner, setStatusBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -133,27 +136,27 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
   const [previewProduct, setPreviewProduct] = useState<Product | null>(null);
 
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
-  const [transferGroupFilter, setTransferGroupFilter] = useState('all');
-  const [transferCatFilter, setTransferCatFilter] = useState('all');
+  const [transferGroupFilter, setTransferGroupFilter] = useState('');
+  const [transferCatFilter, setTransferCatFilter] = useState('');
   const [transferProdId, setTransferProdId] = useState('');
-  const [fromWhId, setFromWhId] = useState(warehouses[0]?.id || '');
-  const [toWhId, setToWhId] = useState(warehouses[1]?.id || warehouses[0]?.id || '');
+  const [fromWhId, setFromWhId] = useState('');
+  const [toWhId, setToWhId] = useState('');
   const [transferQty, setTransferQty] = useState<number | ''>('');
   const [transferNotes, setTransferNotes] = useState('');
 
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
-  const [adjustGroupFilter, setAdjustGroupFilter] = useState('all');
-  const [adjustCatFilter, setAdjustCatFilter] = useState('all');
+  const [adjustGroupFilter, setAdjustGroupFilter] = useState('');
+  const [adjustCatFilter, setAdjustCatFilter] = useState('');
   const [adjustProdId, setAdjustProdId] = useState('');
-  const [adjustWhId, setAdjustWhId] = useState(warehouses[0]?.id || '');
+  const [adjustWhId, setAdjustWhId] = useState('');
   const [adjustNewQty, setAdjustNewQty] = useState<number | ''>('');
   const [adjustReason, setAdjustReason] = useState('');
 
   const [isDamageModalOpen, setIsDamageModalOpen] = useState(false);
-  const [damageGroupFilter, setDamageGroupFilter] = useState('all');
-  const [damageCatFilter, setDamageCatFilter] = useState('all');
+  const [damageGroupFilter, setDamageGroupFilter] = useState('');
+  const [damageCatFilter, setDamageCatFilter] = useState('');
   const [damageProdId, setDamageProdId] = useState('');
-  const [damageWhId, setDamageWhId] = useState(warehouses[0]?.id || '');
+  const [damageWhId, setDamageWhId] = useState('');
   const [damageQty, setDamageQty] = useState<number | ''>('');
   const [damageReason, setDamageReason] = useState('');
 
@@ -166,6 +169,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
     groupName: string;
     categoryId: string;
     category: string;
+    class1?: string;
+    class2?: string;
     unitId: string;
     baseUnit: string;
     size?: string;
@@ -183,6 +188,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
     groupName: '',
     categoryId: '',
     category: '',
+    class1: '',
+    class2: '',
     unitId: '',
     baseUnit: '',
     size: '',
@@ -205,6 +212,24 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
     );
   }, [productUnits, formData.unitId]);
 
+  const class1Options = useMemo(() => {
+    const vals = new Set<string>();
+    products.forEach((p) => {
+      const v = String(p.class1 || '').trim();
+      if (v) vals.add(v);
+    });
+    return Array.from(vals).sort((a, b) => a.localeCompare(b, 'ar')).map((v) => ({ value: v, label: v }));
+  }, [products]);
+
+  const class2Options = useMemo(() => {
+    const vals = new Set<string>();
+    products.forEach((p) => {
+      const v = String(p.class2 || '').trim();
+      if (v) vals.add(v);
+    });
+    return Array.from(vals).sort((a, b) => a.localeCompare(b, 'ar')).map((v) => ({ value: v, label: v }));
+  }, [products]);
+
   const filteredProducts = useMemo(() => {
     const q = searchTerm.toLowerCase();
     const scopedByGroupCat = filterProductsByGroupCategory(
@@ -221,9 +246,13 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
         p.code.toLowerCase().includes(q) ||
         (p.barcode || '').includes(searchTerm) ||
         (p.groupName || '').toLowerCase().includes(q) ||
-        (p.category || '').toLowerCase().includes(q);
+        (p.category || '').toLowerCase().includes(q) ||
+        (p.class1 || '').toLowerCase().includes(q) ||
+        (p.class2 || '').toLowerCase().includes(q);
 
       if (!matchSearch) return false;
+      if (class1Filter !== 'all' && String(p.class1 || '').trim().toLowerCase() !== class1Filter.trim().toLowerCase()) return false;
+      if (class2Filter !== 'all' && String(p.class2 || '').trim().toLowerCase() !== class2Filter.trim().toLowerCase()) return false;
 
       if (stockHealthFilter === 'all') return true;
       if (stockHealthFilter === 'inactive') return p.status !== 'active';
@@ -235,7 +264,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
       if (stockHealthFilter === 'ok') return p.status === 'active' && qty > p.minStockLevel;
       return true;
     });
-  }, [products, productGroups, categoryList, searchTerm, groupFilter, categoryFilter, warehouseFilter, stockHealthFilter]);
+  }, [products, productGroups, categoryList, searchTerm, groupFilter, categoryFilter, class1Filter, class2Filter, warehouseFilter, stockHealthFilter]);
 
   const transferScopedProducts = useMemo(
     () => filterProductsByGroupCategory(products, productGroups, categoryList, transferGroupFilter, transferCatFilter),
@@ -268,34 +297,15 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
     return { activeCount, lowCount, totalCostValue, warehouseCount: warehouses.length };
   }, [products, warehouses, warehouseFilter]);
 
-  useEffect(() => {
-    const firstWh = warehouses[0]?.id || '';
-    const secondWh = warehouses[1]?.id || firstWh;
-    if (!warehouses.some((w) => w.id === fromWhId) && firstWh) setFromWhId(firstWh);
-    if (!warehouses.some((w) => w.id === toWhId) && secondWh) setToWhId(secondWh);
-    if (!warehouses.some((w) => w.id === adjustWhId) && firstWh) setAdjustWhId(firstWh);
-    if (!warehouses.some((w) => w.id === damageWhId) && firstWh) setDamageWhId(firstWh);
-  }, [warehouses, fromWhId, toWhId, adjustWhId, damageWhId]);
-
   React.useEffect(() => {
     if (initialTab === 'transfers') {
-      setTransferProdId((prev) => prev || products[0]?.id || '');
       setIsTransferModalOpen(true);
     } else if (initialTab === 'adjustments') {
-      setAdjustProdId((prev) => prev || products[0]?.id || '');
       setIsAdjustModalOpen(true);
     } else if (initialTab === 'damaged') {
-      setDamageProdId((prev) => prev || products[0]?.id || '');
       setIsDamageModalOpen(true);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialTab]);
-
-  useEffect(() => {
-    if (isTransferModalOpen && !transferProdId && products[0]?.id) setTransferProdId(products[0].id);
-    if (isAdjustModalOpen && !adjustProdId && products[0]?.id) setAdjustProdId(products[0].id);
-    if (isDamageModalOpen && !damageProdId && products[0]?.id) setDamageProdId(products[0].id);
-  }, [isTransferModalOpen, isAdjustModalOpen, isDamageModalOpen, transferProdId, adjustProdId, damageProdId, products]);
 
   const handleOpenAdd = () => {
     setFormData({
@@ -306,6 +316,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
       groupName: '',
       categoryId: '',
       category: '',
+      class1: '',
+      class2: '',
       unitId: '',
       baseUnit: '',
       size: '',
@@ -342,6 +354,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
       groupName: resolvedGroupName,
       categoryId: p.categoryId || matchedCat?.id || '',
       category: p.category || matchedCat?.name || '',
+      class1: p.class1 || '',
+      class2: p.class2 || '',
       unitId: p.unitId || matchedUnit?.id || '',
       baseUnit: matchedUnit?.name || p.baseUnit,
       size: p.size || '',
@@ -403,6 +417,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
           groupName: formData.groupName || undefined,
           categoryId: formData.categoryId || undefined,
           category: formData.category.trim(),
+          class1: formData.class1?.trim() || undefined,
+          class2: formData.class2?.trim() || undefined,
           unitId: formData.unitId || undefined,
           baseUnit: formData.baseUnit.trim(),
           units: [],
@@ -422,6 +438,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
           groupName: formData.groupName || undefined,
           categoryId: formData.categoryId || undefined,
           category: formData.category.trim(),
+          class1: formData.class1?.trim() || undefined,
+          class2: formData.class2?.trim() || undefined,
           unitId: formData.unitId || undefined,
           baseUnit: formData.baseUnit.trim(),
           units: [],
@@ -453,6 +471,14 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
     e.preventDefault();
     if (isSubmittingTransfer) return;
     setTransferModalError(null);
+    if (!transferProdId) {
+      setTransferModalError(t('يرجى البحث واختيار الصنف المطلوب تحويله.', 'Please search and select the product to transfer.'));
+      return;
+    }
+    if (!fromWhId || !toWhId) {
+      setTransferModalError(t('يرجى تحديد المستودع المحول منه والمستودع المحول إليه.', 'Please select source and target warehouses.'));
+      return;
+    }
     const qtyVal = Number(transferQty || 0);
     if (qtyVal <= 0) {
       setTransferModalError(t('يرجى إدخال كمية محولة أكبر من صفر.', 'Please enter a transfer quantity greater than zero.'));
@@ -478,6 +504,14 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
     e.preventDefault();
     if (isSubmittingAdjust) return;
     setAdjustModalError(null);
+    if (!adjustProdId) {
+      setAdjustModalError(t('يرجى اختيار الصنف المطلوب تسويته.', 'Please select the product to adjust.'));
+      return;
+    }
+    if (!adjustWhId) {
+      setAdjustModalError(t('يرجى اختيار المستودع.', 'Please select the warehouse.'));
+      return;
+    }
     if (adjustNewQty === '' || Number(adjustNewQty) < 0) {
       setAdjustModalError(t('يرجى إدخال الرصيد الفعلي الجديد بعد الجرد.', 'Please enter the new actual counted balance.'));
       return;
@@ -500,6 +534,14 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
     e.preventDefault();
     if (isSubmittingDamage) return;
     setDamageModalError(null);
+    if (!damageProdId) {
+      setDamageModalError(t('يرجى اختيار الصنف التالف.', 'Please select the damaged product.'));
+      return;
+    }
+    if (!damageWhId) {
+      setDamageModalError(t('يرجى اختيار المستودع.', 'Please select the warehouse.'));
+      return;
+    }
     const qtyVal = Number(damageQty || 0);
     if (qtyVal <= 0) {
       setDamageModalError(t('يرجى إدخال الكمية التالفة أكبر من صفر.', 'Please enter a damaged quantity greater than zero.'));
@@ -526,6 +568,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
       t('اسم الصنف', 'Product Name'),
       t('المجموعة', 'Group'),
       t('التصنيف', 'Category'),
+      t('التصنيف 1', 'Class 1'),
+      t('التصنيف 2', 'Class 2'),
       t('الوحدة', 'Unit'),
       t('سعر شراء الوحدة', 'Unit Purchase Price'),
       t('سعر بيع الوحدة', 'Unit Selling Price'),
@@ -540,6 +584,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
         p.name,
         p.groupName || '',
         p.category ? t(p.category) : '',
+        p.class1 || '',
+        p.class2 || '',
         t(p.baseUnit),
         p.purchasePrice,
         p.sellingPrice,
@@ -555,7 +601,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
   }
 
   if (initialTab === 'stock-transfers') {
-    return <StockTransfersView />;
+    return <StockTransfersView onNavigate={onNavigate} />;
   }
 
   if (initialTab === 'warehouses') {
@@ -2038,7 +2084,12 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
 
           <button
             onClick={() => {
-              setTransferProdId(products[0]?.id || '');
+              setTransferProdId('');
+              setTransferGroupFilter('');
+              setTransferCatFilter('');
+              setFromWhId('');
+              setToWhId('');
+              setTransferModalError(null);
               setIsTransferModalOpen(true);
             }}
             className="flex items-center gap-1.5 h-8 px-2.5 bg-[#EEF3FA] dark:bg-[#132544] border border-[#DCE6F5] dark:border-[#2A436E] text-[#011E58] dark:text-[#85B8FF] rounded-md text-xs font-bold hover:bg-[#DCE6F5] dark:hover:bg-[#1A3461] transition-colors cursor-pointer"
@@ -2119,6 +2170,32 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                 selectedCategoryId={categoryFilter}
                 onGroupChange={setGroupFilter}
                 onCategoryChange={setCategoryFilter}
+              />
+            </div>
+            <div className="w-[130px] shrink-0">
+              <SearchableFilterSelect
+                id="inv-prod-class1"
+                inlinePrefix={t('تصنيف 1', 'Class 1')}
+                value={class1Filter}
+                onChange={setClass1Filter}
+                options={class1Options}
+                allOptionLabel={t('الكل', 'All')}
+                allOptionValue="all"
+                allowClear
+                buttonClassName="rounded-md h-8 min-h-[32px]"
+              />
+            </div>
+            <div className="w-[130px] shrink-0">
+              <SearchableFilterSelect
+                id="inv-prod-class2"
+                inlinePrefix={t('تصنيف 2', 'Class 2')}
+                value={class2Filter}
+                onChange={setClass2Filter}
+                options={class2Options}
+                allOptionLabel={t('الكل', 'All')}
+                allOptionValue="all"
+                allowClear
+                buttonClassName="rounded-md h-8 min-h-[32px]"
               />
             </div>
             <div className="w-[150px] shrink-0">
@@ -2208,6 +2285,28 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                 ) : !prod.groupName ? (
                   <span className="text-slate-400 text-[10px]">—</span>
                 ) : null}
+              </div>
+            ),
+          },
+          {
+            key: 'classifications',
+            header: t('التصنيف 1 / التصنيف 2', 'Class 1 / Class 2'),
+            sortable: true,
+            sortValue: (prod) => `${prod.class1 || ''} ${prod.class2 || ''}`,
+            exportValue: (prod) => [prod.class1, prod.class2].filter(Boolean).join(' | '),
+            render: (prod) => (
+              <div className="flex flex-wrap items-center gap-1">
+                {prod.class1 && (
+                  <span className="px-1.5 py-0.5 rounded bg-[#EEF3FA] text-[#003589] border border-[#DCE6F5] font-bold text-[10px]">
+                    {prod.class1}
+                  </span>
+                )}
+                {prod.class2 && (
+                  <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 font-bold text-[10px]">
+                    {prod.class2}
+                  </span>
+                )}
+                {!prod.class1 && !prod.class2 && <span className="text-slate-400 text-[10px]">—</span>}
               </div>
             ),
           },
@@ -2587,6 +2686,29 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <div>
+              <label className="block font-bold text-slate-700 mb-1">{t('التصنيف 1 (اختياري):', 'Classification 1 (Optional):')}</label>
+              <input
+                type="text"
+                value={formData.class1 || ''}
+                onChange={(e) => setFormData({ ...formData, class1: e.target.value })}
+                placeholder={t('تصنيف مستقل 1...', 'Independent Class 1...')}
+                className="w-full h-8 bg-white border border-slate-300 rounded-md px-2.5 font-bold"
+              />
+            </div>
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">{t('التصنيف 2 (اختياري):', 'Classification 2 (Optional):')}</label>
+              <input
+                type="text"
+                value={formData.class2 || ''}
+                onChange={(e) => setFormData({ ...formData, class2: e.target.value })}
+                placeholder={t('تصنيف مستقل 2...', 'Independent Class 2...')}
+                className="w-full h-8 bg-white border border-slate-300 rounded-md px-2.5 font-bold"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div>
               <label className="block font-bold text-slate-700 mb-1">{t('المقاس (اختياري):', 'Size (Optional):')}</label>
               <input
                 type="text"
@@ -2724,6 +2846,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               categories={categoryList}
               selectedGroupId={transferGroupFilter}
               selectedCategoryId={transferCatFilter}
+              allowAll={false}
+              minSearchChars={2}
               onFilterChange={(nextGroupId, nextCategoryId) => {
                 setTransferGroupFilter(nextGroupId);
                 setTransferCatFilter(nextCategoryId);
@@ -2747,34 +2871,37 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               warehouseId={fromWhId}
               warehouses={warehouses}
               currency={t(settings.currency)}
-              placeholder={t('ابحث بالاسم أو الكود أو الباركود...', 'Search by name, code, or barcode...')}
+              minSearchChars={2}
+              placeholder={t('ابحث بالاسم أو الكود أو الباركود (حرفين فأكثر)...', 'Search by name, code, or barcode (min 2 chars)...')}
             />
           </div>
 
           <div className="grid grid-cols-2 gap-2.5">
             <div>
               <label className="block font-bold text-slate-700 mb-1">{t('من مستودع:', 'From Warehouse:')}</label>
-              <select
+              <SearchableFilterSelect
+                id="inv-transfer-from-wh"
                 value={fromWhId}
-                onChange={(e) => setFromWhId(e.target.value)}
-                className="w-full h-8 bg-white border border-slate-300 rounded-md px-2.5 font-bold"
-              >
-                {warehouses.map(w => (
-                  <option key={w.id} value={w.id}>{t(w.name)}</option>
-                ))}
-              </select>
+                onChange={setFromWhId}
+                options={warehouses.map((w) => ({ value: w.id, label: t(w.name), subtitle: w.code }))}
+                includeAllOption={false}
+                minSearchChars={2}
+                emptyLabel={t('اختر المستودع المصدر...', 'Select source warehouse...')}
+                buttonClassName="rounded-md h-8"
+              />
             </div>
             <div>
               <label className="block font-bold text-slate-700 mb-1">{t('إلى مستودع:', 'To Warehouse:')}</label>
-              <select
+              <SearchableFilterSelect
+                id="inv-transfer-to-wh"
                 value={toWhId}
-                onChange={(e) => setToWhId(e.target.value)}
-                className="w-full h-8 bg-white border border-slate-300 rounded-md px-2.5 font-bold"
-              >
-                {warehouses.map(w => (
-                  <option key={w.id} value={w.id}>{t(w.name)}</option>
-                ))}
-              </select>
+                onChange={setToWhId}
+                options={warehouses.map((w) => ({ value: w.id, label: t(w.name), subtitle: w.code }))}
+                includeAllOption={false}
+                minSearchChars={2}
+                emptyLabel={t('اختر المستودع الوجهة...', 'Select target warehouse...')}
+                buttonClassName="rounded-md h-8"
+              />
             </div>
           </div>
 
@@ -2840,6 +2967,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               categories={categoryList}
               selectedGroupId={adjustGroupFilter}
               selectedCategoryId={adjustCatFilter}
+              allowAll={false}
+              minSearchChars={2}
               onFilterChange={(nextGroupId, nextCategoryId) => {
                 setAdjustGroupFilter(nextGroupId);
                 setAdjustCatFilter(nextCategoryId);
@@ -2862,30 +2991,31 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               selectedProductId={adjustProdId}
               onSelect={(prod) => {
                 setAdjustProdId(prod.id);
-                setAdjustNewQty(Number(prod.stockPerWarehouse?.[adjustWhId] || 0));
+                setAdjustNewQty(adjustWhId ? Number(prod.stockPerWarehouse?.[adjustWhId] || 0) : '');
               }}
               warehouseId={adjustWhId}
               warehouses={warehouses}
               currency={t(settings.currency)}
+              minSearchChars={2}
             />
           </div>
 
           <div>
             <label className="block font-bold text-slate-700 mb-1">{t('المستودع:', 'Warehouse:')}</label>
-            <select
+            <SearchableFilterSelect
+              id="inv-adjust-wh"
               value={adjustWhId}
-              onChange={(e) => {
-                const nextWh = e.target.value;
+              onChange={(nextWh) => {
                 setAdjustWhId(nextWh);
                 const prod = products.find((p) => p.id === adjustProdId);
                 if (prod) setAdjustNewQty(Number(prod.stockPerWarehouse?.[nextWh] || 0));
               }}
-              className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold"
-            >
-              {warehouses.map(w => (
-                <option key={w.id} value={w.id}>{t(w.name)}</option>
-              ))}
-            </select>
+              options={warehouses.map((w) => ({ value: w.id, label: t(w.name), subtitle: w.code }))}
+              includeAllOption={false}
+              minSearchChars={2}
+              emptyLabel={t('اختر المستودع...', 'Select warehouse...')}
+              buttonClassName="rounded-md h-8"
+            />
           </div>
 
           <div>
@@ -2951,6 +3081,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               categories={categoryList}
               selectedGroupId={damageGroupFilter}
               selectedCategoryId={damageCatFilter}
+              allowAll={false}
+              minSearchChars={2}
               onFilterChange={(nextGroupId, nextCategoryId) => {
                 setDamageGroupFilter(nextGroupId);
                 setDamageCatFilter(nextCategoryId);
@@ -2974,20 +3106,22 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
               warehouseId={damageWhId}
               warehouses={warehouses}
               currency={t(settings.currency)}
+              minSearchChars={2}
             />
           </div>
 
           <div>
             <label className="block font-bold text-slate-700 mb-1">{t('المستودع:', 'Warehouse:')}</label>
-            <select
+            <SearchableFilterSelect
+              id="inv-damage-wh"
               value={damageWhId}
-              onChange={(e) => setDamageWhId(e.target.value)}
-              className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-bold"
-            >
-              {warehouses.map(w => (
-                <option key={w.id} value={w.id}>{t(w.name)}</option>
-              ))}
-            </select>
+              onChange={setDamageWhId}
+              options={warehouses.map((w) => ({ value: w.id, label: t(w.name), subtitle: w.code }))}
+              includeAllOption={false}
+              minSearchChars={2}
+              emptyLabel={t('اختر المستودع...', 'Select warehouse...')}
+              buttonClassName="rounded-md h-8"
+            />
           </div>
 
           <div>
@@ -3065,6 +3199,14 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ initialTab = 'prod
                 <div>
                   <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('التصنيف', 'Category')}</span>
                   <strong className="text-slate-900 dark:text-[#F3F7FC]">{previewProduct.category ? t(previewProduct.category) : '—'}</strong>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('التصنيف 1', 'Class 1')}</span>
+                  <strong className="text-slate-900 dark:text-[#F3F7FC]">{previewProduct.class1 || '—'}</strong>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('التصنيف 2', 'Class 2')}</span>
+                  <strong className="text-slate-900 dark:text-[#F3F7FC]">{previewProduct.class2 || '—'}</strong>
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-500 dark:text-[#97AECE] block">{t('الوحدة', 'Unit')}</span>

@@ -20,6 +20,7 @@ CREATE SEQUENCE IF NOT EXISTS seq_quote_no;
 CREATE SEQUENCE IF NOT EXISTS seq_rep_custody_op_no;
 CREATE SEQUENCE IF NOT EXISTS seq_purchase_return_req_no;
 CREATE SEQUENCE IF NOT EXISTS seq_sales_return_req_no;
+CREATE SEQUENCE IF NOT EXISTS seq_rep_custody_return_req_no;
 
 -- 1. المستخدمون والصلاحيات (Users & Roles)
 CREATE TABLE IF NOT EXISTS users (
@@ -139,6 +140,8 @@ CREATE TABLE IF NOT EXISTS products (
   unit_id VARCHAR(64),
   size TEXT,
   color TEXT,
+  class1 TEXT DEFAULT '',
+  class2 TEXT DEFAULT '',
   purchase_price NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
   selling_price NUMERIC(14, 2) NOT NULL DEFAULT 0.00,
   min_stock_level NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
@@ -440,11 +443,16 @@ CREATE TABLE IF NOT EXISTS rep_item_transfers (
   transfer_mode VARCHAR(32) NOT NULL DEFAULT 'transfer',
   dispatched_by TEXT,
   dispatched_at TIMESTAMPTZ,
+  sent_by TEXT,
+  sent_at TIMESTAMPTZ,
+  duration_ms INT,
   reviewed_by VARCHAR(64),
   reviewed_at TIMESTAMPTZ,
   executed_at TIMESTAMPTZ,
   received_by VARCHAR(64),
   received_at TIMESTAMPTZ,
+  confirmed_by_user_id VARCHAR(64),
+  confirmation_notes TEXT DEFAULT '',
   idempotency_key VARCHAR(128)
 );
 
@@ -1335,3 +1343,59 @@ CREATE TABLE IF NOT EXISTS user_sync_states (
   last_receive_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- 52. طلبات إرجاع بضاعة العهدة من المناديب ومراجعة الاستلام الفعلي والاعتماد (Rep Custody Return Requests)
+CREATE TABLE IF NOT EXISTS rep_custody_return_requests (
+  id VARCHAR(64) PRIMARY KEY,
+  request_number VARCHAR(64) UNIQUE NOT NULL,
+  date DATE NOT NULL,
+  representative_id VARCHAR(64) NOT NULL REFERENCES representatives(id) ON DELETE RESTRICT,
+  representative_name TEXT NOT NULL,
+  van_warehouse_id VARCHAR(64) NOT NULL REFERENCES warehouses(id) ON DELETE RESTRICT,
+  van_warehouse_name TEXT NOT NULL DEFAULT '',
+  target_warehouse_id VARCHAR(64) NOT NULL REFERENCES warehouses(id) ON DELETE RESTRICT,
+  target_warehouse_name TEXT NOT NULL DEFAULT '',
+  requested_by_user_id VARCHAR(64) NOT NULL,
+  requested_by_name TEXT NOT NULL,
+  notes TEXT DEFAULT '',
+  status VARCHAR(24) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'partially_approved', 'approved', 'rejected', 'cancelled')),
+  sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  reviewed_by_user_id VARCHAR(64),
+  reviewed_by_name TEXT DEFAULT '',
+  reviewed_at TIMESTAMPTZ,
+  approved_at TIMESTAMPTZ,
+  rejection_reason TEXT DEFAULT '',
+  review_notes TEXT DEFAULT '',
+  idempotency_key VARCHAR(128) UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS rep_custody_return_request_items (
+  id VARCHAR(64) PRIMARY KEY,
+  request_id VARCHAR(64) NOT NULL REFERENCES rep_custody_return_requests(id) ON DELETE CASCADE,
+  product_id VARCHAR(64) NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+  product_name TEXT NOT NULL,
+  barcode VARCHAR(64) DEFAULT '',
+  unit VARCHAR(32) NOT NULL,
+  unit_factor NUMERIC(12, 3) NOT NULL DEFAULT 1.000,
+  requested_qty NUMERIC(12, 3) NOT NULL CHECK (requested_qty > 0),
+  actual_received_qty NUMERIC(12, 3),
+  approved_qty NUMERIC(12, 3),
+  rejected_qty NUMERIC(12, 3),
+  remaining_custody_qty NUMERIC(12, 3),
+  notes TEXT DEFAULT ''
+);
+
+ALTER TABLE products ADD COLUMN IF NOT EXISTS class1 TEXT DEFAULT '';
+ALTER TABLE products ADD COLUMN IF NOT EXISTS class2 TEXT DEFAULT '';
+ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS sent_by TEXT;
+ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ;
+ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS duration_ms INT;
+ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS confirmed_by_user_id VARCHAR(64);
+ALTER TABLE rep_item_transfers ADD COLUMN IF NOT EXISTS confirmation_notes TEXT DEFAULT '';
+
+CREATE INDEX IF NOT EXISTS idx_rcr_req_status ON rep_custody_return_requests(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_rcr_req_rep ON rep_custody_return_requests(representative_id);
+CREATE INDEX IF NOT EXISTS idx_rcr_req_items_req ON rep_custody_return_request_items(request_id);
+

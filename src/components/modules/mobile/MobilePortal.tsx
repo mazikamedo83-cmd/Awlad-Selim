@@ -366,10 +366,10 @@ export const MobilePortal: React.FC = () => {
 
               <button
                 type="button"
-                onClick={() => data.triggerManualSync()}
+                onClick={() => (isRep ? setIsSyncCenterOpen(true) : data.refreshData())}
                 className="min-h-[34px] min-w-[34px] flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-white cursor-pointer"
-                title={t('تحديث ومزامنة', 'Refresh & Sync')}
-                aria-label={t('تحديث ومزامنة', 'Refresh & Sync')}
+                title={isRep ? t('الإرسال والاستلام', 'Send & Receive') : t('تحديث البيانات', 'Refresh Data')}
+                aria-label={isRep ? t('الإرسال والاستلام', 'Send & Receive') : t('تحديث البيانات', 'Refresh Data')}
               >
                 <RefreshCw className={`w-4 h-4 ${data.networkStatus === 'synchronizing' ? 'animate-spin' : ''}`} />
               </button>
@@ -420,11 +420,15 @@ export const MobilePortal: React.FC = () => {
               disabled={data.isSyncing}
               onClick={() => {
                 refreshAuthContext().catch(() => {});
-                data.triggerManualSync();
+                if (isRep) {
+                  setIsSyncCenterOpen(true);
+                } else {
+                  data.refreshData();
+                }
               }}
               className="px-2 py-1 rounded-md bg-red-600 text-white text-[11px] font-bold shrink-0 disabled:opacity-50 cursor-pointer"
             >
-              {data.isSyncing ? t('جاري الفحص...', 'Checking...') : t('إعادة المحاولة', 'Retry')}
+              {data.isSyncing ? t('جاري الفحص...', 'Checking...') : isRep ? t('الإرسال والاستلام', 'Send & Receive') : t('إعادة المحاولة', 'Retry')}
             </button>
           </div>
         )}
@@ -445,16 +449,16 @@ export const MobilePortal: React.FC = () => {
               <div className="flex items-center gap-2">
                 <WifiOff className="w-4 h-4 text-amber-700 shrink-0" />
                 <span>
-                  {t('العمل دون اتصال — تُحفظ عملياتك في قاعدة البيانات المحلية وتُزامن تلقائياً فور عودة الشبكة', 'Offline mode — operations are saved locally and will sync automatically when reconnected')}
-                  {data.lastServerSyncAt ? ` · ${t('آخر مزامنة:', 'Last sync:')} ${formatLocaleTime(data.lastServerSyncAt)}` : ''}
+                  {t('العمل دون اتصال — تُحفظ عملياتك محلياً ويمكنك إرسالها يدوياً من شاشة الإرسال والاستلام', 'Offline mode — operations are saved locally and can be sent manually from Send & Receive')}
+                  {data.lastServerSyncAt ? ` · ${t('آخر عملية:', 'Last sync:')} ${formatLocaleTime(data.lastServerSyncAt)}` : ''}
                 </span>
               </div>
               <button
                 type="button"
-                onClick={() => data.triggerManualSync()}
+                onClick={() => (isRep ? setIsSyncCenterOpen(true) : data.refreshData())}
                 className="px-2 py-1 rounded-md bg-amber-600 text-white text-[11px] font-bold shrink-0 cursor-pointer"
               >
-                {t('إعادة المحاولة', 'Retry')}
+                {isRep ? t('الإرسال والاستلام', 'Send & Receive') : t('إعادة المحاولة', 'Retry')}
               </button>
             </div>
           )}
@@ -464,28 +468,21 @@ export const MobilePortal: React.FC = () => {
             <span>
               {data.conflictsCount > 0
                 ? t(
-                    `توجد (${data.conflictsCount}) تعارضات مزامنة تحتاج مراجعة و(${data.pendingSyncCount}) عمليات محلية بانتظار الاعتماد المركزي.`,
-                    `${data.conflictsCount} sync conflict(s) need review and ${data.pendingSyncCount} local operation(s) pending central approval.`
+                    `توجد (${data.conflictsCount}) تعارضات مزامنة تحتاج مراجعة و(${data.pendingSyncCount}) عمليات محلية بانتظار الإرسال اليدوي.`,
+                    `${data.conflictsCount} sync conflict(s) need review and ${data.pendingSyncCount} local operation(s) pending manual send.`
                   )
                 : t(
-                    `توجد (${data.pendingSyncCount}) عمليات محلية بانتظار المزامنة (الأرصدة الحالية مبدئية لحين الاعتماد المركزي).`,
-                    `${data.pendingSyncCount} local operation(s) pending sync (current balances are provisional until central approval).`
+                    `توجد (${data.pendingSyncCount}) عمليات محلية بانتظار الإرسال اليدوي من شاشة الإرسال والاستلام.`,
+                    `${data.pendingSyncCount} local operation(s) awaiting manual send from Send & Receive.`
                   )}
             </span>
             <div className="flex items-center gap-1 shrink-0">
               <button
                 type="button"
                 onClick={() => setIsSyncCenterOpen(true)}
-                className="px-2 py-1 rounded-md bg-white border border-blue-300 text-blue-900 text-[11px] font-bold cursor-pointer"
+                className="px-2.5 py-1 rounded-md bg-blue-900 text-white text-[11px] font-bold cursor-pointer"
               >
                 {t('الإرسال والاستلام', 'Send & Receive')}
-              </button>
-              <button
-                type="button"
-                onClick={() => data.triggerManualSync()}
-                className="px-2 py-1 rounded-md bg-blue-900 text-white text-[11px] font-bold cursor-pointer"
-              >
-                {t('مزامنة الآن', 'Sync Now')}
               </button>
             </div>
           </div>
@@ -613,7 +610,7 @@ export const MobilePortal: React.FC = () => {
         onSaved={async () => {
           await refreshAuthContext();
           if (getStoredTokens()?.accessToken) {
-            await data.triggerManualSync();
+            await data.refreshData();
           }
         }}
       />
@@ -933,23 +930,11 @@ export const MobilePortal: React.FC = () => {
               >
                 <span className="flex items-center gap-2">
                   <CloudOff className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                  <span>{t('مركز المزامنة والعمليات المعلقة', 'Sync Center & Pending Operations')}</span>
+                  <span>{t('شاشة الإرسال والاستلام اليدوي', 'Manual Send & Receive')}</span>
                 </span>
                 <span className="font-mono font-black text-slate-800 dark:text-[#F3F7FC] tabular-nums">
                   {formatLocaleNumber(syncBadgeCount)}
                 </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSettingsModalOpen(false);
-                  data.triggerManualSync();
-                }}
-                className="w-full min-h-[34px] px-2.5 rounded-md bg-[var(--awlad-navy-900)] dark:bg-[#1659C8] hover:bg-[var(--awlad-navy-950)] dark:hover:bg-[#1F6BE6] text-white flex items-center justify-center gap-1.5 font-black cursor-pointer"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${data.networkStatus === 'synchronizing' ? 'animate-spin' : ''}`} />
-                <span>{t('مزامنة البيانات الآن', 'Sync Data Now')}</span>
               </button>
 
               <button

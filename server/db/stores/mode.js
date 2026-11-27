@@ -617,6 +617,8 @@ export function mapPgProductRow(r, units = []) {
     })),
     size: r.size || undefined,
     color: r.color || undefined,
+    class1: r.class1 || undefined,
+    class2: r.class2 || undefined,
     purchasePrice: Number(r.purchase_price || 0),
     sellingPrice: Number(r.selling_price || 0),
     minStockLevel: Number(r.min_stock_level || 0),
@@ -900,4 +902,55 @@ export function mapPgSalesReturnRequestRow(r, items = []) {
     updatedAt: r.updated_at ? isoTimestamp(r.updated_at) : isoTimestamp(r.created_at),
   };
 }
+
+export function mapPgRepCustodyReturnRequestRow(r, items = []) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    requestNumber: r.request_number,
+    date: isoDateOnly(r.date),
+    representativeId: r.representative_id,
+    representativeName: r.representative_name,
+    vanWarehouseId: r.van_warehouse_id,
+    vanWarehouseName: r.van_warehouse_name || '',
+    targetWarehouseId: r.target_warehouse_id,
+    targetWarehouseName: r.target_warehouse_name || '',
+    requestedByUserId: r.requested_by_user_id,
+    requestedByName: r.requested_by_name,
+    notes: r.notes || '',
+    status: r.status || 'pending',
+    sentAt: r.sent_at ? isoTimestamp(r.sent_at) : isoTimestamp(r.created_at),
+    reviewedByUserId: r.reviewed_by_user_id || undefined,
+    reviewedByName: r.reviewed_by_name || undefined,
+    reviewedAt: r.reviewed_at ? isoTimestamp(r.reviewed_at) : undefined,
+    approvedAt: r.approved_at ? isoTimestamp(r.approved_at) : undefined,
+    rejectionReason: r.rejection_reason || undefined,
+    reviewNotes: r.review_notes || undefined,
+    items: items.map((it) => ({
+      id: it.id,
+      productId: it.product_id,
+      productName: it.product_name,
+      barcode: it.barcode || '',
+      unit: it.unit,
+      unitFactor: Number(it.unit_factor || 1),
+      requestedQty: Number(it.requested_qty || 0),
+      actualReceivedQty:
+        it.actual_received_qty !== null && it.actual_received_qty !== undefined
+          ? Number(it.actual_received_qty)
+          : undefined,
+      approvedQty:
+        it.approved_qty !== null && it.approved_qty !== undefined ? Number(it.approved_qty) : undefined,
+      rejectedQty:
+        it.rejected_qty !== null && it.rejected_qty !== undefined ? Number(it.rejected_qty) : undefined,
+      remainingCustodyQty:
+        it.remaining_custody_qty !== null && it.remaining_custody_qty !== undefined
+          ? Number(it.remaining_custody_qty)
+          : undefined,
+      notes: it.notes || '',
+    })),
+    createdAt: isoTimestamp(r.created_at),
+    updatedAt: r.updated_at ? isoTimestamp(r.updated_at) : isoTimestamp(r.created_at),
+  };
+}
+
 

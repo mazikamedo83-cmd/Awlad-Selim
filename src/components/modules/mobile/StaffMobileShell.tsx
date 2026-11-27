@@ -212,7 +212,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
           { key: 'warehouses', label: t('أرصدة المستودعات', 'Warehouse Balances'), permission: 'canManageWarehouses' },
           {
             key: 'stock-transfers-orders',
-            label: t('أوامر تحويل الأصناف', 'Stock Transfer Orders'),
+            label: t('أوامر التحويل', 'Transfer Orders'),
             permission: ['canCreateStockTransfer', 'canApproveStockTransfer', 'canExecuteStockTransfer', 'canManageInventory'],
           },
           {
@@ -220,7 +220,6 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
             label: t('جرد المخزن المعتمد', 'Approved Stock Counts'),
             permission: ['canCreateStockCount', 'canApproveStockCount', 'canManageInventory'],
           },
-          { key: 'stock-transfers', label: t('تحويل سريع بين المستودعات', 'Quick Warehouse Transfer') },
           { key: 'stock-adjustments', label: t('تسوية سريعة للمخزون', 'Quick Stock Adjustment') },
           { key: 'damaged-stock', label: t('بضاعة تالفة ومنتهية', 'Damaged & Expired Stock') },
           { key: 'stock-movements', label: t('سجل حركة الأصناف', 'Stock Movements Log') },
@@ -272,11 +271,12 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         items: [
           {
             key: 'refresh-sync',
-            label: t('الإرسال والاستلام والتحويل', 'Send, Receive & Transfers'),
+            label: t('سجل الإرسال والاستلام', 'Send & Receive Log'),
             badge: data.pendingSendReceiveCount > 0 ? `${data.pendingSendReceiveCount}` : undefined,
             permission: ['canManageReps', 'canManageTransfers', 'canManageSales', 'canManageAccounts', 'canApprove'],
           },
           { key: 'reps', label: t('قائمة المناديب والعهد', 'Representatives & Custody'), permission: 'canManageReps' },
+          { key: 'rep-transfers', label: t('التحويلات النقدية للمناديب', 'Rep Cash Transfers'), permission: 'canManageTransfers' },
         ],
       },
       {
@@ -639,7 +639,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
     if (checkPerm(['canCreateStockTransfer', 'canApproveStockTransfer', 'canExecuteStockTransfer', 'canManageInventory'])) {
       tiles.push({
         id: 'stock-transfers-orders',
-        label: t('تحويل الأصناف', 'Stock Transfers'),
+        label: t('أمر تحويل', 'Transfer Order'),
         icon: <StockTransfersIcon className="w-11 h-11" />,
         onClick: () => onNavigate('stock-transfers-orders'),
       });
@@ -840,10 +840,13 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
 
             <button
               type="button"
-              onClick={() => data.triggerManualSync()}
+              onClick={() => {
+                setIsMoreViewOpen(false);
+                onNavigate('refresh-sync');
+              }}
               className="min-h-[32px] min-w-[32px] flex items-center justify-center rounded-md hover:bg-white/15 text-white cursor-pointer"
-              title={t('تحديث ومزامنة', 'Refresh & Sync')}
-              aria-label={t('تحديث ومزامنة', 'Refresh & Sync')}
+              title={t('الإرسال والاستلام', 'Send & Receive')}
+              aria-label={t('الإرسال والاستلام', 'Send & Receive')}
             >
               <RefreshCw className={`w-4 h-4 ${data.networkStatus === 'synchronizing' ? 'animate-spin' : ''}`} />
             </button>
@@ -906,10 +909,13 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
             </div>
             <button
               type="button"
-              onClick={() => data.triggerManualSync()}
+              onClick={() => {
+                setIsMoreViewOpen(false);
+                onNavigate('refresh-sync');
+              }}
               className="min-h-[30px] px-2.5 rounded-md bg-amber-600 text-white text-[11px] font-bold shrink-0 cursor-pointer"
             >
-              {t('إعادة المحاولة', 'Retry')}
+              {t('الإرسال والاستلام', 'Send & Receive')}
             </button>
           </div>
         )}
@@ -1169,7 +1175,7 @@ export const StaffMobileShell: React.FC<StaffMobileShellProps> = ({
         onClose={() => setIsServerModalOpen(false)}
         onSaved={async () => {
           await refreshAuthContext();
-          await data.triggerManualSync();
+          await data.refreshData();
         }}
       />
 

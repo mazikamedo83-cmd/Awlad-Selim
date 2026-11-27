@@ -2,6 +2,7 @@ import type {
   Customer,
   MobileConfig,
   Representative,
+  SendReceiveHistoryEntry,
   StorefrontConfig,
   SyncConflictRecord,
   SyncDispatchBatch,
@@ -303,6 +304,24 @@ export async function readMedia(mediaKey: string): Promise<string | null> {
   return idbGet<string>(STORE_MEDIA, mediaKey);
 }
 
+export async function listSendReceiveHistory(userId: string): Promise<SendReceiveHistoryEntry[]> {
+  if (!userId) return [];
+  const list = await getKV<SendReceiveHistoryEntry[]>('send_receive_history', userId);
+  if (!Array.isArray(list)) return [];
+  return [...list].sort((a, b) => String(b.finishedAt || '').localeCompare(String(a.finishedAt || '')));
+}
+
+export async function appendSendReceiveHistory(
+  userId: string,
+  entry: SendReceiveHistoryEntry
+): Promise<SendReceiveHistoryEntry[]> {
+  if (!userId || !entry?.id) return [];
+  const current = await listSendReceiveHistory(userId);
+  const next = [entry, ...current.filter((e) => e.id !== entry.id)].slice(0, 100);
+  await setKV('send_receive_history', userId, next);
+  return next;
+}
+
 export const localDb = {
   getKV,
   setKV,
@@ -320,6 +339,8 @@ export const localDb = {
   listDispatchBatches,
   saveDispatchBatches,
   putDispatchBatch,
+  listSendReceiveHistory,
+  appendSendReceiveHistory,
   writeMedia,
   readMedia,
 };
