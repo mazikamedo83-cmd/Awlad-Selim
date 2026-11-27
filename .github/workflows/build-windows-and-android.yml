@@ -1,4 +1,4 @@
-name: Build AWLAD SELIM Windows Release & Android Test APK
+name: AWLAD SELIM - Windows Final + Android Test Build
 
 on:
   workflow_dispatch:
@@ -208,7 +208,7 @@ jobs:
       - name: Upload Windows Setup EXE Artifact
         uses: actions/upload-artifact@v6
         with:
-          name: AWLAD-SELIM-Setup-${{ steps.meta.outputs.version }}
+          name: AWLAD-Windows-Setup
           path: dist-electron/AWLAD-SELIM-Setup-${{ steps.meta.outputs.version }}.exe
           if-no-files-found: error
           retention-days: 30
@@ -216,7 +216,7 @@ jobs:
       - name: Upload Windows Portable EXE Artifact
         uses: actions/upload-artifact@v6
         with:
-          name: AWLAD-SELIM-Portable-${{ steps.meta.outputs.version }}
+          name: AWLAD-Windows-Portable
           path: dist-electron/AWLAD-SELIM-Portable-${{ steps.meta.outputs.version }}.exe
           if-no-files-found: error
           retention-days: 30
@@ -375,6 +375,10 @@ jobs:
           mkdir -p dist-android
           OUT_APK="dist-android/AWLAD-SELIM-${VERSION}-TEST.apk"
           cp "$APK_PATH" "$OUT_APK"
+          if [ ! -s "$OUT_APK" ]; then
+            echo "ERROR: Expected Android Test APK was not created or is empty: $OUT_APK"
+            exit 1
+          fi
           ls -lh dist-android/
 
           APK_BYTES=$(stat -c%s "$OUT_APK")
@@ -386,6 +390,7 @@ jobs:
 
           {
             echo "## Android Test Debug APK v${VERSION}"
+            echo "- Artifact: \`AWLAD-Android-Test-APK\`"
             echo "- File: \`AWLAD-SELIM-${VERSION}-TEST.apk\`"
             echo "- Size: ${APK_HUMAN} (${APK_BYTES} bytes)"
             echo "- Application ID: \`com.awladselim.erp\`"
@@ -397,7 +402,7 @@ jobs:
       - name: Upload Test Debug APK Artifact
         uses: actions/upload-artifact@v6
         with:
-          name: AWLAD-SELIM-${{ steps.meta.outputs.version }}-TEST-APK
+          name: AWLAD-Android-Test-APK
           path: dist-android/AWLAD-SELIM-${{ steps.meta.outputs.version }}-TEST.apk
           if-no-files-found: error
           retention-days: 30
@@ -416,11 +421,12 @@ jobs:
           VERSION="${{ needs.build-windows.outputs.version || needs.build-android-test.outputs.version || '3.0.0' }}"
 
           {
-            echo "## AWLAD SELIM v${VERSION} — Unified Build Summary"
-            echo "| Platform | Job Status | Expected Artifacts |"
+            echo "## AWLAD SELIM v${VERSION} — Windows Final + Android Test Build Summary"
+            echo "| Platform | Job Status | Artifacts & Files |"
             echo "|---|---|---|"
-            echo "| Windows x64 (Setup & Portable) | \`${WIN_RESULT}\` | \`AWLAD-SELIM-Setup-${VERSION}.exe\`, \`AWLAD-SELIM-Portable-${VERSION}.exe\` |"
-            echo "| Android Test APK (Debug) | \`${AND_RESULT}\` | \`AWLAD-SELIM-${VERSION}-TEST.apk\` |"
+            echo "| Windows x64 (Setup) | \`${WIN_RESULT}\` | \`AWLAD-Windows-Setup\` → \`AWLAD-SELIM-Setup-${VERSION}.exe\` |"
+            echo "| Windows x64 (Portable) | \`${WIN_RESULT}\` | \`AWLAD-Windows-Portable\` → \`AWLAD-SELIM-Portable-${VERSION}.exe\` |"
+            echo "| Android Test APK (Debug) | \`${AND_RESULT}\` | \`AWLAD-Android-Test-APK\` → \`AWLAD-SELIM-${VERSION}-TEST.apk\` |"
           } >> "$GITHUB_STEP_SUMMARY"
 
           echo "Windows job result : $WIN_RESULT"
