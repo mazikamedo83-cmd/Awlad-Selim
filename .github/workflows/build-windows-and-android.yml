@@ -1,0 +1,432 @@
+name: Build AWLAD SELIM Windows Release & Android Test APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Windows x64 Release (Setup & Portable EXE)
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      setup_sha256: ${{ steps.verify.outputs.setup_sha256 }}
+      portable_sha256: ${{ steps.verify.outputs.portable_sha256 }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Setup Bun 1.4.4
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.4'
+
+      - name: Read app release version
+        id: meta
+        shell: pwsh
+        run: |
+          $pkg = Get-Content "package.json" -Raw | ConvertFrom-Json
+          $version = $pkg.version
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            Write-Error "Missing version in package.json"
+            exit 1
+          }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "Target Windows Release version: $version"
+
+      - name: Verify bun.lock exists
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "bun.lock")) {
+            Write-Error "Missing required lockfile: bun.lock"
+            exit 1
+          }
+          Get-Item "bun.lock" | Select-Object Name, Length
+
+      - name: Install dependencies with Bun (hoisted for Electron & icon scripts)
+        shell: pwsh
+        run: bun install --frozen-lockfile --linker=hoisted
+
+      - name: Generate Windows icons from official logo
+        shell: pwsh
+        run: node scripts/generate-win-icon.mjs
+
+      - name: Verify Windows icon assets
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "build/icon.ico")) {
+            Write-Error "Missing required icon file: build/icon.ico"
+            exit 1
+          }
+          if (-not (Test-Path "build/icon.png")) {
+            Write-Error "Missing required icon file: build/icon.png"
+            exit 1
+          }
+          Get-Item "build/icon.ico", "build/icon.png" | Select-Object Name, Length
+
+      - name: Run TypeScript check
+        shell: pwsh
+        run: bun run lint
+
+      - name: Run full verification test suites
+        shell: pwsh
+        run: |
+          node server/tests/runAllTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/repPurchaseCustomerRbacTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/masterRepairVerificationTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/comprehensiveReportsTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/auditVerificationTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npx tsx server/tests/pairingVerificationTests.mts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/strictPostgresModeTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npx tsx server/tests/strictClientBehaviorTests.mts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/securityCompletionTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npx tsx server/tests/clientSecurityCompletionTests.mts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/fullCompletionSuite.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/finalSecurityAuditTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/productionReadinessAuditTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/identityAndFiltersTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/branchCollectionAndAuditTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/storefrontAndLocationTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/offlineRefreshAndDispatchTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/platformUiCorrectionTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node server/tests/dashboardBalanceVisibilityTests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npx tsx server/tests/offlineClientFlowChecks.mts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npx tsx server/tests/diagnosticsTests.mts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npx tsx server/tests/mobileSendReceiveTests.mts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build frontend and Windows Release EXEs (Setup & Portable)
+        shell: pwsh
+        run: bun run electron:dist
+
+      - name: Run Electron bootstrap and persistence tests
+        shell: pwsh
+        run: node server/tests/verifyElectronBootstrap.mjs
+
+      - name: Verify Windows Setup & Portable EXEs, Hygiene & SHA-256
+        id: verify
+        shell: pwsh
+        run: |
+          $version = "${{ steps.meta.outputs.version }}"
+          $expectedInstaller = "dist-electron/AWLAD-SELIM-Setup-$version.exe"
+          $expectedPortable = "dist-electron/AWLAD-SELIM-Portable-$version.exe"
+
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "## Windows x64 Build v$version"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "| File | Size (MB) | SHA-256 |"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "|---|---|---|"
+
+          $setupHash = ""
+          $portableHash = ""
+
+          foreach ($targetExe in @($expectedInstaller, $expectedPortable)) {
+            if (-not (Test-Path $targetExe)) {
+              Write-Error "Expected Windows executable not found: $targetExe"
+              if (Test-Path "dist-electron") {
+                Get-ChildItem -Path "dist-electron"
+              }
+              exit 1
+            }
+            $file = Get-Item $targetExe
+            if ($file.Length -lt 10485760) {
+              Write-Error "Generated Windows executable is unexpectedly small or empty ($($file.Length) bytes): $($file.FullName)"
+              exit 1
+            }
+            $hash = (Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($targetExe -eq $expectedInstaller) { $setupHash = $hash }
+            if ($targetExe -eq $expectedPortable) { $portableHash = $hash }
+            $sizeMb = [Math]::Round($file.Length / 1MB, 2)
+            Write-Host "Verified Windows EXE: $($file.Name) ($sizeMb MB) SHA-256=$hash"
+            Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "| ``$($file.Name)`` | $sizeMb MB | ``$hash`` |"
+          }
+
+          "setup_sha256=$setupHash" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "portable_sha256=$portableHash" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+          $unpackedApp = "dist-electron/win-unpacked/resources/app"
+          if (-not (Test-Path "$unpackedApp/dist/index.html")) {
+            Write-Error "Missing packaged dist/index.html inside $unpackedApp"
+            exit 1
+          }
+          if (-not (Test-Path "$unpackedApp/dist/awlad-selim-logo.png")) {
+            Write-Error "Missing official logo inside packaged app: $unpackedApp/dist/awlad-selim-logo.png"
+            exit 1
+          }
+          foreach ($forbidden in @(
+            "$unpackedApp/AWLAD_SELIM_BACKUP",
+            "$unpackedApp/dist/product-images",
+            "$unpackedApp/dist/assets/aistudio",
+            "$unpackedApp/server/data",
+            "$unpackedApp/server/tests",
+            "$unpackedApp/.env",
+            "$unpackedApp/server/data/.jwt_secret"
+          )) {
+            if (Test-Path $forbidden) {
+              Write-Error "Forbidden secret, deleted asset, or data file leaked into packaged Windows app: $forbidden"
+              exit 1
+            }
+          }
+          $jsFiles = Get-ChildItem -Path "$unpackedApp/dist/assets" -Filter "index-*.js"
+          if (-not $jsFiles -or $jsFiles.Count -eq 0) {
+            Write-Error "Missing compiled index-*.js bundle in packaged dist/assets"
+            exit 1
+          }
+          $bundleContent = Get-Content $jsFiles[0].FullName -Raw
+          if (-not $bundleContent.Contains("v$version")) {
+            Write-Error "Packaged JS bundle does not contain current version marker v$version"
+            exit 1
+          }
+
+      - name: Upload Windows Setup EXE Artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: AWLAD-SELIM-Setup-${{ steps.meta.outputs.version }}
+          path: dist-electron/AWLAD-SELIM-Setup-${{ steps.meta.outputs.version }}.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Windows Portable EXE Artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: AWLAD-SELIM-Portable-${{ steps.meta.outputs.version }}
+          path: dist-electron/AWLAD-SELIM-Portable-${{ steps.meta.outputs.version }}.exe
+          if-no-files-found: error
+          retention-days: 30
+
+  build-android-test:
+    name: Android Test APK (Debug Signed)
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      apk_sha256: ${{ steps.verify.outputs.apk_sha256 }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Setup Bun 1.4.4
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.4'
+
+      - name: Read app version
+        id: meta
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [ -z "$VERSION" ]; then
+            echo "ERROR: Missing version in package.json"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building Android Test Debug APK for version: $VERSION"
+
+      - name: Setup Java 21 (Required by Capacitor 8 & AGP 8.13)
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Android SDK (API 36)
+        uses: android-actions/setup-android@v4
+        with:
+          accept-android-sdk-licenses: true
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+
+      - name: Verify bun.lock exists
+        run: test -f bun.lock
+
+      - name: Install dependencies with Bun
+        run: bun install --frozen-lockfile --linker=hoisted
+
+      - name: Run TypeScript check
+        run: bun run lint
+
+      - name: Run automated verification tests
+        run: |
+          node server/tests/runAllTests.mjs
+          node server/tests/repPurchaseCustomerRbacTests.mjs
+          node server/tests/masterRepairVerificationTests.mjs
+          node server/tests/comprehensiveReportsTests.mjs
+          node server/tests/auditVerificationTests.mjs
+          npx tsx server/tests/pairingVerificationTests.mts
+          node server/tests/strictPostgresModeTests.mjs
+          npx tsx server/tests/strictClientBehaviorTests.mts
+          node server/tests/securityCompletionTests.mjs
+          npx tsx server/tests/clientSecurityCompletionTests.mts
+          node server/tests/fullCompletionSuite.mjs
+          node server/tests/finalSecurityAuditTests.mjs
+          node server/tests/productionReadinessAuditTests.mjs
+          node server/tests/identityAndFiltersTests.mjs
+          node server/tests/branchCollectionAndAuditTests.mjs
+          node server/tests/storefrontAndLocationTests.mjs
+          node server/tests/offlineRefreshAndDispatchTests.mjs
+          node server/tests/platformUiCorrectionTests.mjs
+          node server/tests/dashboardBalanceVisibilityTests.mjs
+          npx tsx server/tests/offlineClientFlowChecks.mts
+          npx tsx server/tests/diagnosticsTests.mts
+          npx tsx server/tests/mobileSendReceiveTests.mts
+
+      - name: Build web bundle & verify asset hygiene
+        run: |
+          bun run build
+          test -f dist/awlad-selim-logo.png
+          test ! -e dist/product-images
+          test ! -e dist/assets/aistudio
+          node server/tests/verifyElectronBootstrap.mjs
+
+      - name: Sync Capacitor Android project & verify synced web assets
+        run: |
+          npx cap sync android
+          test -f android/app/src/main/assets/public/awlad-selim-logo.png
+          test ! -e android/app/src/main/assets/public/product-images
+          test ! -e android/app/src/main/assets/public/assets/aistudio
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x android/gradlew
+
+      - name: Build Android Debug APK (Automatic Debug Keystore Only, No Secrets Required)
+        working-directory: android
+        env:
+          AWLAD_APP_LINK_HOST: ''
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Verify Debug APK, Debug Signature, Min SDK & Safety
+        id: verify
+        run: |
+          VERSION="${{ steps.meta.outputs.version }}"
+          APK_PATH="android/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK_PATH"
+
+          APKSIGNER=$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -name apksigner | sort -V | tail -n 1)
+          AAPT2=$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -name aapt2 | sort -V | tail -n 1)
+          if [ -z "$APKSIGNER" ] || [ -z "$AAPT2" ]; then
+            echo "ERROR: apksigner or aapt2 not found in Android build-tools"
+            exit 1
+          fi
+
+          echo "=== Verifying Debug APK signature ==="
+          CERT_INFO=$("$APKSIGNER" verify --verbose --print-certs "$APK_PATH")
+          echo "$CERT_INFO"
+          if ! echo "$CERT_INFO" | grep -qi "Android Debug"; then
+            echo "ERROR: Expected Android Debug signing certificate on Test APK!"
+            exit 1
+          fi
+
+          echo "=== Verifying Application ID, Version & SDK Compatibility ==="
+          BADGING=$("$AAPT2" dump badging "$APK_PATH")
+          echo "$BADGING" | head -n 15
+          if ! echo "$BADGING" | grep -q "package: name='com.awladselim.erp'"; then
+            echo "ERROR: Unexpected Application ID! Expected com.awladselim.erp"
+            exit 1
+          fi
+          if ! echo "$BADGING" | grep -q "versionName='${VERSION}'"; then
+            echo "ERROR: Expected versionName='${VERSION}' in Test APK"
+            exit 1
+          fi
+          if ! echo "$BADGING" | grep -q "sdkVersion:'24'"; then
+            echo "ERROR: Expected minSdkVersion 24 in Test APK"
+            exit 1
+          fi
+
+          if unzip -l "$APK_PATH" | grep -iE "\.jks$|\.keystore$|keystore\.properties$|\.env$|\.jwt_secret$|database\.json$|product-images/|assets/aistudio/"; then
+            echo "ERROR: Secret, deleted asset, or database file leaked inside Debug APK!"
+            exit 1
+          fi
+
+          MERGED_MANIFEST=$(find android/app/build/intermediates/merged_manifests android/app/build/intermediates/merged_manifest -name AndroidManifest.xml 2>/dev/null | head -n 1 || true)
+          if [ -n "$MERGED_MANIFEST" ] && grep -q 'android:autoVerify="true"' "$MERGED_MANIFEST"; then
+            echo "ERROR: App Links autoVerify should be disabled when AWLAD_APP_LINK_HOST is unset"
+            exit 1
+          fi
+
+          mkdir -p dist-android
+          OUT_APK="dist-android/AWLAD-SELIM-${VERSION}-TEST.apk"
+          cp "$APK_PATH" "$OUT_APK"
+          ls -lh dist-android/
+
+          APK_BYTES=$(stat -c%s "$OUT_APK")
+          APK_HUMAN=$(ls -lh "$OUT_APK" | awk '{print $5}')
+          APK_SHA256=$(sha256sum "$OUT_APK" | awk '{print $1}')
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+          echo "Output APK : $OUT_APK ($APK_HUMAN / $APK_BYTES bytes)"
+          echo "SHA-256    : $APK_SHA256"
+
+          {
+            echo "## Android Test Debug APK v${VERSION}"
+            echo "- File: \`AWLAD-SELIM-${VERSION}-TEST.apk\`"
+            echo "- Size: ${APK_HUMAN} (${APK_BYTES} bytes)"
+            echo "- Application ID: \`com.awladselim.erp\`"
+            echo "- Min SDK / Target SDK: API 24 / API 36"
+            echo "- Signing: Android Debug Keystore (verified via \`apksigner\`)"
+            echo "- SHA-256: \`${APK_SHA256}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Test Debug APK Artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: AWLAD-SELIM-${{ steps.meta.outputs.version }}-TEST-APK
+          path: dist-android/AWLAD-SELIM-${{ steps.meta.outputs.version }}-TEST.apk
+          if-no-files-found: error
+          retention-days: 30
+
+  release-summary:
+    name: Combined Build Result Summary
+    needs: [build-windows, build-android-test]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Summarize platform build outcomes and fail if any failed
+        run: |
+          WIN_RESULT="${{ needs.build-windows.result }}"
+          AND_RESULT="${{ needs.build-android-test.result }}"
+          VERSION="${{ needs.build-windows.outputs.version || needs.build-android-test.outputs.version || '3.0.0' }}"
+
+          {
+            echo "## AWLAD SELIM v${VERSION} — Unified Build Summary"
+            echo "| Platform | Job Status | Expected Artifacts |"
+            echo "|---|---|---|"
+            echo "| Windows x64 (Setup & Portable) | \`${WIN_RESULT}\` | \`AWLAD-SELIM-Setup-${VERSION}.exe\`, \`AWLAD-SELIM-Portable-${VERSION}.exe\` |"
+            echo "| Android Test APK (Debug) | \`${AND_RESULT}\` | \`AWLAD-SELIM-${VERSION}-TEST.apk\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "Windows job result : $WIN_RESULT"
+          echo "Android job result : $AND_RESULT"
+
+          if [ "$WIN_RESULT" != "success" ] || [ "$AND_RESULT" != "success" ]; then
+            echo "ERROR: One or more required platform builds failed."
+            exit 1
+          fi
