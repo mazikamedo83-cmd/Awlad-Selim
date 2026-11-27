@@ -74,8 +74,12 @@
     "typescript": "^7.0.2"
   },
   "overrides": {
-    "app-builder-lib>minimatch": "^11.0.9",
-    "@electron/universal>minimatch": "^11.0.9"
+    "app-builder-lib": {
+      "minimatch": "^11.0.9"
+    },
+    "@electron/universal": {
+      "minimatch": "^11.0.9"
+    }
   },
   "trustedDependencies": [
     "electron",
